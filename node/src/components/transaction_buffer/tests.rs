@@ -296,6 +296,8 @@ fn get_proposable_transactions() {
         )
         .unwrap();
 
+        transaction_buffer.prices.insert(EraId::new(1), 1u8);
+
         // populate transaction buffer with some transactions
         let transactions: Vec<_> = (0..50)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -373,7 +375,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
         let mut transaction_buffer =
             TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
                 .unwrap();
-
+        transaction_buffer.prices.insert(EraId::new(1), 1u8);
         get_appendable_block(
             &mut rng,
             &mut transaction_buffer,
@@ -397,6 +399,8 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer.prices.insert(EraId::new(1), 1u8);
 
     get_appendable_block(
         &mut rng,
@@ -429,6 +433,8 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         let mut transaction_buffer =
             TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
                 .unwrap();
+
+        transaction_buffer.prices.insert(EraId::new(1), 1u8);
         get_appendable_block(
             &mut rng,
             &mut transaction_buffer,
@@ -451,6 +457,8 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     };
     let mut transaction_buffer =
         TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer.prices.insert(EraId::new(1), 1u8);
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,

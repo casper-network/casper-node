@@ -18,10 +18,7 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{
-    Block, BlockV2, Digest, DisplayIter, EraId, Timestamp, Transaction, TransactionApproval,
-    TransactionConfig, TransactionFootprint, TransactionHash, TransactionId, TransactionV1Category,
-};
+use casper_types::{Block, BlockV2, Digest, DisplayIter, EraId, PricingMode, Timestamp, Transaction, TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash, TransactionId, TransactionV1Category};
 
 use crate::{
     components::{
@@ -360,6 +357,26 @@ impl TransactionBuffer {
             .iter()
             .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
             .filter(|(th, _)| !self.dead.contains(th))
+            .filter(|(_, (_, maybe_data))| {
+                match maybe_data {
+                    None => false,
+                    Some((footprint, _)) => {
+                        match footprint {
+                            TransactionFootprint::Deploy(deploy_footprint) => {
+                                deploy_footprint.header.gas_price() >= current_era_gas_price as u64
+                            }
+                            TransactionFootprint::V1(transaction_footprint) => {
+                                match transaction_footprint.header.pricing_mode() {
+                                    PricingMode::GasPriceMultiplier(tolerance) => {
+                                        *tolerance >= current_era_gas_price as u64
+                                    }
+                                    PricingMode::Fixed | PricingMode::Reserved => true
+                                }
+                            }
+                        }
+                    }
+                }
+            })
             .filter_map(|(th, (_, maybe_data))| {
                 maybe_data.as_ref().map(|(footprint, approvals)| {
                     (
@@ -397,7 +414,9 @@ impl TransactionBuffer {
         let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
         let current_era_gas_price = match self.prices.get(&era_id) {
             Some(gas_price) => *gas_price,
-            None => return ret,
+            None => {
+                return ret
+            },
         };
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
