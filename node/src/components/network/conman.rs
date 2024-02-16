@@ -104,7 +104,7 @@ struct PeerHandle<const N: usize> {
     /// NodeId of the peer.
     peer: NodeId,
     /// The ID of the task handling this connection.
-    task_id: u64,
+    task_id: TaskId,
     /// The established [`juliet`] RPC client, can be used to send requests to the peer.
     client: JulietRpcClient<N>,
 }
@@ -167,21 +167,11 @@ impl<const N: usize> ConMan<N> {
     }
 }
 
-/// A generate for task IDs.
-///
-/// Every task that is potentially long running and manages the routing table gets assigned a unique
-/// task ID, to allow the task itself to check if its routing entry has been stolen or not.
-fn unique() -> u64 {
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-
-    COUNTER.fetch_add(1, Ordering::Relaxed)
-}
-
 impl<const N: usize> Route<N> {
     /// Returns the task ID contained in the route.
     ///
     /// If there is no task ID found in `self`, returns 0.
-    fn task_id(&self) -> u64 {
+    fn task_id(&self) -> TaskId {
         match self {
             Route::Incoming(_) => todo!(),
             Route::Outgoing(PeerHandle { task_id, .. }) => *task_id,
@@ -189,7 +179,7 @@ impl<const N: usize> Route<N> {
             Route::Banned {
                 until,
                 justification,
-            } => 0,
+            } => TaskId::invalid(),
         }
     }
 }
@@ -202,8 +192,8 @@ async fn handle_incoming<const N: usize, REv>(
     stream: TcpStream,
     state: Arc<RwLock<ConManState<N>>>,
 ) {
-    let task_id = unique();
-    Span::current().record("task_id", task_id);
+    let task_id = TaskId::unique();
+    Span::current().record("task_id", u64::from(task_id));
 
     let rpc_builder: juliet::rpc::RpcBuilder<N> = todo!("setup rpc somehow");
 
@@ -364,5 +354,61 @@ impl Payload for DummyPayload {
 impl Display for DummyPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("DummyPayload")
+    }
+}
+
+/// A unique identifier for a task.
+///
+/// Similar to `tokio::task::TaskId` (which is unstable), but "permanently" unique.
+///
+/// Every task that is potentially long running and manages the routing table gets assigned a unique
+/// task ID (through [`TaskId::unique`]), to allow the task itself to check if its routing entry has
+/// been stolen or not.
+#[derive(Copy, Clone, Debug)]
+struct TaskId(u64);
+
+impl TaskId {
+    /// Returns the "invalid" TaskId, which is never equal to any other TaskId.
+    fn invalid() -> TaskId {
+        TaskId(0)
+    }
+
+    /// Generates a new task ID.
+    fn unique() -> TaskId {
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+        TaskId(COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl From<TaskId> for u64 {
+    #[inline(always)]
+    fn from(value: TaskId) -> Self {
+        value.0
+    }
+}
+
+impl PartialEq for TaskId {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        self.0 != 0 && self.0 == other.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskId;
+
+    #[test]
+    fn task_id() {
+        let a = TaskId::unique();
+        let b = TaskId::unique();
+
+        assert_ne!(a, TaskId::invalid());
+        assert_ne!(b, TaskId::invalid());
+        assert_ne!(TaskId::invalid(), TaskId::invalid());
+        assert_ne!(a, b);
+        assert_eq!(a, a);
+        assert_eq!(b, b);
     }
 }
