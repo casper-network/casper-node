@@ -1,7 +1,7 @@
 //! Block validator
 //!
-//! The block validator checks whether all the deploys included in the block payload exist, either
-//! locally or on the network.
+//! The block validator checks whether all the transactions included in the block payload exist,
+//! either locally or on the network.
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
@@ -74,7 +74,7 @@ enum MaybeHandled {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidator {
-    /// Chainspec loaded for deploy validation.
+    /// Chainspec loaded for transaction validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
@@ -138,12 +138,12 @@ impl BlockValidator {
             let effects = match state.start_fetching() {
                 MaybeStartFetching::Start {
                     holder,
-                    missing_deploys,
+                    missing_transactions,
                     missing_signatures,
-                } => fetch_deploys_and_signatures(
+                } => fetch_transactions_and_signatures(
                     effect_builder,
                     holder,
-                    missing_deploys,
+                    missing_transactions,
                     missing_signatures,
                 ),
                 MaybeStartFetching::Ongoing => {
@@ -437,16 +437,16 @@ impl BlockValidator {
         let effects = match state.start_fetching() {
             MaybeStartFetching::Start {
                 holder,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
-            } => fetch_deploys_and_signatures(
+            } => fetch_transactions_and_signatures(
                 effect_builder,
                 holder,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
             ),
             MaybeStartFetching::ValidationSucceeded => {
-                debug!("no deploys - block validation complete");
+                debug!("no transactions - block validation complete");
                 debug_assert!(maybe_responder.is_some());
                 respond(true, maybe_responder)
             }
@@ -511,10 +511,10 @@ impl BlockValidator {
     {
         match &result {
             Ok(FetchedData::FromPeer { peer, .. }) => {
-                debug!(%dt_hash, %peer, "fetched deploy from peer")
+                debug!(%dt_hash, %peer, "fetched transaction from peer")
             }
-            Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched deploy locally"),
-            Err(error) => warn!(%dt_hash, %error, "could not fetch deploy"),
+            Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched transaction locally"),
+            Err(error) => warn!(%dt_hash, %error, "could not fetch transactiony"),
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
@@ -523,7 +523,7 @@ impl BlockValidator {
                         transaction = %item,
                         expected_deploy_or_transaction_hash = %dt_hash,
                         actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
-                        "deploy has incorrect deploy-or-transaction hash"
+                        "transaction has incorrect deploy-or-transaction hash"
                     );
                     // Hard failure - change state to Invalid.
                     let responders = self
@@ -574,18 +574,18 @@ impl BlockValidator {
                             match state.start_fetching() {
                                 MaybeStartFetching::Start {
                                     holder,
-                                    missing_deploys,
+                                    missing_transactions,
                                     missing_signatures,
                                 } => {
                                     debug!(
                                         %holder,
-                                        missing_deploys_len = missing_deploys.len(),
-                                        "fetching missing deploys from different peer"
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions from different peer"
                                     );
-                                    effects.extend(fetch_deploys_and_signatures(
+                                    effects.extend(fetch_transactions_and_signatures(
                                         effect_builder,
                                         holder,
-                                        missing_deploys,
+                                        missing_transactions,
                                         missing_signatures,
                                     ));
                                 }
@@ -665,19 +665,19 @@ impl BlockValidator {
                             match state.start_fetching() {
                                 MaybeStartFetching::Start {
                                     holder,
-                                    missing_deploys,
+                                    missing_transactions,
                                     missing_signatures,
                                 } => {
                                     debug!(
                                         %holder,
-                                        missing_deploys_len = missing_deploys.len(),
-                                        "fetching missing deploys and signatures from different \
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions and signatures from different \
                                         peer"
                                     );
-                                    effects.extend(fetch_deploys_and_signatures(
+                                    effects.extend(fetch_transactions_and_signatures(
                                         effect_builder,
                                         holder,
-                                        missing_deploys,
+                                        missing_transactions,
                                         missing_signatures,
                                     ));
                                 }
@@ -767,10 +767,10 @@ where
     }
 }
 
-fn fetch_deploys_and_signatures<REv>(
+fn fetch_transactions_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
-    missing_deploys: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
+    missing_transactions: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
@@ -779,7 +779,7 @@ where
         + From<FetcherRequest<FinalitySignature>>
         + Send,
 {
-    let mut effects: Effects<Event> = missing_deploys
+    let mut effects: Effects<Event> = missing_transactions
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
             let txn_id = match (dt_hash, approvals_hash) {

@@ -329,7 +329,7 @@ impl TransactionBuffer {
         match block {
             Block::V1(v1_block) => {
                 let transaction_hashes: Vec<TransactionHash> = v1_block
-                    .deploy_and_transfer_hashes()
+                    .transaction_and_transfer_hashes()
                     .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
                     .collect();
                 self.register_transactions(timestamp, transaction_hashes.iter())
@@ -447,19 +447,19 @@ impl TransactionBuffer {
                 Err(error) => {
                     match error {
                         AddError::Duplicate => {
-                            // it should be physically impossible for a duplicate deploy or
+                            // it should be physically impossible for a duplicate transaction or
                             // transaction to be in the transaction buffer, thus this should be
                             // unreachable
                             error!(
                                 ?transaction_hash,
-                                "TransactionBuffer: duplicated deploy or transaction in transaction buffer"
+                                "TransactionBuffer: duplicated transaction or transfer in transaction buffer"
                             );
                             self.dead.insert(transaction_hash);
                         }
                         AddError::Expired => {
                             info!(
                                 ?transaction_hash,
-                                "TransactionBuffer: expired deploy or transaction in transaction buffer"
+                                "TransactionBuffer: expired transaction or transfer in transaction buffer"
                             );
                             self.dead.insert(transaction_hash);
                         }

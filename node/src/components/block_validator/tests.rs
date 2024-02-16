@@ -183,7 +183,7 @@ pub(super) fn new_legacy_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: Ti
     )
 }
 
-pub(super) fn new_v1_transafer(
+pub(super) fn new_v1_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
@@ -223,7 +223,7 @@ pub(super) fn new_legacy_transfer(
 
 pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     if rng.gen() {
-        new_v1_transafer(rng, timestamp, ttl).into()
+        new_v1_transfer(rng, timestamp, ttl).into()
     } else {
         new_legacy_transfer(rng, timestamp, ttl).into()
     }
@@ -319,10 +319,10 @@ async fn validate_block(
         return validation_result.await.unwrap();
     }
 
-    // Otherwise the effects must be requests to fetch the block's deploys.
+    // Otherwise the effects must be requests to fetch the block's transactions.
     let fetch_results: Vec<_> = effects.into_iter().map(tokio::spawn).collect();
 
-    // We make our mock reactor answer with the expected deploys and transfers:
+    // We make our mock reactor answer with the expected transactions and transfers:
     let transactions: Vec<_> = standards
         .iter()
         .cloned()
@@ -339,14 +339,14 @@ async fn validate_block(
         .expect_fetch_transactions(transactions, HashSet::new())
         .await;
 
-    // The resulting `FetchResult`s are passed back into the component. When any deploy turns out
-    // to be invalid, or once all of them have been validated, the component will respond.
+    // The resulting `FetchResult`s are passed back into the component. When any transaction turns
+    // out to be invalid, or once all of them have been validated, the component will respond.
     let mut effects = Effects::new();
     for fetch_result in fetch_results {
         let events = fetch_result.await.unwrap();
         assert_eq!(1, events.len());
-        effects.extend(events.into_iter().flat_map(|found_deploy| {
-            block_validator.handle_event(effect_builder, rng, found_deploy)
+        effects.extend(events.into_iter().flat_map(|found_transaction| {
+            block_validator.handle_event(effect_builder, rng, found_transaction)
         }));
     }
 
@@ -358,7 +358,7 @@ async fn validate_block(
     validation_result.await.unwrap()
 }
 
-/// Verifies that a block without any deploys or transfers is valid.
+/// Verifies that a block without any transactions or transfers is valid.
 #[tokio::test]
 async fn empty_block() {
     assert!(
@@ -374,11 +374,11 @@ async fn empty_block() {
     );
 }
 
-/// Verifies that the block validator checks deploy and transfer timestamps and ttl.
+/// Verifies that the block validator checks transaction and transfer timestamps and ttl.
 #[tokio::test]
 async fn ttl() {
-    // The ttl is 200 ms, and our deploys and transfers have timestamps 900 and 1000. So the block
-    // timestamp must be at least 1000 and at most 1100.
+    // The ttl is 200 ms, and our transactions and transfers have timestamps 900 and 1000. So the
+    // block timestamp must be at least 1000 and at most 1100.
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let transactions = vec![
@@ -390,7 +390,7 @@ async fn ttl() {
         new_transfer(&mut rng, 900.into(), ttl),
     ];
 
-    // Both 1000 and 1100 are timestamps compatible with the deploys and transfers.
+    // Both 1000 and 1100 are timestamps compatible with the transactions and transfers.
     assert!(
         validate_block(
             &mut rng,
@@ -414,7 +414,7 @@ async fn ttl() {
         .await
     );
 
-    // A block with timestamp 999 can't contain a transfer or deploy with timestamp 1000.
+    // A block with timestamp 999 can't contain a transfer or transaction with timestamp 1000.
     assert!(
         !validate_block(
             &mut rng,
@@ -449,7 +449,7 @@ async fn ttl() {
         .await
     );
 
-    // At time 1101, the deploy and transfer from time 900 have expired.
+    // At time 1101, the transaction and transfer from time 900 have expired.
     assert!(
         !validate_block(
             &mut rng,
@@ -485,8 +485,8 @@ async fn ttl() {
     );
 }
 
-/// Verifies that a block is invalid if it contains a transfer in the `deploy_hashes` or a
-/// non-transfer deploy in the `transfer_hashes`, or if it contains a replay.
+/// Verifies that a block is invalid if it contains a transfer in the deploys/transactions section
+/// or vice versa.
 #[tokio::test]
 async fn transfer_deploy_mixup_and_replay() {
     let mut rng = TestRng::new();
@@ -495,55 +495,55 @@ async fn transfer_deploy_mixup_and_replay() {
     let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
     let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
     let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
-    let transfer_v1 = Transaction::from(new_v1_transafer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
     // First we make sure that our transfers and deploys would normally be valid.
-    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
     let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
-    assert!(validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
 
     // Now we test for different invalid combinations of deploys and transfers:
     // 1. Legacy transfer in the deploys/transactions section.
-    let deploys = vec![
+    let transactions = vec![
         transfer_legacy.clone(),
         transaction_v1.clone(),
         deploy_legacy.clone(),
     ];
     let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
     // 2. V1 transfer in the deploys/transactions section.
-    let deploys = vec![
+    let transactions = vec![
         transfer_v1.clone(),
         transaction_v1.clone(),
         deploy_legacy.clone(),
     ];
     let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
     // 3. Legacy deploy in the transfers section.
-    let deploys = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
     let transfers = vec![
         transfer_legacy.clone(),
         transfer_v1.clone(),
         deploy_legacy.clone(),
     ];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
     // 4. V1 transaction in the transfers section.
-    let deploys = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
     let transfers = vec![
         transfer_legacy.clone(),
         transfer_v1.clone(),
         transaction_v1.clone(),
     ];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
 
     // Each transaction must be unique
-    let deploys = vec![
+    let transactions = vec![
         deploy_legacy.clone(),
         transaction_v1.clone(),
         deploy_legacy.clone(),
     ];
     let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
     let deploys = vec![
         transaction_v1.clone(),
         deploy_legacy.clone(),
@@ -553,20 +553,20 @@ async fn transfer_deploy_mixup_and_replay() {
     assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
 
     // And each transfer must be unique, too.
-    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
     let transfers = vec![
         transfer_legacy.clone(),
         transfer_v1.clone(),
         transfer_legacy.clone(),
     ];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
-    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
     let transfers = vec![
         transfer_legacy.clone(),
         transfer_v1.clone(),
         transfer_v1.clone(),
     ];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
 }
 
 /// Verifies that the block validator fetches from multiple peers.
@@ -577,7 +577,7 @@ async fn should_fetch_from_multiple_peers() {
         let peer_count = 3;
         let mut rng = TestRng::new();
         let ttl = TimeDiff::from_seconds(200);
-        let deploys = (0..peer_count)
+        let transactions = (0..peer_count)
             .map(|i| new_transaction(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
@@ -587,11 +587,11 @@ async fn should_fetch_from_multiple_peers() {
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
+            .map(|transfer| TransactionHashWithApprovals::from(&transfer.clone()))
             .collect_vec();
-        let standard_for_block = deploys
+        let standard_for_block = transactions
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
+            .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
@@ -638,32 +638,32 @@ async fn should_fetch_from_multiple_peers() {
             }
         }
 
-        // The effects are requests to fetch the block's deploys.  There are six fetch requests, all
-        // using the first peer.
+        // The effects are requests to fetch the block's transactions.  There are six fetch
+        // requests, all using the first peer.
         let fetch_results = fetch_effects.drain(..).map(tokio::spawn).collect_vec();
 
-        // Provide the first deploy and transfer on first asking.
-        let deploys_to_fetch = vec![deploys[0].clone(), transfers[0].clone()];
-        let deploys_to_not_fetch = vec![
-            deploys[1].hash(),
-            deploys[2].hash(),
+        // Provide the first transaction and transfer on first asking.
+        let transactions_to_fetch = vec![transactions[0].clone(), transfers[0].clone()];
+        let transactions_to_not_fetch = vec![
+            transactions[1].hash(),
+            transactions[2].hash(),
             transfers[1].hash(),
             transfers[2].hash(),
         ]
         .into_iter()
         .collect();
         reactor
-            .expect_fetch_transactions(deploys_to_fetch, deploys_to_not_fetch)
+            .expect_fetch_transactions(transactions_to_fetch, transactions_to_not_fetch)
             .await;
 
         let mut missing = vec![];
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // New fetch requests will be made using a different peer for all deploys not already
-            // registered as fetched.
+            // New fetch requests will be made using a different peer for all transactions not
+            // already registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
@@ -680,29 +680,34 @@ async fn should_fetch_from_multiple_peers() {
         // Handle the second set of fetch requests now.
         let fetch_results = fetch_effects.drain(..).map(tokio::spawn).collect_vec();
 
-        // Provide the first and second deploys and transfers which haven't already been fetched on
-        // second asking.
-        let deploys_to_fetch = vec![&deploys[0], &deploys[1], &transfers[0], &transfers[1]]
+        // Provide the first and second transactions and transfers which haven't already been
+        // fetched on second asking.
+        let transactions_to_fetch = vec![
+            &transactions[0],
+            &transactions[1],
+            &transfers[0],
+            &transfers[1],
+        ]
+        .into_iter()
+        .filter(|transaction| missing.contains(&transaction.hash()))
+        .cloned()
+        .collect();
+        let transactions_to_not_fetch = vec![transactions[2].hash(), transfers[2].hash()]
             .into_iter()
-            .filter(|deploy| missing.contains(&deploy.hash()))
-            .cloned()
-            .collect();
-        let deploys_to_not_fetch = vec![deploys[2].hash(), transfers[2].hash()]
-            .into_iter()
-            .filter(|deploy_hash| missing.contains(deploy_hash))
+            .filter(|transaction_hash| missing.contains(transaction_hash))
             .collect();
         reactor
-            .expect_fetch_transactions(deploys_to_fetch, deploys_to_not_fetch)
+            .expect_fetch_transactions(transactions_to_fetch, transactions_to_not_fetch)
             .await;
 
         missing.clear();
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // New fetch requests will be made using a different peer for all deploys not already
-            // registered as fetched.
+            // New fetch requests will be made using a different peer for all transactions not
+            // already registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
@@ -719,25 +724,25 @@ async fn should_fetch_from_multiple_peers() {
         // Handle the final set of fetch requests now.
         let fetch_results = fetch_effects.into_iter().map(tokio::spawn).collect_vec();
 
-        // Provide all deploys and transfers not already fetched on third asking.
-        let deploys_to_fetch = deploys
+        // Provide all transactions and transfers not already fetched on third asking.
+        let transactions_to_fetch = transactions
             .iter()
             .chain(transfers.iter())
-            .filter(|deploy| missing.contains(&deploy.hash()))
+            .filter(|transaction| missing.contains(&transaction.hash()))
             .cloned()
             .collect();
         reactor
-            .expect_fetch_transactions(deploys_to_fetch, HashSet::new())
+            .expect_fetch_transactions(transactions_to_fetch, HashSet::new())
             .await;
 
         let mut effects = Effects::new();
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // Once the block is deemed valid (i.e. when the final missing deploy is successfully
-            // fetched) the effects will be three validation responses.
+            // Once the block is deemed valid (i.e. when the final missing transaction is
+            // successfully fetched) the effects will be three validation responses.
             effects.extend(block_validator.handle_event(effect_builder, &mut rng, event));
             assert!(effects.is_empty() || effects.len() == peer_count as usize);
         }

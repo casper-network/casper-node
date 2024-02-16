@@ -82,7 +82,7 @@ impl AppendableBlock {
         }
     }
 
-    /// Attempts to add any kind of deploy (transfer or other kind).
+    /// Attempts to add any kind of transaction (transfer or other kind).
     pub(crate) fn add(
         &mut self,
         transaction_hash_with_approvals: TransactionHashWithApprovals,
@@ -374,14 +374,14 @@ impl AppendableBlock {
             == self.transaction_config.block_max_standard_count as usize
     }
 
-    /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
-    /// approval limits.
-    /// Note that we also disallow adding deploys with a number of approvals that would make it
-    /// impossible to fill the rest of the block with deploys that have one approval each.
+    /// Returns `true` if adding the transaction with 'additional_approvals` approvals would exceed
+    /// the approval limits.
+    /// Note that we also disallow adding transactions with a number of approvals that would make it
+    /// impossible to fill the rest of the block with transactions that have one approval each.
     fn would_exceed_approval_limits(&self, additional_approvals: usize) -> bool {
         let remaining_approval_slots =
             self.transaction_config.block_max_approval_count as usize - self.total_approvals;
-        let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
+        let remaining_transaction_slots = self.transaction_config.block_max_transfer_count as usize
             - self.category_count(&TransactionV1Category::Transfer)
             + self.transaction_config.block_max_standard_count as usize
             - self.category_count(&TransactionV1Category::Standard)
@@ -391,7 +391,7 @@ impl AppendableBlock {
             - self.category_count(&TransactionV1Category::InstallUpgrade);
 
         // safe to subtract because the chainspec is validated at load time
-        additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
+        additional_approvals > remaining_approval_slots - remaining_transaction_slots + 1
     }
 
     fn has_max_category_count(&self, category: &TransactionV1Category) -> bool {

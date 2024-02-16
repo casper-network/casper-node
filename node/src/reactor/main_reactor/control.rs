@@ -290,7 +290,7 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // bring up rpc and rest server last to defer complications (such as put_deploy) and
+        // bring up rpc and rest server last to defer complications (such as put_transaction) and
         // for it to be able to answer to /status, which requires various other components to be
         // initialized
         if let Some(effects) = utils::initialize_component(

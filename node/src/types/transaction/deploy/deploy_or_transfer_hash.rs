@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{Deploy, DeployHash, TransactionHash, TransactionV1, TransactionV1Hash};
 
 // TODO[RC]: To separate file
-/// The [`DeployHash`] stored in a way distinguishing between Wasm deploys and transfers.
+/// The [`TransactionHash`] stored in a way distinguishing between V1 transactions and V1 transfers.
 #[derive(
     Copy,
     Clone,
@@ -22,7 +22,7 @@ use casper_types::{Deploy, DeployHash, TransactionHash, TransactionV1, Transacti
 )]
 #[serde(deny_unknown_fields)]
 pub(crate) enum TransactionV1OrTransferV1Hash {
-    /// Hash of a deploy.
+    /// Hash of a transaction.
     #[display(fmt = "transaction {}", _0)]
     Transaction(TransactionV1Hash),
     /// Hash of a transfer.

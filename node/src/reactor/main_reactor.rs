@@ -126,9 +126,9 @@ pub(crate) use reactor_state::ReactorState;
 ///     E -->|Mark block complete| H
 ///     C -->|Execute block| B
 ///
-///     C -->|Complete block<br/>with Deploys| F
+///     C -->|Complete block<br/>with Transactions| F
 ///
-///     K -->|Deploy| F
+///     K -->|Transaction| F
 ///     K -->|Block data| E
 /// ```
 #[derive(DataSize, Debug)]
@@ -681,7 +681,7 @@ impl reactor::Reactor for MainReactor {
                 ),
             ),
 
-            // DEPLOYS
+            // TRANSACTIONS
             MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
                 MainEvent::TransactionAcceptor,
                 self.transaction_acceptor
@@ -719,7 +719,7 @@ impl reactor::Reactor for MainReactor {
                 match source {
                     Source::Ourself => (), // internal activity does not require further action
                     Source::Peer(_) => {
-                        // this is a response to a deploy fetch request, dispatch to fetcher
+                        // this is a response to a transaction fetch request, dispatch to fetcher
                         effects.extend(self.fetchers.dispatch_fetcher_event(
                             effect_builder,
                             rng,
@@ -786,9 +786,9 @@ impl reactor::Reactor for MainReactor {
                 Effects::new()
             }
             MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
-                gossiped_deploy_id,
+                gossiped_transaction_id,
             )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new transaction");
+                error!(%gossiped_transaction_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
             MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
@@ -1130,7 +1130,7 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        // chain / deploy management
+        // chain / transaction management
 
         let block_accumulator = BlockAccumulator::new(
             config.block_accumulator,

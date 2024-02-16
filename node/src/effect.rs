@@ -76,10 +76,10 @@
 //! Announcements are often dispatched to multiple components by the reactor; since that usually
 //! involves a [`clone`](`Clone::clone`), they should be kept light.
 //!
-//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
-//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, instead
-//! it simply returns an effect that produces an announcement.
+//! A good example is the arrival of a new transaction passed in by a client. Depending on the setup
+//! it may be stored, buffered or, in certain testing setups, just discarded. None of this is a
+//! concern of the component that talks to the client and deserializes the incoming transaction
+//! though, instead it simply returns an effect that produces an announcement.
 //!
 //! **Requests** are complex events that are used when a component needs something from other
 //! components. Typically, an effect (which uses [`EffectBuilder::make_request`] in its
@@ -800,7 +800,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces which deploys have expired.
+    /// Announces which transactions have expired.
     pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
         REv: From<TransactionBufferAnnouncement>,
@@ -899,9 +899,9 @@ impl<REv> EffectBuilder<REv> {
 
     /// Request that a block with a specific height be marked completed.
     ///
-    /// Completion means that the block itself (along with its header) and all of its deploys have
-    /// been persisted to storage and its global state root hash is missing no dependencies in the
-    /// global state.
+    /// Completion means that the block itself (along with its header) and all of its transactions
+    /// have been persisted to storage and its global state root hash is missing no dependencies
+    /// in the global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
         REv: From<MarkBlockCompletedRequest>,
@@ -1534,8 +1534,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Stores the given execution results for the deploys in the given block in the linear block
-    /// store.
+    /// Stores the given execution results for the transactions in the given block in the linear
+    /// block store.
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
@@ -1741,7 +1741,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes the timestamp of a future block for which deploys are to be proposed.
+    /// Passes the timestamp of a future block for which transactions are to be proposed.
     pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
@@ -1789,7 +1789,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network and the block is
+    /// Checks whether the transactions included in the block exist on the network and the block is
     /// valid.
     pub(crate) async fn validate_block(
         self,

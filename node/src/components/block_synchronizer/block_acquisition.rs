@@ -624,7 +624,7 @@ impl BlockAcquisitionState {
                 );
                 let transaction_hashes = match &block {
                     Block::V1(v1) => v1
-                        .deploy_and_transfer_hashes()
+                        .transaction_and_transfer_hashes()
                         .copied()
                         .map(TransactionHash::from)
                         .collect(),
@@ -1079,7 +1079,7 @@ impl BlockAcquisitionState {
                 );
                 let transaction_hashes = match block.as_ref() {
                     Block::V1(v1) => v1
-                        .deploy_and_transfer_hashes()
+                        .transaction_and_transfer_hashes()
                         .copied()
                         .map(TransactionHash::from)
                         .collect(),

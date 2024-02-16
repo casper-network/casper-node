@@ -378,13 +378,13 @@ pub(crate) enum StorageRequest {
         transaction_id: TransactionId,
         responder: Responder<bool>,
     },
-    /// Store execution results for a set of deploys of a single block.
+    /// Store execution results for a set of transactions of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
-    /// deploy/block combination and a different result is inserted.
+    /// transaction/block combination and a different result is inserted.
     ///
-    /// Inserting the same block/deploy combination multiple times with the same execution results
-    /// is not an error and will silently be ignored.
+    /// Inserting the same transaction/block combination multiple times with the same execution
+    /// results is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
         block_hash: Box<BlockHash>,
@@ -647,10 +647,13 @@ impl Display for StorageRequest {
                 write!(formatter, "get available block range",)
             }
             StorageRequest::StoreFinalizedApprovals {
-                transaction_hash: deploy_hash,
-                ..
+                transaction_hash, ..
             } => {
-                write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+                write!(
+                    formatter,
+                    "finalized approvals for transaction {}",
+                    transaction_hash
+                )
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
                 write!(formatter, "put executed block {}", block.hash(),)
@@ -669,7 +672,7 @@ impl Display for StorageRequest {
 pub(crate) struct MakeBlockExecutableRequest {
     /// Hash of the block to be made executable.
     pub block_hash: BlockHash,
-    /// Responder with the executable block and it's deploys
+    /// Responder with the executable block and it's transactions
     pub responder: Responder<Option<ExecutableBlock>>,
 }
 
@@ -684,7 +687,7 @@ impl Display for MakeBlockExecutableRequest {
 /// A block is considered complete if
 ///
 /// * the block header and the actual block are persisted in storage,
-/// * all of its deploys are persisted in storage, and
+/// * all of its transactions are persisted in storage, and
 /// * the global state root the block refers to has no missing dependencies locally.
 #[derive(Debug, Serialize)]
 pub(crate) struct MarkBlockCompletedRequest {
@@ -1112,7 +1115,7 @@ pub(crate) struct BlockValidationRequest {
     pub(crate) proposed_block_height: u64,
     /// The block to be validated.
     pub(crate) block: ProposedBlock<ClContext>,
-    /// The sender of the block, which will be asked to provide all missing deploys.
+    /// The sender of the block, which will be asked to provide all missing transactions.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
     ///

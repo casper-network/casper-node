@@ -779,9 +779,10 @@ impl LargestSpecimen for Digest {
 
 impl LargestSpecimen for BlockPayload {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        // We cannot just use the standard largest specimen for `DeployHashWithApprovals`, as this
-        // would cause a quadratic increase in deploys. Instead, we generate one large deploy that
-        // contains the number of approvals if they are spread out across the block.
+        // We cannot just use the standard largest specimen for `TransactionHashWithApprovals`, as
+        // this would cause a quadratic increase in transactions. Instead, we generate one
+        // large transaction that contains the number of approvals if they are spread out
+        // across the block.
 
         let large_txn = match Transaction::largest_specimen(estimator, cache) {
             Transaction::Deploy(deploy) => {
@@ -889,7 +890,7 @@ impl LargestSpecimen for TransactionHashWithApprovals {
         let max_items = estimator.parameter::<usize>("max_transfers_per_block")
             + estimator.parameter::<usize>("max_standard_per_block");
 
-        let deploy = TransactionHashWithApprovals::new_deploy(
+        let transaction = TransactionHashWithApprovals::new_deploy(
             LargestSpecimen::largest_specimen(estimator, cache),
             btree_set_distinct(estimator, max_items, cache),
         );
@@ -898,8 +899,8 @@ impl LargestSpecimen for TransactionHashWithApprovals {
             btree_set_distinct(estimator, max_items, cache),
         );
 
-        if estimator.estimate(&deploy) > estimator.estimate(&v1) {
-            deploy
+        if estimator.estimate(&transaction) > estimator.estimate(&v1) {
+            transaction
         } else {
             v1
         }

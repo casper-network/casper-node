@@ -230,7 +230,7 @@ impl Display for TransactionAcceptorAnnouncement {
 
 #[derive(Debug, Serialize)]
 pub(crate) enum TransactionBufferAnnouncement {
-    /// Hashes of the deploys that expired.
+    /// Hashes of the transactions that expired.
     TransactionsExpired(Vec<TransactionHash>),
 }
 

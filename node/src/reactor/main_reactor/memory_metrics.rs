@@ -18,13 +18,13 @@ pub(super) struct MemoryMetrics {
     mem_rest_server: IntGauge,
     mem_event_stream_server: IntGauge,
     mem_consensus: IntGauge,
-    mem_deploy_gossiper: IntGauge,
+    mem_transaction_gossiper: IntGauge,
     mem_finality_signature_gossiper: IntGauge,
     mem_block_gossiper: IntGauge,
     mem_transaction_buffer: IntGauge,
     mem_block_validator: IntGauge,
     mem_sync_leaper: IntGauge,
-    mem_deploy_acceptor: IntGauge,
+    mem_transaction_acceptor: IntGauge,
     mem_block_synchronizer: IntGauge,
     mem_block_accumulator: IntGauge,
     mem_fetchers: IntGauge,
@@ -59,9 +59,9 @@ impl MemoryMetrics {
         )?;
         let mem_consensus = IntGauge::new("mem_consensus", "consensus memory usage in bytes")?;
         let mem_fetchers = IntGauge::new("mem_fetchers", "combined fetcher memory usage in bytes")?;
-        let mem_deploy_gossiper = IntGauge::new(
-            "mem_deploy_gossiper",
-            "deploy gossiper memory usage in bytes",
+        let mem_transaction_gossiper = IntGauge::new(
+            "mem_transaction_gossiper",
+            "transaction gossiper memory usage in bytes",
         )?;
         let mem_finality_signature_gossiper = IntGauge::new(
             "mem_finality_signature_gossiper",
@@ -79,9 +79,9 @@ impl MemoryMetrics {
         )?;
         let mem_sync_leaper =
             IntGauge::new("mem_sync_leaper", "sync leaper memory usage in bytes")?;
-        let mem_deploy_acceptor = IntGauge::new(
-            "mem_deploy_acceptor",
-            "deploy acceptor memory usage in bytes",
+        let mem_transaction_acceptor = IntGauge::new(
+            "mem_transaction_acceptor",
+            "transaction acceptor memory usage in bytes",
         )?;
         let mem_block_synchronizer = IntGauge::new(
             "mem_block_synchronizer",
@@ -119,13 +119,13 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_event_stream_server.clone()))?;
         registry.register(Box::new(mem_consensus.clone()))?;
         registry.register(Box::new(mem_fetchers.clone()))?;
-        registry.register(Box::new(mem_deploy_gossiper.clone()))?;
+        registry.register(Box::new(mem_transaction_gossiper.clone()))?;
         registry.register(Box::new(mem_finality_signature_gossiper.clone()))?;
         registry.register(Box::new(mem_block_gossiper.clone()))?;
         registry.register(Box::new(mem_transaction_buffer.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_sync_leaper.clone()))?;
-        registry.register(Box::new(mem_deploy_acceptor.clone()))?;
+        registry.register(Box::new(mem_transaction_acceptor.clone()))?;
         registry.register(Box::new(mem_block_synchronizer.clone()))?;
         registry.register(Box::new(mem_block_accumulator.clone()))?;
         registry.register(Box::new(mem_diagnostics_port.clone()))?;
@@ -144,13 +144,13 @@ impl MemoryMetrics {
             mem_event_stream_server,
             mem_consensus,
             mem_fetchers,
-            mem_deploy_gossiper,
+            mem_transaction_gossiper,
             mem_finality_signature_gossiper,
             mem_block_gossiper,
             mem_transaction_buffer,
             mem_block_validator,
             mem_sync_leaper,
-            mem_deploy_acceptor,
+            mem_transaction_acceptor,
             mem_block_synchronizer,
             mem_block_accumulator,
             mem_diagnostics_port,
@@ -174,14 +174,14 @@ impl MemoryMetrics {
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let fetchers = reactor.fetchers.estimate_heap_size() as i64;
-        let deploy_gossiper = reactor.transaction_gossiper.estimate_heap_size() as i64;
+        let transaction_gossiper = reactor.transaction_gossiper.estimate_heap_size() as i64;
         let finality_signature_gossiper =
             reactor.finality_signature_gossiper.estimate_heap_size() as i64;
         let block_gossiper = reactor.block_gossiper.estimate_heap_size() as i64;
         let transaction_buffer = reactor.transaction_buffer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let sync_leaper = reactor.sync_leaper.estimate_heap_size() as i64;
-        let deploy_acceptor = reactor.transaction_acceptor.estimate_heap_size() as i64;
+        let transaction_acceptor = reactor.transaction_acceptor.estimate_heap_size() as i64;
         let block_synchronizer = reactor.block_synchronizer.estimate_heap_size() as i64;
         let block_accumulator = reactor.block_accumulator.estimate_heap_size() as i64;
         let diagnostics_port = reactor.diagnostics_port.estimate_heap_size() as i64;
@@ -197,13 +197,13 @@ impl MemoryMetrics {
             + event_stream_server
             + consensus
             + fetchers
-            + deploy_gossiper
+            + transaction_gossiper
             + finality_signature_gossiper
             + block_gossiper
             + transaction_buffer
             + block_validator
             + sync_leaper
-            + deploy_acceptor
+            + transaction_acceptor
             + block_synchronizer
             + block_accumulator
             + diagnostics_port
@@ -218,14 +218,14 @@ impl MemoryMetrics {
         self.mem_event_stream_server.set(event_stream_server);
         self.mem_consensus.set(consensus);
         self.mem_fetchers.set(fetchers);
-        self.mem_deploy_gossiper.set(deploy_gossiper);
+        self.mem_transaction_gossiper.set(transaction_gossiper);
         self.mem_finality_signature_gossiper
             .set(finality_signature_gossiper);
         self.mem_block_gossiper.set(block_gossiper);
         self.mem_transaction_buffer.set(transaction_buffer);
         self.mem_block_validator.set(block_validator);
         self.mem_sync_leaper.set(sync_leaper);
-        self.mem_deploy_acceptor.set(deploy_acceptor);
+        self.mem_transaction_acceptor.set(transaction_acceptor);
         self.mem_block_synchronizer.set(block_synchronizer);
         self.mem_block_accumulator.set(block_accumulator);
         self.mem_diagnostics_port.set(diagnostics_port);
@@ -249,13 +249,13 @@ impl MemoryMetrics {
                %event_stream_server,
                %consensus,
                %fetchers,
-               %deploy_gossiper,
+               %transaction_gossiper,
                %finality_signature_gossiper,
                %block_gossiper,
                %transaction_buffer,
                %block_validator,
                %sync_leaper,
-               %deploy_acceptor,
+               %transaction_acceptor,
                %block_synchronizer,
                %block_accumulator,
                %diagnostics_port,
@@ -279,13 +279,13 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_event_stream_server);
         unregister_metric!(self.registry, self.mem_consensus);
         unregister_metric!(self.registry, self.mem_fetchers);
-        unregister_metric!(self.registry, self.mem_deploy_gossiper);
+        unregister_metric!(self.registry, self.mem_transaction_gossiper);
         unregister_metric!(self.registry, self.mem_finality_signature_gossiper);
         unregister_metric!(self.registry, self.mem_block_gossiper);
         unregister_metric!(self.registry, self.mem_transaction_buffer);
         unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_sync_leaper);
-        unregister_metric!(self.registry, self.mem_deploy_acceptor);
+        unregister_metric!(self.registry, self.mem_transaction_acceptor);
         unregister_metric!(self.registry, self.mem_block_synchronizer);
         unregister_metric!(self.registry, self.mem_block_accumulator);
         unregister_metric!(self.registry, self.mem_diagnostics_port);

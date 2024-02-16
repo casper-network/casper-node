@@ -146,7 +146,7 @@ impl ApprovalsHashes {
             }
         };
         Ok(v1_block
-            .deploy_and_transfer_hashes()
+            .transaction_and_transfer_hashes()
             .zip(deploy_approvals_hashes)
             .map(|(deploy_hash, deploy_approvals_hash)| {
                 DeployId::new(*deploy_hash, *deploy_approvals_hash)

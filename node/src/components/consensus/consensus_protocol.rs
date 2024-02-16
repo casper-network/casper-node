@@ -129,7 +129,7 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     CreatedRequestToRandomPeer(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
-    /// Request deploys for a new block, providing the necessary context.
+    /// Request transactions for a new block, providing the necessary context.
     CreateNewBlock(BlockContext<C>),
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
@@ -137,8 +137,8 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     /// node.
     ///
     /// The domain logic should verify any intrinsic validity conditions of consensus values, e.g.
-    /// that it has the expected structure, or that deploys that are mentioned by hash actually
-    /// exist, and then call `ConsensusProtocol::resolve_validity`.
+    /// that it has the expected structure, or that transactions that are mentioned by hash
+    /// actually exist, and then call `ConsensusProtocol::resolve_validity`.
     ValidateConsensusValue {
         sender: NodeId,
         proposed_block: ProposedBlock<C>,
