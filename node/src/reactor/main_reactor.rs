@@ -32,55 +32,45 @@ use casper_types::{
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
-use crate::{
-    components::{
-        block_accumulator::{self, BlockAccumulator},
-        block_synchronizer::{self, BlockSynchronizer},
-        block_validator::{self, BlockValidator},
-        consensus::{self, EraSupervisor},
-        contract_runtime::ContractRuntime,
-        diagnostics_port::DiagnosticsPort,
-        event_stream_server::{self, EventStreamServer},
-        gossiper::{self, GossipItem, Gossiper},
-        metrics::Metrics,
-        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
-        rest_server::RestServer,
-        rpc_server::RpcServer,
-        shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
-        storage::Storage,
-        sync_leaper::SyncLeaper,
-        transaction_acceptor::{self, TransactionAcceptor},
-        transaction_buffer::{self, TransactionBuffer},
-        upgrade_watcher::{self, UpgradeWatcher},
-        Component, ValidatorBoundComponent,
+use crate::{components::{
+    block_accumulator::{self, BlockAccumulator},
+    block_synchronizer::{self, BlockSynchronizer},
+    block_validator::{self, BlockValidator},
+    consensus::{self, EraSupervisor},
+    contract_runtime::ContractRuntime,
+    diagnostics_port::DiagnosticsPort,
+    event_stream_server::{self, EventStreamServer},
+    gossiper::{self, GossipItem, Gossiper},
+    metrics::Metrics,
+    network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
+    rest_server::RestServer,
+    rpc_server::RpcServer,
+    shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
+    storage::Storage,
+    sync_leaper::SyncLeaper,
+    transaction_acceptor::{self, TransactionAcceptor},
+    transaction_buffer::{self, TransactionBuffer},
+    upgrade_watcher::{self, UpgradeWatcher},
+    Component, ValidatorBoundComponent,
+}, effect::{
+    announcements::{
+        BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
+        ControlAnnouncement, FetchedNewBlockAnnouncement,
+        FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
+        PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
+        TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
     },
-    effect::{
-        announcements::{
-            BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, FetchedNewBlockAnnouncement,
-            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
-            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
-        },
-        incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
-        EffectBuilder, EffectExt, Effects, GossipTarget,
-    },
-    failpoints::FailpointActivation,
-    fatal,
-    protocol::Message,
-    reactor::{
-        self,
-        event_queue_metrics::EventQueueMetrics,
-        main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
-        EventQueueHandle, QueueKind,
-    },
-    types::{
-        ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
-    },
-    utils::{Source, WithDir},
-    NodeRng,
-};
+    incoming::{NetResponseIncoming, TrieResponseIncoming},
+    requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
+    EffectBuilder, EffectExt, Effects, GossipTarget,
+}, failpoints::FailpointActivation, fatal, protocol::Message, reactor::{
+    self,
+    event_queue_metrics::EventQueueMetrics,
+    main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
+    EventQueueHandle, QueueKind,
+}, types::{
+    ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
+}, utils::{Source, WithDir}, NodeRng, contract_runtime};
 pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;

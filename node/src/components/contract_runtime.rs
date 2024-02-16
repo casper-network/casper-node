@@ -590,6 +590,10 @@ impl ContractRuntime {
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => {
                 responder.respond(Some(self.current_gas_price)).ignore()
             }
+            ContractRuntimeRequest::UpdateRuntimePrice(new_gas_price) => {
+                self.current_gas_price = new_gas_price;
+                Effects::new()
+            },
         }
     }
 
@@ -673,6 +677,10 @@ impl ContractRuntime {
             ret
         };
         Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
+    }
+
+    fn handle_gas_price_update(&mut self, gas_price: u8) {
+        self.current_gas_price = gas_price
     }
 
     /// Returns the engine state, for testing only.

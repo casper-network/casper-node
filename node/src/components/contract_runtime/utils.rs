@@ -116,6 +116,7 @@ pub(super) async fn exec_or_requeue<REv>(
 
     // TODO: Make the call to determine gas price calc based on the tracking in storage here!
     let maybe_next_era_gas_price = if is_era_end {
+        info!("End of era calculating new gas price");
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
@@ -144,6 +145,8 @@ pub(super) async fn exec_or_requeue<REv>(
                     Ratio::new(numerator, denominator).to_integer()
                 };
 
+                println!("Fooo {era_score}");
+
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
                     if current_gas_price > max {
@@ -161,6 +164,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 } else {
                     current_gas_price
                 };
+                info!("Calculated new gas price");
                 new_gas_price
             }
         }

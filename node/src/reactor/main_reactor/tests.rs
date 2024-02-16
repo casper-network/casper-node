@@ -79,6 +79,14 @@ struct ChainspecOverride {
     minimum_block_time: TimeDiff,
     minimum_era_height: u64,
     unbonding_delay: u64,
+    max_transfer_count: u32,
+    max_standard_count: u32,
+    max_staking_count: u32,
+    max_install_count: u32,
+    max: u8,
+    min: u8,
+    go_up: u64,
+    go_down: u64,
 }
 
 impl Default for ChainspecOverride {
@@ -87,6 +95,14 @@ impl Default for ChainspecOverride {
             minimum_block_time: "1second".parse().unwrap(),
             minimum_era_height: 2,
             unbonding_delay: 3,
+            max_transfer_count: 1000,
+            max_standard_count: 100,
+            max_staking_count: 200,
+            max_install_count: 2,
+            max: 3,
+            min: 1,
+            go_up: 90,
+            go_down: 50,
         }
     }
 }
@@ -185,6 +201,14 @@ impl TestFixture {
         chainspec.core_config.minimum_block_time = spec_override.minimum_block_time;
         chainspec.core_config.minimum_era_height = spec_override.minimum_era_height;
         chainspec.core_config.unbonding_delay = spec_override.unbonding_delay;
+        chainspec.transaction_config.min = spec_override.min;
+        chainspec.transaction_config.max = spec_override.max;
+        chainspec.transaction_config.go_up = spec_override.go_up;
+        chainspec.transaction_config.go_down = spec_override.go_down;
+        chainspec.transaction_config.block_max_standard_count = spec_override.max_standard_count;
+        chainspec.transaction_config.block_max_staking_count = spec_override.max_staking_count;
+        chainspec.transaction_config.block_max_transfer_count = spec_override.max_transfer_count;
+        chainspec.transaction_config.block_max_install_upgrade_count = spec_override.max_install_count;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
 
@@ -1713,4 +1737,68 @@ async fn rewards_are_calculated() {
     for reward in switch_block.era_end().unwrap().rewards().values() {
         assert_ne!(reward, &U512::zero());
     }
+}
+
+
+#[tokio::test]
+async fn block_vacancy() {
+    let alice_stake = 200_000_000_000_u64;
+    let bob_stake = 300_000_000_000_u64;
+    let charlie_stake = 300_000_000_000_u64;
+    let initial_stakes = InitialStakes::FromVec(vec![
+        alice_stake.into(),
+        bob_stake.into(),
+        charlie_stake.into(),
+    ]);
+
+    let spec_override = ChainspecOverride {
+        minimum_era_height: 1,
+        go_down: 10,
+        go_up: 24,
+        max_standard_count: 1,
+        max_staking_count: 1,
+        max_install_count: 1,
+        max_transfer_count: 1,
+        ..Default::default()
+    };
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
+    let charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
+
+    // Wait for all nodes to complete
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+
+    // Have Alice delegate to Bob.
+    let alice_delegation_amount =
+        U512::from(fixture.chainspec.core_config.minimum_delegation_amount);
+    let mut deploy = Deploy::delegate(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(AUCTION),
+        bob_public_key.clone(),
+        alice_public_key.clone(),
+        alice_delegation_amount,
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&alice_secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    // Wait for all nodes to complete
+    fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
+
+
+
+
+
 }
