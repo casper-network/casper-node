@@ -6,7 +6,7 @@
 
 use std::{
     collections::HashMap,
-    fmt::Display,
+    fmt::{Debug, Display},
     net::IpAddr,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -15,26 +15,27 @@ use std::{
     time::Instant,
 };
 
+use async_trait::async_trait;
 use futures::FutureExt;
-use juliet::rpc::JulietRpcClient;
+use juliet::rpc::{IncomingRequest, JulietRpcClient, RpcBuilder};
 use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{
     debug, error_span,
     field::{self, Empty},
-    info, warn, Instrument, Span,
+    warn, Instrument, Span,
 };
 
 use crate::{
-    components::network::{
-        connection_id::ConnectionId, handshake::negotiate_handshake, tasks::server_setup_tls,
-    },
     types::NodeId,
     utils::{display_error, DropSwitch, ObservableFuse},
 };
 
-use super::{blocklist::BlocklistJustification, tasks::NetworkContext, MessageKind, Payload};
+use super::{
+    blocklist::BlocklistJustification, error::ConnectionError, handshake::HandshakeOutcome,
+    MessageKind, Payload,
+};
 
 /// Connection manager.
 ///
@@ -46,9 +47,19 @@ use super::{blocklist::BlocklistJustification, tasks::NetworkContext, MessageKin
 #[derive(Debug)]
 struct ConMan {
     /// The shared connection manager state, which contains per-peer and per-address information.
-    state: Arc<RwLock<ConManState>>,
+    ctx: Arc<ConManContext>,
     /// A fuse used to cancel future execution.
     shutdown: DropSwitch<ObservableFuse>,
+}
+
+/// Shared information across the connection manager and its subtasks.
+struct ConManContext {
+    /// Callback function to hand incoming requests off to.
+    protocol_handler: Box<dyn ProtocolHandler>,
+    /// Juliet RPC configuration.
+    rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
+    /// The shared state.
+    state: RwLock<ConManState>,
 }
 
 /// Share state for [`ConMan`].
@@ -58,6 +69,8 @@ struct ConMan {
 struct ConManState {
     /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
     /// This is strictly for outgoing connections.
+    // TODO: Add pruning for both tables, in case someone is flooding us with bogus addresses. We
+    //       may need to add a queue for learning about new addresses.
     address_book: HashMap<IpAddr, AddressBookEntry>,
     /// The current state per node ID, i.e. whether it is connected through an incoming or outgoing
     /// connection, blocked or unknown.
@@ -110,17 +123,47 @@ struct PeerHandle {
     client: JulietRpcClient<{ super::Channel::COUNT }>,
 }
 
+#[async_trait]
+pub(crate) trait ProtocolHandler: Send + Sync {
+    async fn setup_incoming(
+        &self,
+        transport: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
+
+    async fn setup_outgoing(
+        &self,
+        transport: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
+
+    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest);
+}
+
+pub(crate) struct ProtocolHandshakeOutcome {
+    our_id: NodeId,
+    peer_id: NodeId,
+    handshake_outcome: HandshakeOutcome,
+}
+
 impl ConMan {
     /// Create a new connection manager.
     ///
     /// Immediately spawns a task accepting incoming connections on a tokio task, which will be
     /// cancelled if the returned [`ConMan`] is dropped.
-    pub(crate) fn new<REv: Send>(ctx: Arc<NetworkContext<REv>>, listener: TcpListener) -> Self {
-        let state: Arc<RwLock<ConManState>> = Default::default();
+    pub(crate) fn new<H: Into<Box<dyn ProtocolHandler>>>(
+        listener: TcpListener,
+        protocol_handler: H,
+        rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
+    ) -> Self {
+        let ctx = Arc::new(ConManContext {
+            protocol_handler: protocol_handler.into(),
+            rpc_builder,
+            state: Default::default(),
+        });
+
         let shutdown = DropSwitch::new(ObservableFuse::new());
 
-        let server_state = state.clone();
         let server_shutdown = shutdown.inner().clone();
+        let server_ctx = ctx.clone();
 
         let server = async move {
             loop {
@@ -135,11 +178,7 @@ impl ConMan {
                         tokio::spawn(
                             server_shutdown
                                 .clone()
-                                .cancellable(handle_incoming(
-                                    ctx.clone(),
-                                    stream,
-                                    server_state.clone(),
-                                ))
+                                .cancellable(handle_incoming(server_ctx.clone(), stream))
                                 .instrument(span),
                         );
                     }
@@ -164,7 +203,7 @@ impl ConMan {
 
         tokio::spawn(shutdown.inner().clone().cancellable(server).map(|_| ()));
 
-        Self { state, shutdown }
+        Self { ctx, shutdown }
     }
 }
 
@@ -177,10 +216,7 @@ impl Route {
             Route::Incoming(_) => todo!(),
             Route::Outgoing(PeerHandle { task_id, .. }) => *task_id,
             // There is no task running, so return ID 0.
-            Route::Banned {
-                until,
-                justification,
-            } => TaskId::invalid(),
+            Route::Banned { .. } => TaskId::invalid(),
         }
     }
 }
@@ -188,59 +224,37 @@ impl Route {
 /// Handler for a new incoming connection.
 ///
 /// Will complete the handshake, then check if the incoming connection should be kept.
-async fn handle_incoming<REv>(
-    context: Arc<NetworkContext<REv>>,
-    stream: TcpStream,
-    state: Arc<RwLock<ConManState>>,
-) {
+async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
     let task_id = TaskId::unique();
     Span::current().record("task_id", u64::from(task_id));
 
-    let (peer_id, transport) = match server_setup_tls(&context, stream).await {
-        Ok(value) => value,
+    let ProtocolHandshakeOutcome {
+        our_id: _,
+        peer_id,
+        handshake_outcome,
+    } = match ctx.protocol_handler.setup_incoming(stream).await {
+        Ok(outcome) => outcome,
         Err(error) => {
             debug!(%error, "failed to complete setup TLS");
             return;
         }
     };
 
-    // Register the `peer_id` on the [`Span`] for logging the ID from here on out.
+    // Register the `peer_id` and potential consensus key on the [`Span`] for logging from here on.
     Span::current().record("peer_id", &field::display(peer_id));
-
-    if peer_id == context.our_id {
-        info!("incoming loopback connection");
-        // We do not need to do anything here - the other end (outgoing) will detect this, then set
-        // an appropriate backoff.
-        return;
-    }
-
-    debug!("Incoming TLS connection established");
-
-    // Setup connection id.
-    let connection_id = ConnectionId::from_connection(transport.ssl(), context.our_id, peer_id);
-
-    // Negotiate the handshake.
-    let outcome =
-        match negotiate_handshake::<DummyPayload, _>(&context, transport, connection_id).await {
-            Ok(success) => success,
-            Err(error) => {
-                debug!(%error, "handshake failed");
-                return;
-            }
-        };
-
-    // We can now record the consensus key on the span.
-    if let Some(ref public_key) = outcome.peer_consensus_public_key {
+    if let Some(ref public_key) = handshake_outcome.peer_consensus_public_key {
         Span::current().record("consensus_key", &field::display(public_key));
     }
 
+    debug!("Incoming connection established");
+
     // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
 
-    let (read_half, write_half) = tokio::io::split(outcome.transport);
-    let (rpc_client, rpc_server) = context.rpc_builder.build(read_half, write_half);
+    let (read_half, write_half) = tokio::io::split(handshake_outcome.transport);
+    let (rpc_client, rpc_server) = ctx.rpc_builder.build(read_half, write_half);
 
-    let rpc_server = {
-        let guard = state.write().expect("lock poisoned");
+    let mut rpc_server = {
+        let mut guard = ctx.state.write().expect("lock poisoned");
 
         match guard.routing_table.get(&peer_id) {
             Some(Route::Incoming(_)) => {
@@ -287,7 +301,7 @@ async fn handle_incoming<REv>(
         match rpc_server.next_request().await {
             Ok(None) => {
                 // The connection was closed. Not an issue, the peer will likely reconnect to us.
-                let guard = state.write().expect("lock poisoned");
+                let mut guard = ctx.state.write().expect("lock poisoned");
 
                 match guard.routing_table.get(&peer_id) {
                     Some(route) if route.task_id() == task_id => {
@@ -306,12 +320,14 @@ async fn handle_incoming<REv>(
 
                 return;
             }
-            Ok(Some(incoming_request)) => {
-                // TODO: Fire off request to somewhere.
+            Ok(Some(request)) => {
+                // Incoming requests are directly handed off to the protocol handler.
+                ctx.protocol_handler
+                    .handle_incoming_request(peer_id, request);
             }
             Err(err) => {
                 debug!(%err, "closing exiting incoming due to error");
-                let guard = state.write().expect("lock poisoned");
+                let mut guard = ctx.state.write().expect("lock poisoned");
 
                 match guard.routing_table.get(&peer_id) {
                     Some(route) if route.task_id() == task_id => {
@@ -328,6 +344,16 @@ async fn handle_incoming<REv>(
                 return;
             }
         }
+    }
+}
+
+impl Debug for ConManContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConManContext")
+            .field("protocol_handler", &"...")
+            .field("rpc_builder", &"...")
+            .field("state", &self.state)
+            .finish()
     }
 }
 
