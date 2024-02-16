@@ -30,7 +30,7 @@ mod block;
 mod block_time;
 mod byte_code;
 pub mod bytesrepr;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "std", test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
