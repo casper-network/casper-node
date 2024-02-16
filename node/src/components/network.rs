@@ -63,7 +63,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 
-use juliet::rpc::{JulietRpcClient, JulietRpcServer, RequestGuard, RpcBuilder};
+use juliet::rpc::{JulietRpcClient, JulietRpcServer, RequestGuard};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},

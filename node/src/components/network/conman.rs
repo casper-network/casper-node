@@ -18,6 +18,7 @@ use std::{
 use futures::FutureExt;
 use juliet::rpc::JulietRpcClient;
 use serde::{Deserialize, Serialize};
+use strum::EnumCount;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{
     debug, error_span,
@@ -43,9 +44,9 @@ use super::{blocklist::BlocklistJustification, tasks::NetworkContext, MessageKin
 ///
 /// `N` is the number of channels by the instantiated `juliet` protocol.
 #[derive(Debug)]
-struct ConMan<const N: usize> {
+struct ConMan {
     /// The shared connection manager state, which contains per-peer and per-address information.
-    state: Arc<RwLock<ConManState<N>>>,
+    state: Arc<RwLock<ConManState>>,
     /// A fuse used to cancel future execution.
     shutdown: DropSwitch<ObservableFuse>,
 }
@@ -54,13 +55,13 @@ struct ConMan<const N: usize> {
 ///
 /// Tracks outgoing and incoming connections.
 #[derive(Debug, Default)]
-struct ConManState<const N: usize> {
+struct ConManState {
     /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
     /// This is strictly for outgoing connections.
     address_book: HashMap<IpAddr, AddressBookEntry>,
     /// The current state per node ID, i.e. whether it is connected through an incoming or outgoing
     /// connection, blocked or unknown.
-    routing_table: HashMap<NodeId, Route<N>>,
+    routing_table: HashMap<NodeId, Route>,
 }
 
 /// An entry in the address book.
@@ -84,11 +85,11 @@ enum AddressBookEntry {
 
 /// A route to a peer.
 #[derive(Debug)]
-enum Route<const N: usize> {
+enum Route {
     /// Connected through an incoming connection (initated by peer).
-    Incoming(PeerHandle<N>),
+    Incoming(PeerHandle),
     /// Connected through an outgoing connection (initiated by us).
-    Outgoing(PeerHandle<N>),
+    Outgoing(PeerHandle),
     /// The peer ID has been banned.
     Banned {
         /// Time ban is lifted.
@@ -100,22 +101,22 @@ enum Route<const N: usize> {
 
 /// Data related to an established connection.
 #[derive(Debug)]
-struct PeerHandle<const N: usize> {
+struct PeerHandle {
     /// NodeId of the peer.
     peer: NodeId,
     /// The ID of the task handling this connection.
     task_id: TaskId,
     /// The established [`juliet`] RPC client, can be used to send requests to the peer.
-    client: JulietRpcClient<N>,
+    client: JulietRpcClient<{ super::Channel::COUNT }>,
 }
 
-impl<const N: usize> ConMan<N> {
+impl ConMan {
     /// Create a new connection manager.
     ///
     /// Immediately spawns a task accepting incoming connections on a tokio task, which will be
     /// cancelled if the returned [`ConMan`] is dropped.
     pub(crate) fn new<REv: Send>(ctx: Arc<NetworkContext<REv>>, listener: TcpListener) -> Self {
-        let state: Arc<RwLock<ConManState<N>>> = Default::default();
+        let state: Arc<RwLock<ConManState>> = Default::default();
         let shutdown = DropSwitch::new(ObservableFuse::new());
 
         let server_state = state.clone();
@@ -167,7 +168,7 @@ impl<const N: usize> ConMan<N> {
     }
 }
 
-impl<const N: usize> Route<N> {
+impl Route {
     /// Returns the task ID contained in the route.
     ///
     /// If there is no task ID found in `self`, returns 0.
@@ -187,15 +188,13 @@ impl<const N: usize> Route<N> {
 /// Handler for a new incoming connection.
 ///
 /// Will complete the handshake, then check if the incoming connection should be kept.
-async fn handle_incoming<const N: usize, REv>(
+async fn handle_incoming<REv>(
     context: Arc<NetworkContext<REv>>,
     stream: TcpStream,
-    state: Arc<RwLock<ConManState<N>>>,
+    state: Arc<RwLock<ConManState>>,
 ) {
     let task_id = TaskId::unique();
     Span::current().record("task_id", u64::from(task_id));
-
-    let rpc_builder: juliet::rpc::RpcBuilder<N> = todo!("setup rpc somehow");
 
     let (peer_id, transport) = match server_setup_tls(&context, stream).await {
         Ok(value) => value,
@@ -238,7 +237,7 @@ async fn handle_incoming<const N: usize, REv>(
     // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
 
     let (read_half, write_half) = tokio::io::split(outcome.transport);
-    let (rpc_client, rpc_server) = rpc_builder.build(read_half, write_half);
+    let (rpc_client, rpc_server) = context.rpc_builder.build(read_half, write_half);
 
     let rpc_server = {
         let guard = state.write().expect("lock poisoned");
