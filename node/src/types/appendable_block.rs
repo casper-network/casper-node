@@ -228,6 +228,7 @@ impl AppendableBlock {
 
     /// Attempts to add a transaction V1 to the block; returns an error if that would violate a
     /// validity condition.
+    // TODO[RC]: Deduplicate this with the above functions.
     pub(crate) fn add_transaction_v1(
         &mut self,
         transaction: TransactionV1HashWithApprovals,
@@ -369,15 +370,8 @@ impl AppendableBlock {
     /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
     /// more transactions can be added to this block.
     fn has_max_standard_count(&self) -> bool {
-        self.non_transfer_standard_count()
-            == self.transaction_config.block_max_standard_count as usize
-    }
-
-    /// Returns the number of non-transfer transactions in the block.
-    fn non_transfer_standard_count(&self) -> usize {
         self.category_count(&TransactionV1Category::Standard)
-            + self.category_count(&TransactionV1Category::InstallUpgrade)
-            + self.category_count(&TransactionV1Category::Staking)
+            == self.transaction_config.block_max_standard_count as usize
     }
 
     /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
@@ -390,7 +384,12 @@ impl AppendableBlock {
         let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
             - self.category_count(&TransactionV1Category::Transfer)
             + self.transaction_config.block_max_standard_count as usize
-            - self.non_transfer_standard_count();
+            - self.category_count(&TransactionV1Category::Standard)
+            + self.transaction_config.block_max_staking_count as usize
+            - self.category_count(&TransactionV1Category::Staking)
+            + self.transaction_config.block_max_install_upgrade_count as usize
+            - self.category_count(&TransactionV1Category::InstallUpgrade);
+
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
