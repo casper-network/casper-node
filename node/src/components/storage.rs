@@ -1826,6 +1826,7 @@ impl Storage {
         {
             let mut result = vec![];
             let last_era_id = last_era_header.era_id();
+            result.push(last_era_header);
             for era_id in (0..last_era_id.value())
                 .into_iter()
                 .rev()
@@ -1837,7 +1838,6 @@ impl Storage {
                     Some(header) => result.push(header),
                 }
             }
-            result.push(last_era_header);
             result.reverse();
             debug!(
                 ?result,
