@@ -1,7 +1,11 @@
 use super::lmdb_ext::{LmdbExtError, TransactionExt, WriteTransactionExt};
 use crate::block_store::{
-    error::BlockStoreError, BlockStoreProvider, BlockStoreReader, BlockStoreTransaction,
-    BlockStoreWriter,
+    error::BlockStoreError,
+    types::{
+        BlockExecutionResults, BlockHashHeightAndEra, BlockTransfers, StateStore,
+        TransactionFinalizedApprovals,
+    },
+    BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
 use datasize::DataSize;
 use lmdb::{
@@ -23,9 +27,8 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId, FinalitySignature,
-    FinalizedApprovals, StoredValue, Transaction, TransactionHash, TransactionHeader,
-    TransactionWithFinalizedApprovals, Transfer,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, FinalizedApprovals,
+    StoredValue, Transaction, TransactionHash, Transfer,
 };
 
 /// Filename for the LMDB database created by the Storage component.
@@ -131,15 +134,25 @@ impl LmdbBlockStore {
         &self,
         txn: &mut RwTransaction,
         signatures: &BlockSignatures,
-    ) -> Result<bool, BlockStoreError> {
+    ) -> Result<BlockHash, BlockStoreError> {
         let block_hash = signatures.block_hash();
         txn.put_value(self.block_metadata_db, block_hash, signatures, true)
+            .map(|_| *block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn delete_finality_signatures(
+        &self,
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<(), BlockStoreError> {
+        txn.del(self.block_metadata_db, block_hash, None)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     pub(crate) fn transaction_exists<Tx: lmdb::Transaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         transaction_hash: &TransactionHash,
     ) -> Result<bool, BlockStoreError> {
         self.transaction_dbs
@@ -150,7 +163,7 @@ impl LmdbBlockStore {
     /// Returns `true` if the given block's header and body are stored.
     pub(crate) fn block_exists<Tx: lmdb::Transaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<bool, BlockStoreError> {
         let block_header = match self.get_single_block_header(txn, block_hash)? {
@@ -164,12 +177,32 @@ impl LmdbBlockStore {
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
+    /// Returns `true` if the given block's header is stored.
+    pub(crate) fn block_header_exists<Tx: lmdb::Transaction>(
+        &self,
+        txn: &Tx,
+        block_hash: &BlockHash,
+    ) -> Result<bool, BlockStoreError> {
+        self.block_header_dbs
+            .exists(txn, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
     pub(crate) fn get_transfers<Tx: lmdb::Transaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
         txn.get_value::<_, Vec<Transfer>>(self.transfer_db, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn has_transfers<Tx: lmdb::Transaction>(
+        &self,
+        txn: &Tx,
+        block_hash: &BlockHash,
+    ) -> Result<bool, BlockStoreError> {
+        txn.value_exists(self.transfer_db, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
@@ -189,11 +222,21 @@ impl LmdbBlockStore {
     /// Retrieves approvals hashes by block hash.
     pub(crate) fn read_approvals_hashes<Tx: lmdb::Transaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
         self.approvals_hashes_dbs
             .get(txn, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn approvals_hashes_exist<Tx: lmdb::Transaction>(
+        &self,
+        txn: &Tx,
+        block_hash: &BlockHash,
+    ) -> Result<bool, BlockStoreError> {
+        self.approvals_hashes_dbs
+            .exists(txn, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
@@ -202,18 +245,22 @@ impl LmdbBlockStore {
         &self,
         txn: &mut RwTransaction,
         transaction: &Transaction,
-    ) -> Result<bool, BlockStoreError> {
+    ) -> Result<TransactionHash, BlockStoreError> {
         let transaction_hash = transaction.hash();
-        let outcome = self
-            .transaction_dbs
+        self.transaction_dbs
             .put(txn, &transaction_hash, transaction, false)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-        if outcome {
-            debug!(%transaction_hash, "Storage: new transaction stored");
-        } else {
-            debug!(%transaction_hash, "Storage: attempt to store existing transaction");
-        }
-        Ok(outcome)
+            .map(|_| transaction_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn delete_transaction(
+        &self,
+        txn: &mut RwTransaction,
+        transaction_hash: &TransactionHash,
+    ) -> Result<(), BlockStoreError> {
+        self.transaction_dbs
+            .delete(txn, transaction_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     pub(crate) fn write_transfers(
@@ -223,6 +270,15 @@ impl LmdbBlockStore {
         transfers: &Vec<Transfer>,
     ) -> Result<bool, BlockStoreError> {
         txn.put_value(self.transfer_db, block_hash, transfers, true)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn delete_transfers(
+        &self,
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<(), BlockStoreError> {
+        txn.del(self.transfer_db, block_hash, None)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
@@ -243,31 +299,28 @@ impl LmdbBlockStore {
         Ok(())
     }
 
-    pub(crate) fn write_finality_signature(
+    pub(crate) fn state_store_key_exists<K: AsRef<[u8]>, Tx: lmdb::Transaction>(
+        &self,
+        txn: &Tx,
+        key: &K,
+    ) -> Result<bool, BlockStoreError> {
+        txn.value_exists(self.state_store_db, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    pub(crate) fn delete_state_store(
         &self,
         txn: &mut RwTransaction,
-        signature: Box<FinalitySignature>,
-    ) -> Result<bool, BlockStoreError> {
-        let mut block_signatures = txn
-            .get_value(self.block_metadata_db, signature.block_hash())
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-            .unwrap_or_else(|| BlockSignatures::new(*signature.block_hash(), signature.era_id()));
-        block_signatures.insert_signature(*signature);
-        let outcome = txn
-            .put_value(
-                self.block_metadata_db,
-                block_signatures.block_hash(),
-                &block_signatures,
-                true,
-            )
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-        Ok(outcome)
+        key: Cow<'static, [u8]>,
+    ) -> Result<(), BlockStoreError> {
+        txn.del(self.state_store_db, &key, None)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     /// Retrieves a single block header in a given transaction from storage.
     pub(crate) fn get_single_block_header<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHeader>, BlockStoreError> {
         let block_header = match self
@@ -285,69 +338,26 @@ impl LmdbBlockStore {
     /// Retrieves block signatures for a block with a given block hash.
     pub(crate) fn get_block_signatures<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, BlockStoreError> {
         txn.get_value(self.block_metadata_db, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn get_execution_results<Tx: LmdbTransaction>(
+    pub(crate) fn block_signatures_exist<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, ExecutionResult)>>, BlockStoreError> {
-        let block_header = match self.get_single_block_header(txn, block_hash)? {
-            Some(block_header) => block_header,
-            None => return Ok(None),
-        };
-        let maybe_block_body = self
-            .block_body_dbs
-            .get(txn, block_header.body_hash())
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)));
-
-        let Some(block_body) = maybe_block_body? else {
-            debug!(
-                %block_hash,
-                "retrieved block header but block body is absent"
-            );
-            return Ok(None);
-        };
-
-        let transaction_hashes: Vec<TransactionHash> = match block_body {
-            BlockBody::V1(v1) => v1
-                .deploy_and_transfer_hashes()
-                .map(TransactionHash::from)
-                .collect(),
-            BlockBody::V2(v2) => v2.all_transactions().copied().collect(),
-        };
-        let mut execution_results = vec![];
-        for transaction_hash in transaction_hashes {
-            match self
-                .execution_result_dbs
-                .get(txn, &transaction_hash)
-                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-            {
-                None => {
-                    debug!(
-                        %block_hash,
-                        %transaction_hash,
-                        "retrieved block but execution result for given transaction is absent"
-                    );
-                    return Ok(None);
-                }
-                Some(execution_result) => {
-                    execution_results.push((transaction_hash, execution_result));
-                }
-            }
-        }
-        Ok(Some(execution_results))
+    ) -> Result<bool, BlockStoreError> {
+        txn.value_exists(self.block_metadata_db, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     /// Retrieves a single block from storage.
     pub(crate) fn get_single_block<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, BlockStoreError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
@@ -389,87 +399,52 @@ impl LmdbBlockStore {
         &self,
         txn: &mut RwTransaction,
         block: &Block,
-    ) -> Result<bool, BlockStoreError> {
-        if !self
+    ) -> Result<BlockHash, BlockStoreError> {
+        let block_hash = *block.hash();
+        let _ = self
             .block_body_dbs
             .put(txn, block.body_hash(), &block.clone_body(), true)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-        {
-            error!(%block, "could not insert block body");
-            return Ok(false);
-        }
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
 
         let block_header = block.clone_header();
-        if !self
+        let _ = self
             .block_header_dbs
             .put(txn, block.hash(), &block_header, true)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-        {
-            error!(%block, "could not insert block header");
-            return Ok(false);
-        }
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
 
-        Ok(true)
+        Ok(block_hash)
     }
 
     pub(crate) fn write_block_header(
         &self,
         txn: &mut RwTransaction,
         block_header: &BlockHeader,
-    ) -> Result<bool, BlockStoreError> {
-        if !self
-            .block_header_dbs
-            .put(txn, &block_header.block_hash(), block_header, true)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-        {
-            error!(%block_header, "could not insert block header");
-            return Ok(false);
-        }
-
-        Ok(true)
+    ) -> Result<BlockHash, BlockStoreError> {
+        let block_hash = block_header.block_hash();
+        self.block_header_dbs
+            .put(txn, &block_hash, block_header, true)
+            .map(|_| block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    /// Retrieves a single transaction along with its finalized approvals.
-    pub(crate) fn get_transaction_with_finalized_approvals<Tx: LmdbTransaction>(
+    pub(crate) fn delete_block_header(
         &self,
-        txn: &mut Tx,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, BlockStoreError> {
-        let transaction = match self
-            .transaction_dbs
-            .get(txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-        {
-            Some(transaction) => transaction,
-            None => return Ok(None),
-        };
-        let finalized_approvals = self
-            .finalized_transaction_approvals_dbs
-            .get(txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<(), BlockStoreError> {
+        self.block_header_dbs
+            .delete(txn, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
 
-        let ret = match (transaction, finalized_approvals) {
-            (
-                Transaction::Deploy(deploy),
-                Some(FinalizedApprovals::Deploy(finalized_approvals)),
-            ) => TransactionWithFinalizedApprovals::new_deploy(deploy, Some(finalized_approvals)),
-            (Transaction::Deploy(deploy), None) => {
-                TransactionWithFinalizedApprovals::new_deploy(deploy, None)
-            }
-            (Transaction::V1(transaction), Some(FinalizedApprovals::V1(finalized_approvals))) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, Some(finalized_approvals))
-            }
-            (Transaction::V1(transaction), None) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, None)
-            }
-            mismatch => {
-                let mismatch = BlockStoreError::VariantMismatch(Box::new(mismatch));
-                error!(%mismatch, "failed getting transaction with finalized approvals");
-                return Err(mismatch);
-            }
-        };
-
-        Ok(Some(ret))
+    pub(crate) fn delete_block_body(
+        &self,
+        txn: &mut RwTransaction,
+        block_body_hash: &Digest,
+    ) -> Result<(), BlockStoreError> {
+        self.block_body_dbs
+            .delete(txn, block_body_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     /// Writes approvals hashes to storage.
@@ -477,22 +452,23 @@ impl LmdbBlockStore {
         &self,
         txn: &mut RwTransaction,
         approvals_hashes: &ApprovalsHashes,
-    ) -> Result<bool, BlockStoreError> {
-        let overwrite = true;
-        if !self
+    ) -> Result<BlockHash, BlockStoreError> {
+        let block_hash = approvals_hashes.block_hash();
+        let _ = self
             .approvals_hashes_dbs
-            .put(
-                txn,
-                approvals_hashes.block_hash(),
-                approvals_hashes,
-                overwrite,
-            )
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-        {
-            error!("could not insert approvals' hashes: {}", approvals_hashes);
-            return Ok(false);
-        }
-        Ok(true)
+            .put(txn, block_hash, approvals_hashes, true)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        Ok(*block_hash)
+    }
+
+    pub(crate) fn delete_approvals_hashes(
+        &self,
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<(), BlockStoreError> {
+        self.approvals_hashes_dbs
+            .delete(txn, block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
     pub(crate) fn write_execution_results(
@@ -528,48 +504,6 @@ impl LmdbBlockStore {
             debug_assert!(was_written);
         }
         Ok(was_written)
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn read_execution_results<Tx: LmdbTransaction>(
-        &self,
-        txn: &mut Tx,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, BlockStoreError>
-    {
-        let execution_results = match self.get_execution_results(txn, block_hash)? {
-            Some(execution_results) => execution_results,
-            None => return Ok(None),
-        };
-
-        let mut ret = Vec::with_capacity(execution_results.len());
-        for (transaction_hash, execution_result) in execution_results {
-            match self
-                .transaction_dbs
-                .get(txn, &transaction_hash)
-                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
-            {
-                None => {
-                    error!(
-                        %block_hash,
-                        %transaction_hash,
-                        "missing transaction"
-                    );
-                    return Ok(None);
-                }
-                Some(Transaction::Deploy(deploy)) => ret.push((
-                    transaction_hash,
-                    deploy.take_header().into(),
-                    execution_result,
-                )),
-                Some(Transaction::V1(transaction_v1)) => ret.push((
-                    transaction_hash,
-                    transaction_v1.take_header().into(),
-                    execution_result,
-                )),
-            };
-        }
-        Ok(Some(ret))
     }
 }
 
@@ -625,7 +559,6 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
 
 impl BlockStoreProvider for LmdbBlockStore {
     type Reader<'a> = LmdbBlockStoreTransaction<'a, RoTransaction<'a>>;
-    type Writer<'a> = LmdbBlockStoreTransaction<'a, RwTransaction<'a>>;
     type ReaderWriter<'a> = LmdbBlockStoreTransaction<'a, RwTransaction<'a>>;
 
     fn checkout_ro(&self) -> Result<Self::Reader<'_>, BlockStoreError> {
@@ -640,18 +573,6 @@ impl BlockStoreProvider for LmdbBlockStore {
     }
 
     fn checkout_rw(&mut self) -> Result<Self::ReaderWriter<'_>, BlockStoreError> {
-        let txn = self
-            .env
-            .begin_rw_txn()
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-
-        Ok(LmdbBlockStoreTransaction {
-            txn,
-            block_store: self,
-        })
-    }
-
-    fn checkout_w(&mut self) -> Result<Self::Writer<'_>, BlockStoreError> {
         let txn = self
             .env
             .begin_rw_txn()
@@ -687,194 +608,280 @@ where
     }
 }
 
-impl<'a, T> BlockStoreReader for LmdbBlockStoreTransaction<'a, T>
+impl<'a, T> DataReader<BlockHash, Block> for LmdbBlockStoreTransaction<'a, T>
 where
     T: LmdbTransaction,
 {
-    fn read_block(&mut self, block_hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
-        self.block_store.get_single_block(&mut self.txn, block_hash)
+    fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
+        self.block_store.get_single_block(&self.txn, &key)
     }
 
-    fn read_block_header(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeader>, BlockStoreError> {
-        self.block_store
-            .get_single_block_header(&mut self.txn, block_hash)
-    }
-
-    fn read_block_signatures(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockSignatures>, BlockStoreError> {
-        self.block_store
-            .get_block_signatures(&mut self.txn, block_hash)
-    }
-
-    fn read_transaction_with_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .get_transaction_with_finalized_approvals(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_result(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<ExecutionResult>, BlockStoreError> {
-        self.block_store
-            .execution_result_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transaction(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<Transaction>, BlockStoreError> {
-        self.block_store
-            .transaction_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transfers(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
-        self.block_store.get_transfers(&mut self.txn, block_hash)
-    }
-
-    fn read_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .finalized_transaction_approvals_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_state_store<K: AsRef<[u8]>>(
-        &self,
-        key: &K,
-    ) -> Result<Option<Vec<u8>>, BlockStoreError> {
-        self.block_store.read_state_store(&self.txn, key)
-    }
-
-    fn read_approvals_hashes(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
-        self.block_store
-            .read_approvals_hashes(&mut self.txn, block_hash)
-    }
-
-    fn block_exists(&mut self, block_hash: &BlockHash) -> Result<bool, BlockStoreError> {
-        self.block_store.block_exists(&mut self.txn, block_hash)
-    }
-
-    fn transaction_exists(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .transaction_exists(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_results(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, BlockStoreError>
-    {
-        self.block_store
-            .read_execution_results(&mut self.txn, block_hash)
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_exists(&self.txn, &key)
     }
 }
 
-impl<'a> BlockStoreWriter for LmdbBlockStoreTransaction<'a, RwTransaction<'a>> {
-    fn write_block(&mut self, block: &Block) -> Result<bool, BlockStoreError> {
-        self.block_store.write_block(&mut self.txn, block)
+impl<'a, T> DataReader<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: BlockHash) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.block_store.get_single_block_header(&self.txn, &key)
     }
 
-    fn write_approvals_hashes(
-        &mut self,
-        approvals_hashes: &ApprovalsHashes,
-    ) -> Result<bool, BlockStoreError> {
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_header_exists(&self.txn, &key)
+    }
+}
+
+impl<'a, T> DataReader<BlockHash, ApprovalsHashes> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: BlockHash) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        self.block_store.read_approvals_hashes(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_header_exists(&self.txn, &key)
+    }
+}
+
+impl<'a, T> DataReader<BlockHash, BlockSignatures> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.block_store.get_block_signatures(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_signatures_exist(&self.txn, &key)
+    }
+}
+
+impl<'a, T> DataReader<TransactionHash, Transaction> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
         self.block_store
-            .write_approvals_hashes(&mut self.txn, approvals_hashes)
-    }
-
-    fn write_execution_results(
-        &mut self,
-        block_hash: &BlockHash,
-        _block_height: u64,
-        _era_id: EraId,
-        execution_results: HashMap<TransactionHash, ExecutionResult>,
-    ) -> Result<bool, BlockStoreError> {
-        if !self.block_store.write_execution_results(
-            &mut self.txn,
-            block_hash,
-            execution_results,
-        )? {
-            return Ok(false);
-        }
-
-        Ok(true)
-    }
-
-    fn write_block_signatures(
-        &mut self,
-        block_signatures: &BlockSignatures,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_finality_signatures(&mut self.txn, block_signatures)
-    }
-
-    fn write_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-        finalized_approvals: &FinalizedApprovals,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .finalized_transaction_approvals_dbs
-            .put(&mut self.txn, transaction_hash, finalized_approvals, true)
+            .transaction_dbs
+            .get(&self.txn, &key)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn write_state_store(
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store.transaction_exists(&self.txn, &key)
+    }
+}
+
+impl<'a, T> DataReader<TransactionHash, FinalizedApprovals> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .get(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .exists(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a, T> DataReader<TransactionHash, ExecutionResult> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
+        self.block_store
+            .execution_result_dbs
+            .get(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .execution_result_dbs
+            .exists(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a, T> DataReader<BlockHash, Vec<Transfer>> for LmdbBlockStoreTransaction<'a, T>
+where
+    T: LmdbTransaction,
+{
+    fn read(&self, key: BlockHash) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
+        self.block_store.get_transfers(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.has_transfers(&self.txn, &key)
+    }
+}
+
+impl<'a, T, K> DataReader<K, Vec<u8>> for LmdbBlockStoreTransaction<'a, T>
+where
+    K: AsRef<[u8]>,
+    T: LmdbTransaction,
+{
+    fn read(&self, key: K) -> Result<Option<Vec<u8>>, BlockStoreError> {
+        self.block_store.read_state_store(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: K) -> Result<bool, BlockStoreError> {
+        self.block_store.state_store_key_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, Block> for LmdbBlockStoreTransaction<'a, RwTransaction<'a>> {
+    /// Writes a block to storage.
+    fn write(&mut self, data: &Block) -> Result<BlockHash, BlockStoreError> {
+        self.block_store.write_block(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        let maybe_block = self.block_store.get_single_block_header(&self.txn, &key)?;
+
+        if let Some(block_header) = maybe_block {
+            self.block_store.delete_block_header(&mut self.txn, &key)?;
+            self.block_store
+                .delete_block_body(&mut self.txn, block_header.body_hash())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> DataWriter<BlockHash, ApprovalsHashes>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(&mut self, data: &ApprovalsHashes) -> Result<BlockHash, BlockStoreError> {
+        self.block_store.write_approvals_hashes(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .delete_approvals_hashes(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockSignatures>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(&mut self, data: &BlockSignatures) -> Result<BlockHash, BlockStoreError> {
+        self.block_store
+            .write_finality_signatures(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .delete_finality_signatures(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockHeader> for LmdbBlockStoreTransaction<'a, RwTransaction<'a>> {
+    fn write(&mut self, data: &BlockHeader) -> Result<BlockHash, BlockStoreError> {
+        self.block_store.write_block_header(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store.delete_block_header(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<TransactionHash, Transaction>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(&mut self, data: &Transaction) -> Result<TransactionHash, BlockStoreError> {
+        self.block_store.write_transaction(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: TransactionHash) -> Result<(), BlockStoreError> {
+        self.block_store.delete_transaction(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockTransfers>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(&mut self, data: &BlockTransfers) -> Result<BlockHash, BlockStoreError> {
+        self.block_store
+            .write_transfers(&mut self.txn, &data.block_hash, &data.transfers)
+            .map(|_| data.block_hash)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store.delete_transfers(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<Cow<'static, [u8]>, StateStore>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(&mut self, data: &StateStore) -> Result<Cow<'static, [u8]>, BlockStoreError> {
+        self.block_store
+            .write_state_store(&mut self.txn, data.key.clone(), &data.value)?;
+        Ok(data.key.clone())
+    }
+
+    fn delete(&mut self, key: Cow<'static, [u8]>) -> Result<(), BlockStoreError> {
+        self.block_store.delete_state_store(&mut self.txn, key)
+    }
+}
+
+impl<'a> DataWriter<TransactionHash, TransactionFinalizedApprovals>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(
         &mut self,
-        key: Cow<'static, [u8]>,
-        data: &Vec<u8>,
-    ) -> Result<(), BlockStoreError> {
-        self.block_store.write_state_store(&mut self.txn, key, data)
-    }
-
-    fn write_block_header(&mut self, block_header: BlockHeader) -> Result<bool, BlockStoreError> {
+        data: &TransactionFinalizedApprovals,
+    ) -> Result<TransactionHash, BlockStoreError> {
         self.block_store
-            .write_block_header(&mut self.txn, &block_header)
+            .finalized_transaction_approvals_dbs
+            .put(
+                &mut self.txn,
+                &data.transaction_hash,
+                &data.finalized_approvals,
+                true,
+            )
+            .map(|_| data.transaction_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn write_finality_signature(
+    fn delete(&mut self, key: TransactionHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .delete(&mut self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
+    for LmdbBlockStoreTransaction<'a, RwTransaction<'a>>
+{
+    fn write(
         &mut self,
-        signature: Box<FinalitySignature>,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_finality_signature(&mut self.txn, signature)
+        data: &BlockExecutionResults,
+    ) -> Result<BlockHashHeightAndEra, BlockStoreError> {
+        let block_hash = data.block_info.block_hash;
+
+        let _ = self.block_store.write_execution_results(
+            &mut self.txn,
+            &block_hash,
+            data.exec_results.clone(),
+        )?;
+
+        Ok(data.block_info)
     }
 
-    fn write_transaction(&mut self, transaction: &Transaction) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_transaction(&mut self.txn, transaction)
-    }
-
-    fn write_transfers(
-        &mut self,
-        block_hash: &BlockHash,
-        transfers: &Vec<Transfer>,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_transfers(&mut self.txn, block_hash, transfers)
+    fn delete(&mut self, _key: BlockHashHeightAndEra) -> Result<(), BlockStoreError> {
+        Err(BlockStoreError::UnsupportedOperation)
     }
 }

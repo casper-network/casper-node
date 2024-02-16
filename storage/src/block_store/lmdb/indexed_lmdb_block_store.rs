@@ -10,20 +10,20 @@ use lmdb::{
     WriteFlags,
 };
 
-use tracing::{debug, info, trace};
+use tracing::info;
 
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::{
-    block_provider::BlockStoreTransaction,
-    indices::{BlockHeight, IndexedBy, SwitchBlock, SwitchBlockHeader},
-    types::{ApprovalsHashes, BlockHashHeightAndEra},
-    BlockStoreError, BlockStoreProvider, BlockStoreReader, BlockStoreWriter,
-    IndexedBlockStoreProvider,
+    block_provider::{BlockStoreTransaction, DataReader, DataWriter, LatestSwitchBlock, Tip},
+    types::{
+        ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
+        StateStore, TransactionFinalizedApprovals,
+    },
+    BlockStoreError, BlockStoreProvider,
 };
 use casper_types::{
     execution::ExecutionResult, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest,
-    EraId, FinalitySignature, FinalizedApprovals, ProtocolVersion, Transaction, TransactionHash,
-    TransactionHeader, TransactionWithFinalizedApprovals, Transfer,
+    EraId, FinalizedApprovals, ProtocolVersion, Transaction, TransactionHash, Transfer,
 };
 
 #[derive(DataSize, Debug)]
@@ -123,49 +123,6 @@ impl IndexedLmdbBlockStore {
         Ok(())
     }
 
-    /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: LmdbTransaction>(
-        &self,
-        txn: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<Block>, BlockStoreError> {
-        self.switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| {
-                self.block_store
-                    .get_single_block(txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
-    }
-
-    /// Retrieves single switch block header by era ID by looking it up in the index and returning
-    /// it.
-    fn get_switch_block_header_by_era_id<Tx: LmdbTransaction>(
-        &self,
-        txn: &mut Tx,
-        era_id: EraId,
-    ) -> Result<Option<BlockHeader>, BlockStoreError> {
-        trace!(switch_block_era_id_index = ?self.switch_block_era_id_index);
-        let ret = self
-            .switch_block_era_id_index
-            .get(&era_id)
-            .and_then(|block_hash| {
-                self.block_store
-                    .get_single_block_header(txn, block_hash)
-                    .transpose()
-            })
-            .transpose();
-        if let Ok(maybe) = &ret {
-            debug!(
-                "Storage: get_switch_block_header_by_era_id({:?}) has entry:{}",
-                era_id,
-                maybe.is_some()
-            )
-        }
-        ret
-    }
-
     pub fn new(
         block_store: LmdbBlockStore,
         hard_reset_to_start_of_era: Option<EraId>,
@@ -216,13 +173,13 @@ impl IndexedLmdbBlockStore {
                     }
                 }
 
-                let mut body_txn = block_store
+                let body_txn = block_store
                     .env
                     .begin_ro_txn()
                     .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
                 let maybe_block_body = block_store
                     .block_body_dbs
-                    .get(&mut body_txn, block_header.body_hash())
+                    .get(&body_txn, block_header.body_hash())
                     .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
                 if !should_retain_block {
                     let _ = deleted_block_hashes.insert(block_header.block_hash());
@@ -467,6 +424,122 @@ pub struct IndexedLmdbBlockStoreReadTransaction<'a> {
     block_store: &'a IndexedLmdbBlockStore,
 }
 
+enum LmdbBlockStoreIndex {
+    BlockHeight(IndexPosition<u64>),
+    SwitchBlockEraId(IndexPosition<EraId>),
+}
+
+enum IndexPosition<K> {
+    Tip,
+    Key(K),
+}
+
+enum DataType {
+    Block,
+    BlockHeader,
+    ApprovalsHashes,
+    BlockSignatures,
+}
+
+impl<'a> IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn block_hash_from_index(&self, index: LmdbBlockStoreIndex) -> Option<&BlockHash> {
+        match index {
+            LmdbBlockStoreIndex::BlockHeight(position) => match position {
+                IndexPosition::Tip => self.block_store.block_height_index.values().last(),
+                IndexPosition::Key(height) => self.block_store.block_height_index.get(&height),
+            },
+            LmdbBlockStoreIndex::SwitchBlockEraId(position) => match position {
+                IndexPosition::Tip => self.block_store.switch_block_era_id_index.values().last(),
+                IndexPosition::Key(era_id) => {
+                    self.block_store.switch_block_era_id_index.get(&era_id)
+                }
+            },
+        }
+    }
+
+    fn read_block_indexed(
+        &self,
+        index: LmdbBlockStoreIndex,
+    ) -> Result<Option<Block>, BlockStoreError> {
+        self.block_hash_from_index(index)
+            .and_then(|block_hash| {
+                self.block_store
+                    .block_store
+                    .get_single_block(&self.txn, block_hash)
+                    .transpose()
+            })
+            .transpose()
+    }
+
+    fn read_block_header_indexed(
+        &self,
+        index: LmdbBlockStoreIndex,
+    ) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.block_hash_from_index(index)
+            .and_then(|block_hash| {
+                self.block_store
+                    .block_store
+                    .get_single_block_header(&self.txn, block_hash)
+                    .transpose()
+            })
+            .transpose()
+    }
+
+    fn read_block_signatures_indexed(
+        &self,
+        index: LmdbBlockStoreIndex,
+    ) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.block_hash_from_index(index)
+            .and_then(|block_hash| {
+                self.block_store
+                    .block_store
+                    .get_block_signatures(&self.txn, block_hash)
+                    .transpose()
+            })
+            .transpose()
+    }
+
+    fn read_approvals_hashes_indexed(
+        &self,
+        index: LmdbBlockStoreIndex,
+    ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        self.block_hash_from_index(index)
+            .and_then(|block_hash| {
+                self.block_store
+                    .block_store
+                    .read_approvals_hashes(&self.txn, block_hash)
+                    .transpose()
+            })
+            .transpose()
+    }
+
+    fn contains_data_indexed(
+        &self,
+        index: LmdbBlockStoreIndex,
+        data_type: DataType,
+    ) -> Result<bool, BlockStoreError> {
+        self.block_hash_from_index(index)
+            .map_or(Ok(false), |block_hash| match data_type {
+                DataType::Block => self
+                    .block_store
+                    .block_store
+                    .block_exists(&self.txn, block_hash),
+                DataType::BlockHeader => self
+                    .block_store
+                    .block_store
+                    .block_header_exists(&self.txn, block_hash),
+                DataType::ApprovalsHashes => self
+                    .block_store
+                    .block_store
+                    .approvals_hashes_exist(&self.txn, block_hash),
+                DataType::BlockSignatures => self
+                    .block_store
+                    .block_store
+                    .block_signatures_exist(&self.txn, block_hash),
+            })
+    }
+}
+
 impl<'a> BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'a> {
     fn commit(self) -> Result<(), BlockStoreError> {
         Ok(())
@@ -474,126 +547,6 @@ impl<'a> BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'a> {
 
     fn rollback(self) {
         self.txn.abort();
-    }
-}
-
-impl<'a> BlockStoreReader for IndexedLmdbBlockStoreReadTransaction<'a> {
-    fn read_block(&mut self, block_hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .get_single_block(&mut self.txn, block_hash)
-    }
-
-    fn read_block_header(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeader>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .get_single_block_header(&mut self.txn, block_hash)
-    }
-
-    fn read_block_signatures(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockSignatures>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .get_block_signatures(&mut self.txn, block_hash)
-    }
-
-    fn read_transaction_with_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .get_transaction_with_finalized_approvals(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_result(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<ExecutionResult>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .execution_result_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transaction(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<Transaction>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .transaction_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transfers(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .get_transfers(&mut self.txn, block_hash)
-    }
-
-    fn read_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .finalized_transaction_approvals_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_state_store<K: AsRef<[u8]>>(
-        &self,
-        key: &K,
-    ) -> Result<Option<Vec<u8>>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .read_state_store(&self.txn, key)
-    }
-
-    fn read_approvals_hashes(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
-        self.block_store
-            .block_store
-            .read_approvals_hashes(&mut self.txn, block_hash)
-    }
-
-    fn block_exists(&mut self, block_hash: &BlockHash) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .block_store
-            .block_exists(&mut self.txn, block_hash)
-    }
-
-    fn transaction_exists(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .block_store
-            .transaction_exists(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_results(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, BlockStoreError>
-    {
-        self.block_store
-            .block_store
-            .read_execution_results(&mut self.txn, block_hash)
     }
 }
 
@@ -614,289 +567,8 @@ impl<'a> BlockStoreTransaction for IndexedLmdbBlockStoreRWTransaction<'a> {
     }
 }
 
-impl<'a> BlockStoreReader for IndexedLmdbBlockStoreRWTransaction<'a> {
-    fn read_block(&mut self, block_hash: &BlockHash) -> Result<Option<Block>, BlockStoreError> {
-        self.block_store.get_single_block(&mut self.txn, block_hash)
-    }
-
-    fn read_block_header(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeader>, BlockStoreError> {
-        self.block_store
-            .get_single_block_header(&mut self.txn, block_hash)
-    }
-
-    fn read_block_signatures(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockSignatures>, BlockStoreError> {
-        self.block_store
-            .get_block_signatures(&mut self.txn, block_hash)
-    }
-
-    fn read_transaction_with_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .get_transaction_with_finalized_approvals(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_result(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<ExecutionResult>, BlockStoreError> {
-        self.block_store
-            .execution_result_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transaction(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<Transaction>, BlockStoreError> {
-        self.block_store
-            .transaction_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_transfers(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
-        self.block_store.get_transfers(&mut self.txn, block_hash)
-    }
-
-    fn read_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
-        self.block_store
-            .finalized_transaction_approvals_dbs
-            .get(&mut self.txn, transaction_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn read_state_store<K: AsRef<[u8]>>(
-        &self,
-        key: &K,
-    ) -> Result<Option<Vec<u8>>, BlockStoreError> {
-        self.block_store.read_state_store(&self.txn, key)
-    }
-
-    fn read_approvals_hashes(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
-        self.block_store
-            .read_approvals_hashes(&mut self.txn, block_hash)
-    }
-
-    fn block_exists(&mut self, block_hash: &BlockHash) -> Result<bool, BlockStoreError> {
-        self.block_store.block_exists(&mut self.txn, block_hash)
-    }
-
-    fn transaction_exists(
-        &mut self,
-        transaction_hash: &TransactionHash,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .transaction_exists(&mut self.txn, transaction_hash)
-    }
-
-    fn read_execution_results(
-        &mut self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, BlockStoreError>
-    {
-        self.block_store
-            .read_execution_results(&mut self.txn, block_hash)
-    }
-}
-
-impl<'a> BlockStoreWriter for IndexedLmdbBlockStoreRWTransaction<'a> {
-    /// Writes a block to storage.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    fn write_block(&mut self, block: &Block) -> Result<bool, BlockStoreError> {
-        let block_header = block.clone_header();
-        let block_hash = block.hash();
-        let block_height = block.height();
-        let era_id = block.era_id();
-        let transaction_hashes: Vec<TransactionHash> = match block {
-            Block::V1(v1) => v1
-                .deploy_and_transfer_hashes()
-                .map(TransactionHash::from)
-                .collect(),
-            Block::V2(v2) => v2.all_transactions().copied().collect(),
-        };
-
-        let update_height_index =
-            self.should_update_block_height_index(block_height, block_hash)?;
-        let update_switch_block_index = self.should_update_switch_block_index(&block_header)?;
-        let update_transaction_hash_index =
-            self.should_update_transaction_hash_index(&transaction_hashes, block_hash)?;
-
-        if !self.block_store.write_block(&mut self.txn, block)? {
-            return Ok(false);
-        }
-
-        if update_height_index {
-            self.block_height_index.insert(block_height, *block_hash);
-        }
-
-        if update_switch_block_index {
-            self.switch_block_era_id_index.insert(era_id, *block_hash);
-        }
-
-        if update_transaction_hash_index {
-            for hash in transaction_hashes {
-                self.transaction_hash_index.insert(
-                    hash,
-                    BlockHashHeightAndEra::new(*block_hash, block_height, era_id),
-                );
-            }
-        }
-
-        Ok(true)
-    }
-
-    fn write_approvals_hashes(
-        &mut self,
-        approvals_hashes: &ApprovalsHashes,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_approvals_hashes(&mut self.txn, approvals_hashes)
-    }
-
-    fn write_execution_results(
-        &mut self,
-        block_hash: &BlockHash,
-        block_height: u64,
-        era_id: EraId,
-        execution_results: HashMap<TransactionHash, ExecutionResult>,
-    ) -> Result<bool, BlockStoreError> {
-        let transaction_hashes: Vec<TransactionHash> = execution_results.keys().copied().collect();
-
-        if let Some(hash) = transaction_hashes.iter().find(|hash| {
-            self.transaction_hash_index
-                .get(hash)
-                .map_or(false, |old_details| old_details.block_hash != *block_hash)
-        }) {
-            return Err(BlockStoreError::DuplicateTransaction {
-                transaction_hash: *hash,
-                first: self.transaction_hash_index.get(hash).unwrap().block_hash,
-                second: *block_hash,
-            });
-        }
-
-        let update_transaction_hash_index =
-            self.should_update_transaction_hash_index(&transaction_hashes, block_hash)?;
-
-        if !self.block_store.write_execution_results(
-            &mut self.txn,
-            block_hash,
-            execution_results,
-        )? {
-            return Ok(false);
-        }
-
-        if update_transaction_hash_index {
-            for hash in transaction_hashes {
-                self.transaction_hash_index.insert(
-                    hash,
-                    BlockHashHeightAndEra::new(*block_hash, block_height, era_id),
-                );
-            }
-        }
-
-        Ok(true)
-    }
-
-    fn write_block_signatures(
-        &mut self,
-        block_signatures: &BlockSignatures,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_finality_signatures(&mut self.txn, block_signatures)
-    }
-
-    fn write_finalized_approvals(
-        &mut self,
-        transaction_hash: &TransactionHash,
-        finalized_approvals: &FinalizedApprovals,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .finalized_transaction_approvals_dbs
-            .put(&mut self.txn, transaction_hash, finalized_approvals, true)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
-    }
-
-    fn write_state_store(
-        &mut self,
-        key: Cow<'static, [u8]>,
-        data: &Vec<u8>,
-    ) -> Result<(), BlockStoreError> {
-        self.block_store.write_state_store(&mut self.txn, key, data)
-    }
-
-    fn write_block_header(&mut self, block_header: BlockHeader) -> Result<bool, BlockStoreError> {
-        let block_hash = block_header.block_hash();
-        let block_height = block_header.height();
-        let era_id = block_header.era_id();
-
-        let update_height_index =
-            self.should_update_block_height_index(block_height, &block_hash)?;
-        let update_switch_block_index = self.should_update_switch_block_index(&block_header)?;
-
-        if !self
-            .block_store
-            .write_block_header(&mut self.txn, &block_header)?
-        {
-            return Ok(false);
-        };
-
-        if update_height_index {
-            self.block_height_index.insert(block_height, block_hash);
-        }
-
-        if update_switch_block_index {
-            self.switch_block_era_id_index.insert(era_id, block_hash);
-        }
-
-        Ok(true)
-    }
-
-    fn write_finality_signature(
-        &mut self,
-        signature: Box<FinalitySignature>,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_finality_signature(&mut self.txn, signature)
-    }
-
-    fn write_transaction(&mut self, transaction: &Transaction) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_transaction(&mut self.txn, transaction)
-    }
-
-    fn write_transfers(
-        &mut self,
-        block_hash: &BlockHash,
-        transfers: &Vec<Transfer>,
-    ) -> Result<bool, BlockStoreError> {
-        self.block_store
-            .write_transfers(&mut self.txn, block_hash, transfers)
-    }
-}
-
 impl BlockStoreProvider for IndexedLmdbBlockStore {
     type Reader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-    type Writer<'a> = IndexedLmdbBlockStoreRWTransaction<'a>;
     type ReaderWriter<'a> = IndexedLmdbBlockStoreRWTransaction<'a>;
 
     fn checkout_ro(&self) -> Result<Self::Reader<'_>, BlockStoreError> {
@@ -918,245 +590,620 @@ impl BlockStoreProvider for IndexedLmdbBlockStore {
             transaction_hash_index: TempMap::new(&mut self.transaction_hash_index),
         })
     }
+}
 
-    fn checkout_w(&mut self) -> Result<Self::Writer<'_>, BlockStoreError> {
-        let txn = self
+impl<'a> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
+        self.block_store
             .block_store
-            .env
-            .begin_rw_txn()
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            .get_single_block(&self.txn, &key)
+    }
 
-        Ok(IndexedLmdbBlockStoreRWTransaction {
-            txn,
-            block_store: &self.block_store,
-            block_height_index: TempMap::new(&mut self.block_height_index),
-            switch_block_era_id_index: TempMap::new(&mut self.switch_block_era_id_index),
-            transaction_hash_index: TempMap::new(&mut self.transaction_hash_index),
-        })
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_store.block_exists(&self.txn, &key)
     }
 }
 
-impl IndexedBlockStoreProvider<EraId, SwitchBlockHeader> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<EraId, SwitchBlock> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<TransactionHash, EraId> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<BlockHeight, BlockHash> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<TransactionHash, BlockHashHeightAndEra> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<BlockHeight, BlockHeader> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-impl IndexedBlockStoreProvider<BlockHeight, Block> for IndexedLmdbBlockStore {
-    type IndexedBlockStoreReader<'a> = IndexedLmdbBlockStoreReadTransaction<'a>;
-
-    fn checkout_ro_indexed(&self) -> Result<Self::IndexedBlockStoreReader<'_>, BlockStoreError> {
-        self.get_reader()
-    }
-}
-
-pub struct BlockHeightIterator<'a> {
-    iterator: btree_map::Keys<'a, BlockHeight, BlockHash>,
-}
-
-impl<'a> Iterator for BlockHeightIterator<'a> {
-    type Item = BlockHeight;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next().copied()
-    }
-}
-
-impl<'a> DoubleEndedIterator for BlockHeightIterator<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.iterator.next_back().copied()
-    }
-}
-
-impl<'a> IndexedBy<BlockHeight, BlockHash> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = BlockHeightIterator<'a>;
-
-    fn get(&mut self, key: &BlockHeight) -> Result<Option<BlockHash>, BlockStoreError> {
-        Ok(self.block_store.block_height_index.get(key).copied())
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        BlockHeightIterator {
-            iterator: self.block_store.block_height_index.keys(),
-        }
-    }
-}
-
-impl<'a> IndexedBy<BlockHeight, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = BlockHeightIterator<'a>;
-
-    fn get(&mut self, key: &BlockHeight) -> Result<Option<BlockHeader>, BlockStoreError> {
+impl<'a> DataReader<BlockHash, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.block_store
-            .block_height_index
-            .get(key)
-            .and_then(|block_hash| {
-                self.block_store
-                    .block_store
-                    .get_single_block_header(&mut self.txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        BlockHeightIterator {
-            iterator: self.block_store.block_height_index.keys(),
-        }
-    }
-}
-
-impl<'a> IndexedBy<BlockHeight, Block> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = BlockHeightIterator<'a>;
-
-    fn get(&mut self, key: &BlockHeight) -> Result<Option<Block>, BlockStoreError> {
-        self.block_store
-            .block_height_index
-            .get(key)
-            .and_then(|block_hash| {
-                self.block_store
-                    .block_store
-                    .get_single_block(&mut self.txn, block_hash)
-                    .transpose()
-            })
-            .transpose()
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        BlockHeightIterator {
-            iterator: self.block_store.block_height_index.keys(),
-        }
-    }
-}
-
-pub struct EraIdIterator<'a> {
-    iterator: btree_map::Keys<'a, EraId, BlockHash>,
-}
-
-impl<'a> Iterator for EraIdIterator<'a> {
-    type Item = EraId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next().copied()
-    }
-}
-
-impl<'a> IndexedBy<EraId, SwitchBlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = EraIdIterator<'a>;
-
-    fn get(&mut self, key: &EraId) -> Result<Option<SwitchBlockHeader>, BlockStoreError> {
-        self.block_store
-            .get_switch_block_header_by_era_id(&mut self.txn, *key)
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        EraIdIterator {
-            iterator: self.block_store.switch_block_era_id_index.keys(),
-        }
-    }
-}
-
-impl<'a> IndexedBy<EraId, SwitchBlock> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = EraIdIterator<'a>;
-
-    fn get(&mut self, key: &EraId) -> Result<Option<SwitchBlock>, BlockStoreError> {
-        self.block_store
-            .get_switch_block_by_era_id(&mut self.txn, *key)
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        EraIdIterator {
-            iterator: self.block_store.switch_block_era_id_index.keys(),
-        }
-    }
-}
-pub struct TransactionHashIterator<'a> {
-    iterator: btree_map::Keys<'a, TransactionHash, BlockHashHeightAndEra>,
-}
-
-impl<'a> Iterator for TransactionHashIterator<'a> {
-    type Item = TransactionHash;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next().copied()
-    }
-}
-
-impl<'a> IndexedBy<TransactionHash, EraId> for IndexedLmdbBlockStoreReadTransaction<'a> {
-    type KeysIterator = TransactionHashIterator<'a>;
-
-    fn get(&mut self, key: &TransactionHash) -> Result<Option<EraId>, BlockStoreError> {
-        let res = self
             .block_store
-            .transaction_hash_index
-            .get(key)
-            .map(|block_hash_height_and_era| block_hash_height_and_era.era_id);
-        Ok(res)
+            .get_single_block_header(&self.txn, &key)
     }
 
-    fn keys(&self) -> Self::KeysIterator {
-        TransactionHashIterator {
-            iterator: self.block_store.transaction_hash_index.keys(),
-        }
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .block_header_exists(&self.txn, &key)
     }
 }
 
-impl<'a> IndexedBy<TransactionHash, BlockHashHeightAndEra>
+impl<'a> DataReader<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .read_approvals_hashes(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .block_header_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .get_block_signatures(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .block_signatures_exist(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<BlockHeight, Block> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHeight) -> Result<Option<Block>, BlockStoreError> {
+        self.read_block_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)))
+    }
+
+    fn exists(&mut self, key: BlockHeight) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)),
+            DataType::Block,
+        )
+    }
+}
+
+impl<'a> DataReader<BlockHeight, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHeight) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.read_block_header_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)))
+    }
+
+    fn exists(&mut self, key: BlockHeight) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)),
+            DataType::BlockHeader,
+        )
+    }
+}
+
+impl<'a> DataReader<BlockHeight, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHeight) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        self.read_approvals_hashes_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(
+            key,
+        )))
+    }
+
+    fn exists(&mut self, key: BlockHeight) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)),
+            DataType::ApprovalsHashes,
+        )
+    }
+}
+
+impl<'a> DataReader<BlockHeight, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: BlockHeight) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.read_block_signatures_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(
+            key,
+        )))
+    }
+
+    fn exists(&mut self, key: BlockHeight) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)),
+            DataType::BlockSignatures,
+        )
+    }
+}
+
+/// Retrieves single switch block by era ID by looking it up in the index and returning it.
+impl<'a> DataReader<EraId, Block> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: EraId) -> Result<Option<Block>, BlockStoreError> {
+        self.read_block_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(
+            key,
+        )))
+    }
+
+    fn exists(&mut self, key: EraId) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(key)),
+            DataType::Block,
+        )
+    }
+}
+
+/// Retrieves single switch block header by era ID by looking it up in the index and returning
+/// it.
+impl<'a> DataReader<EraId, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: EraId) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.read_block_header_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(
+            key,
+        )))
+    }
+
+    fn exists(&mut self, key: EraId) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(key)),
+            DataType::BlockHeader,
+        )
+    }
+}
+
+impl<'a> DataReader<EraId, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: EraId) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
+        self.read_approvals_hashes_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(
+            IndexPosition::Key(key),
+        ))
+    }
+
+    fn exists(&mut self, key: EraId) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(key)),
+            DataType::ApprovalsHashes,
+        )
+    }
+}
+
+impl<'a> DataReader<EraId, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: EraId) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.read_block_signatures_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(
+            IndexPosition::Key(key),
+        ))
+    }
+
+    fn exists(&mut self, key: EraId) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(key)),
+            DataType::BlockSignatures,
+        )
+    }
+}
+
+impl<'a> DataReader<Tip, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, _key: Tip) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.read_block_header_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip))
+    }
+
+    fn exists(&mut self, _key: Tip) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip),
+            DataType::BlockHeader,
+        )
+    }
+}
+
+impl<'a> DataReader<Tip, Block> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, _key: Tip) -> Result<Option<Block>, BlockStoreError> {
+        self.read_block_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip))
+    }
+
+    fn exists(&mut self, _key: Tip) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip),
+            DataType::Block,
+        )
+    }
+}
+
+impl<'a> DataReader<LatestSwitchBlock, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, _key: LatestSwitchBlock) -> Result<Option<BlockHeader>, BlockStoreError> {
+        self.read_block_header_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Tip))
+    }
+
+    fn exists(&mut self, _key: LatestSwitchBlock) -> Result<bool, BlockStoreError> {
+        self.contains_data_indexed(
+            LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Tip),
+            DataType::BlockHeader,
+        )
+    }
+}
+
+impl<'a> DataReader<TransactionHash, BlockHashHeightAndEra>
     for IndexedLmdbBlockStoreReadTransaction<'a>
 {
-    type KeysIterator = TransactionHashIterator<'a>;
-
-    fn get(
-        &mut self,
-        key: &TransactionHash,
-    ) -> Result<Option<BlockHashHeightAndEra>, BlockStoreError> {
-        Ok(self.block_store.transaction_hash_index.get(key).copied())
+    fn read(&self, key: TransactionHash) -> Result<Option<BlockHashHeightAndEra>, BlockStoreError> {
+        Ok(self.block_store.transaction_hash_index.get(&key).copied())
     }
 
-    fn keys(&self) -> Self::KeysIterator {
-        TransactionHashIterator {
-            iterator: self.block_store.transaction_hash_index.keys(),
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        Ok(self.block_store.transaction_hash_index.contains_key(&key))
+    }
+}
+
+impl<'a> DataReader<TransactionHash, Transaction> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .transaction_dbs
+            .get(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .transaction_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<TransactionHash, FinalizedApprovals>
+    for IndexedLmdbBlockStoreReadTransaction<'a>
+{
+    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .finalized_transaction_approvals_dbs
+            .get(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .finalized_transaction_approvals_dbs
+            .exists(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a> DataReader<TransactionHash, ExecutionResult> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, key: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .execution_result_dbs
+            .get(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .execution_result_dbs
+            .exists(&self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a, K> DataReader<K, Vec<u8>> for IndexedLmdbBlockStoreReadTransaction<'a>
+where
+    K: AsRef<[u8]>,
+{
+    fn read(&self, key: K) -> Result<Option<Vec<u8>>, BlockStoreError> {
+        self.block_store
+            .block_store
+            .read_state_store(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: K) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .block_store
+            .state_store_key_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    /// Writes a block to storage.
+    ///
+    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
+    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
+    fn write(&mut self, data: &Block) -> Result<BlockHash, BlockStoreError> {
+        let block_header = data.clone_header();
+        let block_hash = data.hash();
+        let block_height = data.height();
+        let era_id = data.era_id();
+        let transaction_hashes: Vec<TransactionHash> = match &data {
+            Block::V1(v1) => v1
+                .deploy_and_transfer_hashes()
+                .map(TransactionHash::from)
+                .collect(),
+            Block::V2(v2) => v2.all_transactions().copied().collect(),
+        };
+
+        let update_height_index =
+            self.should_update_block_height_index(block_height, block_hash)?;
+        let update_switch_block_index = self.should_update_switch_block_index(&block_header)?;
+        let update_transaction_hash_index =
+            self.should_update_transaction_hash_index(&transaction_hashes, block_hash)?;
+
+        let key = self.block_store.write_block(&mut self.txn, data)?;
+
+        if update_height_index {
+            self.block_height_index.insert(block_height, *block_hash);
         }
+
+        if update_switch_block_index {
+            self.switch_block_era_id_index.insert(era_id, *block_hash);
+        }
+
+        if update_transaction_hash_index {
+            for hash in transaction_hashes {
+                self.transaction_hash_index.insert(
+                    hash,
+                    BlockHashHeightAndEra::new(*block_hash, block_height, era_id),
+                );
+            }
+        }
+
+        Ok(key)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        let maybe_block = self.block_store.get_single_block(&self.txn, &key)?;
+
+        if let Some(block) = maybe_block {
+            let transaction_hashes: Vec<TransactionHash> = match &block {
+                Block::V1(v1) => v1
+                    .deploy_and_transfer_hashes()
+                    .map(TransactionHash::from)
+                    .collect(),
+                Block::V2(v2) => v2.all_transactions().copied().collect(),
+            };
+
+            self.block_store.delete_block_header(&mut self.txn, &key)?;
+
+            /*
+            TODO: currently we don't delete the block body since other blocks may reference it.
+            self.block_store
+                .delete_block_body(&mut self.txn, block.body_hash())?;
+            */
+
+            self.block_height_index.remove(block.height());
+
+            if block.is_switch_block() {
+                self.switch_block_era_id_index.remove(block.era_id());
+            }
+
+            for hash in transaction_hashes {
+                self.transaction_hash_index.remove(hash);
+            }
+
+            self.block_store
+                .delete_finality_signatures(&mut self.txn, &key)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> DataWriter<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &ApprovalsHashes) -> Result<BlockHash, BlockStoreError> {
+        self.block_store.write_approvals_hashes(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .delete_approvals_hashes(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &BlockSignatures) -> Result<BlockHash, BlockStoreError> {
+        self.block_store
+            .write_finality_signatures(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .delete_finality_signatures(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockHeader> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &BlockHeader) -> Result<BlockHash, BlockStoreError> {
+        let block_hash = data.block_hash();
+        let block_height = data.height();
+        let era_id = data.era_id();
+
+        let update_height_index =
+            self.should_update_block_height_index(block_height, &block_hash)?;
+        let update_switch_block_index = self.should_update_switch_block_index(data)?;
+
+        let key = self.block_store.write_block_header(&mut self.txn, data)?;
+
+        if update_height_index {
+            self.block_height_index.insert(block_height, block_hash);
+        }
+
+        if update_switch_block_index {
+            self.switch_block_era_id_index.insert(era_id, block_hash);
+        }
+
+        Ok(key)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        let maybe_block_header = self.block_store.get_single_block_header(&self.txn, &key)?;
+
+        if let Some(block_header) = maybe_block_header {
+            self.block_store.delete_block_header(&mut self.txn, &key)?;
+
+            if block_header.is_switch_block() {
+                self.switch_block_era_id_index.remove(block_header.era_id());
+            }
+
+            self.block_height_index.remove(block_header.height());
+        }
+        Ok(())
+    }
+}
+
+impl<'a> DataWriter<TransactionHash, Transaction> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &Transaction) -> Result<TransactionHash, BlockStoreError> {
+        self.block_store.write_transaction(&mut self.txn, data)
+    }
+
+    fn delete(&mut self, key: TransactionHash) -> Result<(), BlockStoreError> {
+        self.block_store.delete_transaction(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<TransactionHash, TransactionFinalizedApprovals>
+    for IndexedLmdbBlockStoreRWTransaction<'a>
+{
+    fn write(
+        &mut self,
+        data: &TransactionFinalizedApprovals,
+    ) -> Result<TransactionHash, BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .put(
+                &mut self.txn,
+                &data.transaction_hash,
+                &data.finalized_approvals,
+                true,
+            )
+            .map(|_| data.transaction_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn delete(&mut self, key: TransactionHash) -> Result<(), BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .delete(&mut self.txn, &key)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
+    for IndexedLmdbBlockStoreRWTransaction<'a>
+{
+    fn write(
+        &mut self,
+        data: &BlockExecutionResults,
+    ) -> Result<BlockHashHeightAndEra, BlockStoreError> {
+        let transaction_hashes: Vec<TransactionHash> = data.exec_results.keys().copied().collect();
+        let block_hash = data.block_info.block_hash;
+        let block_height = data.block_info.block_height;
+        let era_id = data.block_info.era_id;
+
+        let update_transaction_hash_index =
+            self.should_update_transaction_hash_index(&transaction_hashes, &block_hash)?;
+
+        let _ = self.block_store.write_execution_results(
+            &mut self.txn,
+            &block_hash,
+            data.exec_results.clone(),
+        )?;
+
+        if update_transaction_hash_index {
+            for hash in transaction_hashes {
+                self.transaction_hash_index.insert(
+                    hash,
+                    BlockHashHeightAndEra::new(block_hash, block_height, era_id),
+                );
+            }
+        }
+
+        Ok(data.block_info)
+    }
+
+    fn delete(&mut self, _key: BlockHashHeightAndEra) -> Result<(), BlockStoreError> {
+        Err(BlockStoreError::UnsupportedOperation)
+    }
+}
+
+impl<'a> DataWriter<BlockHash, BlockTransfers> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &BlockTransfers) -> Result<BlockHash, BlockStoreError> {
+        self.block_store
+            .write_transfers(&mut self.txn, &data.block_hash, &data.transfers)
+            .map(|_| data.block_hash)
+    }
+
+    fn delete(&mut self, key: BlockHash) -> Result<(), BlockStoreError> {
+        self.block_store.delete_transfers(&mut self.txn, &key)
+    }
+}
+
+impl<'a> DataWriter<Cow<'static, [u8]>, StateStore> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn write(&mut self, data: &StateStore) -> Result<Cow<'static, [u8]>, BlockStoreError> {
+        self.block_store
+            .write_state_store(&mut self.txn, data.key.clone(), &data.value)?;
+        Ok(data.key.clone())
+    }
+
+    fn delete(&mut self, key: Cow<'static, [u8]>) -> Result<(), BlockStoreError> {
+        self.block_store.delete_state_store(&mut self.txn, key)
+    }
+}
+
+impl<'a> DataReader<TransactionHash, Transaction> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn read(&self, query: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
+        self.block_store
+            .transaction_dbs
+            .get(&self.txn, &query)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, query: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store.transaction_exists(&self.txn, &query)
+    }
+}
+
+impl<'a> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
+        self.block_store.get_block_signatures(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_signatures_exist(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<TransactionHash, FinalizedApprovals>
+    for IndexedLmdbBlockStoreRWTransaction<'a>
+{
+    fn read(&self, query: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .get(&self.txn, &query)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, query: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .finalized_transaction_approvals_dbs
+            .exists(&self.txn, &query)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
+        self.block_store.get_single_block(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.block_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<TransactionHash, ExecutionResult> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn read(&self, query: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
+        self.block_store
+            .execution_result_dbs
+            .get(&self.txn, &query)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, query: TransactionHash) -> Result<bool, BlockStoreError> {
+        self.block_store
+            .execution_result_dbs
+            .exists(&self.txn, &query)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+}
+
+impl<'a> DataReader<BlockHash, Vec<Transfer>> for IndexedLmdbBlockStoreRWTransaction<'a> {
+    fn read(&self, key: BlockHash) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
+        self.block_store.get_transfers(&self.txn, &key)
+    }
+
+    fn exists(&mut self, key: BlockHash) -> Result<bool, BlockStoreError> {
+        self.block_store.has_transfers(&self.txn, &key)
     }
 }

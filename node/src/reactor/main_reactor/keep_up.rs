@@ -178,7 +178,7 @@ impl MainReactor {
     }
 
     fn keep_up_idle(&mut self) -> Either<SyncIdentifier, KeepUpInstruction> {
-        match self.storage.read_highest_complete_block() {
+        match self.storage.get_highest_complete_block() {
             Ok(Some(block)) => Either::Left(SyncIdentifier::LocalTip(
                 *block.hash(),
                 block.height(),
@@ -621,13 +621,9 @@ impl MainReactor {
                     sync_era,
                 }))
             }
-            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
-                "KeepUp: storage is missing historical block height index entry {}",
-                block_height
-            )),
-            HighestOrphanedBlockResult::MissingHeader(block_hash) => Err(format!(
-                "KeepUp: storage is missing historical block header for {}",
-                block_hash
+            HighestOrphanedBlockResult::MissingHeader(height) => Err(format!(
+                "KeepUp: storage is missing historical block header for height {}",
+                height
             )),
             HighestOrphanedBlockResult::MissingHighestSequence => {
                 Err("KeepUp: storage is missing historical highest block sequence".to_string())
@@ -695,7 +691,7 @@ impl MainReactor {
         {
             match self
                 .storage
-                .read_switch_block_by_era_id(highest_orphaned_block_header.era_id().successor())
+                .get_switch_block_by_era_id(&highest_orphaned_block_header.era_id().successor())
             {
                 Ok(Some(switch)) => {
                     debug!(
@@ -712,7 +708,7 @@ impl MainReactor {
             }
         }
 
-        match self.storage.read_block_header(parent_hash) {
+        match self.storage.read_block_header_by_hash(parent_hash) {
             Ok(Some(parent_block_header)) => {
                 // even if we don't have a complete block (all parts and dependencies)
                 // we may have the parent's block header; if we do we also

@@ -107,6 +107,11 @@ impl BlockV1 {
         &self.body
     }
 
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBodyV1 {
+        self.body
+    }
+
     /// Returns the parent block's hash.
     pub fn parent_hash(&self) -> &BlockHash {
         self.header.parent_hash()

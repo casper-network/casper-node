@@ -102,11 +102,11 @@ pub(crate) struct VersionedDatabases<K, V> {
     /// Legacy form of the data, with the key as `K::Legacy` type (converted to bytes using
     /// `AsRef<[u8]>`) and the value bincode-encoded.
     #[data_size(skip)]
-    legacy: Database,
+    pub legacy: Database,
     /// Current form of the data, with the key as `K` bytesrepr-encoded and the value as `V` also
     /// bytesrepr-encoded.
     #[data_size(skip)]
-    current: Database,
+    pub current: Database,
     _phantom: PhantomData<(K, V)>,
 }
 
@@ -147,7 +147,7 @@ where
 
     pub(super) fn get<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
         if let Some(value) = txn.get_value_bytesrepr(self.current, key)? {
@@ -166,7 +166,7 @@ where
 
     pub(super) fn exists<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         key: &K,
     ) -> Result<bool, LmdbExtError> {
         if txn.value_exists_bytesrepr(self.current, key)? {
@@ -386,24 +386,24 @@ mod tests {
         txn.commit().unwrap();
 
         // Should get the deploy.
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         assert_eq!(
             fixture
                 .dbs
-                .get(&mut txn, &TransactionHash::from(*deploy_hash))
+                .get(&txn, &TransactionHash::from(*deploy_hash))
                 .unwrap(),
             Some(Transaction::from(deploy.clone()))
         );
 
         // Should get the random transaction.
         assert_eq!(
-            fixture.dbs.get(&mut txn, transaction_hash).unwrap(),
+            fixture.dbs.get(&txn, transaction_hash).unwrap(),
             Some(transaction.clone())
         );
 
         // Should return `Ok(None)` for non-existent data.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
-        assert!(fixture.dbs.get(&mut txn, &random_hash).unwrap().is_none());
+        assert!(fixture.dbs.get(&txn, &random_hash).unwrap().is_none());
     }
 
     #[test]
@@ -422,18 +422,18 @@ mod tests {
         txn.commit().unwrap();
 
         // The deploy should exist.
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         assert!(fixture
             .dbs
-            .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+            .exists(&txn, &TransactionHash::from(*deploy_hash))
             .unwrap());
 
         // The random transaction should exist.
-        assert!(fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+        assert!(fixture.dbs.exists(&txn, transaction_hash).unwrap());
 
         // Random data should not exist.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
-        assert!(!fixture.dbs.exists(&mut txn, &random_hash).unwrap());
+        assert!(!fixture.dbs.exists(&txn, &random_hash).unwrap());
     }
 
     #[test]
@@ -470,12 +470,12 @@ mod tests {
             .unwrap();
         assert!(!fixture
             .dbs
-            .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+            .exists(&txn, &TransactionHash::from(*deploy_hash))
             .unwrap());
 
         // Should delete the random transaction.
         fixture.dbs.delete(&mut txn, transaction_hash).unwrap();
-        assert!(!fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+        assert!(!fixture.dbs.exists(&txn, transaction_hash).unwrap());
 
         // Should report success when attempting to delete non-existent data.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
@@ -512,9 +512,9 @@ mod tests {
 
         // Ensure all values were visited and the DB doesn't contain them any more.
         assert_eq!(visited, fixture.random_transactions);
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         for transaction_hash in fixture.random_transactions.keys() {
-            assert!(!fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+            assert!(!fixture.dbs.exists(&txn, transaction_hash).unwrap());
         }
 
         // Ensure a second run is a no-op.
@@ -560,11 +560,11 @@ mod tests {
 
         // Ensure all values were visited and the DB doesn't contain them any more.
         assert_eq!(visited, fixture.legacy_transactions);
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         for deploy_hash in fixture.legacy_transactions.keys() {
             assert!(!fixture
                 .dbs
-                .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+                .exists(&txn, &TransactionHash::from(*deploy_hash))
                 .unwrap());
         }
 

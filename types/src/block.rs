@@ -296,6 +296,14 @@ impl Block {
         }
     }
 
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBody {
+        match self {
+            Block::V1(v1) => BlockBody::V1(v1.take_body()),
+            Block::V2(v2) => BlockBody::V2(v2.take_body()),
+        }
+    }
+
     /// Check the integrity of a block by hashing its body and header
     pub fn verify(&self) -> Result<(), BlockValidationError> {
         match self {

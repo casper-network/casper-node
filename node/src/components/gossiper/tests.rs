@@ -340,7 +340,7 @@ fn announce_transaction_received(
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
-    const TIMEOUT: Duration = Duration::from_secs(20);
+    const TIMEOUT: Duration = Duration::from_secs(30);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     NetworkController::<NodeMessage>::create_active();
@@ -368,12 +368,18 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
     // Check every node has every transaction stored locally.
     let all_txns_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
-            let hashes = runner
-                .reactor()
-                .inner()
-                .storage
-                .get_all_transaction_hashes();
-            all_txn_hashes == hashes
+            for hash in all_txn_hashes.iter() {
+                if runner
+                    .reactor()
+                    .inner()
+                    .storage
+                    .get_transaction_by_hash(*hash)
+                    .is_none()
+                {
+                    return false;
+                }
+            }
+            true
         })
     };
     network.settle_on(rng, all_txns_held, TIMEOUT).await;

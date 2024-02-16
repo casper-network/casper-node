@@ -583,7 +583,7 @@ impl MainReactor {
     fn get_local_tip_header(&self) -> Result<Option<BlockHeader>, String> {
         match self
             .storage
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .map_err(|err| format!("Could not read highest complete block: {}", err))?
         {
             Some(local_tip) => Ok(Some(local_tip.take_header())),

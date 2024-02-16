@@ -9,7 +9,7 @@ use casper_types::{
 
 /// Version 1 metadata related to a single deploy prior to `casper-node` v2.0.0.
 #[derive(Clone, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct DeployMetadataV1 {
+pub(crate) struct DeployMetadataV1 {
     /// The hash of the single block containing the related deploy, along with the results of
     /// executing it.
     ///

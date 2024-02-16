@@ -91,25 +91,24 @@ impl From<lmdb::Error> for LmdbExtError {
 pub(super) trait TransactionExt {
     /// Helper function to load a value from a database.
     fn get_value<K: AsRef<[u8]>, V: 'static + DeserializeOwned>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
 
     /// Returns `true` if the given key has an entry in the given database.
-    fn value_exists<K: AsRef<[u8]>>(&mut self, db: Database, key: &K)
-        -> Result<bool, LmdbExtError>;
+    fn value_exists<K: AsRef<[u8]>>(&self, db: Database, key: &K) -> Result<bool, LmdbExtError>;
 
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
     fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
 
     fn value_exists_bytesrepr<K: ToBytes>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<bool, LmdbExtError>;
@@ -151,7 +150,7 @@ where
 {
     #[inline]
     fn get_value<K: AsRef<[u8]>, V: 'static + DeserializeOwned>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
@@ -164,11 +163,7 @@ where
     }
 
     #[inline]
-    fn value_exists<K: AsRef<[u8]>>(
-        &mut self,
-        db: Database,
-        key: &K,
-    ) -> Result<bool, LmdbExtError> {
+    fn value_exists<K: AsRef<[u8]>>(&self, db: Database, key: &K) -> Result<bool, LmdbExtError> {
         match self.get(db, key) {
             Ok(_raw) => Ok(true),
             Err(lmdb::Error::NotFound) => Ok(false),
@@ -178,7 +173,7 @@ where
 
     #[inline]
     fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
@@ -193,7 +188,7 @@ where
 
     #[inline]
     fn value_exists_bytesrepr<K: ToBytes>(
-        &mut self,
+        &self,
         db: Database,
         key: &K,
     ) -> Result<bool, LmdbExtError> {
