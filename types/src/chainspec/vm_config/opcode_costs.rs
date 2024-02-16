@@ -4,7 +4,11 @@
 use datasize::DataSize;
 use derive_more::Add;
 use num_traits::Zero;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
@@ -96,6 +100,7 @@ impl Default for BrTableCost {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<BrTableCost> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BrTableCost {
         BrTableCost {
@@ -321,6 +326,7 @@ impl FromBytes for ControlFlowCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<ControlFlowCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ControlFlowCosts {
         ControlFlowCosts {
@@ -457,6 +463,7 @@ impl Default for OpcodeCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<OpcodeCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> OpcodeCosts {
         OpcodeCosts {

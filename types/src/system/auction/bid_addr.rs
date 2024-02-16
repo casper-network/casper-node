@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -285,6 +286,7 @@ impl Debug for BidAddr {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<BidAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BidAddr {
         BidAddr::Validator(AccountHash::new(rng.gen()))

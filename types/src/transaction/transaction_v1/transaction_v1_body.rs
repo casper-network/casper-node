@@ -6,7 +6,7 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -21,7 +21,7 @@ use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
     TransactionSessionKind, TransactionV1Category,
@@ -180,7 +180,7 @@ impl TransactionV1Body {
     }
 
     /// Returns a random `TransactionV1Body`.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random_of_category(rng: &mut TestRng, category: &TransactionV1Category) -> Self {
         match category {
             TransactionV1Category::InstallUpgrade => Self::random_install_upgrade(rng),
@@ -190,7 +190,7 @@ impl TransactionV1Body {
         }
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_transfer(rng: &mut TestRng) -> Self {
         let source = rng.gen();
         let target = rng.gen();
@@ -208,7 +208,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_standard(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
@@ -222,7 +222,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
         let mut buffer = vec![0u8; rng.gen_range(0..100)];
         rng.fill_bytes(buffer.as_mut());
@@ -239,7 +239,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_staking(rng: &mut TestRng) -> Self {
         let source = rng.gen();
         let target = rng.gen();
@@ -258,7 +258,7 @@ impl TransactionV1Body {
     }
 
     /// Returns a random `TransactionV1Body`.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => Self::random_transfer(rng),
