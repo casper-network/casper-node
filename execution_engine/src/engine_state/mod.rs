@@ -240,8 +240,6 @@ where
     /// contracts, sets up the genesis accounts, and sets up the auction state based on that. At
     /// the end of the process, [`SystemEntityRegistry`] is persisted under the special global
     /// state space [`Key::SystemEntityRegistry`].
-    ///
-    /// Returns a [`GenesisResult`].
     pub fn commit_genesis(&self, request: GenesisRequest) -> GenesisResult {
         self.state.genesis(request)
     }

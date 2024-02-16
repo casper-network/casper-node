@@ -1,18 +1,21 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num_traits::Zero;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::SecretKey;
 use crate::{
     account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::DelegationRate,
-    Motes, PublicKey, SecretKey,
+    Motes, PublicKey,
 };
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -80,6 +83,7 @@ impl GenesisValidator {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<GenesisValidator> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisValidator {
         let bonded_amount = Motes::new(rng.gen());
@@ -375,6 +379,7 @@ impl GenesisAccount {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<GenesisAccount> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
         let mut bytes = [0u8; 32];

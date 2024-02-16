@@ -842,6 +842,7 @@ impl FromBytes for HostFunctionCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<HostFunctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCosts {
         HostFunctionCosts {

@@ -1,10 +1,12 @@
 //! The registry of chainspec hash digests.
 
+use std::{collections::BTreeMap, convert::TryFrom};
+
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::{collections::BTreeMap, convert::TryFrom};
 
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +132,7 @@ impl CLTyped for ChainspecRegistry {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<ChainspecRegistry> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainspecRegistry {
         ChainspecRegistry {

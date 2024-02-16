@@ -7,6 +7,7 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -310,6 +311,7 @@ impl AsRef<[u8]> for TransferAddr {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<TransferAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransferAddr {
         TransferAddr::new(rng.gen())
