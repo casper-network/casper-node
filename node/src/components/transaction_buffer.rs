@@ -390,6 +390,9 @@ impl TransactionBuffer {
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
         let mut holds = HashSet::new();
+
+        // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
+        // proper limiter.
         let mut have_hit_transfer_limit = false;
         let mut have_hit_standard_limit = false;
         let mut have_hit_install_upgrade_limit = false;
@@ -485,33 +488,54 @@ impl TransactionBuffer {
                             self.dead.insert(transaction_hash);
                         }
                         AddError::TransferCount => {
-                            if have_hit_standard_limit {
-                                info!(?transaction_hash, "TransactionBuffer: standard limit hit");
+                            have_hit_transfer_limit = true;
+                            if have_hit_standard_limit
+                                && have_hit_staking_limit
+                                && have_hit_install_upgrade_limit
+                                && have_hit_transfer_limit
+                            {
+                                info!(
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block fully saturated"
+                                );
                                 break;
                             }
-                            have_hit_transfer_limit = true;
                         }
                         AddError::DeployCount => {
-                            if have_hit_transfer_limit {
-                                info!(?transaction_hash, "TransactionBuffer: transfer limit hit");
+                            have_hit_standard_limit = true;
+                            if have_hit_standard_limit
+                                && have_hit_staking_limit
+                                && have_hit_install_upgrade_limit
+                                && have_hit_transfer_limit
+                            {
+                                info!(
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block fully saturated"
+                                );
                                 break;
                             }
-                            have_hit_standard_limit = true;
                         }
-                        AddError::TransactionCount(category) => match category {
-                            TransactionV1Category::InstallUpgrade => {
-                                have_hit_install_upgrade_limit = true
+                        AddError::TransactionCount(category) => {
+                            match category {
+                                TransactionV1Category::InstallUpgrade => {
+                                    have_hit_install_upgrade_limit = true
+                                }
+                                TransactionV1Category::Standard => have_hit_standard_limit = true,
+                                TransactionV1Category::Staking => have_hit_staking_limit = true,
+                                TransactionV1Category::Transfer => have_hit_transfer_limit = true,
+                            };
+                            if have_hit_standard_limit
+                                && have_hit_staking_limit
+                                && have_hit_install_upgrade_limit
+                                && have_hit_transfer_limit
+                            {
+                                info!(
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block fully saturated"
+                                );
+                                break;
                             }
-                            TransactionV1Category::Standard => {
-                                have_hit_standard_limit = true;
-                            }
-                            TransactionV1Category::Staking => {
-                                have_hit_staking_limit = true;
-                            }
-                            TransactionV1Category::Transfer => {
-                                have_hit_transfer_limit = true;
-                            }
-                        },
+                        }
                         AddError::ApprovalCount if has_multiple_approvals => {
                             // keep iterating, we can maybe fit in a deploy with fewer approvals
                         }
