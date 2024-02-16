@@ -5,6 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::Error;
+use casper_storage::tracking_copy::TrackingCopyError;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -45,7 +46,10 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
-    assert_matches!(precondition_failure, Error::Authorization);
+    assert_matches!(
+        precondition_failure,
+        Error::TrackingCopy(TrackingCopyError::Authorization)
+    );
 }
 
 #[ignore]
@@ -76,7 +80,10 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
-    assert_matches!(precondition_failure, Error::Authorization);
+    assert_matches!(
+        precondition_failure,
+        Error::TrackingCopy(TrackingCopyError::Authorization)
+    );
 }
 
 #[ignore]
@@ -114,5 +121,8 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
         .expect("there should be a response");
 
     let precondition_failure = utils::get_precondition_failure(&response);
-    assert_matches!(precondition_failure, Error::Authorization);
+    assert_matches!(
+        precondition_failure,
+        Error::TrackingCopy(TrackingCopyError::Authorization)
+    );
 }

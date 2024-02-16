@@ -9,7 +9,7 @@ use casper_execution_engine::engine_state::{Error as EngineStateError, StepError
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -112,4 +112,7 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         TrackingCopyError,
     ),
+    /// A root state hash was not found.
+    #[error("Root state hash not found in global state.")]
+    RootNotFound(Digest),
 }

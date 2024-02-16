@@ -1045,7 +1045,7 @@ where
         self.exec_results.len()
     }
 
-    /// Returns the result of upgrading.
+    /// Returns a `Result` containing an [`ProtocolUpgradeResult`].
     pub fn get_upgrade_result(&self, index: usize) -> Option<&ProtocolUpgradeResult> {
         self.upgrade_results.get(index)
     }
