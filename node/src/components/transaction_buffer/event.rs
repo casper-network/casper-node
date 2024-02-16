@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, BlockV2, Transaction, TransactionId};
+use casper_types::{Block, BlockV2, EraId, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
@@ -26,6 +26,7 @@ pub(crate) enum Event {
     VersionedBlock(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
+    UpdateEraGasPrice(EraId, u8),
 }
 
 impl Display for Event {
@@ -66,6 +67,13 @@ impl Display for Event {
             }
             Event::Expire => {
                 write!(formatter, "expire transactions")
+            }
+            Event::UpdateEraGasPrice(era_id, next_era_gas_price) => {
+                write!(
+                    formatter,
+                    "gas price {} for era {}",
+                    next_era_gas_price, era_id
+                )
             }
         }
     }

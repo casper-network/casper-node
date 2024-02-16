@@ -633,7 +633,7 @@ impl LargestSpecimen for EraEndV2 {
             vec_prop_specimen(estimator, "validator_count", cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
-            1u8
+            1u8,
         )
     }
 }

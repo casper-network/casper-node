@@ -97,7 +97,7 @@ pub fn execute_finalized_block(
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
-    maybe_next_gas_price: Option<u8>,
+    current_gas_price: u8,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -105,12 +105,6 @@ pub fn execute_finalized_block(
             execution_pre_state: Box::new(execution_pre_state),
         });
     }
-
-    if maybe_next_gas_price.is_none() && executable_block.era_report.is_some() {
-        let era_id = executable_block.era_id;
-        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {era_id});
-    }
-
 
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let parent_hash = execution_pre_state.parent_hash();
@@ -331,24 +325,21 @@ pub fn execute_finalized_block(
         }
     }
 
-    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> = {
-        let next_era_id = executable_block.era_id.successor();
-        match maybe_next_gas_price {
+    let next_era_id = executable_block.era_id.successor();
+    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> =
+        match maybe_step_effects_and_upcoming_era_validators.as_ref() {
             None => None,
-            Some(next_gas_price) => {
-                match maybe_step_effects_and_upcoming_era_validators.as_ref() {
+            Some(effects_and_validators) => {
+                match effects_and_validators
+                    .upcoming_era_validators
+                    .get(&next_era_id)
+                    .cloned()
+                {
+                    Some(validators) => Some((validators, current_gas_price)),
                     None => None,
-                    Some(effects_and_validators) => {
-                        match effects_and_validators.upcoming_era_validators
-                            .get(&next_era_id).cloned() {
-                            Some(validators) => Some((validators, next_gas_price)),
-                            None => None,
-                        }
-                    }
                 }
             }
-        }
-    };
+        };
 
     let era_end = match (
         executable_block.era_report,
@@ -366,7 +357,7 @@ pub fn execute_finalized_block(
             inactive_validators,
             next_era_validator_weights,
             executable_block.rewards.unwrap_or_default(),
-            next_era_gas_price
+            next_era_gas_price,
         )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             return Err(BlockExecutionError::FailedToCreateEraEnd {

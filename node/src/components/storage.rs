@@ -1189,21 +1189,16 @@ impl Storage {
                 era_id,
                 block_height,
                 transaction_count,
-                responder
+                responder,
             } => {
                 match self.utilization_tracker.get_mut(&era_id) {
-                    None => {
-                        responder.respond(Some((transaction_count, 1u64))).ignore()
-                    }
+                    None => responder.respond(Some((transaction_count, 1u64))).ignore(),
                     Some(block_utilization) => {
                         // TODO: Check the possiblity of an accidental upsert here
                         block_utilization.insert(block_height, transaction_count);
-                        let raw_score = block_utilization
-                            .values()
-                            .sum();
+                        let raw_score = block_utilization.values().sum();
 
-                        let block_count = block_utilization
-                            .len() as u64;
+                        let block_count = block_utilization.len() as u64;
 
                         responder.respond(Some((raw_score, block_count))).ignore()
                     }
@@ -1279,12 +1274,7 @@ impl Storage {
                 // We shouldn't be tracking utilization for legacy blocks.
                 0u64
             }
-            BlockBody::V2(block_body) => {
-                block_body
-                    .all_transactions()
-                    .collect_vec()
-                    .len() as u64
-            }
+            BlockBody::V2(block_body) => block_body.all_transactions().collect_vec().len() as u64,
         };
 
         let era_id = block.era_id();

@@ -70,7 +70,7 @@ pub struct EraEndV2 {
     pub(super) next_era_validator_weights: BTreeMap<PublicKey, U512>,
     /// The rewards distributed to the validators.
     pub(super) rewards: BTreeMap<PublicKey, U512>,
-    pub(super) next_era_gas_price: u8
+    pub(super) next_era_gas_price: u8,
 }
 
 impl EraEndV2 {
@@ -108,7 +108,7 @@ impl EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
-            next_era_gas_price
+            next_era_gas_price,
         }
     }
 
@@ -170,7 +170,7 @@ impl ToBytes for EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
-            next_era_gas_price
+            next_era_gas_price,
         } = self;
 
         equivocators.write_bytes(writer)?;
@@ -194,7 +194,7 @@ impl ToBytes for EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
-            next_era_gas_price
+            next_era_gas_price,
         } = self;
 
         equivocators.serialized_length()
@@ -217,7 +217,7 @@ impl FromBytes for EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
-            next_era_gas_price
+            next_era_gas_price,
         };
 
         Ok((era_end, bytes))

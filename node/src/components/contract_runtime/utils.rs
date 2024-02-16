@@ -3,7 +3,8 @@ use crate::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionResults, ExecutionPreState, StepEffectsAndUpcomingEraValidators,
+        rewards, BlockAndExecutionResults, BlockExecutionError, ExecutionPreState,
+        StepEffectsAndUpcomingEraValidators,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
@@ -18,12 +19,13 @@ use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
 use casper_types::{Chainspec, EraId};
+use datasize::DataSize;
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
-use num_rational::Ratio;
 use tracing::{debug, error, info};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -78,16 +80,17 @@ pub(super) async fn exec_or_requeue<REv>(
     let protocol_version = chainspec.protocol_version();
     let activation_point = chainspec.protocol_config.activation_point;
     let prune_batch_size = chainspec.core_config.prune_batch_size;
-    let block_max_install_upgrade_count = chainspec.transaction_config.block_max_install_upgrade_count;
+    let block_max_install_upgrade_count =
+        chainspec.transaction_config.block_max_install_upgrade_count;
     let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
-    let block_max_transfer_count=     chainspec.transaction_config.block_max_transfer_count;
+    let block_max_transfer_count = chainspec.transaction_config.block_max_transfer_count;
     let block_max_staking_count = chainspec.transaction_config.block_max_staking_count;
     let go_up = chainspec.transaction_config.go_up;
     let go_down = chainspec.transaction_config.go_down;
     let max = chainspec.transaction_config.max;
     let min = chainspec.transaction_config.min;
     let is_era_end = executable_block.era_report.is_some();
-    if  is_era_end && executable_block.rewards.is_none() {
+    if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
@@ -116,22 +119,23 @@ pub(super) async fn exec_or_requeue<REv>(
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
-        let switch_block_transaction_hashes = executable_block
-            .transactions
-            .len() as u64;
+        let switch_block_transaction_hashes = executable_block.transactions.len() as u64;
 
         let maybe_utilization = effect_builder
             .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
             .await;
 
         match maybe_utilization {
-            None => None,
-            Some((utilization, block_count)) =>  {
+            None => {
+                let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
+                return fatal!(effect_builder, "{}", error).await;
+            }
+            Some((utilization, block_count)) => {
                 let per_block_capacity = {
                     block_max_install_upgrade_count
-                    + block_max_standard_count
-                    + block_max_transfer_count
-                    + block_max_staking_count
+                        + block_max_standard_count
+                        + block_max_transfer_count
+                        + block_max_staking_count
                 } as u64;
 
                 let era_score = {
@@ -140,7 +144,6 @@ pub(super) async fn exec_or_requeue<REv>(
                     Ratio::new(numerator, denominator).to_integer()
                 };
 
-
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
                     if current_gas_price > max {
@@ -148,21 +151,21 @@ pub(super) async fn exec_or_requeue<REv>(
                     } else {
                         new_gas_price
                     }
-                } else if  era_score < go_down {
+                } else if era_score < go_down {
                     let new_gas_price = current_gas_price - 1;
                     if current_gas_price <= min {
-                       min
+                        min
                     } else {
                         new_gas_price
                     }
                 } else {
                     current_gas_price
                 };
-                Some(new_gas_price)
+                new_gas_price
             }
         }
     } else {
-        None
+        current_gas_price
     };
 
     let BlockAndExecutionResults {
@@ -181,7 +184,7 @@ pub(super) async fn exec_or_requeue<REv>(
             activation_point.era_id(),
             key_block_height_for_activation_point,
             prune_batch_size,
-            maybe_next_era_gas_price
+            maybe_next_era_gas_price,
         )
     })
     .await
@@ -297,6 +300,12 @@ pub(super) async fn exec_or_requeue<REv>(
     // If the child is already finalized, start execution.
     let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
 
+    if is_era_end {
+        effect_builder
+            .announce_new_era_gas_price(current_era_id.successor(), maybe_next_era_gas_price)
+            .await;
+    }
+
     // We schedule the next block from the queue to be executed:
     if let Some(QueueItem {
         executable_block,
@@ -308,5 +317,29 @@ pub(super) async fn exec_or_requeue<REv>(
         effect_builder
             .enqueue_block_for_execution(executable_block, meta_block_state)
             .await;
+    }
+}
+
+#[derive(Clone, Copy, Ord, Eq, PartialOrd, PartialEq, DataSize)]
+pub(super) struct EraPrice {
+    era_id: EraId,
+    gas_price: u8,
+}
+
+impl EraPrice {
+    pub(super) fn new(era_id: EraId, gas_price: u8) -> Self {
+        Self { era_id, gas_price }
+    }
+
+    pub(super) fn gas_price(&self) -> u8 {
+        self.gas_price
+    }
+
+    pub(super) fn maybe_gas_price_for_era_id(&self, era_id: EraId) -> Option<u8> {
+        if self.era_id == era_id {
+            return Some(self.gas_price);
+        }
+
+        None
     }
 }

@@ -113,7 +113,5 @@ pub enum BlockExecutionError {
         TrackingCopyError,
     ),
     #[error("Failed to get new era gas price when executing switch block")]
-    FailedToGetNewEraGasPrice {
-        era_id: EraId
-    }
+    FailedToGetNewEraGasPrice { era_id: EraId },
 }

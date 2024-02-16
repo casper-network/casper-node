@@ -509,7 +509,7 @@ pub(crate) enum StorageRequest {
         block_height: u64,
         transaction_count: u64,
         responder: Responder<Option<(u64, u64)>>,
-    }
+    },
 }
 
 impl Display for StorageRequest {
@@ -668,10 +668,7 @@ impl Display for StorageRequest {
                 )
             }
             StorageRequest::GetBlockUtilizationScore { era_id, .. } => {
-                write!(
-                    formatter,
-                    "get utilization score for era {}", era_id
-                )
+                write!(formatter, "get utilization score for era {}", era_id)
             }
         }
     }
@@ -723,7 +720,9 @@ pub(crate) enum TransactionBufferRequest {
 impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionBufferRequest::GetAppendableBlock { timestamp, era_id, .. } => {
+            TransactionBufferRequest::GetAppendableBlock {
+                timestamp, era_id, ..
+            } => {
                 write!(
                     formatter,
                     "request for appendable block at instant {} for era {}",
@@ -975,6 +974,10 @@ pub(crate) enum ContractRuntimeRequest {
         /// Results
         responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
     },
+    GetEraGasPrice {
+        era_id: EraId,
+        responder: Responder<Option<u8>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -1055,6 +1058,9 @@ impl Display for ContractRuntimeRequest {
                     transaction.hash(),
                     execution_prestate.state_root_hash
                 )
+            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {
+                write!(formatter, "Get gas price for era {}", era_id)
             }
         }
     }

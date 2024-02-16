@@ -53,7 +53,7 @@ fn get_appendable_block(
     assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
 
     // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), EraId::new(1));
     assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit,);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
@@ -321,7 +321,7 @@ fn get_proposable_transactions() {
 
         // Check which transactions are proposable. Should return the transactions that were not
         // included in the block since those should be dead.
-        let proposable = transaction_buffer.proposable();
+        let proposable = transaction_buffer.proposable(1u8);
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> = proposable
             .iter()
@@ -332,7 +332,7 @@ fn get_proposable_transactions() {
         }
 
         // Get an appendable block. This should put the transactions on hold.
-        let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+        let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), EraId::new(1));
         assert_eq!(transaction_buffer.hold.len(), 1);
         assert_container_sizes(
             &transaction_buffer,
@@ -342,7 +342,7 @@ fn get_proposable_transactions() {
         );
 
         // Check that held blocks are not proposable
-        let proposable = transaction_buffer.proposable();
+        let proposable = transaction_buffer.proposable(1u8);
         assert_eq!(
             proposable.len(),
             transactions.len() - appendable_block.transaction_and_transfer_set().len()
@@ -474,6 +474,8 @@ fn register_transactions_and_blocks() {
     )
     .unwrap();
 
+    transaction_buffer.prices.insert(EraId::new(1), 1u8);
+
     // try to register valid transactions
     let num_valid_transactions: usize = rng.gen_range(50..500);
     let category = TransactionCategory::random(&mut rng);
@@ -525,7 +527,7 @@ fn register_transactions_and_blocks() {
     let pre_proposal_timestamp = Timestamp::now();
 
     // get an appendable block. This should put the transactions on hold.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), EraId::new(1));
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         &transaction_buffer,

@@ -96,7 +96,7 @@ pub(crate) struct ContractRuntime {
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
-    current_gas_price: u8
+    current_gas_price: u8,
 }
 
 impl Debug for ContractRuntime {
@@ -160,7 +160,7 @@ impl ContractRuntime {
             exec_queue: Default::default(),
             chainspec,
             data_access_layer,
-            current_gas_price
+            current_gas_price,
         })
     }
 
@@ -533,7 +533,7 @@ impl ContractRuntime {
                                 executable_block,
                                 key_block_height_for_activation_point,
                                 meta_block_state,
-                                current_gas_price
+                                current_gas_price,
                             )
                             .ignore(),
                         )
@@ -586,6 +586,9 @@ impl ContractRuntime {
                 } else {
                     unreachable!()
                 }
+            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => {
+                responder.respond(Some(self.current_gas_price)).ignore()
             }
         }
     }

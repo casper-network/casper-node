@@ -867,6 +867,21 @@ impl reactor::Reactor for MainReactor {
                 self.validator_matrix.register_eras(upcoming_era_validators);
                 Effects::new()
             }
+            MainEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::NextEraGasPrice {
+                    era_id,
+                    next_era_gas_price,
+                },
+            ) => {
+                info!(
+                    "New era gas price {} for era {}",
+                    next_era_gas_price, era_id
+                );
+                let reactor_event = MainEvent::TransactionBuffer(
+                    transaction_buffer::Event::UpdateEraGasPrice(era_id, next_era_gas_price),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
 
             MainEvent::TrieRequestIncoming(req) => reactor::wrap_effects(
                 MainEvent::ContractRuntime,
