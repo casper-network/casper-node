@@ -1,7 +1,6 @@
 use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
-    trie_store::operations::PruneResult,
 };
 use casper_types::{execution::Effects, Digest, EraId};
 
@@ -15,6 +14,7 @@ mod flush;
 mod genesis;
 pub mod get_bids;
 mod protocol_upgrade;
+pub mod prune;
 pub mod query;
 mod round_seigniorage;
 mod total_supply;
@@ -32,6 +32,7 @@ pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
 pub use get_bids::{BidsRequest, BidsResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
+pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
@@ -74,6 +75,15 @@ impl<S> DataAccessLayer<S> {
     }
 }
 
+impl<S> CommitProvider for DataAccessLayer<S>
+where
+    S: CommitProvider,
+{
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+        self.state.commit(state_hash, effects)
+    }
+}
+
 impl<S> StateProvider for DataAccessLayer<S>
 where
     S: StateProvider,
@@ -112,22 +122,5 @@ where
 
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {
         self.state.missing_children(trie_raw)
-    }
-
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_prune: &[casper_types::Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        self.state.prune_keys(root, keys_to_prune)
-    }
-}
-
-impl<S> CommitProvider for DataAccessLayer<S>
-where
-    S: CommitProvider,
-{
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
-        self.state.commit(state_hash, effects)
     }
 }

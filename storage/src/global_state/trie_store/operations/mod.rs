@@ -437,7 +437,7 @@ where
 #[derive(Debug, PartialEq, Eq)]
 pub enum PruneResult {
     Pruned(Digest),
-    DoesNotExist,
+    MissingKey,
     RootNotFound,
 }
 
@@ -482,7 +482,7 @@ where
                 );
                 key == *keys_to_prune
             } => {}
-        _ => return Ok(PruneResult::DoesNotExist),
+        _ => return Ok(PruneResult::MissingKey),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();

@@ -7,8 +7,8 @@ use casper_execution_engine::engine_state::{
     self,
     execution_result::{ExecutionResultAndMessages, ExecutionResults},
     step::EvictItem,
-    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig,
-    PruneResult, StepError, StepRequest, StepSuccess,
+    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+    PruneRequest, PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
     data_access_layer::{
@@ -281,7 +281,7 @@ pub fn execute_finalized_block(
                 last_key=?last_key,
                 "commit prune: preparing prune config"
             );
-            let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+            let prune_config = PruneRequest::new(state_root_hash, keys_to_prune);
             match engine_state.commit_prune(prune_config) {
                 Ok(PruneResult::RootNotFound) => {
                     error!(
@@ -294,7 +294,7 @@ pub fn execute_finalized_block(
                         state_root_hash
                     );
                 }
-                Ok(PruneResult::DoesNotExist) => {
+                Ok(PruneResult::MissingKey) => {
                     warn!(
                         previous_block_height,
                         %state_root_hash,
@@ -314,6 +314,10 @@ pub fn execute_finalized_block(
                         "commit prune: success"
                     );
                     state_root_hash = post_state_hash;
+                }
+                Ok(PruneResult::Failure(tce)) => {
+                    error!(?tce, "commit prune: failure");
+                    return Err(tce.into());
                 }
                 Err(error) => {
                     error!(

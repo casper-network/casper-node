@@ -5,10 +5,7 @@ mod error;
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
-mod prune;
 pub mod step;
-
-use itertools::Itertools;
 
 use std::{
     cell::RefCell,
@@ -26,9 +23,8 @@ use casper_storage::{
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
         transfer::TransferConfig,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        TransferRequest, TrieRequest,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, TransferRequest, TrieRequest,
     },
     global_state::{
         self,
@@ -37,7 +33,6 @@ use casper_storage::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         },
         trie::TrieRaw,
-        trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
     system::auction,
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
@@ -61,6 +56,12 @@ use casper_types::{
     PublicKey, RuntimeArgs, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
+use crate::{
+    engine_state::{execution_kind::ExecutionKind, execution_result::ExecutionResults},
+    execution::{self, DirectSystemContractCall, Executor},
+    runtime::RuntimeStack,
+};
+
 pub use self::{
     deploy_item::DeployItem,
     engine_config::{
@@ -71,15 +72,9 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    prune::{PruneConfig, PruneResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
 };
-
-use crate::{
-    engine_state::{execution_kind::ExecutionKind, execution_result::ExecutionResults},
-    execution::{self, DirectSystemContractCall, Executor},
-    runtime::RuntimeStack,
-};
+pub use casper_storage::data_access_layer::prune::{PruneRequest, PruneResult};
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -113,19 +108,6 @@ impl EngineState<ScratchGlobalState> {
 }
 
 impl EngineState<DataAccessLayer<LmdbGlobalState>> {
-    /// Gets underlyng LmdbGlobalState
-    pub fn get_state(&self) -> &DataAccessLayer<LmdbGlobalState> {
-        &self.state
-    }
-
-    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
-        if self.state.state().environment().is_manual_sync_enabled() {
-            self.state.state().environment().sync()?
-        }
-        Ok(())
-    }
-
     /// Provide a local cached-only version of engine-state.
     pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
         EngineState {
@@ -134,54 +116,14 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         }
     }
 
-    /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
-    pub fn write_scratch_to_db(
-        &self,
-        state_root_hash: Digest,
-        scratch_global_state: ScratchGlobalState,
-    ) -> Result<Digest, Error> {
-        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
-
-        let post_state_hash = self
-            .state
-            .state()
-            .put_stored_values(state_root_hash, stored_values)?;
-
-        if keys_to_prune.is_empty() {
-            return Ok(post_state_hash);
-        }
-        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
-        match self.state.state().prune_keys(post_state_hash, &prune_keys) {
-            Ok(result) => match result {
-                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
-                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
-                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
-            },
-            Err(err) => Err(err.into()),
-        }
-    }
-}
-
-impl EngineState<LmdbGlobalState> {
-    /// Gets underlying LmdbGlobalState
-    pub fn get_state(&self) -> &LmdbGlobalState {
+    /// Gets underlyng LmdbGlobalState
+    pub fn get_state(&self) -> &DataAccessLayer<LmdbGlobalState> {
         &self.state
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
-        match self.state.flush(FlushRequest::new()) {
-            FlushResult::ManualSyncDisabled | FlushResult::Success => Ok(()),
-            FlushResult::Failure(err) => Err(err),
-        }
-    }
-
-    /// Provide a local cached-only version of engine-state.
-    pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
-        EngineState {
-            config: self.config.clone(),
-            state: self.state.create_scratch(),
-        }
+        self.state.flush_environment()
     }
 
     /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
@@ -189,26 +131,9 @@ impl EngineState<LmdbGlobalState> {
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
-    ) -> Result<Digest, Error> {
-        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
-        let post_state_hash = match self.state.put_stored_values(state_root_hash, stored_values) {
-            Ok(root_hash) => root_hash,
-            Err(err) => {
-                return Err(err.into());
-            }
-        };
-        if keys_to_prune.is_empty() {
-            return Ok(post_state_hash);
-        }
-        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
-        match self.state.prune_keys(post_state_hash, &prune_keys) {
-            Ok(result) => match result {
-                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
-                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
-                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
-            },
-            Err(err) => Err(err.into()),
-        }
+    ) -> Result<Digest, global_state::error::Error> {
+        self.state
+            .write_scratch_to_db(state_root_hash, scratch_global_state)
     }
 }
 
@@ -254,8 +179,8 @@ where
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(&self, prune_config: PruneConfig) -> Result<PruneResult, Error> {
-        let pre_state_hash = prune_config.pre_state_hash();
+    pub fn commit_prune(&self, prune_config: PruneRequest) -> Result<PruneResult, Error> {
+        let pre_state_hash = prune_config.state_hash();
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
         // list of keys is empty.

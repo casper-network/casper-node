@@ -18,7 +18,7 @@ use casper_execution_engine::engine_state::{
     execute_request::ExecuteRequest,
     execution_result::ExecutionResult,
     step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneConfig, PruneResult, StepError,
+    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneRequest, PruneResult, StepError,
     DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
@@ -1612,7 +1612,7 @@ where
     }
 
     /// Commits a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
+    pub fn commit_prune(&mut self, prune_config: PruneRequest) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
         if let Ok(PruneResult::Success {
@@ -1645,7 +1645,10 @@ where
         let prune_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
         match prune_result {
             PruneResult::RootNotFound => panic!("Root not found"),
-            PruneResult::DoesNotExist => panic!("Does not exists"),
+            PruneResult::MissingKey => panic!("Does not exists"),
+            PruneResult::Failure(tce) => {
+                panic!("{:?}", tce);
+            }
             PruneResult::Success { .. } => {}
         }
 

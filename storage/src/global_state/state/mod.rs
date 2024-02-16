@@ -33,16 +33,19 @@ use crate::{
         AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BalanceResult,
         BidsRequest, BidsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
         ExecutionResultsChecksumResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PutTrieRequest, PutTrieResult, QueryRequest,
-        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
+        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::{
-            operations::{prune, read, write, ReadResult, WriteResult},
+            operations::{
+                prune, read, write, PruneResult as OpPruneResult, ReadResult, WriteResult,
+            },
             TrieStore,
         },
     },
@@ -56,8 +59,6 @@ use crate::{
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
-
-use super::trie_store::operations::PruneResult;
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -361,6 +362,39 @@ pub trait CommitProvider: StateProvider {
 
     fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
         unimplemented!()
+    }
+
+    /// Safely prune specified keys from global state, using a tracking copy.
+    fn prune(&self, request: PruneRequest) -> PruneResult {
+        let pre_state_hash = request.state_hash();
+        let tc = match self.tracking_copy(pre_state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return PruneResult::RootNotFound,
+            Err(err) => return PruneResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let keys_to_delete = request.keys_to_prune();
+        if keys_to_delete.is_empty() {
+            // effectively a noop
+            return PruneResult::Success {
+                post_state_hash: pre_state_hash,
+                effects: Effects::default(),
+            };
+        }
+
+        for key in keys_to_delete {
+            tc.borrow_mut().prune(*key)
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(pre_state_hash, effects.clone()) {
+            Ok(post_state_hash) => PruneResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(tce) => PruneResult::Failure(tce.into()),
+        }
     }
 }
 
@@ -743,13 +777,6 @@ pub trait StateProvider {
 
     /// Finds all the children of `trie_raw` which aren't present in the state.
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
-
-    /// Prunes key from the global state.
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
@@ -885,13 +912,13 @@ where
                 let prune_result = prune::<_, _, _, _, E>(&mut txn, store, &state_root, &key)?;
 
                 match prune_result {
-                    PruneResult::Pruned(root_hash) => {
+                    OpPruneResult::Pruned(root_hash) => {
                         state_root = root_hash;
                     }
-                    PruneResult::DoesNotExist => {
+                    OpPruneResult::MissingKey => {
                         warn!("commit: pruning attempt failed for {}", key);
                     }
-                    PruneResult::RootNotFound => {
+                    OpPruneResult::RootNotFound => {
                         error!(?state_root, ?key, "commit: root not found");
                         return Err(CommitError::WriteRootNotFound(state_root).into());
                     }

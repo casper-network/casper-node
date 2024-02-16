@@ -3,6 +3,33 @@ use casper_types::{Digest, Key, StoredValue, URef, U512};
 
 use crate::{global_state::trie::merkle_proof::TrieMerkleProof, tracking_copy::TrackingCopyError};
 
+/// Represents a balance request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BalanceRequest {
+    state_hash: Digest,
+    purse_uref: URef,
+}
+
+impl BalanceRequest {
+    /// Creates a new [`BalanceRequest`].
+    pub fn new(state_hash: Digest, purse_uref: URef) -> Self {
+        BalanceRequest {
+            state_hash,
+            purse_uref,
+        }
+    }
+
+    /// Returns a state hash.
+    pub fn state_hash(&self) -> Digest {
+        self.state_hash
+    }
+
+    /// Returns a purse [`URef`].
+    pub fn purse_uref(&self) -> URef {
+        self.purse_uref
+    }
+}
+
 /// Result enum that represents all possible outcomes of a balance request.
 #[derive(Debug)]
 pub enum BalanceResult {
@@ -33,32 +60,5 @@ impl BalanceResult {
             BalanceResult::Success { proof, .. } => Some(*proof),
             _ => None,
         }
-    }
-}
-
-/// Represents a balance request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BalanceRequest {
-    state_hash: Digest,
-    purse_uref: URef,
-}
-
-impl BalanceRequest {
-    /// Creates a new [`BalanceRequest`].
-    pub fn new(state_hash: Digest, purse_uref: URef) -> Self {
-        BalanceRequest {
-            state_hash,
-            purse_uref,
-        }
-    }
-
-    /// Returns a state hash.
-    pub fn state_hash(&self) -> Digest {
-        self.state_hash
-    }
-
-    /// Returns a purse [`URef`].
-    pub fn purse_uref(&self) -> URef {
-        self.purse_uref
     }
 }

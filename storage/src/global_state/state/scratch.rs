@@ -27,8 +27,7 @@ use crate::{
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-                PruneResult, ReadResult,
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
             },
         },
     },
@@ -418,30 +417,6 @@ impl StateProvider for ScratchGlobalState {
         >(&txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
-    }
-
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        for key in keys_to_delete {
-            let prune_result = prune::<Key, StoredValue, _, _, GlobalStateError>(
-                &mut txn,
-                self.trie_store.deref(),
-                &state_root_hash,
-                key,
-            );
-            match prune_result? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
-                }
-                other => return Ok(other),
-            }
-        }
-        txn.commit()?;
-        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 

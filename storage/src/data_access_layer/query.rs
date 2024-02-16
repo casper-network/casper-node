@@ -6,24 +6,6 @@ use crate::{
     tracking_copy::{TrackingCopyError, TrackingCopyQueryResult},
 };
 
-/// Result of a global state query request.
-#[derive(Debug)]
-pub enum QueryResult {
-    /// Invalid state root hash.
-    RootNotFound,
-    /// Value not found.
-    ValueNotFound(String),
-    /// Successful query.
-    Success {
-        /// Stored value under a path.
-        value: Box<StoredValue>,
-        /// Merkle proof of the query.
-        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
-    },
-    /// Tracking Copy Error
-    Failure(TrackingCopyError),
-}
-
 /// Request for a global state query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryRequest {
@@ -75,4 +57,22 @@ impl From<TrackingCopyQueryResult> for QueryResult {
             TrackingCopyQueryResult::RootNotFound => QueryResult::RootNotFound,
         }
     }
+}
+
+/// Result of a global state query request.
+#[derive(Debug)]
+pub enum QueryResult {
+    /// Invalid state root hash.
+    RootNotFound,
+    /// Value not found.
+    ValueNotFound(String),
+    /// Successful query.
+    Success {
+        /// Stored value under a path.
+        value: Box<StoredValue>,
+        /// Merkle proof of the query.
+        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
+    },
+    /// Tracking Copy Error
+    Failure(TrackingCopyError),
 }
