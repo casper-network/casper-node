@@ -43,7 +43,7 @@ fn get_appendable_block(
     transaction_limit: usize,
 ) {
     let transactions: Vec<_> = categories
-        .take(transaction_limit + 50)
+        .take(transaction_limit)
         .into_iter()
         .map(|category| create_valid_transaction(rng, category, None, None))
         .collect();
@@ -54,7 +54,7 @@ fn get_appendable_block(
 
     // now check how many transfers were added in the block; should not exceed the config limits.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
-    assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit,);
+    assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         transaction_buffer,
@@ -378,7 +378,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
             &mut rng,
             &mut transaction_buffer,
             std::iter::repeat_with(|| category),
-            transaction_config.block_max_transfer_count as usize,
+            transaction_config.block_max_transfer_count as usize + 50,
         );
     }
 }
@@ -407,7 +407,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         ]
         .iter()
         .cycle(),
-        transaction_config.block_max_transfer_count as usize,
+        transaction_config.block_max_transfer_count as usize + 50,
     );
 }
 
@@ -433,7 +433,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
             &mut rng,
             &mut transaction_buffer,
             std::iter::repeat_with(|| category),
-            transaction_config.block_max_standard_count as usize,
+            transaction_config.block_max_standard_count as usize + 50,
         );
     }
 }
@@ -460,8 +460,474 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         ]
         .iter()
         .cycle(),
-        transaction_config.block_max_standard_count as usize,
+        transaction_config.block_max_standard_count as usize + 5,
     );
+}
+
+#[test]
+fn block_fully_saturated() {
+    let mut rng = TestRng::new();
+
+    let max_transfers = rng.gen_range(0..20);
+    let max_staking = rng.gen_range(0..20);
+    let max_install_upgrade = rng.gen_range(0..20);
+    let max_standard = rng.gen_range(0..20);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Try to register 10 more transactions per each category as allowed by the config.
+    let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        max_transfers + 10,
+        max_staking + 10,
+        max_install_upgrade + 10,
+        max_standard + 10,
+        &mut rng,
+    );
+    let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
+        transfers
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        stakings
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        install_upgrades
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        standards
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+    );
+
+    // Check that we really generated the required number of transactions.
+    assert_eq!(
+        transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
+        total_allowed as usize + 10 * 4
+    );
+
+    // Ensure that only 'total_allowed' transactions are proposed.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert_eq!(
+        appendable_block.transaction_and_transfer_set().len(),
+        total_allowed as usize
+    );
+
+    // Assert the number of proposed transaction types, block should be fully saturated.
+    let mut proposed_transfers = 0;
+    let mut proposed_stakings = 0;
+    let mut proposed_install_upgrades = 0;
+    let mut proposed_standards = 0;
+    appendable_block
+        .transaction_and_transfer_set()
+        .iter()
+        .for_each(|transaction_hash| {
+            if transfers_hashes.contains(transaction_hash) {
+                proposed_transfers += 1;
+            } else if stakings_hashes.contains(transaction_hash) {
+                proposed_stakings += 1;
+            } else if install_upgrades_hashes.contains(transaction_hash) {
+                proposed_install_upgrades += 1;
+            } else if standards_hashes.contains(transaction_hash) {
+                proposed_standards += 1;
+            }
+        });
+    assert_eq!(proposed_transfers, max_transfers);
+    assert_eq!(proposed_stakings, max_staking);
+    assert_eq!(proposed_install_upgrades, max_install_upgrade);
+    assert_eq!(proposed_standards, max_standard);
+}
+
+#[test]
+fn block_not_fully_saturated() {
+    let mut rng = TestRng::new();
+
+    const MIN_COUNT: u32 = 10;
+
+    let max_transfers = rng.gen_range(MIN_COUNT..20);
+    let max_staking = rng.gen_range(MIN_COUNT..20);
+    let max_install_upgrade = rng.gen_range(MIN_COUNT..20);
+    let max_standard = rng.gen_range(MIN_COUNT..20);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Try to register less than max capacity per each category as allowed by the config.
+    let actual_transfer_count = rng.gen_range(0..MIN_COUNT - 1);
+    let actual_stakings_count = rng.gen_range(0..MIN_COUNT - 1);
+    let actual_install_upgrade_count = rng.gen_range(0..MIN_COUNT - 1);
+    let actual_standard_count = rng.gen_range(0..MIN_COUNT - 1);
+    let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        actual_transfer_count,
+        actual_stakings_count,
+        actual_install_upgrade_count,
+        actual_standard_count,
+        &mut rng,
+    );
+    let (transfers_hashes, stakings_hashes, install_upgrades_hashes, standards_hashes) = (
+        transfers
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        stakings
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        install_upgrades
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+        standards
+            .iter()
+            .map(|transaction| transaction.hash())
+            .collect_vec(),
+    );
+
+    // Check that we really generated the required number of transactions.
+    assert_eq!(
+        transfers.len() + stakings.len() + install_upgrades.len() + standards.len(),
+        actual_transfer_count as usize
+            + actual_stakings_count as usize
+            + actual_install_upgrade_count as usize
+            + actual_standard_count as usize
+    );
+
+    // Ensure that not more than 'total_allowed' transactions are proposed.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert!(appendable_block.transaction_and_transfer_set().len() <= total_allowed as usize);
+
+    // Assert the number of proposed transaction types, block should be fully saturated.
+    let mut proposed_transfers = 0;
+    let mut proposed_stakings = 0;
+    let mut proposed_install_upgrades = 0;
+    let mut proposed_standards = 0;
+    appendable_block
+        .transaction_and_transfer_set()
+        .iter()
+        .for_each(|transaction_hash| {
+            if transfers_hashes.contains(transaction_hash) {
+                proposed_transfers += 1;
+            } else if stakings_hashes.contains(transaction_hash) {
+                proposed_stakings += 1;
+            } else if install_upgrades_hashes.contains(transaction_hash) {
+                proposed_install_upgrades += 1;
+            } else if standards_hashes.contains(transaction_hash) {
+                proposed_standards += 1;
+            }
+        });
+    assert_eq!(proposed_transfers, actual_transfer_count);
+    assert_eq!(proposed_stakings, actual_stakings_count);
+    assert_eq!(proposed_install_upgrades, actual_install_upgrade_count);
+    assert_eq!(proposed_standards, actual_standard_count);
+}
+
+#[test]
+fn excess_transactions_do_not_sneak_into_transfer_bucket() {
+    let mut rng = TestRng::new();
+
+    const MAX: u32 = 20;
+
+    let max_transfers = rng.gen_range(2..MAX);
+    let max_staking = rng.gen_range(2..MAX);
+    let max_install_upgrade = rng.gen_range(2..MAX);
+    let max_standard = rng.gen_range(2..MAX);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Saturate all buckets but transfers.
+    let (transfers, _, _, _) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        max_transfers - 1,
+        MAX * 3,
+        MAX * 3,
+        MAX * 3,
+        &mut rng,
+    );
+    let hashes_in_non_saturated_bucket: Vec<_> = transfers
+        .iter()
+        .map(|transaction| transaction.hash())
+        .collect();
+
+    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
+    // "transfers" bucket is still available.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert_eq!(
+        appendable_block.transaction_and_transfer_set().len(),
+        total_allowed as usize - 1
+    );
+
+    // Ensure, that it is indeed the "transfers" bucket that is not fully saturated.
+    assert_bucket(
+        appendable_block,
+        &hashes_in_non_saturated_bucket,
+        max_transfers - 1,
+    );
+}
+
+#[test]
+fn excess_transactions_do_not_sneak_into_staking_bucket() {
+    let mut rng = TestRng::new();
+
+    const MAX: u32 = 20;
+
+    let max_transfers = rng.gen_range(2..MAX);
+    let max_staking = rng.gen_range(2..MAX);
+    let max_install_upgrade = rng.gen_range(2..MAX);
+    let max_standard = rng.gen_range(2..MAX);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Saturate all buckets but stakings.
+    let (_, stakings, _, _) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        MAX * 3,
+        max_staking - 1,
+        MAX * 3,
+        MAX * 3,
+        &mut rng,
+    );
+    let hashes_in_non_saturated_bucket: Vec<_> = stakings
+        .iter()
+        .map(|transaction| transaction.hash())
+        .collect();
+
+    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
+    // "stakings" bucket is still available.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert_eq!(
+        appendable_block.transaction_and_transfer_set().len(),
+        total_allowed as usize - 1
+    );
+
+    // Ensure, that it is indeed the "stakings" bucket that is not fully saturated.
+    assert_bucket(
+        appendable_block,
+        &hashes_in_non_saturated_bucket,
+        max_staking - 1,
+    );
+}
+
+#[test]
+fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
+    let mut rng = TestRng::new();
+
+    const MAX: u32 = 20;
+
+    let max_transfers = rng.gen_range(2..MAX);
+    let max_staking = rng.gen_range(2..MAX);
+    let max_install_upgrade = rng.gen_range(2..MAX);
+    let max_standard = rng.gen_range(2..MAX);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Saturate all buckets but install_upgrades.
+    let (_, _, install_upgrades, _) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        MAX * 3,
+        MAX * 3,
+        max_install_upgrade - 1,
+        MAX * 3,
+        &mut rng,
+    );
+    let hashes_in_non_saturated_bucket: Vec<_> = install_upgrades
+        .iter()
+        .map(|transaction| transaction.hash())
+        .collect();
+
+    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
+    // "install_upgrades" bucket is still available.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert_eq!(
+        appendable_block.transaction_and_transfer_set().len(),
+        total_allowed as usize - 1
+    );
+
+    // Ensure, that it is indeed the "install_upgrades" bucket that is not fully saturated.
+    assert_bucket(
+        appendable_block,
+        &hashes_in_non_saturated_bucket,
+        max_install_upgrade - 1,
+    );
+}
+
+#[test]
+fn excess_transactions_do_not_sneak_into_standards_bucket() {
+    let mut rng = TestRng::new();
+
+    const MAX: u32 = 20;
+
+    let max_transfers = rng.gen_range(2..MAX);
+    let max_staking = rng.gen_range(2..MAX);
+    let max_install_upgrade = rng.gen_range(2..MAX);
+    let max_standard = rng.gen_range(2..MAX);
+
+    let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
+
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: max_transfers,
+        block_max_staking_count: max_staking,
+        block_max_install_upgrade_count: max_install_upgrade,
+        block_max_standard_count: max_standard,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+    let mut transaction_buffer =
+        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
+    // Saturate all buckets but standards.
+    let (_, _, _, standards) = generate_and_register_transactions(
+        &mut transaction_buffer,
+        MAX * 3,
+        MAX * 3,
+        MAX * 3,
+        max_standard - 1,
+        &mut rng,
+    );
+    let hashes_in_non_saturated_bucket: Vec<_> = standards
+        .iter()
+        .map(|transaction| transaction.hash())
+        .collect();
+
+    // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
+    // "standards" bucket is still available.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert_eq!(
+        appendable_block.transaction_and_transfer_set().len(),
+        total_allowed as usize - 1
+    );
+
+    // Ensure, that it is indeed the "standards" bucket that is not fully saturated.
+    assert_bucket(
+        appendable_block,
+        &hashes_in_non_saturated_bucket,
+        max_standard - 1,
+    );
+}
+
+fn assert_bucket(
+    appendable_block: AppendableBlock,
+    hashes_in_non_saturated_bucket: &[TransactionHash],
+    expected: u32,
+) {
+    let mut proposed = 0;
+    appendable_block
+        .transaction_and_transfer_set()
+        .iter()
+        .for_each(|transaction_hash| {
+            if hashes_in_non_saturated_bucket.contains(transaction_hash) {
+                proposed += 1;
+            }
+        });
+    assert_eq!(proposed, expected);
+}
+
+fn generate_and_register_transactions(
+    transaction_buffer: &mut TransactionBuffer,
+    transfer_count: u32,
+    stakings_count: u32,
+    install_upgrade_count: u32,
+    standard_count: u32,
+    rng: &mut TestRng,
+) -> (
+    Vec<Transaction>,
+    Vec<Transaction>,
+    Vec<Transaction>,
+    Vec<Transaction>,
+) {
+    let transfers: Vec<_> = (0..transfer_count)
+        .map(|_| {
+            let category = if rng.gen() {
+                TransactionCategory::Transfer
+            } else {
+                TransactionCategory::TransferLegacy
+            };
+            create_valid_transaction(rng, &category, None, None)
+        })
+        .collect();
+    let stakings: Vec<_> = (0..stakings_count)
+        .map(|_| create_valid_transaction(rng, &TransactionCategory::Staking, None, None))
+        .collect();
+    let installs_upgrades: Vec<_> = (0..install_upgrade_count)
+        .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
+        .collect();
+    let standards: Vec<_> = (0..standard_count)
+        .map(|_| {
+            let category = if rng.gen() {
+                TransactionCategory::Standard
+            } else {
+                TransactionCategory::StandardLegacy
+            };
+            create_valid_transaction(rng, &category, None, None)
+        })
+        .collect();
+    transfers
+        .iter()
+        .chain(
+            stakings
+                .iter()
+                .chain(installs_upgrades.iter().chain(standards.iter())),
+        )
+        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+
+    (transfers, stakings, installs_upgrades, standards)
 }
 
 #[test]
