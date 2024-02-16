@@ -36,6 +36,9 @@ pub struct StateStore {
     pub value: Vec<u8>,
 }
 
+pub struct Tip;
+pub struct LatestSwitchBlock;
+
 pub type BlockHeight = u64;
 pub type SwitchBlockHeader = BlockHeader;
 pub type SwitchBlock = Block;

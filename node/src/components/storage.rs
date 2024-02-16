@@ -43,10 +43,9 @@ use casper_storage::block_store::{
     lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
-        StateStore, TransactionFinalizedApprovals,
+        LatestSwitchBlock, StateStore, Tip, TransactionFinalizedApprovals,
     },
     BlockStoreError, BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
-    LatestSwitchBlock, Tip,
 };
 
 use std::{

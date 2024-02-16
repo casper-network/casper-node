@@ -14,10 +14,10 @@ use tracing::info;
 
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::{
-    block_provider::{BlockStoreTransaction, DataReader, DataWriter, LatestSwitchBlock, Tip},
+    block_provider::{BlockStoreTransaction, DataReader, DataWriter},
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
-        StateStore, TransactionFinalizedApprovals,
+        LatestSwitchBlock, StateStore, Tip, TransactionFinalizedApprovals,
     },
     BlockStoreError, BlockStoreProvider,
 };

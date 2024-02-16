@@ -21,15 +21,12 @@ pub trait BlockStoreTransaction {
     fn rollback(self);
 }
 
-pub struct Tip;
-pub struct LatestSwitchBlock;
-
 pub trait DataReader<K, T> {
     fn read(&self, key: K) -> Result<Option<T>, BlockStoreError>;
     fn exists(&mut self, key: K) -> Result<bool, BlockStoreError>;
 }
 
-pub trait DataWriter<Key, Data> {
-    fn write(&mut self, data: &Data) -> Result<Key, BlockStoreError>;
-    fn delete(&mut self, key: Key) -> Result<(), BlockStoreError>;
+pub trait DataWriter<K, T> {
+    fn write(&mut self, data: &T) -> Result<K, BlockStoreError>;
+    fn delete(&mut self, key: K) -> Result<(), BlockStoreError>;
 }
