@@ -4,8 +4,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{PruneRequest, PruneResult};
-use casper_storage::global_state::state::{CommitProvider, StateProvider};
+use casper_storage::{
+    data_access_layer::{PruneRequest, PruneResult},
+    global_state::state::{CommitProvider, StateProvider},
+};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
@@ -45,7 +47,7 @@ fn gh_3710_commit_prune_should_validate_state_root_hash() {
     assert!(builder.get_prune_result(1).is_none());
 
     assert!(
-        matches!(prune_result, Ok(PruneResult::RootNotFound)),
+        matches!(prune_result, PruneResult::RootNotFound),
         "{:?}",
         prune_result
     );
@@ -163,7 +165,7 @@ where
             .with_next_era_id(era_counter)
             // no rewards as default validator is not a validator yet
             .build();
-        builder.step(step_request).unwrap();
+        builder.step(step_request);
     }
 }
 
@@ -175,15 +177,13 @@ fn distribute_rewards<S>(
 ) where
     S: StateProvider + CommitProvider,
 {
-    builder
-        .distribute(
-            None,
-            ProtocolVersion::V1_0_0,
-            &IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
-            block_height,
-            0,
-        )
-        .unwrap();
+    builder.distribute(
+        None,
+        ProtocolVersion::V1_0_0,
+        IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
+        block_height,
+        0,
+    );
 }
 
 #[ignore]

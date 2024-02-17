@@ -213,15 +213,19 @@ fn should_distribute_accumulated_fees_to_admins() {
         .expect("should have admin account");
     let admin_balance_before = builder.get_purse_balance(admin.main_purse());
 
-    builder
-        .distribute(
-            None,
-            *DEFAULT_PROTOCOL_VERSION,
-            &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
-            1,
-            DEFAULT_BLOCK_TIME,
-        )
-        .expect("should distribute");
+    assert!(
+        builder
+            .distribute(
+                None,
+                *DEFAULT_PROTOCOL_VERSION,
+                IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))])
+                    .collect(),
+                1,
+                DEFAULT_BLOCK_TIME,
+            )
+            .is_success(),
+        "should distribute"
+    );
 
     let accumulated_purse_balance_after_distribute = builder.get_purse_balance(accumulation_purse);
 

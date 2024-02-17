@@ -3575,10 +3575,10 @@ fn should_enforce_minimum_delegation_amount() {
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
-
-        builder
-            .step(step_request)
-            .expect("must execute step request");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step request"
+        );
     }
 
     let delegation_request_1 = ExecuteRequestBuilder::standard(
@@ -3671,9 +3671,10 @@ fn should_allow_delegations_with_minimal_floor_amount() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step request");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step request"
+        );
     }
 
     let delegation_request_1 = ExecuteRequestBuilder::standard(
@@ -3796,9 +3797,10 @@ fn should_enforce_max_delegators_per_validator_cap() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step request");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step request"
+        );
     }
 
     let delegation_request_1 = ExecuteRequestBuilder::standard(
@@ -4279,9 +4281,10 @@ fn should_increase_existing_delegation_when_limit_exceeded() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step request");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step request"
+        );
     }
 
     let delegation_request_1 = ExecuteRequestBuilder::standard(

@@ -2,13 +2,13 @@
 //!
 //! A step request executes auction code, slashes validators, evicts validators and distributes
 //! rewards.
+
 use std::vec::Vec;
+use thiserror::Error;
 
-use casper_types::{
-    bytesrepr, execution::Effects, CLValueError, Digest, EraId, ProtocolVersion, PublicKey,
-};
+use casper_types::{execution::Effects, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
 
-use crate::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow};
+use crate::{global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError};
 
 /// The definition of a slash item.
 #[derive(Debug, Clone)]
@@ -61,32 +61,32 @@ impl EvictItem {
 #[derive(Debug)]
 pub struct StepRequest {
     /// State root hash.
-    pub pre_state_hash: Digest,
+    state_hash: Digest,
     /// Protocol version for this request.
-    pub protocol_version: ProtocolVersion,
+    protocol_version: ProtocolVersion,
     /// List of validators to be slashed.
     ///
     /// A slashed validator is removed from the next validator set.
-    pub slash_items: Vec<SlashItem>,
+    slash_items: Vec<SlashItem>,
     /// List of validators to be evicted.
     ///
     /// Compared to a slashing, evictions are deactivating a given validator, but his stake is
     /// unchanged. A further re-activation is possible.
-    pub evict_items: Vec<EvictItem>,
+    evict_items: Vec<EvictItem>,
     /// Specifies which era validators will be returned based on `next_era_id`.
     ///
     /// Intended use is to always specify the current era id + 1 which will return computed era at
     /// the end of this step request.
-    pub next_era_id: EraId,
+    next_era_id: EraId,
     /// Timestamp in milliseconds representing end of the current era.
-    pub era_end_timestamp_millis: u64,
+    era_end_timestamp_millis: u64,
 }
 
 impl StepRequest {
     /// Creates new step request.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pre_state_hash: Digest,
+        state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
         evict_items: Vec<EvictItem>,
@@ -94,7 +94,7 @@ impl StepRequest {
         era_end_timestamp_millis: u64,
     ) -> Self {
         Self {
-            pre_state_hash,
+            state_hash,
             protocol_version,
             slash_items,
             evict_items,
@@ -110,72 +110,87 @@ impl StepRequest {
             .map(|si| si.validator_id.clone())
             .collect()
     }
+
+    /// Returns pre_state_hash.
+    pub fn state_hash(&self) -> Digest {
+        self.state_hash
+    }
+
+    /// Returns protocol_version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns slash_items.
+    pub fn slash_items(&self) -> &Vec<SlashItem> {
+        &self.slash_items
+    }
+
+    /// Returns evict_items.
+    pub fn evict_items(&self) -> &Vec<EvictItem> {
+        &self.evict_items
+    }
+    /// Returns next_era_id.
+    pub fn next_era_id(&self) -> EraId {
+        self.next_era_id
+    }
+
+    /// Returns era_end_timestamp_millis.
+    pub fn era_end_timestamp_millis(&self) -> u64 {
+        self.era_end_timestamp_millis
+    }
 }
 
 /// Representation of all possible failures of a step request.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Error, Debug)]
 pub enum StepError {
-    /// Invalid state root hash.
-    #[error("Root not found: {0:?}")]
-    RootNotFound(Digest),
-    #[error("Get contract error: {0}")]
-    /// Error getting a system contract.
-    GetContractError(Error),
-    /// Error retrieving a system module.
-    #[error("Get system module error: {0}")]
-    GetSystemModuleError(Error),
+    /// Error using the auction contract.
+    #[error("Auction error")]
+    Auction,
     /// Error executing a slashing operation.
-    #[error("Slashing error: {0}")]
-    SlashingError(Error),
-    /// Error executing the auction contract.
-    #[error("Auction error: {0}")]
-    AuctionError(Error),
-    /// Error executing a distribute operation.
-    #[error("Distribute error: {0}")]
-    DistributeError(Error),
-    /// Error executing a distribute accumulated fees operation.
-    #[error("Distribute accumulated fees error: {0}")]
-    DistributeAccumulatedFeesError(Error),
-    /// Invalid protocol version.
-    #[error("Invalid protocol version: {0}")]
-    InvalidProtocolVersion(ProtocolVersion),
-    /// Error while (de)serializing data.
+    #[error("Slashing error")]
+    SlashingError,
+    /// Tracking copy error.
     #[error("{0}")]
-    BytesRepr(bytesrepr::Error),
-    /// Error converting `CLValue`.
-    #[error("{0}")]
-    CLValueError(CLValueError),
-    #[error("Other engine state error: {0}")]
-    /// Other engine state error.
-    OtherEngineStateError(#[from] Error),
-    /// Execution error.
-    #[error(transparent)]
-    ExecutionError(#[from] execution::Error),
+    TrackingCopy(TrackingCopyError),
 }
 
-impl From<bytesrepr::Error> for StepError {
-    fn from(error: bytesrepr::Error) -> Self {
-        StepError::BytesRepr(error)
+impl From<TrackingCopyError> for StepError {
+    fn from(tce: TrackingCopyError) -> Self {
+        Self::TrackingCopy(tce)
+    }
+}
+
+impl From<GlobalStateError> for StepError {
+    fn from(gse: GlobalStateError) -> Self {
+        Self::TrackingCopy(TrackingCopyError::Storage(gse))
     }
 }
 
 impl From<CLValueError> for StepError {
-    fn from(error: CLValueError) -> Self {
-        StepError::CLValueError(error)
+    fn from(cve: CLValueError) -> Self {
+        StepError::TrackingCopy(TrackingCopyError::CLValue(cve))
     }
 }
 
-impl From<RuntimeStackOverflow> for StepError {
-    fn from(overflow: RuntimeStackOverflow) -> Self {
-        StepError::OtherEngineStateError(Error::from(overflow))
-    }
-}
-
-/// Represents a successfully executed step request.
+/// Outcome of running step process.
 #[derive(Debug)]
-pub struct StepSuccess {
-    /// New state root hash generated after effects were applied.
-    pub post_state_hash: Digest,
-    /// Effects of executing a step request.
-    pub effects: Effects,
+pub enum StepResult {
+    /// Global state root not found.
+    RootNotFound,
+    /// Step process ran successfully.
+    Success {
+        /// State hash after step outcome is committed to the global state.
+        post_state_hash: Digest,
+        /// Effects of the step process.
+        effects: Effects,
+    },
+    /// Failed to upgrade protocol.
+    Failure(StepError),
+}
+
+impl StepResult {
+    pub fn is_success(&self) -> bool {
+        matches!(self, StepResult::Success { .. })
+    }
 }

@@ -1,7 +1,4 @@
-use casper_execution_engine::engine_state::{
-    step::{EvictItem, RewardItem, SlashItem},
-    StepRequest,
-};
+use casper_storage::data_access_layer::{EvictItem, RewardItem, SlashItem, StepRequest};
 use casper_types::{Digest, EraId, ProtocolVersion};
 
 /// Builder for creating a [`StepRequest`].

@@ -6,14 +6,13 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::engine_state::{
     self,
     execution_result::{ExecutionResultAndMessages, ExecutionResults},
-    step::EvictItem,
     DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-    PruneRequest, PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
     data_access_layer::{
-        transfer::TransferConfig, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
-        TransferRequest,
+        transfer::TransferConfig, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
+        EraValidatorsRequest, EraValidatorsResult, EvictItem, PruneRequest, PruneResult,
+        StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider, StateReader},
 };
@@ -86,13 +85,24 @@ pub fn execute_finalized_block(
 
     // Pay out block rewards
     if let Some(rewards) = &executable_block.rewards {
-        state_root_hash = scratch_state.distribute_block_rewards(
+        let distribute_req = BlockRewardsRequest::new(
             state_root_hash,
             protocol_version,
-            rewards,
+            rewards.clone(),
             next_block_height,
             block_time,
-        )?;
+        );
+        state_root_hash = match scratch_state.commit_block_rewards(distribute_req) {
+            BlockRewardsResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            BlockRewardsResult::Failure(err) => {
+                return Err(BlockExecutionError::DistributeBlockRewards(err))
+            }
+            BlockRewardsResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
+        };
     }
 
     for transaction in executable_block.transactions {
@@ -210,10 +220,7 @@ pub fn execute_finalized_block(
     let maybe_step_effects_and_upcoming_era_validators = if let Some(era_report) =
         &executable_block.era_report
     {
-        let StepSuccess {
-            post_state_hash: _, // ignore the post-state-hash returned from scratch
-            effects: step_effects,
-        } = commit_step(
+        let step_effects = match commit_step(
             &scratch_state, // engine_state
             metrics,
             protocol_version,
@@ -221,7 +228,13 @@ pub fn execute_finalized_block(
             era_report.clone(),
             executable_block.timestamp.millis(),
             executable_block.era_id.successor(),
-        )?;
+        ) {
+            StepResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
+            StepResult::Success { effects, .. } => effects,
+        };
 
         state_root_hash =
             engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
@@ -281,9 +294,9 @@ pub fn execute_finalized_block(
                 last_key=?last_key,
                 "commit prune: preparing prune config"
             );
-            let prune_config = PruneRequest::new(state_root_hash, keys_to_prune);
-            match engine_state.commit_prune(prune_config) {
-                Ok(PruneResult::RootNotFound) => {
+            let request = PruneRequest::new(state_root_hash, keys_to_prune);
+            match engine_state.commit_prune(request) {
+                PruneResult::RootNotFound => {
                     error!(
                         previous_block_height,
                         %state_root_hash,
@@ -294,16 +307,16 @@ pub fn execute_finalized_block(
                         state_root_hash
                     );
                 }
-                Ok(PruneResult::MissingKey) => {
+                PruneResult::MissingKey => {
                     warn!(
                         previous_block_height,
                         %state_root_hash,
                         "commit prune: key does not exist"
                     );
                 }
-                Ok(PruneResult::Success {
+                PruneResult::Success {
                     post_state_hash, ..
-                }) => {
+                } => {
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,
@@ -315,18 +328,9 @@ pub fn execute_finalized_block(
                     );
                     state_root_hash = post_state_hash;
                 }
-                Ok(PruneResult::Failure(tce)) => {
+                PruneResult::Failure(tce) => {
                     error!(?tce, "commit prune: failure");
                     return Err(tce.into());
-                }
-                Err(error) => {
-                    error!(
-                        previous_block_height,
-                        %key_block_height_for_activation_point,
-                        %error,
-                        "commit prune: commit prune error"
-                    );
-                    return Err(error.into());
                 }
             }
         }
@@ -563,14 +567,14 @@ fn commit_step<S>(
     engine_state: &EngineState<S>,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
-    pre_state_root_hash: Digest,
+    state_hash: Digest,
     InternalEraReport {
         equivocators,
         inactive_validators,
     }: InternalEraReport,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
-) -> Result<StepSuccess, StepError>
+) -> StepResult
 where
     S: StateProvider + CommitProvider,
 {
@@ -581,17 +585,16 @@ where
         .map(EvictItem::new)
         .collect();
 
-    let step_request = StepRequest {
-        pre_state_hash: pre_state_root_hash,
+    let step_request = StepRequest::new(
+        state_hash,
         protocol_version,
-        // Note: The Casper Network does not slash, but another network could
-        slash_items: vec![],
+        vec![], // <-- casper mainnet currently does not slash
         evict_items,
         next_era_id,
         era_end_timestamp_millis,
-    };
+    );
 
-    // Have the EE commit the step.
+    // Commit the step.
     let start = Instant::now();
     let result = engine_state.commit_step(step_request);
     if let Some(metrics) = maybe_metrics {

@@ -8,6 +8,7 @@ use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
 pub mod balance;
+pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
 mod flush;
@@ -17,12 +18,14 @@ mod protocol_upgrade;
 pub mod prune;
 pub mod query;
 mod round_seigniorage;
+pub mod step;
 mod total_supply;
 pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
+pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
@@ -35,6 +38,7 @@ pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
+pub use step::{EvictItem, RewardItem, SlashItem, StepError, StepRequest, StepResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};

@@ -5,13 +5,8 @@ mod error;
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
-pub mod step;
 
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
@@ -20,11 +15,15 @@ use tracing::{debug, error, trace, warn};
 use casper_storage::{
     data_access_layer::{
         balance::BalanceResult,
+        block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult},
         get_bids::{BidsRequest, BidsResult},
+        prune::{PruneRequest, PruneResult},
         query::{QueryRequest, QueryResult},
+        step::StepRequest,
         transfer::TransferConfig,
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, TransferRequest, TrieRequest,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, StepError, StepResult, TransferRequest,
+        TrieRequest,
     },
     global_state::{
         self,
@@ -72,9 +71,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
 };
-pub use casper_storage::data_access_layer::prune::{PruneRequest, PruneResult};
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -156,6 +153,14 @@ where
         self.config = new_config
     }
 
+    /// Creates a new tracking copy instance.
+    pub fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
+        self.state.tracking_copy(hash)
+    }
+
     /// Commits genesis process.
     ///
     /// This process is run only once per network to initiate the system. By definition users are
@@ -179,48 +184,301 @@ where
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(&self, prune_config: PruneRequest) -> Result<PruneResult, Error> {
-        let pre_state_hash = prune_config.state_hash();
-
-        // Validate the state root hash just to make sure we can safely short circuit in case the
-        // list of keys is empty.
-        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
-            None => return Ok(PruneResult::RootNotFound),
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-        };
-
-        let keys_to_delete = prune_config.keys_to_prune();
-        if keys_to_delete.is_empty() {
-            // effectively a noop
-            return Ok(PruneResult::Success {
-                post_state_hash: pre_state_hash,
-                effects: Effects::default(),
-            });
-        }
-
-        for key in keys_to_delete {
-            tracking_copy.borrow_mut().prune(*key)
-        }
-
-        let effects = tracking_copy.borrow().effects();
-
-        let post_state_hash = self
-            .state
-            .commit(pre_state_hash, effects.clone())
-            .map_err(Into::<execution::Error>::into)?;
-
-        Ok(PruneResult::Success {
-            post_state_hash,
-            effects,
-        })
+    pub fn commit_prune(&self, request: PruneRequest) -> PruneResult {
+        self.state.prune(request)
     }
 
-    /// Creates a new tracking copy instance.
-    pub fn tracking_copy(
+    /// Executes a step request.
+    pub fn commit_step(&self, request: StepRequest) -> StepResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return StepResult::RootNotFound,
+            Err(gse) => return StepResult::Failure(gse.into()),
+        };
+
+        let executor = Executor::new(self.config().clone());
+
+        let system_account_addr = PublicKey::System.to_account_hash();
+
+        let protocol_version = request.protocol_version();
+
+        let system_addressable_entity = match tc
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
+        {
+            Ok(entity) => entity,
+            Err(tce) => return StepResult::Failure(tce.into()),
+        };
+
+        let authorization_keys = {
+            let mut ret = BTreeSet::new();
+            ret.insert(system_account_addr);
+            ret
+        };
+
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+        let deploy_hash = {
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = match request.era_end_timestamp_millis().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return StepResult::Failure(StepError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut request.next_era_id().into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return StepResult::Failure(StepError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            DeployHash::new(Digest::hash(&bytes))
+        };
+
+        let slashed_validators: Vec<PublicKey> = request.slashed_validators();
+
+        if !slashed_validators.is_empty() {
+            let slash_args = {
+                let mut runtime_args = RuntimeArgs::new();
+                if let Err(cve) = runtime_args.insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
+                {
+                    return StepResult::Failure(cve.into());
+                }
+                runtime_args
+            };
+
+            let slash_stack = self.get_new_system_call_stack();
+            let system_account_hash = PublicKey::System.to_account_hash();
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::Slash,
+                    slash_args,
+                    &system_addressable_entity,
+                    EntityKind::Account(system_account_hash),
+                    authorization_keys.clone(),
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    request.protocol_version(),
+                    Rc::clone(&tc),
+                    Phase::Session,
+                    slash_stack,
+                    // No transfer should occur when slashing.
+                    U512::zero(),
+                );
+
+            if execution_result.take_error().is_some() {
+                return StepResult::Failure(StepError::SlashingError);
+            }
+        }
+
+        let run_auction_args = match RuntimeArgs::try_new(|args| {
+            args.insert(
+                ARG_ERA_END_TIMESTAMP_MILLIS,
+                request.era_end_timestamp_millis(),
+            )?;
+            args.insert(
+                ARG_EVICTED_VALIDATORS,
+                request
+                    .evict_items()
+                    .iter()
+                    .map(|item| item.validator_id.clone())
+                    .collect::<Vec<PublicKey>>(),
+            )?;
+            Ok(())
+        }) {
+            Ok(args) => args,
+            Err(cve) => return StepResult::Failure(cve.into()),
+        };
+
+        let run_auction_stack = self.get_new_system_call_stack();
+        let system_account_hash = PublicKey::System.to_account_hash();
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
+            DirectSystemContractCall::RunAuction,
+            run_auction_args,
+            &system_addressable_entity,
+            EntityKind::Account(system_account_hash),
+            authorization_keys,
+            system_account_hash,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            request.protocol_version(),
+            Rc::clone(&tc),
+            Phase::Session,
+            run_auction_stack,
+            // RunAuction should not consume tokens.
+            U512::zero(),
+        );
+
+        if execution_result.take_error().is_some() {
+            return StepResult::Failure(StepError::Auction);
+        }
+
+        let effects = tc.borrow().effects();
+
+        // commit
+        match self.state.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => StepResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => StepResult::Failure(gse.into()),
+        }
+    }
+
+    /// Distribute block rewards.
+    pub fn commit_block_rewards(&self, request: BlockRewardsRequest) -> BlockRewardsResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return BlockRewardsResult::RootNotFound,
+            Err(gse) => {
+                return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                    TrackingCopyError::Storage(gse),
+                ))
+            }
+        };
+
+        let executor = Executor::new(self.config().clone());
+        let protocol_version = request.protocol_version();
+        let virtual_system_contract_by_account = {
+            let system_account_addr = PublicKey::System.to_account_hash();
+
+            match tc
+                .borrow_mut()
+                .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
+            {
+                Ok(entity) => entity,
+                Err(tce) => {
+                    return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(tce))
+                }
+            }
+        };
+
+        let authorization_keys = {
+            let mut ret = BTreeSet::new();
+            ret.insert(PublicKey::System.to_account_hash());
+            ret
+        };
+
+        let gas_limit = Gas::new(U512::from(std::u64::MAX));
+
+        let deploy_hash = {
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = match request.time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut request.next_block_height().into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+            DeployHash::new(Digest::hash(&bytes))
+        };
+
+        let system_account_hash = PublicKey::System.to_account_hash();
+
+        {
+            let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeAccumulatedFees,
+                    RuntimeArgs::default(),
+                    &virtual_system_contract_by_account,
+                    EntityKind::Account(system_account_hash),
+                    authorization_keys.clone(),
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tc),
+                    Phase::Session,
+                    distribute_accumulated_fees_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
+
+            if execution_result.take_error().is_some() {
+                return BlockRewardsResult::Failure(BlockRewardsError::UndistributedFees);
+            }
+        }
+
+        {
+            let mut runtime_args = RuntimeArgs::new();
+            if let Err(cve) = runtime_args.insert(ARG_REWARDS_MAP, request.rewards()) {
+                return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                    TrackingCopyError::CLValue(cve),
+                ));
+            }
+            let distribute_rewards_stack = self.get_new_system_call_stack();
+
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeRewards,
+                    runtime_args,
+                    &virtual_system_contract_by_account,
+                    EntityKind::Account(system_account_hash),
+                    authorization_keys,
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tc),
+                    Phase::Session,
+                    distribute_rewards_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
+
+            if execution_result.take_error().is_some() {
+                return BlockRewardsResult::Failure(BlockRewardsError::UndistributedRewards);
+            }
+        }
+
+        let effects = tc.borrow().effects();
+
+        // commit
+        match self.state.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => BlockRewardsResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                TrackingCopyError::Storage(gse),
+            )),
+        }
+    }
+
+    /// Commit effects of the execution.
+    ///
+    /// This method has to be run after an execution has been made to persists the effects of it.
+    ///
+    /// Returns new state root hash.
+    pub fn commit_effects(
         &self,
-        hash: Digest,
-    ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
-        self.state.tracking_copy(hash)
+        pre_state_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, Error> {
+        self.state
+            .commit(pre_state_hash, effects)
+            .map_err(|err| Error::Exec(err.into()))
     }
 
     /// Executes a query.
@@ -631,7 +889,7 @@ where
                 .cloned()
                 .unwrap_or(Error::InsufficientPayment);
 
-            match ExecutionResult::new_payment_code_error(
+            return match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
@@ -639,9 +897,9 @@ where
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
-                Ok(execution_result) => return Ok(execution_result),
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            }
+                Ok(execution_result) => Ok(execution_result),
+                Err(error) => Ok(ExecutionResult::precondition_failure(error)),
+            };
         }
 
         let payment_result_cost = payment_result.cost();
@@ -720,7 +978,7 @@ where
                 }
             };
 
-            match ExecutionResult::new_payment_code_error(
+            return match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
@@ -728,9 +986,9 @@ where
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
-                Ok(execution_result) => return Ok(execution_result),
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            }
+                Ok(execution_result) => Ok(execution_result),
+                Err(error) => Ok(ExecutionResult::precondition_failure(error)),
+            };
         };
 
         // Transfer the contents of the rewards purse to block proposer
@@ -817,7 +1075,7 @@ where
                 .cloned()
                 .unwrap_or(Error::InsufficientPayment);
 
-            match ExecutionResult::new_payment_code_error(
+            return match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
@@ -825,9 +1083,9 @@ where
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
-                Ok(execution_result) => return Ok(execution_result),
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            }
+                Ok(execution_result) => Ok(execution_result),
+                Err(error) => Ok(ExecutionResult::precondition_failure(error)),
+            };
         }
 
         let post_session_rc = if session_result.is_failure() {
@@ -1003,21 +1261,6 @@ where
         }
     }
 
-    /// Commit effects of the execution.
-    ///
-    /// This method has to be run after an execution has been made to persists the effects of it.
-    ///
-    /// Returns new state root hash.
-    pub fn commit_effects(
-        &self,
-        pre_state_hash: Digest,
-        effects: Effects,
-    ) -> Result<Digest, Error> {
-        self.state
-            .commit(pre_state_hash, effects)
-            .map_err(|err| Error::Exec(err.into()))
-    }
-
     /// Gets a trie object for given state root hash.
     pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error> {
         let req = TrieRequest::new(trie_key, None);
@@ -1122,239 +1365,6 @@ where
             }
         }
         BidsResult::Success { bids }
-    }
-
-    /// Distribute block rewards.
-    pub fn distribute_block_rewards(
-        &self,
-        pre_state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        rewards: &BTreeMap<PublicKey, U512>,
-        next_block_height: u64,
-        time: u64,
-    ) -> Result<Digest, StepError> {
-        let tracking_copy = match self.tracking_copy(pre_state_hash) {
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
-            Err(error) => return Err(StepError::OtherEngineStateError(error.into())),
-        };
-
-        let executor = Executor::new(self.config().clone());
-
-        let virtual_system_contract_by_account = {
-            let system_account_addr = PublicKey::System.to_account_hash();
-
-            tracking_copy
-                .borrow_mut()
-                .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
-                .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?
-        };
-
-        let authorization_keys = {
-            let mut ret = BTreeSet::new();
-            ret.insert(PublicKey::System.to_account_hash());
-            ret
-        };
-
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
-
-        let deploy_hash = {
-            // seeds address generator w/ era_end_timestamp_millis
-            let mut bytes = time.into_bytes()?;
-            bytes.append(&mut next_block_height.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes))
-        };
-
-        let system_account_hash = PublicKey::System.to_account_hash();
-
-        {
-            let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
-            let (_, execution_result): (Option<()>, ExecutionResult) = executor
-                .call_system_contract(
-                    DirectSystemContractCall::DistributeAccumulatedFees,
-                    RuntimeArgs::default(),
-                    &virtual_system_contract_by_account,
-                    EntityKind::Account(system_account_hash),
-                    authorization_keys.clone(),
-                    system_account_hash,
-                    BlockTime::default(),
-                    deploy_hash,
-                    gas_limit,
-                    protocol_version,
-                    Rc::clone(&tracking_copy),
-                    Phase::Session,
-                    distribute_accumulated_fees_stack,
-                    // There should be no tokens transferred during rewards distribution.
-                    U512::zero(),
-                );
-
-            if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::DistributeAccumulatedFeesError(exec_error));
-            }
-        }
-
-        {
-            let mut runtime_args = RuntimeArgs::new();
-            runtime_args.insert(ARG_REWARDS_MAP, rewards)?;
-            let distribute_rewards_stack = self.get_new_system_call_stack();
-
-            let (_, execution_result): (Option<()>, ExecutionResult) = executor
-                .call_system_contract(
-                    DirectSystemContractCall::DistributeRewards,
-                    runtime_args,
-                    &virtual_system_contract_by_account,
-                    EntityKind::Account(system_account_hash),
-                    authorization_keys,
-                    system_account_hash,
-                    BlockTime::default(),
-                    deploy_hash,
-                    gas_limit,
-                    protocol_version,
-                    Rc::clone(&tracking_copy),
-                    Phase::Session,
-                    distribute_rewards_stack,
-                    // There should be no tokens transferred during rewards distribution.
-                    U512::zero(),
-                );
-
-            if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::DistributeError(exec_error));
-            }
-        }
-
-        let effects = tracking_copy.borrow().effects();
-
-        // commit
-        let post_state_hash = self
-            .state
-            .commit(pre_state_hash, effects)
-            .map_err(Into::<Error>::into)?;
-
-        Ok(post_state_hash)
-    }
-
-    /// Executes a step request.
-    pub fn commit_step(&self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
-        let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
-            Err(error) => return Err(StepError::OtherEngineStateError(error.into())),
-        };
-
-        let executor = Executor::new(self.config().clone());
-
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let protocol_version = step_request.protocol_version;
-
-        let system_addressable_entity = tracking_copy
-            .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
-            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?;
-
-        let authorization_keys = {
-            let mut ret = BTreeSet::new();
-            ret.insert(system_account_addr);
-            ret
-        };
-
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
-        let deploy_hash = {
-            // seeds address generator w/ era_end_timestamp_millis
-            let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
-            bytes.append(&mut step_request.next_era_id.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes))
-        };
-
-        let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
-
-        if !slashed_validators.is_empty() {
-            let slash_args = {
-                let mut runtime_args = RuntimeArgs::new();
-                runtime_args
-                    .insert(ARG_VALIDATOR_PUBLIC_KEYS, slashed_validators)
-                    .map_err(|e| Error::Exec(e.into()))?;
-                runtime_args
-            };
-
-            let slash_stack = self.get_new_system_call_stack();
-            let system_account_hash = PublicKey::System.to_account_hash();
-            let (_, execution_result): (Option<()>, ExecutionResult) = executor
-                .call_system_contract(
-                    DirectSystemContractCall::Slash,
-                    slash_args,
-                    &system_addressable_entity,
-                    EntityKind::Account(system_account_hash),
-                    authorization_keys.clone(),
-                    system_account_hash,
-                    BlockTime::default(),
-                    deploy_hash,
-                    gas_limit,
-                    step_request.protocol_version,
-                    Rc::clone(&tracking_copy),
-                    Phase::Session,
-                    slash_stack,
-                    // No transfer should occur when slashing.
-                    U512::zero(),
-                );
-
-            if let Some(exec_error) = execution_result.take_error() {
-                return Err(StepError::SlashingError(exec_error));
-            }
-        }
-
-        let run_auction_args = RuntimeArgs::try_new(|args| {
-            args.insert(
-                ARG_ERA_END_TIMESTAMP_MILLIS,
-                step_request.era_end_timestamp_millis,
-            )?;
-            args.insert(
-                ARG_EVICTED_VALIDATORS,
-                step_request
-                    .evict_items
-                    .iter()
-                    .map(|item| item.validator_id.clone())
-                    .collect::<Vec<PublicKey>>(),
-            )?;
-            Ok(())
-        })?;
-
-        let run_auction_stack = self.get_new_system_call_stack();
-        let system_account_hash = PublicKey::System.to_account_hash();
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::RunAuction,
-            run_auction_args,
-            &system_addressable_entity,
-            EntityKind::Account(system_account_hash),
-            authorization_keys,
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            step_request.protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            run_auction_stack,
-            // RunAuction should not consume tokens.
-            U512::zero(),
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::AuctionError(exec_error));
-        }
-
-        let effects = tracking_copy.borrow().effects();
-
-        // commit
-        let post_state_hash = self
-            .state
-            .commit(step_request.pre_state_hash, effects.clone())
-            .map_err(Into::<Error>::into)?;
-
-        Ok(StepSuccess {
-            post_state_hash,
-            effects,
-        })
     }
 
     /// Gets the balance of a given public key.

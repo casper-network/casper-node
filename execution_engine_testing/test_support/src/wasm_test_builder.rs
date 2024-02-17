@@ -15,17 +15,15 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_execution_engine::engine_state::{
-    execute_request::ExecuteRequest,
-    execution_result::ExecutionResult,
-    step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneRequest, PruneResult, StepError,
-    DEFAULT_MAX_QUERY_DEPTH,
+    execute_request::ExecuteRequest, execution_result::ExecutionResult, EngineConfig,
+    EngineConfigBuilder, EngineState, Error, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
-        BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, QueryRequest, QueryResult,
+        BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, StepRequest, StepResult,
     },
     global_state::{
         state::{
@@ -119,7 +117,7 @@ pub struct WasmTestBuilder<S> {
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<ProtocolUpgradeResult>,
-    prune_results: Vec<Result<PruneResult, Error>>,
+    prune_results: Vec<PruneResult>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
@@ -555,9 +553,15 @@ impl LmdbWasmTestBuilder {
             .as_ref()
             .expect("scratch state should exist");
 
-        cached_state
-            .commit_step(step_request)
-            .expect("unable to run step request against scratch global state");
+        match cached_state.commit_step(step_request) {
+            StepResult::RootNotFound => {
+                panic!("Root not found")
+            }
+            StepResult::Failure(err) => {
+                panic!("{:?}", err)
+            }
+            StepResult::Success { .. } => {}
+        }
         self
     }
 }
@@ -863,14 +867,14 @@ where
     }
 
     /// Increments engine state.
-    pub fn step(&mut self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
+    pub fn step(&mut self, step_request: StepRequest) -> StepResult {
         let step_result = self.engine_state.commit_step(step_request);
 
-        if let Ok(StepSuccess {
+        if let StepResult::Success {
             post_state_hash, ..
-        }) = &step_result
+        } = step_result
         {
-            self.post_state_hash = Some(*post_state_hash);
+            self.post_state_hash = Some(post_state_hash);
         }
 
         step_result
@@ -881,22 +885,29 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        rewards: &BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
-    ) -> Result<Digest, StepError> {
+    ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let post_state_hash = self.engine_state.distribute_block_rewards(
+        let distribute_req = BlockRewardsRequest::new(
             pre_state_hash,
             protocol_version,
             rewards,
             next_block_height,
             time,
-        )?;
+        );
+        let distribute_block_rewards_result =
+            self.engine_state.commit_block_rewards(distribute_req);
 
-        self.post_state_hash = Some(post_state_hash);
+        if let BlockRewardsResult::Success {
+            post_state_hash, ..
+        } = distribute_block_rewards_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
 
-        Ok(post_state_hash)
+        distribute_block_rewards_result
     }
 
     /// Expects a successful run
@@ -1562,14 +1573,20 @@ where
             .with_run_auction(true);
 
         for _ in 0..num_eras {
+            let state_hash = self.get_post_state_hash();
             let step_request = step_request_builder
                 .clone()
-                .with_parent_state_hash(self.get_post_state_hash())
+                .with_parent_state_hash(state_hash)
                 .with_next_era_id(self.get_era().successor())
                 .build();
 
-            self.step(step_request)
-                .expect("failed to execute step request");
+            match self.step(step_request) {
+                StepResult::RootNotFound => panic!("Root not found {:?}", state_hash),
+                StepResult::Failure(err) => panic!("{:?}", err),
+                StepResult::Success { .. } => {
+                    // noop
+                }
+            }
         }
     }
 
@@ -1615,10 +1632,10 @@ where
     pub fn commit_prune(&mut self, prune_config: PruneRequest) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success {
+        if let PruneResult::Success {
             post_state_hash,
             effects,
-        }) = &result
+        } = &result
         {
             self.post_state_hash = Some(*post_state_hash);
             self.effects.push(effects.clone());
@@ -1629,7 +1646,7 @@ where
     }
 
     /// Returns a `Result` containing a [`PruneResult`].
-    pub fn get_prune_result(&self, index: usize) -> Option<&Result<PruneResult, Error>> {
+    pub fn get_prune_result(&self, index: usize) -> Option<&PruneResult> {
         self.prune_results.get(index)
     }
 
@@ -1639,11 +1656,9 @@ where
         let result = self
             .prune_results
             .last()
-            .expect("Expected to be called after a system upgrade.")
-            .as_ref();
+            .expect("Expected to be called after a system upgrade.");
 
-        let prune_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
-        match prune_result {
+        match result {
             PruneResult::RootNotFound => panic!("Root not found"),
             PruneResult::MissingKey => panic!("Does not exists"),
             PruneResult::Failure(tce) => {

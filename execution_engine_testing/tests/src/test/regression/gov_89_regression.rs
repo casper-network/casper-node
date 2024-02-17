@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::engine_state::{SlashItem, StepSuccess};
+use casper_storage::data_access_layer::{SlashItem, StepResult};
 use casper_types::{
     execution::TransformKind,
     system::auction::{
@@ -98,9 +98,12 @@ fn should_not_create_any_purse() {
         bids_before_slashing
     );
 
-    let StepSuccess {
-        effects: effects_1, ..
-    } = builder.step(step_request_1).expect("should execute step");
+    let effects_1 = match builder.step(step_request_1) {
+        StepResult::RootNotFound | StepResult::Failure(_) => {
+            panic!("step_request_1: failed to run step")
+        }
+        StepResult::Success { effects, .. } => effects,
+    };
 
     assert!(
         builder
@@ -150,9 +153,12 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_2.as_millis().try_into().unwrap())
         .build();
 
-    let StepSuccess {
-        effects: effects_2, ..
-    } = builder.step(step_request_2).expect("should execute step");
+    let effects_2 = match builder.step(step_request_2) {
+        StepResult::RootNotFound | StepResult::Failure(_) => {
+            panic!("step_request_2: failed to step")
+        }
+        StepResult::Success { effects, .. } => effects,
+    };
 
     let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
@@ -161,7 +167,7 @@ fn should_not_create_any_purse() {
         .iter()
         .filter_map(|transform| match transform.kind() {
             TransformKind::Write(StoredValue::CLValue(cl_value))
-                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
+                if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())
             }
@@ -176,7 +182,7 @@ fn should_not_create_any_purse() {
         .iter()
         .filter_map(|transform| match transform.kind() {
             TransformKind::Write(StoredValue::CLValue(cl_value))
-                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
+                if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())
             }

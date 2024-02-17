@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{Error as EngineStateError, StepError};
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
-    global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
+    data_access_layer::{BlockRewardsError, StepError},
+    global_state::error::Error as GlobalStateError,
+    tracking_copy::TrackingCopyError,
 };
 use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
 
@@ -74,6 +76,12 @@ pub enum BlockExecutionError {
         #[from]
         #[serde(skip_serializing)]
         StepError,
+    ),
+    #[error(transparent)]
+    DistributeBlockRewards(
+        #[from]
+        #[serde(skip_serializing)]
+        BlockRewardsError,
     ),
     /// Failed to compute the approvals checksum.
     #[error("failed to compute approvals checksum: {0}")]

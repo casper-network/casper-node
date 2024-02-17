@@ -35,8 +35,8 @@ use crate::{
         ExecutionResultsChecksumResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
         PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        RoundSeigniorageRateResult, StepRequest, StepResult, TotalSupplyRequest, TotalSupplyResult,
+        TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -360,7 +360,7 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
-    fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
+    fn staking(&self, _bid_request: BiddingRequest) -> BiddingResult {
         unimplemented!()
     }
 
@@ -395,6 +395,10 @@ pub trait CommitProvider: StateProvider {
             },
             Err(tce) => PruneResult::Failure(tce.into()),
         }
+    }
+
+    fn step(&self, _request: StepRequest) -> StepResult {
+        StepResult::RootNotFound
     }
 }
 
