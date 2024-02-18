@@ -7,7 +7,7 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    net::{IpAddr, SocketAddr},
+    net::SocketAddr,
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -23,7 +23,7 @@ use tokio::{
 use tracing::{
     debug, error, error_span,
     field::{self, Empty},
-    trace, warn, Instrument, Span,
+    info, trace, warn, Instrument, Span,
 };
 
 use crate::{
@@ -76,7 +76,7 @@ struct ConManState {
     /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
     ///
     /// This is strictly used by outgoing connections.
-    address_book: HashMap<IpAddr, AddressBookEntry>,
+    address_book: HashMap<SocketAddr, AddressBookEntry>,
     /// The current route per node ID.
     ///
     /// An entry in this table indicates an established connection to a peer. Every entry in this
@@ -190,7 +190,8 @@ impl ConMan {
                 match listener.accept().await {
                     Ok((stream, peer_addr)) => {
                         // The span setup is used throughout the entire lifetime of the connection.
-                        let span = error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty, task_id=Empty);
+                        let span =
+                            error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty);
 
                         tokio::spawn(
                             server_shutdown
@@ -223,6 +224,7 @@ impl ConMan {
             }
         };
 
+        // Do we need double spawn here? Could just .await?
         tokio::spawn(shutdown.inner().clone().cancellable(server).map(|_| ()));
 
         Self { ctx, shutdown }
@@ -230,9 +232,48 @@ impl ConMan {
 }
 
 impl ConManContext {
-    /// Informs about a new address.
-    fn learn_address(&self, peer_address: SocketAddr) {
-        todo!()
+    /// Informs the system about a potentially new address.
+    ///
+    /// Does a preliminary check whether or not a new outgoing handler should be spawn for the
+    /// supplied `peer_address`. These checks are performed on a read lock to avoid write lock
+    /// contention, but repeated by the spawned handler (if any are spawned) afterwards to avoid
+    /// race conditions.
+    fn learn_address(&self, peer_addr: SocketAddr, now: Instant, shutdown: ObservableFuse) {
+        // We have been informed of a new address. Find out if it is truly new.
+        trace!(%peer_addr, "learned about address");
+
+        {
+            let guard = self.state.read().expect("lock poisoned");
+
+            match guard.address_book.get(&peer_addr) {
+                Some(AddressBookEntry::Connecting) => {
+                    // There already exists a handler attempting to connect, exit.
+                    trace!(%peer_addr, "discarding peer address, already has outgoing handler");
+                    return;
+                }
+                Some(AddressBookEntry::Outgoing { remote }) => {
+                    // We are already connected, no need to anything further.
+                    trace!(%peer_addr, %remote, "discarding peer address, already has outgoing connection");
+                    return;
+                }
+                Some(AddressBookEntry::BackOff { until }) if now <= *until => {
+                    trace!("ignoring learned address due to back-off timer");
+                    return;
+                }
+
+                Some(AddressBookEntry::BackOff { .. }) | None => {
+                    // The backoff has expired or the address is unknown.
+                }
+            }
+        }
+
+        // Our initial check whether or not we can connect was succesful, spawn a handler.
+        let span = error_span!("outgoing", %peer_addr, peer_id=Empty, consensus_key=Empty);
+        tokio::spawn(
+            shutdown
+                .cancellable(OutgoingHandler::spawn_new(peer_addr))
+                .instrument(span),
+        );
     }
 
     /// Sets up an instance of the [`juliet`] protocol on a transport returned.
@@ -305,6 +346,7 @@ impl IncomingHandler {
             Span::current().record("consensus_key", &field::display(public_key));
         }
 
+        let now = Instant::now();
         if we_should_be_outgoing(our_id, peer_id) {
             // The connection is supposed to be outgoing from our perspective.
             debug!("closing low-ranking incoming connection");
@@ -315,7 +357,7 @@ impl IncomingHandler {
             drop(handshake_outcome);
 
             // Note: This is the original "Magic Mike" functionality.
-            ctx.learn_address(public_addr);
+            ctx.learn_address(public_addr, now, shutdown.clone());
 
             return;
         }
@@ -329,7 +371,6 @@ impl IncomingHandler {
         let mut guard = ctx.state.write().expect("lock poisoned");
 
         // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
-        let now = Instant::now();
         if let Some(entry) = guard.is_still_banned(&peer_id, now) {
             debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
             // TODO: Send a proper error using RPC client/server here (requires
@@ -367,6 +408,7 @@ impl IncomingHandler {
         // We can release the lock here.
         drop(guard);
 
+        info!("now connected via incoming connection");
         tokio::spawn(shutdown.cancellable(us.run(rpc_server)).instrument(span));
     }
 
@@ -383,11 +425,11 @@ impl IncomingHandler {
                 }
                 Ok(None) => {
                     // The connection was closed. Not an issue, the peer should reconnect to us.
-                    debug!("regular close of incoming connection");
+                    info!("lost incoming connection");
                     return;
                 }
                 Err(err) => {
-                    // TODO: this should not be a warning, downgrade to debug before shipping
+                    // TODO: this should not be a warning, downgrade to info before shipping
                     warn!(%err, "closing incoming connection due to error");
                     return;
                 }
@@ -402,8 +444,6 @@ impl Drop for IncomingHandler {
         let mut guard = self.ctx.state.write().expect("lock poisoned");
         match guard.routing_table.remove(&self.peer_id) {
             Some(_) => {
-                debug!("expecting peer to reconnect");
-
                 // TODO: Do we need to shut down the juliet clients? Likely not, if the server is
                 //       shut down? In other words, verify that if the `juliet` server has shut
                 //       down, all the clients are invalidated.
@@ -423,6 +463,17 @@ impl Debug for ConManContext {
             .field("rpc_builder", &"...")
             .field("state", &self.state)
             .finish()
+    }
+}
+
+#[derive(Debug)]
+struct OutgoingHandler {}
+
+impl OutgoingHandler {
+    // TODO: Span, cancellation token?
+    async fn spawn_new(peer_address: SocketAddr) {
+        debug!("spawning new outgoign handler");
+        todo!()
     }
 }
 
