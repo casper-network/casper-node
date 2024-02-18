@@ -236,7 +236,12 @@ impl ConManContext {
     /// supplied `peer_address`. These checks are performed on a read lock to avoid write lock
     /// contention, but repeated by the spawned handler (if any are spawned) afterwards to avoid
     /// race conditions.
-    fn learn_address(&self, peer_addr: SocketAddr, now: Instant, shutdown: ObservableFuse) {
+    fn learn_address(
+        self: Arc<Self>,
+        peer_addr: SocketAddr,
+        now: Instant,
+        shutdown: ObservableFuse,
+    ) {
         // We have been informed of a new address. Find out if it is truly new.
         trace!(%peer_addr, "learned about address");
 
@@ -269,7 +274,7 @@ impl ConManContext {
         let span = error_span!("outgoing", %peer_addr, peer_id=Empty, consensus_key=Empty);
         tokio::spawn(
             shutdown
-                .cancellable(OutgoingHandler::spawn_new(peer_addr))
+                .cancellable(OutgoingHandler::spawn_new(self, peer_addr))
                 .instrument(span),
         );
     }
@@ -360,49 +365,46 @@ impl IncomingHandler {
         // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC
         // transport, which we will need regardless to send errors.
         let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
+        let incoming_handler = {
+            let mut guard = ctx.state.write().expect("lock poisoned");
 
-        let mut guard = ctx.state.write().expect("lock poisoned");
+            // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
+            if let Some(entry) = guard.is_still_banned(&peer_id, now) {
+                debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
+                // TODO: Send a proper error using RPC client/server here (requires appropriate
+                //       Juliet API). This would allow the peer to update its backoff timer.
+                return;
+            }
+            guard.unban(&peer_id);
 
-        // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
-        if let Some(entry) = guard.is_still_banned(&peer_id, now) {
-            debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
-            // TODO: Send a proper error using RPC client/server here (requires
-            //       appropriate Juliet API). This would allow the peer to update its
-            //       backoff timer.
-            return;
-        }
-        guard.unban(&peer_id);
+            // Check if there is a route registered, i.e. an incoming handler is already running.
+            if guard.routing_table.contains_key(&peer_id) {
+                // We are already connected, meaning we got raced by another connection. Keep
+                // the existing and exit.
+                debug!("additional incoming connection ignored");
+                return;
+            }
 
-        // Check if there is a route registered, i.e. an incoming handler is already running.
-        if guard.routing_table.contains_key(&peer_id) {
-            // We are already connected, meaning we got raced by another connection. Keep
-            // the existing and exit.
-            debug!("additional incoming connection ignored");
-            return;
-        }
+            // At this point we are becoming the new route for the peer.
+            guard.routing_table.insert(
+                peer_id,
+                Route {
+                    peer: peer_id,
+                    client: rpc_client,
+                },
+            );
 
-        // At this point we are becoming the new route for the peer.
-        guard.routing_table.insert(
-            peer_id,
-            Route {
-                peer: peer_id,
-                client: rpc_client,
-            },
-        );
-
-        // We are now connected, and the authority for this specific connection. Before releasing
-        // the lock, instantiate `Self`. This ensures the routing state is always updated correctly,
-        // since `Self` will remove itself from the routing table on drop.
-        let us = Self {
-            ctx: ctx.clone(),
-            peer_id,
+            // We are now connected, and the authority for this specific connection. Before
+            // releasing the lock, instantiate `Self`. This ensures the routing state is always
+            // updated correctly, since `Self` will remove itself from the routing table on drop.
+            Self {
+                ctx: ctx.clone(),
+                peer_id,
+            }
         };
 
-        // We can release the lock here.
-        drop(guard);
-
         info!("now connected via incoming connection");
-        us.run(rpc_server).await;
+        incoming_handler.run(rpc_server).await;
     }
 
     /// Runs the incoming handler's main acceptance loop.
