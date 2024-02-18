@@ -4,6 +4,9 @@
 //! network, reconnecting on connection loss and ensuring there is always exactly one [`juliet`]
 //! connection between peers.
 
+// TODO: This module's core design of removing entries on drop is safe, but suboptimal, as it leads
+//       to a lot of lock contention on drop. A careful redesign might ease this burden.
+
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -462,11 +465,79 @@ impl Debug for ConManContext {
 }
 
 #[derive(Debug)]
-struct OutgoingHandler {}
+struct OutgoingHandler {
+    ctx: Arc<ConManContext>,
+    peer_addr: SocketAddr,
+}
 
 impl OutgoingHandler {
-    async fn spawn_new(peer_address: SocketAddr) {
-        debug!("spawning new outgoign handler");
+    async fn spawn_new(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
+        debug!("spawned new outgoing handler");
+
+        // First, we need to register ourselves on the address book.
+        let outgoing_handler = {
+            let mut guard = ctx.state.write().expect("lock poisoned");
+
+            let now = Instant::now();
+            match guard.address_book.get(&peer_addr) {
+                Some(AddressBookEntry::Connecting) | Some(AddressBookEntry::Outgoing { .. }) => {
+                    // Someone beat us to the punch.
+                    debug!("got raced by another outgoing handler, aborting");
+                    return;
+                }
+                Some(AddressBookEntry::BackOff { until }) if now <= *until => {
+                    // Same as above, `match` doesn't let us specify an `if` for one branch only.
+                    debug!("got raced by another outgoing handler, aborting");
+                    return;
+                }
+                Some(AddressBookEntry::BackOff { .. }) | None => {
+                    // We are the new outgoing handler for this address!
+                    guard
+                        .address_book
+                        .insert(peer_addr, AddressBookEntry::Connecting);
+                }
+            }
+
+            Self {
+                ctx: ctx.clone(),
+                peer_addr,
+            }
+        };
+
+        outgoing_handler.run().await;
+    }
+
+    async fn run(self) {
+
+        // * attempt to connect to remote and retrieve handshake + `NodeId`
+        // * If unsuccessful, sleep, then retry connection until timeout/limit reached
+        // * If limit reached:
+        //     * WRITE(state)
+        //         * set to `BackOff` with appropriate timeout based on error, then exit
+
+        // * WRITE(state)
+        // * Check presence in routing table:
+        //     * `Outgoing`: log error (should never happen)
+        //     * `Incoming`: check if `rank` is higher, if so, replace with `Outgoing`, closing the `Incoming` connection in the process. otherwise set `BackOff` and exit
+        //     * `Banned`: set `BackOff` appropriately, then close
+        //     * missing: set to `Outgoing`
+        // * Set up juliet client/server
+        // * Set address book to `Outgoing`
+
+        // * (: run server loop)
+        // * WRITE(state)
+        //         * if entry in routing table is still `Outgoing`: delete entry in routing table
+        //         * if entry in routing table is `Incoming`: set `BackOff` (we have been replaced)
+        //         * if blocked ... (TODO)
+        //         * if `Ok`: delete entry in address book table
+        //         * if `Err`: set `BackOff` in outgoing table
+        // * (delay), go to beginning
+    }
+}
+
+impl Drop for OutgoingHandler {
+    fn drop(&mut self) {
+        // Remove from address book if necessary.
         todo!()
     }
 }
