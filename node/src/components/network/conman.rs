@@ -68,12 +68,14 @@ struct ConManContext {
 struct ConManState {
     /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
     /// This is strictly for outgoing connections.
-    // TODO: Add pruning for both tables, in case someone is flooding us with bogus addresses. We
-    //       may need to add a queue for learning about new addresses.
+    // TODO: Add pruning for tables, in case someone is flooding us with bogus addresses. We may
+    //       need to add a queue for learning about new addresses.
     address_book: HashMap<IpAddr, AddressBookEntry>,
     /// The current state per node ID, i.e. whether it is connected through an incoming or outgoing
     /// connection, blocked or unknown.
     routing_table: HashMap<NodeId, Route>,
+    /// A mapping of `NodeId`s to details about their bans.
+    banlist: HashMap<NodeId, BanlistEntry>,
 }
 
 /// An entry in the address book.
@@ -95,23 +97,17 @@ enum AddressBookEntry {
     // TODO: Consider adding `Incoming` as a hint to look up before attempting to connect.
 }
 
-/// A route to a peer.
 #[derive(Debug)]
-enum Route {
-    /// Connected to peer.
-    Connected(PeerHandle),
-    /// The peer ID has been banned.
-    Blocked {
-        /// Time ban is lifted.
-        until: Instant,
-        /// Justification for the ban.
-        justification: BlocklistJustification,
-    },
+struct BanlistEntry {
+    /// Time ban is lifted.
+    until: Instant,
+    /// Justification for the ban.
+    justification: BlocklistJustification,
 }
 
 /// Data related to an established connection.
 #[derive(Debug)]
-struct PeerHandle {
+struct Route {
     /// NodeId of the peer.
     peer: NodeId,
     /// The established [`juliet`] RPC client, can be used to send requests to the peer.
@@ -173,7 +169,10 @@ impl ConMan {
                         tokio::spawn(
                             server_shutdown
                                 .clone()
-                                .cancellable(handle_incoming(server_ctx.clone(), stream))
+                                .cancellable(IncomingHandler::handle_new_incoming(
+                                    server_ctx.clone(),
+                                    stream,
+                                ))
                                 .instrument(span),
                         );
                     }
@@ -208,13 +207,31 @@ impl ConManContext {
     }
 }
 
+impl ConManState {
+    #[inline(always)]
+    fn is_still_banned(&self, peer: &NodeId, now: Instant) -> Option<&BanlistEntry> {
+        self.banlist.get(peer).filter(|entry| now <= entry.until)
+    }
+
+    #[inline(always)]
+    fn unban(&mut self, peer: &NodeId) {
+        self.banlist.remove(peer);
+    }
+}
+
 struct IncomingHandler {
     ctx: Arc<ConManContext>,
     peer_id: NodeId,
 }
 
 impl IncomingHandler {
-    async fn handle(ctx: Arc<ConManContext>, stream: TcpStream) {
+    /// Handle a new incoming connection.
+    ///
+    /// ## Cancellation safety
+    ///
+    /// This function is cancellation safe, it obtains write locks on the routing table, but only
+    /// releases them once appropriate [`Drop`] handlers cleaning up have been spawned.
+    async fn handle_new_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
         let ProtocolHandshakeOutcome {
             our_id,
             peer_id,
@@ -254,43 +271,38 @@ impl IncomingHandler {
         let (rpc_client, rpc_server) = ctx.rpc_builder.build(read_half, write_half);
 
         let mut guard = ctx.state.write().expect("lock poisoned");
-        // Check if there already is a route registered.
-        if let Some(existing) = guard.routing_table.get(&peer_id) {
-            match existing {
-                Route::Connected(_) => {
-                    // We are already connected, meaning we got raced by another connection. Keep
-                    // the existing and exit.
-                    debug!("additional incoming connection ignored");
-                    return;
-                }
-                Route::Blocked {
-                    until,
-                    justification,
-                } => {
-                    let now = Instant::now();
-                    if now <= *until {
-                        debug!(?until, %justification, "peer is still banned");
-                        // TODO: Send a proper error using RPC client/server here (requires
-                        //       appropriate Juliet API). This would allow the peer to update its
-                        //       backoff timer.
-                        return;
-                    }
-                }
-            }
+
+        // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
+        let now = Instant::now();
+        if let Some(entry) = guard.is_still_banned(&peer_id, now) {
+            debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
+            // TODO: Send a proper error using RPC client/server here (requires
+            //       appropriate Juliet API). This would allow the peer to update its
+            //       backoff timer.
+            return;
+        }
+        guard.unban(&peer_id);
+
+        // Check if there is a route registered, i.e. an incoming handler is already running.
+        if guard.routing_table.contains_key(&peer_id) {
+            // We are already connected, meaning we got raced by another connection. Keep
+            // the existing and exit.
+            debug!("additional incoming connection ignored");
+            return;
         }
 
-        // At this point we are either replacing an expired ban or inserting a new entry.
+        // At this point we are becoming the new route for the peer.
         guard.routing_table.insert(
             peer_id,
-            Route::Connected(PeerHandle {
+            Route {
                 peer: peer_id,
                 client: rpc_client,
-            }),
+            },
         );
 
-        // We are now connected, and the authority for this specific connection. Before
-        // releasing the lock, instantiate `Self` and spawn `run`. This ensures the routing
-        // state is always updated correctly.
+        // We are now connected, and the authority for this specific connection. Before releasing
+        // the lock, instantiate `Self` and spawn `run`. This ensures the routing state is always
+        // updated correctly, since `Self` will remove itself from the routing table on drop.
         let us = Self {
             ctx: ctx.clone(),
             peer_id,
@@ -333,161 +345,20 @@ impl IncomingHandler {
 
 impl Drop for IncomingHandler {
     fn drop(&mut self) {
-        // Connection was closed, we need to ensure our entry in the routing table gets released if
-        // it is still ours.
+        // Connection was closed, we need to ensure our entry in the routing table gets released.
         let mut guard = self.ctx.state.write().expect("lock poisoned");
-        match guard.routing_table.get(&self.peer_id) {
-            Some(Route::Connected(_)) => {
+        match guard.routing_table.remove(&self.peer_id) {
+            Some(_) => {
                 debug!("expecting peer to reconnect");
-
-                // Route has not been tampered with, remove it to ensure we can be reconnected to.
-                guard.routing_table.remove(&self.peer_id);
 
                 // TODO: Do we need to shut down the juliet clients? Likely not, if the server is
                 //       shut down? In other words, verify that if the `juliet` server has shut
                 //       down, all the clients are invalidated.
             }
-            Some(Route::Blocked { .. }) => {
-                // Something else banned the peer, leave the ban in place.
-                debug!("connection closed and peer is banned");
-            }
             None => {
-                // This should only occur if a peer was banned before, the ban lifted
-                error!("external source should never remove connection");
+                // This must never happen.
+                error!("nothing but `IncomingHandler` should modifiy the routing table");
             }
-        }
-    }
-}
-
-/// Handler for a new incoming connection.
-///
-/// Will complete the handshake, then check if the incoming connection should be kept.
-///
-/// ## Cancellation safety
-///
-/// This function is NOT cancellation safe, as the routing table entry will not be set correctly if
-/// this function is cancelled.
-async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
-    let ProtocolHandshakeOutcome {
-        our_id,
-        peer_id,
-        handshake_outcome,
-    } = match ctx.protocol_handler.setup_incoming(stream).await {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            debug!(%error, "failed to complete TLS setup");
-            return;
-        }
-    };
-
-    // Register the `peer_id` and potential consensus key on the [`Span`] for logging from here on.
-    Span::current().record("peer_id", &field::display(peer_id));
-    if let Some(ref public_key) = handshake_outcome.peer_consensus_public_key {
-        Span::current().record("consensus_key", &field::display(public_key));
-    }
-
-    if we_should_be_outgoing(our_id, peer_id) {
-        // The connection is supposed to be outgoing from our perspective.
-        debug!("closing low-ranking incoming connection");
-
-        // Conserve public address, but drop the stream early, so that when we learn, the connection
-        // is hopefully already closed.
-        let public_addr = handshake_outcome.public_addr;
-        drop(handshake_outcome);
-        ctx.learn_address(public_addr);
-
-        return;
-    }
-
-    debug!("high-ranking incoming connection established");
-
-    // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
-
-    let (read_half, write_half) = tokio::io::split(handshake_outcome.transport);
-    let (rpc_client, rpc_server) = ctx.rpc_builder.build(read_half, write_half);
-
-    let mut rpc_server = {
-        let mut guard = ctx.state.write().expect("lock poisoned");
-
-        // Check if there already is a route registered.
-        if let Some(existing) = guard.routing_table.get(&peer_id) {
-            match existing {
-                Route::Connected(_) => {
-                    // We are already connected, meaning we got raced by another connection. Keep
-                    // the existing and exit.
-                    debug!("additional incoming connection ignored");
-                    return;
-                }
-                Route::Blocked {
-                    until,
-                    justification,
-                } => {
-                    let now = Instant::now();
-                    if now <= *until {
-                        debug!(?until, %justification, "peer is still banned");
-                        // TODO: Send a proper error using RPC client/server here (requires
-                        //       appropriate Juliet API). This would allow the peer to update its
-                        //       backoff timer.
-                        return;
-                    }
-                }
-            }
-        }
-
-        // At this point we are either replacing an expired ban or inserting a new entry.
-        guard.routing_table.insert(
-            peer_id,
-            Route::Connected(PeerHandle {
-                peer: peer_id,
-                client: rpc_client,
-            }),
-        );
-
-        // We are now connected and releasing the lock on the routing table.
-        rpc_server
-    };
-
-    loop {
-        match rpc_server.next_request().await {
-            Ok(Some(request)) => {
-                // Incoming requests are directly handed off to the protocol handler.
-                trace!(%request, "received incoming request");
-                ctx.protocol_handler
-                    .handle_incoming_request(peer_id, request);
-            }
-            Ok(None) => {
-                // The connection was closed. Not an issue, the peer will need to reconnect to us.
-                debug!("regular close of incoming connection");
-                break;
-            }
-            Err(err) => {
-                // TODO: this should not be a warning, downgrade to debug before shipping
-                warn!(%err, "closing incoming connection due to error");
-                break;
-            }
-        }
-    }
-
-    // Connection was closed, now update our state.
-    let mut guard = ctx.state.write().expect("lock poisoned");
-    match guard.routing_table.get(&peer_id) {
-        Some(Route::Connected(_)) => {
-            debug!("expecting peer to reconnect");
-
-            // Route is unchanged, remove it to ensure we can be reconnected to.
-            guard.routing_table.remove(&peer_id);
-
-            // TODO: Do we need to shut down the juliet clients? Likely not, if the server is shut
-            // down? In other words, verify that if the `juliet` server has shut down, all the
-            // clients are invalidated.
-        }
-        Some(Route::Blocked { .. }) => {
-            // Leave the ban in place.
-            debug!("connection closed and peer is banned");
-        }
-        None => {
-            // This should not occur.
-            error!("external source should never remove connection");
         }
     }
 }
