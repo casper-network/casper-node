@@ -36,6 +36,11 @@ use super::{
     Transport,
 };
 
+type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
+
+type RpcServer =
+    JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
+
 /// Connection manager.
 ///
 /// The connection manager accepts incoming connections and intiates outgoing connections upon
@@ -47,13 +52,13 @@ use super::{
 struct ConMan {
     /// The shared connection manager state, which contains per-peer and per-address information.
     ctx: Arc<ConManContext>,
-    /// A fuse used to cancel future execution.
+    /// A fuse used to cancel execution.
     shutdown: DropSwitch<ObservableFuse>,
 }
 
 /// Shared information across the connection manager and its subtasks.
 struct ConManContext {
-    /// Callback function to hand incoming requests off to.
+    /// Callback handler for connection setup and incoming request handling.
     protocol_handler: Box<dyn ProtocolHandler>,
     /// Juliet RPC configuration.
     rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
@@ -66,16 +71,19 @@ struct ConManContext {
 /// Tracks outgoing and incoming connections.
 #[derive(Debug, Default)]
 struct ConManState {
-    /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
-    /// This is strictly for outgoing connections.
     // TODO: Add pruning for tables, in case someone is flooding us with bogus addresses. We may
     //       need to add a queue for learning about new addresses.
+    /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
+    ///
+    /// This is strictly used by outgoing connections.
     address_book: HashMap<IpAddr, AddressBookEntry>,
-    /// The current state per node ID, i.e. whether it is connected through an incoming or outgoing
-    /// connection, blocked or unknown.
+    /// The current route per node ID.
+    ///
+    /// An entry in this table indicates an established connection to a peer. Every entry in this
+    /// table is controlled by an `OutgoingHandler`, all other access should be read-only.
     routing_table: HashMap<NodeId, Route>,
     /// A mapping of `NodeId`s to details about their bans.
-    banlist: HashMap<NodeId, BanlistEntry>,
+    banlist: HashMap<NodeId, Sentence>,
 }
 
 /// An entry in the address book.
@@ -94,11 +102,11 @@ enum AddressBookEntry {
         /// When to clear the back-off state.
         until: Instant,
     },
-    // TODO: Consider adding `Incoming` as a hint to look up before attempting to connect.
 }
 
+/// Record of punishment for a peers malicious behavior.
 #[derive(Debug)]
-struct BanlistEntry {
+struct Sentence {
     /// Time ban is lifted.
     until: Instant,
     /// Justification for the ban.
@@ -108,38 +116,56 @@ struct BanlistEntry {
 /// Data related to an established connection.
 #[derive(Debug)]
 struct Route {
-    /// NodeId of the peer.
+    /// Node ID of the peer.
     peer: NodeId,
     /// The established [`juliet`] RPC client, can be used to send requests to the peer.
-    client: JulietRpcClient<{ super::Channel::COUNT }>,
+    client: RpcClient,
 }
 
+/// External integration.
+///
+/// Contains callbacks for transport setup (via [`setup_incoming`] and [`setup_outgoing`]) and
+/// handling of actual incoming requests.
 #[async_trait]
 pub(crate) trait ProtocolHandler: Send + Sync {
+    /// Sets up an incoming connection.
+    ///
+    /// Given a TCP stream of an incoming connection, should setup any higher level transport and
+    /// perform a handshake.
     async fn setup_incoming(
         &self,
-        transport: TcpStream,
+        stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
 
+    /// Sets up an outgoing connection.
+    ///
+    /// Given a TCP stream of an outgoing connection, should setup any higher level transport and
+    /// perform a handshake.
     async fn setup_outgoing(
         &self,
-        transport: TcpStream,
+        stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
 
+    /// Process one incoming request.
     fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest);
 }
 
+/// The outcome of a handshake performed by the external protocol.
 pub(crate) struct ProtocolHandshakeOutcome {
+    /// Our own `NodeId`.
+    // TODO: Consider moving our own `NodeId` elsewhere, it should not change during our lifetime.
     our_id: NodeId,
+    /// Peer's `NodeId`.
     peer_id: NodeId,
+    /// The actual handshake outcome.
     handshake_outcome: HandshakeOutcome,
 }
 
 impl ConMan {
     /// Create a new connection manager.
     ///
-    /// Immediately spawns a task accepting incoming connections on a tokio task, which will be
-    /// cancelled if the returned [`ConMan`] is dropped.
+    /// Immediately spawns a task accepting incoming connections on a tokio task. The task will be
+    /// stopped if the returned [`ConMan`] is dropped.
     pub(crate) fn new<H: Into<Box<dyn ProtocolHandler>>>(
         listener: TcpListener,
         protocol_handler: H,
@@ -169,9 +195,11 @@ impl ConMan {
                         tokio::spawn(
                             server_shutdown
                                 .clone()
-                                .cancellable(IncomingHandler::handle_new_incoming(
+                                .cancellable(IncomingHandler::handle(
                                     server_ctx.clone(),
                                     stream,
+                                    span.clone(),
+                                    server_shutdown.clone(),
                                 ))
                                 .instrument(span),
                         );
@@ -202,36 +230,63 @@ impl ConMan {
 }
 
 impl ConManContext {
+    /// Informs about a new address.
     fn learn_address(&self, peer_address: SocketAddr) {
         todo!()
+    }
+
+    /// Sets up an instance of the [`juliet`] protocol on a transport returned.
+    fn setup_juliet(&self, transport: Transport) -> (RpcClient, RpcServer) {
+        let (read_half, write_half) = tokio::io::split(transport);
+        self.rpc_builder.build(read_half, write_half)
     }
 }
 
 impl ConManState {
+    /// Determines if a peer is still banned.
+    ///
+    /// Returns `None` if the peer is NOT banned, its remaining sentence otherwise.
     #[inline(always)]
-    fn is_still_banned(&self, peer: &NodeId, now: Instant) -> Option<&BanlistEntry> {
+    fn is_still_banned(&self, peer: &NodeId, now: Instant) -> Option<&Sentence> {
         self.banlist.get(peer).filter(|entry| now <= entry.until)
     }
 
+    /// Unban a peer.
+    ///
+    /// Can safely be called if the peer is not banned.
     #[inline(always)]
     fn unban(&mut self, peer: &NodeId) {
         self.banlist.remove(peer);
     }
 }
 
+/// Handler for incoming connections.
+///
+/// The existance of an [`IncomingHandler`] is tied to an entry in the `routing_table` in
+/// [`ConManState`]; as long as the handler exists, there will be a [`Route`] present.
 struct IncomingHandler {
+    /// The context this handler is tied to.
     ctx: Arc<ConManContext>,
+    /// ID of the peer connecting to us.
     peer_id: NodeId,
 }
 
 impl IncomingHandler {
-    /// Handle a new incoming connection.
+    /// Handles an incoming connection by setting up, spawning an [`IncomingHandler`] on success.
+    ///
+    /// Will exit early and close the connection if it is a low-ranking connection.
     ///
     /// ## Cancellation safety
     ///
-    /// This function is cancellation safe, it obtains write locks on the routing table, but only
-    /// releases them once appropriate [`Drop`] handlers cleaning up have been spawned.
-    async fn handle_new_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
+    /// This function is cancellation safe, if cancelled, the connection will be closed. In any case
+    /// routing table will be cleaned up if it was altered.
+    async fn handle(
+        ctx: Arc<ConManContext>,
+        stream: TcpStream,
+        span: Span,
+        shutdown: ObservableFuse,
+    ) {
+        debug!("handling new connection attempt");
         let ProtocolHandshakeOutcome {
             our_id,
             peer_id,
@@ -244,7 +299,7 @@ impl IncomingHandler {
             }
         };
 
-        // Register the `peer_id` and potential consensus key on the [`Span`] for logging from here on.
+        // Register `peer_id` and potential consensus key on the [`Span`] for logging from here on.
         Span::current().record("peer_id", &field::display(peer_id));
         if let Some(ref public_key) = handshake_outcome.peer_consensus_public_key {
             Span::current().record("consensus_key", &field::display(public_key));
@@ -254,10 +309,12 @@ impl IncomingHandler {
             // The connection is supposed to be outgoing from our perspective.
             debug!("closing low-ranking incoming connection");
 
-            // Conserve public address, but drop the stream early, so that when we learn, the connection
-            // is hopefully already closed.
+            // Conserve public address, but drop the stream early, so that when we learn, the
+            // connection is hopefully already closed.
             let public_addr = handshake_outcome.public_addr;
             drop(handshake_outcome);
+
+            // Note: This is the original "Magic Mike" functionality.
             ctx.learn_address(public_addr);
 
             return;
@@ -265,10 +322,9 @@ impl IncomingHandler {
 
         debug!("high-ranking incoming connection established");
 
-        // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
-
-        let (read_half, write_half) = tokio::io::split(handshake_outcome.transport);
-        let (rpc_client, rpc_server) = ctx.rpc_builder.build(read_half, write_half);
+        // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC
+        // transport, which we will need regardless to send errors.
+        let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
 
         let mut guard = ctx.state.write().expect("lock poisoned");
 
@@ -301,24 +357,21 @@ impl IncomingHandler {
         );
 
         // We are now connected, and the authority for this specific connection. Before releasing
-        // the lock, instantiate `Self` and spawn `run`. This ensures the routing state is always
-        // updated correctly, since `Self` will remove itself from the routing table on drop.
+        // the lock, instantiate `Self`. This ensures the routing state is always updated correctly,
+        // since `Self` will remove itself from the routing table on drop.
         let us = Self {
             ctx: ctx.clone(),
             peer_id,
         };
 
-        tokio::spawn(us.run(rpc_server));
+        // We can release the lock here.
+        drop(guard);
+
+        tokio::spawn(shutdown.cancellable(us.run(rpc_server)).instrument(span));
     }
 
-    async fn run(
-        self,
-        mut rpc_server: JulietRpcServer<
-            { super::Channel::COUNT },
-            ReadHalf<Transport>,
-            WriteHalf<Transport>,
-        >,
-    ) {
+    /// Runs the incoming handler's main acceptance loop.
+    async fn run(self, mut rpc_server: RpcServer) {
         loop {
             match rpc_server.next_request().await {
                 Ok(Some(request)) => {
