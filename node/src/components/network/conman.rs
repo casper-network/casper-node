@@ -12,11 +12,11 @@ use std::{
     fmt::Debug,
     net::SocketAddr,
     sync::{Arc, RwLock},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
-use futures::FutureExt;
+use futures::{FutureExt, TryFuture, TryFutureExt};
 use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder};
 use strum::EnumCount;
 use tokio::{
@@ -43,6 +43,29 @@ type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 
 type RpcServer =
     JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
+
+/// The timeout for a connection to be established, from a single `connect` call.
+const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How often to reattempt a connection.
+///
+/// 8 attempts means a maximum delay between attempts of 2:08 and total attempt time of < 5 minutes.
+const TCP_CONNECT_ATTEMPTS: usize = 8;
+
+/// Base delay for the backoff, grows exponentially until `TCP_CONNECT_ATTEMPTS` maxes out).
+const TCP_CONNECT_BASE_BACKOFF: Duration = Duration::from_secs(1);
+
+/// How long to back off from reconnecting to an address after a failure.
+const HANDSHAKE_FAILURE_BACKOFF: Duration = Duration::from_secs(60);
+
+/// How long to wait before attempting to reconnect when an outgoing connection is lost.
+const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+
+/// Number of incoming connections before refusing to accept any new ones.
+const MAX_INCOMING_CONNECTIONS: usize = 10_000;
+
+/// Number of outgoing connections before stopping to connect.
+const MAX_OUTGOING_CONNECTIONS: usize = 10_000;
 
 /// Connection manager.
 ///
@@ -79,6 +102,7 @@ struct ConManState {
     /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
     ///
     /// This is strictly used by outgoing connections.
+    // TODO: Replace with set.
     address_book: HashMap<SocketAddr, AddressBookEntry>,
     /// The current route per node ID.
     ///
@@ -99,11 +123,6 @@ enum AddressBookEntry {
     Outgoing {
         /// The node ID of the peer we are connected to at this address.
         remote: NodeId,
-    },
-    /// A decision has been made to not reconnect to the given address for the time being.
-    BackOff {
-        /// When to clear the back-off state.
-        until: Instant,
     },
 }
 
@@ -162,6 +181,17 @@ pub(crate) struct ProtocolHandshakeOutcome {
     peer_id: NodeId,
     /// The actual handshake outcome.
     handshake_outcome: HandshakeOutcome,
+}
+
+impl ProtocolHandshakeOutcome {
+    /// Registers the handshake outcome on the tracing span, to give context to logs.
+    fn record_on(&self, span: Span) {
+        // Register `peer_id` and potential consensus key on the [`Span`] for logging from here on.
+        span.record("peer_id", &field::display(self.peer_id));
+        if let Some(ref public_key) = self.handshake_outcome.peer_consensus_public_key {
+            span.record("consensus_key", &field::display(public_key));
+        }
+    }
 }
 
 impl ConMan {
@@ -245,6 +275,10 @@ impl ConManContext {
         now: Instant,
         shutdown: ObservableFuse,
     ) {
+        // TODO: Limit number of outgoing (and incoming) connections.
+
+        // TODO: Filter loopback.
+
         // We have been informed of a new address. Find out if it is truly new.
         trace!(%peer_addr, "learned about address");
 
@@ -262,13 +296,8 @@ impl ConManContext {
                     trace!(%peer_addr, %remote, "discarding peer address, already has outgoing connection");
                     return;
                 }
-                Some(AddressBookEntry::BackOff { until }) if now <= *until => {
-                    trace!("ignoring learned address due to back-off timer");
-                    return;
-                }
-
-                Some(AddressBookEntry::BackOff { .. }) | None => {
-                    // The backoff has expired or the address is unknown.
+                None => {
+                    // The address is unknown.
                 }
             }
         }
@@ -329,22 +358,31 @@ impl IncomingHandler {
     /// routing table will be cleaned up if it was altered.
     async fn handle(ctx: Arc<ConManContext>, stream: TcpStream, shutdown: ObservableFuse) {
         debug!("handling new connection attempt");
+
         let ProtocolHandshakeOutcome {
             our_id,
             peer_id,
             handshake_outcome,
-        } = match ctx.protocol_handler.setup_incoming(stream).await {
+        } = match ctx
+            .protocol_handler
+            .setup_incoming(stream)
+            .await
+            .map(move |outcome| {
+                outcome.record_on(Span::current());
+                outcome
+            }) {
             Ok(outcome) => outcome,
             Err(error) => {
-                debug!(%error, "failed to complete TLS setup");
+                debug!(%error, "failed to complete handshake on incoming");
                 return;
             }
         };
 
-        // Register `peer_id` and potential consensus key on the [`Span`] for logging from here on.
-        Span::current().record("peer_id", &field::display(peer_id));
-        if let Some(ref public_key) = handshake_outcome.peer_consensus_public_key {
-            Span::current().record("consensus_key", &field::display(public_key));
+        if peer_id == our_id {
+            // Loopback connection established.
+            error!("should never complete an incoming loopback connection");
+            tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
+            return;
         }
 
         let now = Instant::now();
@@ -368,6 +406,7 @@ impl IncomingHandler {
         // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC
         // transport, which we will need regardless to send errors.
         let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
+
         let incoming_handler = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
@@ -485,13 +524,8 @@ impl OutgoingHandler {
                     debug!("got raced by another outgoing handler, aborting");
                     return;
                 }
-                Some(AddressBookEntry::BackOff { until }) if now <= *until => {
-                    // Same as above, `match` doesn't let us specify an `if` for one branch only.
-                    debug!("got raced by another outgoing handler, aborting");
-                    return;
-                }
-                Some(AddressBookEntry::BackOff { .. }) | None => {
-                    // We are the new outgoing handler for this address!
+                None => {
+                    // We are the new outgoing handler for this address.
                     guard
                         .address_book
                         .insert(peer_addr, AddressBookEntry::Connecting);
@@ -508,37 +542,177 @@ impl OutgoingHandler {
     }
 
     async fn run(self) {
+        let con_result = retry_with_exponential_backoff(
+            TCP_CONNECT_ATTEMPTS,
+            TCP_CONNECT_BASE_BACKOFF,
+            move || connect(self.peer_addr),
+        )
+        .await;
 
-        // * attempt to connect to remote and retrieve handshake + `NodeId`
-        // * If unsuccessful, sleep, then retry connection until timeout/limit reached
-        // * If limit reached:
-        //     * WRITE(state)
-        //         * set to `BackOff` with appropriate timeout based on error, then exit
+        let stream = match con_result {
+            Ok(value) => value,
+            Err(err) => {
+                // We failed to connect.
+                debug!(failed_attempts=TCP_CONNECT_ATTEMPTS, last_error=%err, "giving up on connection");
 
-        // * WRITE(state)
-        // * Check presence in routing table:
-        //     * `Outgoing`: log error (should never happen)
-        //     * `Incoming`: check if `rank` is higher, if so, replace with `Outgoing`, closing the `Incoming` connection in the process. otherwise set `BackOff` and exit
-        //     * `Banned`: set `BackOff` appropriately, then close
-        //     * missing: set to `Outgoing`
-        // * Set up juliet client/server
-        // * Set address book to `Outgoing`
+                // We will remove ourselves from the address book when `Drop` is called, no need to
+                // do anything else.
+                return;
+            }
+        };
 
-        // * (: run server loop)
-        // * WRITE(state)
-        //         * if entry in routing table is still `Outgoing`: delete entry in routing table
-        //         * if entry in routing table is `Incoming`: set `BackOff` (we have been replaced)
-        //         * if blocked ... (TODO)
-        //         * if `Ok`: delete entry in address book table
-        //         * if `Err`: set `BackOff` in outgoing table
-        // * (delay), go to beginning
+        let ProtocolHandshakeOutcome {
+            our_id,
+            peer_id,
+            handshake_outcome,
+        } = match self
+            .ctx
+            .protocol_handler
+            .setup_outgoing(stream)
+            .await
+            .map(move |outcome| {
+                outcome.record_on(Span::current());
+                outcome
+            }) {
+            Ok(rv) => rv,
+            Err(err) => {
+                debug!(%err, "failed to complete handshake on outgoing");
+
+                // We are keeping the task alive here, thus blocking the address from being learned
+                // and reconnected to again.
+                tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
+                return;
+            }
+        };
+
+        if peer_id == our_id {
+            // Loopback connection established.
+            error!("should never complete an outgoing loopback connection");
+            tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
+            return;
+        }
+
+        let (rpc_client, mut rpc_server) = self.ctx.setup_juliet(handshake_outcome.transport);
+
+        // Update routing and outgoing state.
+        {
+            let mut guard = self.ctx.state.write().expect("lock poisoned");
+
+            let now = Instant::now();
+            if let Some(entry) = guard.is_still_banned(&peer_id, now) {
+                debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
+                // TODO: Send a proper error using RPC client/server here.
+                // TODO: Verify we are not in a fast reconnect loop if only one sides bans the peer.
+
+                // Block outgoing until the ban is lifted.
+                let ban_expires = entry.until.into();
+                drop(guard); // Important: Release lock on address book.
+                tokio::time::sleep_until(ban_expires).await;
+                return;
+            }
+            guard.unban(&peer_id);
+
+            guard.address_book.insert(
+                self.peer_addr,
+                AddressBookEntry::Outgoing { remote: peer_id },
+            );
+
+            let residual = guard.routing_table.insert(
+                peer_id,
+                Route {
+                    peer: peer_id,
+                    client: rpc_client,
+                },
+            );
+
+            if residual.is_some() {
+                // This should never happen, since it is clear from the `NodeId` whether we expect
+                // and incoming or outgoing handler to take over this specific pairing.
+                error!("should never find residual connection after inserting outgoing");
+
+                // We'll close the connection and try again.
+                return;
+            }
+        }
+
+        // All shared state has been updated, we can now run the server loop.
+        loop {
+            match rpc_server.next_request().await {
+                Ok(Some(request)) => {
+                    trace!(%request, "received incoming request");
+                    self.ctx
+                        .protocol_handler
+                        .handle_incoming_request(peer_id, request);
+                }
+                Ok(None) => {
+                    // The connection was closed.
+                    info!("lost outgoing connection");
+                    tokio::time::sleep(RECONNECT_DELAY).await;
+                    // TODO: Schedule reconnect.
+                    return;
+                }
+                Err(err) => {
+                    // TODO: this should not be a warning, downgrade to info before shipping
+                    warn!(%err, "closing outgoing connection due to error");
+                    tokio::time::sleep(RECONNECT_DELAY).await;
+                    return;
+                }
+            }
+        }
     }
 }
 
 impl Drop for OutgoingHandler {
     fn drop(&mut self) {
-        // Remove from address book if necessary.
-        todo!()
+        // When being dropped, we relinquish exclusive control over the address book entry.
+        let mut guard = self.ctx.state.write().expect("lock poisoned");
+        if guard.address_book.remove(&self.peer_addr).is_none() {
+            error!("address book should not be modified by anything but outgoing handler");
+        }
+    }
+}
+
+async fn connect(addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
+    tokio::time::timeout(TCP_CONNECT_TIMEOUT, TcpStream::connect(addr))
+        .await
+        .map_err(|_elapsed| ConnectionError::TcpConnectionTimeout)?
+        .map_err(ConnectionError::TcpConnection)
+}
+
+async fn retry_with_exponential_backoff<Fut, F>(
+    max_attempts: usize,
+    base_backoff: Duration,
+    mut f: F,
+) -> Result<<Fut as TryFuture>::Ok, <Fut as TryFuture>::Error>
+where
+    Fut: TryFuture,
+    F: FnMut() -> Fut,
+{
+    debug_assert!(max_attempts > 0);
+
+    let mut failed_attempts = 0;
+
+    loop {
+        match f().into_future().await {
+            Ok(v) => return Ok(v),
+            Err(err) => {
+                let backoff = 2u32.pow(failed_attempts as u32) * base_backoff;
+
+                failed_attempts += 1;
+                if failed_attempts >= max_attempts {
+                    return Err(err);
+                }
+
+                trace!(
+                    failed_attempts,
+                    remaining = max_attempts - failed_attempts,
+                    ?backoff,
+                    "attempt failed, backing off"
+                );
+
+                tokio::time::sleep(backoff).await;
+            }
+        }
     }
 }
 
