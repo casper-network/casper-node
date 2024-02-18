@@ -7,7 +7,7 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -20,7 +20,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{
     debug, error, error_span,
     field::{self, Empty},
-    warn, Instrument, Span,
+    trace, warn, Instrument, Span,
 };
 
 use crate::{
@@ -198,9 +198,20 @@ impl ConMan {
     }
 }
 
+impl ConManContext {
+    fn learn_address(&self, peer_address: SocketAddr) {
+        todo!()
+    }
+}
+
 /// Handler for a new incoming connection.
 ///
 /// Will complete the handshake, then check if the incoming connection should be kept.
+///
+/// ## Cancellation safety
+///
+/// This function is NOT cancellation safe, as the routing table entry will not be set correctly if
+/// this function is cancelled.
 async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
     let ProtocolHandshakeOutcome {
         our_id,
@@ -209,7 +220,7 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
     } = match ctx.protocol_handler.setup_incoming(stream).await {
         Ok(outcome) => outcome,
         Err(error) => {
-            debug!(%error, "failed to complete setup TLS");
+            debug!(%error, "failed to complete TLS setup");
             return;
         }
     };
@@ -220,17 +231,20 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
         Span::current().record("consensus_key", &field::display(public_key));
     }
 
-    if !incoming_preferred(our_id, peer_id) {
+    if we_should_be_outgoing(our_id, peer_id) {
         // The connection is supposed to be outgoing from our perspective.
-        // TODO: Learn aobut outgoing address.
-        drop(handshake_outcome.public_addr); // TODO: Learn here instead.
-        debug!("incoming connection, but outgoing connection preferred");
+        debug!("closing low-ranking incoming connection");
 
-        // Drops the stream and thus closes the connection.
+        // Conserve public address, but drop the stream early, so that when we learn, the connection
+        // is hopefully already closed.
+        let public_addr = handshake_outcome.public_addr;
+        drop(handshake_outcome);
+        ctx.learn_address(public_addr);
+
         return;
     }
 
-    debug!("incoming connection established");
+    debug!("high-ranking incoming connection established");
 
     // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
 
@@ -244,8 +258,8 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
         if let Some(existing) = guard.routing_table.get(&peer_id) {
             match existing {
                 Route::Connected(_) => {
-                    // We are already connected, meaning we got raced by another connection. Keep the
-                    // existing and exit.
+                    // We are already connected, meaning we got raced by another connection. Keep
+                    // the existing and exit.
                     debug!("additional incoming connection ignored");
                     return;
                 }
@@ -256,10 +270,9 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
                     let now = Instant::now();
                     if now <= *until {
                         debug!(?until, %justification, "peer is still banned");
-                        // TODO: Send a proper error using RPC client/server here (requires appropriate
-                        //       Juliet API).
-                        drop(rpc_client);
-                        drop(rpc_server);
+                        // TODO: Send a proper error using RPC client/server here (requires
+                        //       appropriate Juliet API). This would allow the peer to update its
+                        //       backoff timer.
                         return;
                     }
                 }
@@ -275,6 +288,7 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
             }),
         );
 
+        // We are now connected and releasing the lock on the routing table.
         rpc_server
     };
 
@@ -282,11 +296,13 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
         match rpc_server.next_request().await {
             Ok(Some(request)) => {
                 // Incoming requests are directly handed off to the protocol handler.
+                trace!(%request, "received incoming request");
                 ctx.protocol_handler
                     .handle_incoming_request(peer_id, request);
             }
             Ok(None) => {
                 // The connection was closed. Not an issue, the peer will need to reconnect to us.
+                debug!("regular close of incoming connection");
                 break;
             }
             Err(err) => {
@@ -301,13 +317,14 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
     let mut guard = ctx.state.write().expect("lock poisoned");
     match guard.routing_table.get(&peer_id) {
         Some(Route::Connected(_)) => {
-            debug!("regular connection closure, expecting peer to reconnect");
+            debug!("expecting peer to reconnect");
 
             // Route is unchanged, remove it to ensure we can be reconnected to.
             guard.routing_table.remove(&peer_id);
 
-            // TODO: Do we need to shut down the juliet clients? Likely not, if the
-            // server is shut down?
+            // TODO: Do we need to shut down the juliet clients? Likely not, if the server is shut
+            // down? In other words, verify that if the `juliet` server has shut down, all the
+            // clients are invalidated.
         }
         Some(Route::Banned { .. }) => {
             // Leave the ban in place.
@@ -330,10 +347,8 @@ impl Debug for ConManContext {
     }
 }
 
-/// Determine whether we should prefer an incoming connection to the peer over an outgoing one.
-///
-/// Used to solve conflicts if two connections from/to the same peer are possible.
+/// Determines whether an outgoing connection from us outranks an incoming connection from them.
 #[inline(always)]
-fn incoming_preferred(our_id: NodeId, peer_id: NodeId) -> bool {
-    our_id <= peer_id
+fn we_should_be_outgoing(our_id: NodeId, peer_id: NodeId) -> bool {
+    our_id > peer_id
 }
