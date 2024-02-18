@@ -199,7 +199,6 @@ impl ConMan {
                                 .cancellable(IncomingHandler::handle(
                                     server_ctx.clone(),
                                     stream,
-                                    span.clone(),
                                     server_shutdown.clone(),
                                 ))
                                 .instrument(span),
@@ -224,7 +223,6 @@ impl ConMan {
             }
         };
 
-        // Do we need double spawn here? Could just .await?
         tokio::spawn(shutdown.inner().clone().cancellable(server).map(|_| ()));
 
         Self { ctx, shutdown }
@@ -321,12 +319,7 @@ impl IncomingHandler {
     ///
     /// This function is cancellation safe, if cancelled, the connection will be closed. In any case
     /// routing table will be cleaned up if it was altered.
-    async fn handle(
-        ctx: Arc<ConManContext>,
-        stream: TcpStream,
-        span: Span,
-        shutdown: ObservableFuse,
-    ) {
+    async fn handle(ctx: Arc<ConManContext>, stream: TcpStream, shutdown: ObservableFuse) {
         debug!("handling new connection attempt");
         let ProtocolHandshakeOutcome {
             our_id,
@@ -409,7 +402,7 @@ impl IncomingHandler {
         drop(guard);
 
         info!("now connected via incoming connection");
-        tokio::spawn(shutdown.cancellable(us.run(rpc_server)).instrument(span));
+        us.run(rpc_server).await;
     }
 
     /// Runs the incoming handler's main acceptance loop.
@@ -470,7 +463,6 @@ impl Debug for ConManContext {
 struct OutgoingHandler {}
 
 impl OutgoingHandler {
-    // TODO: Span, cancellation token?
     async fn spawn_new(peer_address: SocketAddr) {
         debug!("spawning new outgoign handler");
         todo!()
