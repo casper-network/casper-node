@@ -15,7 +15,7 @@ use tracing::error;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyError, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -35,8 +35,8 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
     GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, SystemEntityRegistry, Transfer, TransferAddr, URef, URefAddr,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::Error};
@@ -1265,10 +1265,24 @@ where
             return Err(Error::UnexpectedKeyVariant(entity_key));
         };
 
-        self.tracking_copy
-            .borrow_mut()
-            .get_entity(entity_hash)
-            .map_err(Into::into)
+        let mut tc = self.tracking_copy.borrow_mut();
+
+        let key = Key::contract_entity_key(entity_hash);
+        match tc.read(&key)? {
+            Some(StoredValue::AddressableEntity(entity)) => Ok((entity, false)),
+            Some(other) => Err(Error::TypeMismatch(StoredValueTypeMismatch::new(
+                "AddressableEntity".to_string(),
+                other.type_name(),
+            ))),
+            None => match tc.read(&Key::Hash(entity_hash.value()))? {
+                Some(StoredValue::Contract(contract)) => Ok((contract.into(), true)),
+                Some(other) => Err(Error::TypeMismatch(StoredValueTypeMismatch::new(
+                    "Contract".to_string(),
+                    other.type_name(),
+                ))),
+                None => Err(TrackingCopyError::KeyNotFound(key)).map_err(Into::into),
+            },
+        }
     }
 
     /// Gets a dictionary item key from a dictionary referenced by a `uref`.
@@ -1363,7 +1377,7 @@ where
     pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, Error> {
         self.tracking_copy
             .borrow_mut()
-            .get_system_contracts()
+            .get_system_entity_registry()
             .map_err(|err| {
                 error!("Missing system contract registry");
                 Error::TrackingCopy(err)

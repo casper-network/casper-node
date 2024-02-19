@@ -6,20 +6,21 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, convert::TryFrom, rc::Rc};
 
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    addressable_entity::EntityKindTag,
+    addressable_entity::{EntityKindTag, NamedKeys},
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     system::{
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, MINT,
     },
-    AddressableEntity, Digest, EntityAddr, Key, KeyTag, StoredValue,
+    Account, AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
+    Phase, PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 #[cfg(test)]
@@ -27,13 +28,14 @@ pub use self::lmdb::make_temporary_global_state;
 
 use crate::{
     data_access_layer::{
-        era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
-        BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
-        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        era_validators::EraValidatorsResult,
+        transfer::{TransferRequest, TransferRequestArgs, TransferResult},
+        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BalanceResult,
+        BidsRequest, BidsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
+        ExecutionResultsChecksumResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PutTrieRequest, PutTrieResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
+        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -48,10 +50,11 @@ use crate::{
         auction,
         auction::bidding::{BiddingRequest, BiddingResult},
         genesis::{GenesisError, GenesisInstaller},
-        mint::transfer::{TransferRequest, TransferResult},
+        mint::{Mint, NativeMintRuntime},
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
+        transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
     },
-    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
 use super::trie_store::operations::PruneResult;
@@ -106,7 +109,7 @@ pub trait CommitProvider: StateProvider {
             Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
             Ok(None) => return GenesisResult::Fatal("state uninitialized".to_string()),
             Err(err) => {
-                return GenesisResult::Failure(GenesisError::TrackingCopyError(
+                return GenesisResult::Failure(GenesisError::TrackingCopy(
                     crate::tracking_copy::TrackingCopyError::Storage(err),
                 ))
             }
@@ -129,9 +132,9 @@ pub trait CommitProvider: StateProvider {
                 post_state_hash,
                 effects,
             },
-            Err(err) => GenesisResult::Failure(GenesisError::TrackingCopyError(
-                TrackingCopyError::Storage(err),
-            )),
+            Err(err) => {
+                GenesisResult::Failure(GenesisError::TrackingCopy(TrackingCopyError::Storage(err)))
+            }
         }
     }
 
@@ -141,7 +144,7 @@ pub trait CommitProvider: StateProvider {
             Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
             Ok(None) => return ProtocolUpgradeResult::RootNotFound,
             Err(err) => {
-                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
+                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                     TrackingCopyError::Storage(err),
                 ))
             }
@@ -162,10 +165,202 @@ pub trait CommitProvider: StateProvider {
                 post_state_hash,
                 effects,
             },
-            Err(err) => ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
+            Err(err) => ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                 TrackingCopyError::Storage(err),
             )),
         }
+    }
+
+    /// Direct transfer.
+    fn transfer(&self, request: TransferRequest) -> TransferResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return TransferResult::RootNotFound,
+            Err(err) => {
+                return TransferResult::Failure(TransferError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let account_hash = request.address();
+        let protocol_version = request.protocol_version();
+        if let Err(tce) = tc
+            .borrow_mut()
+            .migrate_account(account_hash, protocol_version)
+        {
+            return TransferResult::Failure(tce.into());
+        }
+
+        let authorization_keys = request.authorization_keys();
+
+        let config = request.config();
+        let administrative_accounts = config.administrative_accounts();
+
+        let runtime_args = match request.args() {
+            TransferRequestArgs::Raw(runtime_args) => runtime_args.clone(),
+            TransferRequestArgs::Explicit(transfer_args) => {
+                match RuntimeArgs::try_from(*transfer_args) {
+                    Ok(runtime_args) => runtime_args,
+                    Err(cve) => return TransferResult::Failure(TransferError::CLValue(cve)),
+                }
+            }
+        };
+
+        let remaining_spending_limit = match runtime_args.try_get_number(ARG_AMOUNT) {
+            Ok(amount) => amount,
+            Err(cve) => {
+                debug!("failed to derive remaining_spending_limit");
+                return TransferResult::Failure(TransferError::CLValue(cve));
+            }
+        };
+
+        let mut runtime_args_builder = TransferRuntimeArgsBuilder::new(runtime_args);
+
+        let transfer_target_mode = match runtime_args_builder
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tc))
+        {
+            Ok(transfer_target_mode) => transfer_target_mode,
+            Err(error) => return TransferResult::Failure(error),
+        };
+
+        if config.enforce_transfer_restrictions(&account_hash) {
+            // We need to make sure that either the source or target is an admin.
+            match transfer_target_mode {
+                NewTransferTargetMode::ExistingAccount {
+                    target_account_hash,
+                    ..
+                }
+                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
+                    let is_target_system_account =
+                        target_account_hash == PublicKey::System.to_account_hash();
+                    let is_target_administrator = config.is_administrator(&target_account_hash);
+                    if !(is_target_system_account || is_target_administrator) {
+                        // Transferring from normal account to a purse doesn't work.
+                        return TransferResult::Failure(
+                            TransferError::DisabledUnrestrictedTransfers,
+                        );
+                    }
+                }
+                NewTransferTargetMode::PurseExists(_) => {
+                    // We don't know who is the target and we can't simply reverse search
+                    // account/contract that owns it. We also can't know if purse is owned exactly
+                    // by one entity in the system.
+                    return TransferResult::Failure(TransferError::DisabledUnrestrictedTransfers);
+                }
+            }
+        }
+
+        let (entity, entity_addr) = match tc.borrow_mut().get_authorized_addressable_entity(
+            protocol_version,
+            account_hash,
+            authorization_keys,
+            &administrative_accounts,
+        ) {
+            Ok((entity, entity_hash)) => {
+                let entity_addr =
+                    EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+                (entity, entity_addr)
+            }
+            Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+        };
+
+        let named_keys = match tc.borrow_mut().get_named_keys(entity_addr) {
+            Ok(named_keys) => named_keys,
+            Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+        };
+        let access_rights = entity
+            .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
+
+        let mut mint_provider = NativeMintRuntime::new(
+            config.clone(),
+            protocol_version,
+            Rc::clone(&tc),
+            account_hash,
+            entity.clone(),
+            named_keys.clone(),
+            access_rights,
+            remaining_spending_limit,
+            request.transaction_hash(),
+            Phase::Session,
+        );
+
+        match transfer_target_mode {
+            NewTransferTargetMode::ExistingAccount { .. }
+            | NewTransferTargetMode::PurseExists(_) => {
+                // Noop
+            }
+            NewTransferTargetMode::CreateAccount(account_hash) => {
+                let main_purse = match mint_provider.mint(U512::zero()) {
+                    Ok(uref) => uref,
+                    Err(mint_error) => {
+                        return TransferResult::Failure(TransferError::Mint(mint_error))
+                    }
+                };
+                // TODO: KARAN TO FIX: this should create a shiny new addressable entity instance,
+                // not create a legacy account and then uplift it.
+                let account = Account::create(account_hash, NamedKeys::new(), main_purse);
+                if let Err(tce) = tc
+                    .borrow_mut()
+                    .create_addressable_entity_from_account(account, protocol_version)
+                {
+                    return TransferResult::Failure(tce.into());
+                }
+            }
+        }
+
+        let transfer_args = {
+            match runtime_args_builder.build(&entity, named_keys, protocol_version, Rc::clone(&tc))
+            {
+                Ok(transfer_args) => transfer_args,
+                Err(error) => return TransferResult::Failure(error),
+            }
+        };
+        if let Err(mint_error) = mint_provider.transfer(
+            transfer_args.to(),
+            transfer_args.source(),
+            transfer_args.target(),
+            transfer_args.amount(),
+            transfer_args.arg_id(),
+        ) {
+            return TransferResult::Failure(TransferError::Mint(mint_error));
+        }
+
+        let transfers = mint_provider.into_transfers();
+
+        {
+            // TODO: this block needs to be updated with version management for new style
+            // Transactions
+            let deploy_hash = DeployHash::new(request.transaction_hash());
+            let deploy_info = casper_types::DeployInfo::new(
+                deploy_hash,
+                &transfers,
+                account_hash,
+                entity.main_purse(),
+                request.cost(),
+            );
+            tc.borrow_mut().write(
+                Key::DeployInfo(deploy_hash),
+                StoredValue::DeployInfo(deploy_info),
+            );
+        }
+
+        let effects = tc.borrow_mut().effects();
+
+        // commit
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => TransferResult::Success {
+                transfers,
+                post_state_hash,
+                effects,
+            },
+            Err(tce) => TransferResult::Failure(tce.into()),
+        }
+    }
+
+    fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
+        unimplemented!()
     }
 }
 
@@ -238,7 +433,7 @@ pub trait StateProvider {
             Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        let query_request = match tc.get_system_contracts() {
+        let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(AUCTION).copied() {
                 Some(auction_hash) => QueryRequest::new(
                     state_hash,
@@ -380,16 +575,17 @@ pub trait StateProvider {
                                         TrackingCopyError::CLValue(error),
                                     );
                                 }
-                            };
-                        };
-                        warn!(
-                            %key,
-                            type_name = %value.type_name(),
-                            "expected a CLValue::Key or Account to be stored under account hash"
-                        );
-                        return AddressableEntityResult::Failure(
-                            TrackingCopyError::UnexpectedStoredValueVariant,
-                        );
+                            }
+                        } else {
+                            warn!(
+                                %key,
+                                type_name = %value.type_name(),
+                                "expected a CLValue::Key or Account to be stored under account hash"
+                            );
+                            return AddressableEntityResult::Failure(
+                                TrackingCopyError::UnexpectedStoredValueVariant,
+                            );
+                        }
                     }
                 }
             }
@@ -447,7 +643,7 @@ pub trait StateProvider {
             Err(err) => return TotalSupplyResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        let query_request = match tc.get_system_contracts() {
+        let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => QueryRequest::new(
                     state_hash,
@@ -499,7 +695,7 @@ pub trait StateProvider {
             }
         };
 
-        let query_request = match tc.get_system_contracts() {
+        let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
                 Some(mint_hash) => QueryRequest::new(
                     state_hash,
@@ -554,14 +750,6 @@ pub trait StateProvider {
         root: Digest,
         keys_to_delete: &[Key],
     ) -> Result<PruneResult, GlobalStateError>;
-
-    fn transfer(&self, _transfer_request: TransferRequest) -> TransferResult {
-        unimplemented!()
-    }
-
-    fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
-        unimplemented!()
-    }
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.

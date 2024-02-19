@@ -13,7 +13,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{mint::Error, CallStackElement},
+    system::{mint::Error, Caller},
     AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
@@ -26,6 +26,7 @@ impl From<execution::Error> for Option<Error> {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Mint`]
             // contract running natively supports propagating gas limit errors without a panic.
             execution::Error::GasLimit => Some(Error::GasLimit),
+            execution::Error::ForgedReference(_) => Some(Error::ForgedReference),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }
@@ -40,18 +41,12 @@ where
         self.context.get_caller()
     }
 
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
-        Runtime::<'a, R>::get_immediate_caller(self)
+    fn get_immediate_caller(&self) -> Option<Caller> {
+        Runtime::<'a, R>::get_immediate_caller(self).cloned()
     }
 
     fn get_phase(&self) -> Phase {
         self.context.phase()
-    }
-
-    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {
-        self.context
-            .put_key(name.to_string(), key)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::PutKey))
     }
 
     fn get_key(&self, name: &str) -> Option<Key> {
@@ -76,7 +71,7 @@ where
         self.context.engine_config().is_administrator(account_hash)
     }
 
-    fn get_system_contract_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
         self.context.system_contract_registry().map_err(|err| {
             error!(%err, "unable to obtain system contract registry during transfer");
             ProviderError::SystemContractRegistry
@@ -131,8 +126,8 @@ where
         }
     }
 
-    fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
-        let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
+    fn write_amount(&mut self, uref: URef, amount: U512) -> Result<(), Error> {
+        let cl_value = CLValue::from_t(amount).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
