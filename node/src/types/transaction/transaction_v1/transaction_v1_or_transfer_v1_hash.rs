@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{TransactionHash, TransactionV1, TransactionV1Hash};
 
-// TODO[RC]: To separate file
 /// The [`TransactionHash`] stored in a way distinguishing between V1 transactions and V1 transfers.
 #[derive(
     Copy,
