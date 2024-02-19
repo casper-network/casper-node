@@ -46,34 +46,6 @@ type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 type RpcServer =
     JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
 
-/// The timeout for a connection to be established, from a single `connect` call.
-const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// How often to reattempt a connection.
-///
-/// 8 attempts means a maximum delay between attempts of 2:08 and total attempt time of < 5 minutes.
-const TCP_CONNECT_ATTEMPTS: usize = 8;
-
-/// Base delay for the backoff, grows exponentially until `TCP_CONNECT_ATTEMPTS` maxes out).
-const TCP_CONNECT_BASE_BACKOFF: Duration = Duration::from_secs(1);
-
-/// How long to back off from reconnecting to an address after a failure that indicates a
-/// significant problem.
-const SIGNIFICANT_ERROR_BACKOFF: Duration = Duration::from_secs(60);
-
-/// How long to back of from reconnecting to an address if the error is likely not going to change
-/// for a long time.
-const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(60 * 60);
-
-/// How long to wait before attempting to reconnect when an outgoing connection is lost.
-const RECONNECT_DELAY: Duration = Duration::from_secs(5);
-
-/// Number of incoming connections before refusing to accept any new ones.
-const MAX_INCOMING_CONNECTIONS: usize = 10_000;
-
-/// Number of outgoing connections before stopping to connect.
-const MAX_OUTGOING_CONNECTIONS: usize = 10_000;
-
 /// Connection manager.
 ///
 /// The connection manager accepts incoming connections and intiates outgoing connections upon
@@ -89,8 +61,35 @@ struct ConMan {
     shutdown: DropSwitch<ObservableFuse>,
 }
 
+#[derive(Copy, Clone, Debug)]
+/// Configuration settings for the connection manager.
+struct Config {
+    /// The timeout for a connection to be established, from a single `connect` call.
+    tcp_connect_timeout: Duration,
+    /// How often to reattempt a connection.
+    ///
+    /// 8 attempts means a maximum delay between attempts of 2:08 and total attempt time of < 5 minutes.
+    tcp_connect_attempts: usize,
+    /// Base delay for the backoff, grows exponentially until `TCP_CONNECT_ATTEMPTS` maxes out).
+    tcp_connect_base_backoff: Duration,
+    /// How long to back off from reconnecting to an address after a failure that indicates a
+    /// significant problem.
+    significant_error_backoff: Duration,
+    /// How long to back of from reconnecting to an address if the error is likely not going to change
+    /// for a long time.
+    permanent_error_backoff: Duration,
+    /// How long to wait before attempting to reconnect when an outgoing connection is lost.
+    reconnect_delay: Duration,
+    /// Number of incoming connections before refusing to accept any new ones.
+    max_incoming_connections: usize,
+    /// Number of outgoing connections before stopping to connect.
+    max_outgoing_connections: usize,
+}
+
 /// Shared information across the connection manager and its subtasks.
 struct ConManContext {
+    /// Shared configuration settings.
+    cfg: Config,
     /// Callback handler for connection setup and incoming request handling.
     protocol_handler: Box<dyn ProtocolHandler>,
     /// Juliet RPC configuration.
@@ -215,12 +214,14 @@ impl ConMan {
         protocol_handler: H,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
     ) -> Self {
+        let cfg = Config::default();
         let ctx = Arc::new(ConManContext {
+            cfg,
             protocol_handler: protocol_handler.into(),
             rpc_builder,
             state: Default::default(),
             public_addr,
-            incoming_limiter: Arc::new(Semaphore::new(MAX_INCOMING_CONNECTIONS)),
+            incoming_limiter: Arc::new(Semaphore::new(cfg.max_incoming_connections)),
         });
 
         let shutdown = DropSwitch::new(ObservableFuse::new());
@@ -313,7 +314,7 @@ impl ConManContext {
                 return;
             }
 
-            if guard.address_book.len() >= MAX_OUTGOING_CONNECTIONS {
+            if guard.address_book.len() >= self.cfg.max_outgoing_connections {
                 rate_limited!(
                     OUTGOING_WARNING,
                     |dropped| warn!(most_recent_lost=%peer_addr, dropped, "exceeding maximum number of outgoing connections, you may be getting spammed")
@@ -616,7 +617,7 @@ impl OutgoingHandler {
                     // TODO: Currently, peers that have banned us will end up here. They need a
                     //       longer reconnection delay.
                     info!("lost connection");
-                    tokio::time::sleep(RECONNECT_DELAY).await;
+                    tokio::time::sleep(ctx.cfg.reconnect_delay).await;
                 }
                 Err(OutgoingError::EncounteredBannedPeer(until)) => {
                     // We will not keep attempting to connect to banned peers, put them on the
@@ -625,11 +626,11 @@ impl OutgoingHandler {
                 }
                 Err(OutgoingError::FailedToCompleteHandshake(err)) => {
                     debug!(%err, "failed to complete handshake");
-                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                    break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::LoopbackEncountered) => {
                     info!("found loopback");
-                    break Instant::now() + PERMANENT_ERROR_BACKOFF;
+                    break Instant::now() + ctx.cfg.permanent_error_backoff;
                 }
                 Err(OutgoingError::ReconnectionAttemptsExhausted(err)) => {
                     // We could not connect to the address, so we are going to forget it.
@@ -638,15 +639,15 @@ impl OutgoingHandler {
                 }
                 Err(OutgoingError::ResidualRoute) => {
                     error!("encountered residual route, this should not happen");
-                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                    break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::RpcServerError(err)) => {
                     warn!(%err, "encountered RPC error");
-                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                    break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
                     debug!("should be incoming connection");
-                    break Instant::now() + PERMANENT_ERROR_BACKOFF;
+                    break Instant::now() + ctx.cfg.permanent_error_backoff;
                 }
             }
         };
@@ -663,12 +664,13 @@ impl OutgoingHandler {
     }
 
     async fn connect_and_serve(&mut self) -> Result<(), OutgoingError> {
-        let stream =
-            retry_with_exponential_backoff(TCP_CONNECT_ATTEMPTS, TCP_CONNECT_BASE_BACKOFF, || {
-                connect(self.peer_addr)
-            })
-            .await
-            .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
+        let stream = retry_with_exponential_backoff(
+            self.ctx.cfg.tcp_connect_attempts,
+            self.ctx.cfg.tcp_connect_base_backoff,
+            || connect(self.ctx.cfg.tcp_connect_timeout, self.peer_addr),
+        )
+        .await
+        .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
 
         let ProtocolHandshakeOutcome {
             our_id,
@@ -753,8 +755,8 @@ impl Drop for OutgoingHandler {
 /// Connects to given address.
 ///
 /// Will cancel the connection attempt once `TCP_CONNECT_TIMEOUT` is hit.
-async fn connect(addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
-    tokio::time::timeout(TCP_CONNECT_TIMEOUT, TcpStream::connect(addr))
+async fn connect(timeout: Duration, addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
+    tokio::time::timeout(timeout, TcpStream::connect(addr))
         .await
         .map_err(|_elapsed| ConnectionError::TcpConnectionTimeout)?
         .map_err(ConnectionError::TcpConnection)
@@ -802,4 +804,19 @@ where
 #[inline(always)]
 fn we_should_be_outgoing(our_id: NodeId, peer_id: NodeId) -> bool {
     our_id > peer_id
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            tcp_connect_timeout: Duration::from_secs(10),
+            tcp_connect_attempts: 8,
+            tcp_connect_base_backoff: Duration::from_secs(1),
+            significant_error_backoff: Duration::from_secs(60),
+            permanent_error_backoff: Duration::from_secs(60 * 60),
+            reconnect_delay: Duration::from_secs(5),
+            max_incoming_connections: 10_000,
+            max_outgoing_connections: 10_000,
+        }
+    }
 }
