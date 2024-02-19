@@ -36,7 +36,7 @@ use tracing::{
 
 use crate::{
     types::NodeId,
-    utils::{display_error, once_per::rate_limited, DropSwitch, ObservableFuse},
+    utils::{display_error, rate_limited::rate_limited, DropSwitch, ObservableFuse},
 };
 
 use super::{

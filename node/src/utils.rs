@@ -7,8 +7,8 @@ pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
 mod fuse;
-pub(crate) mod once_per;
 pub(crate) mod opt_display;
+pub(crate) mod rate_limited;
 pub(crate) mod registered_metric;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
