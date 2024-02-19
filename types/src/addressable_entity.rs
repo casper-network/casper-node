@@ -1691,7 +1691,7 @@ impl AddressableEntity {
         self.entity_kind
     }
 
-    /// Is the given Package associated to an Account.
+    /// Is this an account?
     pub fn is_account_kind(&self) -> bool {
         matches!(self.entity_kind, EntityKind::Account(_))
     }

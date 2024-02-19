@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 
+use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     bytesrepr::FromBytes,
     contract_messages::Messages,
@@ -9,7 +10,7 @@ use casper_types::{
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
-use super::error;
+use super::Error;
 use crate::execution::Error as ExecError;
 
 /// Represents the result of an execution specified by
@@ -19,7 +20,7 @@ pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
         /// Error causing this `Failure` variant.
-        error: error::Error,
+        error: Error,
         /// List of transfers that happened during execution up to the point of the failure.
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
@@ -59,7 +60,7 @@ impl ExecutionResult {
     /// Constructs [ExecutionResult::Failure] that has 0 cost and no effects.
     /// This is the case for failures that we can't (or don't want to) charge
     /// for, like `PreprocessingError` or `InvalidNonce`.
-    pub fn precondition_failure(error: error::Error) -> ExecutionResult {
+    pub fn precondition_failure(error: Error) -> ExecutionResult {
         ExecutionResult::Failure {
             error,
             transfers: Vec::default(),
@@ -224,18 +225,19 @@ impl ExecutionResult {
 
     /// Returns error value, if possible.
     ///
-    /// Returns a reference to a wrapped [`error::Error`] instance if the object is a failure
-    /// variant.
-    pub fn as_error(&self) -> Option<&error::Error> {
+    /// Returns a reference to a wrapped [`super::Error`]
+    /// instance if the object is a failure variant.
+    pub fn as_error(&self) -> Option<&Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
         }
     }
 
-    /// Consumes [`ExecutionResult`] instance and optionally returns [`error::Error`] instance for
+    /// Consumes [`ExecutionResult`] instance and optionally returns
+    /// [`super::Error`] instance for
     /// [`ExecutionResult::Failure`] variant.
-    pub fn take_error(self) -> Option<error::Error> {
+    pub fn take_error(self) -> Option<Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
@@ -288,16 +290,16 @@ impl ExecutionResult {
     /// The effects that are produced as part of this process would subract `max_payment_cost` from
     /// account's main purse, and add `max_payment_cost` to proposer account's balance.
     pub fn new_payment_code_error(
-        error: error::Error,
+        error: Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
         gas_cost: Gas,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
-    ) -> Result<ExecutionResult, error::Error> {
+    ) -> Result<ExecutionResult, Error> {
         let new_balance = account_main_purse_balance
             .checked_sub(max_payment_cost)
-            .ok_or(error::Error::InsufficientPayment)?;
+            .ok_or(Error::InsufficientPayment)?;
         let new_balance_value =
             StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
         let mut effects = Effects::new();
@@ -327,6 +329,37 @@ impl ExecutionResult {
     /// Returns a self and has a return type compatible with [`ExecutionResult::take_with_ret`].
     pub(crate) fn take_without_ret<T: FromBytes + CLTyped>(self) -> (Option<T>, Self) {
         (None, self)
+    }
+
+    /// A temporary measure to keep things functioning mid-refactor.
+    #[allow(clippy::result_unit_err)]
+    pub fn from_transfer_result(transfer_result: TransferResult, cost: Gas) -> Result<Self, ()> {
+        match transfer_result {
+            TransferResult::RootNotFound => {
+                Err(())
+            }
+            // native transfer is auto-commit...but execution results does not currently allow
+            // for a post state hash to be returned.
+            TransferResult::Success {
+                transfers, effects, .. // post_state_hash
+            } => {
+                Ok(ExecutionResult::Success {
+                    transfers,
+                    cost,
+                    effects,
+                    messages: Messages::default(),
+                })
+            }
+            TransferResult::Failure(te) => {
+                Ok(ExecutionResult::Failure {
+                    error: Error::Transfer(te),
+                    transfers: vec![],
+                    cost,
+                    effects: Effects::default(), // currently not returning effects on failure
+                    messages: Messages::default(),
+                })
+            }
+        }
     }
 }
 
@@ -459,7 +492,7 @@ impl ExecutionResultBuilder {
     /// Builds a final [`ExecutionResult`] based on session result, payment result and a
     /// finalization result.
     pub fn build(self) -> Result<ExecutionResult, ExecutionResultBuilderError> {
-        let mut error: Option<error::Error> = None;
+        let mut error: Option<Error> = None;
         let mut transfers = self.transfers();
         let cost = self.total_cost();
 
@@ -497,9 +530,7 @@ impl ExecutionResultBuilder {
         match self.finalize_execution_result {
             Some(ExecutionResult::Failure { .. }) => {
                 // payment_code_spec_5_a: Finalization Error should only ever be raised here
-                return Ok(ExecutionResult::precondition_failure(
-                    error::Error::Finalization,
-                ));
+                return Ok(ExecutionResult::precondition_failure(Error::Finalization));
             }
             Some(ExecutionResult::Success {
                 effects, messages, ..

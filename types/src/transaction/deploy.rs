@@ -152,6 +152,40 @@ pub struct Deploy {
 }
 
 impl Deploy {
+    /// Constructs a new signed `Deploy`.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        gas_price: u64,
+        dependencies: Vec<DeployHash>,
+        chain_name: String,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+        secret_key: &SecretKey,
+        account: Option<PublicKey>,
+    ) -> Deploy {
+        let account_and_secret_key = match account {
+            Some(account) => InitiatorAddrAndSecretKey::Both {
+                initiator_addr: InitiatorAddr::PublicKey(account),
+                secret_key,
+            },
+            None => InitiatorAddrAndSecretKey::SecretKey(secret_key),
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            gas_price,
+            dependencies,
+            chain_name,
+            payment,
+            session,
+            account_and_secret_key,
+        )
+    }
+
     /// Called by the `DeployBuilder` to construct a new `Deploy`.
     #[cfg(any(feature = "std", test))]
     #[allow(clippy::too_many_arguments)]
@@ -347,6 +381,11 @@ impl Deploy {
         })
     }
 
+    /// Returns `true` if this deploy is a native transfer.
+    pub fn is_transfer(&self) -> bool {
+        self.session.is_transfer()
+    }
+
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp
@@ -489,40 +528,6 @@ impl Deploy {
     #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &DEPLOY
-    }
-
-    /// Constructs a new signed `Deploy`.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        timestamp: Timestamp,
-        ttl: TimeDiff,
-        gas_price: u64,
-        dependencies: Vec<DeployHash>,
-        chain_name: String,
-        payment: ExecutableDeployItem,
-        session: ExecutableDeployItem,
-        secret_key: &SecretKey,
-        account: Option<PublicKey>,
-    ) -> Deploy {
-        let account_and_secret_key = match account {
-            Some(account) => InitiatorAddrAndSecretKey::Both {
-                initiator_addr: InitiatorAddr::PublicKey(account),
-                secret_key,
-            },
-            None => InitiatorAddrAndSecretKey::SecretKey(secret_key),
-        };
-
-        Deploy::build(
-            timestamp,
-            ttl,
-            gas_price,
-            dependencies,
-            chain_name,
-            payment,
-            session,
-            account_and_secret_key,
-        )
     }
 
     /// Returns a random `Deploy`.

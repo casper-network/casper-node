@@ -1,8 +1,7 @@
 use crate::system::error::ProviderError;
 use casper_types::{
-    account::AccountHash,
-    system::{mint::Error, CallStackElement},
-    AddressableEntity, Key, Phase, SystemEntityRegistry, URef, U512,
+    account::AccountHash, system::Caller, AddressableEntity, Key, Phase, SystemEntityRegistry,
+    URef, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -11,12 +10,12 @@ pub trait RuntimeProvider {
     fn get_caller(&self) -> AccountHash;
 
     /// This method should return the immediate caller of the current context.
-    fn get_immediate_caller(&self) -> Option<&CallStackElement>;
+    fn get_immediate_caller(&self) -> Option<Caller>;
 
     fn is_called_from_standard_payment(&self) -> bool;
 
     /// Get system contract registry.
-    fn get_system_contract_registry(&self) -> Result<SystemEntityRegistry, ProviderError>;
+    fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError>;
 
     fn read_addressable_entity_by_account_hash(
         &mut self,
@@ -26,17 +25,14 @@ pub trait RuntimeProvider {
     /// Gets execution phase
     fn get_phase(&self) -> Phase;
 
-    /// This method should handle storing given [`Key`] under `name`.
-    fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error>;
-
     /// This method should handle obtaining a given named [`Key`] under a `name`.
     fn get_key(&self, name: &str) -> Option<Key>;
 
     /// Returns approved CSPR spending limit.
     fn get_approved_spending_limit(&self) -> U512;
 
-    /// Signal to host that `transferred` amount of tokens has been transferred.
-    fn sub_approved_spending_limit(&mut self, transferred: U512);
+    /// Signal to host that `amount` of tokens has been transferred.
+    fn sub_approved_spending_limit(&mut self, amount: U512);
 
     /// Returns main purse of the sender account.
     fn get_main_purse(&self) -> URef;

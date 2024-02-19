@@ -1,10 +1,9 @@
-use casper_types::{execution::Effects, Digest, EraId};
-
 use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
     trie_store::operations::PruneResult,
 };
+use casper_types::{execution::Effects, Digest, EraId};
 
 use crate::tracking_copy::TrackingCopy;
 
@@ -19,6 +18,7 @@ mod protocol_upgrade;
 pub mod query;
 mod round_seigniorage;
 mod total_supply;
+pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
@@ -35,6 +35,7 @@ pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
+pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
 pub struct Block {
