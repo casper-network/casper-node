@@ -471,13 +471,16 @@ async fn handle_incoming(
     info!("now connected via incoming connection");
     match active_route.serve(rpc_server).await {
         Ok(()) => {
-            debug!("connection closed, peer will reconnect");
+            rate_limited!(INCOMING_CLOSED, |dropped| info!(
+                dropped,
+                "connection closed, peer may reconnect"
+            ));
         }
         Err(err) => {
             // Log a warning if an error occurs on an incoming connection.
             rate_limited!(
                 INCOMING_CLOSED_WITH_ERR,
-                |dropped| warn!(%err, dropped, "closed incoming connection with error")
+                |dropped| warn!(%err, dropped, "closed incoming connection due to error")
             );
         }
     }
@@ -569,7 +572,10 @@ impl OutgoingHandler {
                     // Regular connection closure, i.e. without error.
                     // TODO: Currently, peers that have banned us will end up here. They need a
                     //       longer reconnection delay.
-                    info!("lost connection");
+                    rate_limited!(LOST_CONNECTION, |dropped| info!(
+                        dropped,
+                        "lost connection, will reconnect"
+                    ));
                     tokio::time::sleep(ctx.cfg.reconnect_delay).await;
                     // After this, the loop will repeat, triggering a reconnect.
                 }
@@ -588,15 +594,22 @@ impl OutgoingHandler {
                 }
                 Err(OutgoingError::ReconnectionAttemptsExhausted(err)) => {
                     // We could not connect to the address, so we are going to forget it.
-                    debug!(%err, "forgetting address after error");
+                    rate_limited!(
+                        RECONNECTION_ATTEMPTS_EXHAUSTED,
+                        |dropped| info!(last_error=%err, dropped, "forgetting address after exhausting reconnection attempts")
+                    );
                     return;
                 }
                 Err(OutgoingError::RpcServerError(err)) => {
-                    warn!(%err, "encountered juliet RPC error");
+                    rate_limited!(
+                        RPC_ERROR_ON_OUTGOING,
+                        |dropped| warn!(%err, dropped, "encountered juliet RPC error")
+                    );
                     // TODO: If there was a user error, try to extract a reconnection hint.
                     break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
+                    // This is "our bad", but the peer has been informed of our address now.
                     debug!("should be incoming connection");
                     break Instant::now() + ctx.cfg.permanent_error_backoff;
                 }
