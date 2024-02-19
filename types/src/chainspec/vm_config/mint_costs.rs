@@ -1,7 +1,11 @@
 //! Costs of the mint system contract.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
@@ -127,6 +131,7 @@ impl FromBytes for MintCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<MintCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MintCosts {
         MintCosts {

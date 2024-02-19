@@ -1,6 +1,8 @@
+#[cfg(any(feature = "testing", test))]
 use std::iter;
 
 use num_rational::Ratio;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -167,6 +169,7 @@ impl GenesisConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<GenesisConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisConfig {
         let count = rng.gen_range(1..10);

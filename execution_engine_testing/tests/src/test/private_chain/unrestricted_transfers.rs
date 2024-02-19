@@ -3,6 +3,7 @@ use casper_engine_test_support::{
     SYSTEM_ADDR,
 };
 use casper_execution_engine::{engine_state::Error, execution};
+use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -59,7 +60,7 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -132,8 +133,6 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
 
     // User can transfer funds back to admin.
     builder.exec(transfer_request_2).expect_success().commit();
-
-    // What is
 }
 
 #[ignore]
@@ -354,7 +353,7 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -543,7 +542,7 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -757,7 +756,7 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
 
 #[ignore]
 #[test]
-fn should_allow_transfer_to_system_in_a_session_code() {
+fn should_allow_wasm_transfer_to_system() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
@@ -799,18 +798,28 @@ fn should_allow_transfer_to_system_in_a_session_code() {
         U512::zero(),
         "after finalizing a private chain custom payment code a payment purse should be empty"
     );
-
-    let system_account = builder.get_entity_by_account_hash(*SYSTEM_ADDR).unwrap();
-    assert_eq!(
-        system_account.main_purse().addr(),
-        payment_purse_uref.addr()
-    );
 }
 
 #[ignore]
 #[test]
 fn should_allow_transfer_to_system_in_a_native_transfer() {
     let mut builder = super::private_chain_setup();
+
+    let payment_purse_uref = {
+        let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
+            builder.get_handle_payment_contract_hash().value(),
+        ));
+        let payment_purse_key = handle_payment_contract
+            .get(handle_payment::PAYMENT_PURSE_KEY)
+            .unwrap();
+        payment_purse_key.into_uref().unwrap()
+    };
+
+    assert_eq!(
+        builder.get_purse_balance(payment_purse_uref),
+        U512::zero(),
+        "payment purse should be empty"
+    );
 
     let fund_transfer_1 = ExecuteRequestBuilder::transfer(
         *DEFAULT_ADMIN_ACCOUNT_ADDR,
@@ -824,22 +833,9 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
 
     builder.exec(fund_transfer_1).expect_success().commit();
 
-    let handle_payment_contract = builder.get_named_keys(EntityAddr::System(
-        builder.get_handle_payment_contract_hash().value(),
-    ));
-    let payment_purse_key = handle_payment_contract
-        .get(handle_payment::PAYMENT_PURSE_KEY)
-        .unwrap();
-    let payment_purse_uref = payment_purse_key.into_uref().unwrap();
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),
         U512::zero(),
         "after finalizing a private chain custom payment code a payment purse should be empty"
-    );
-
-    let system_account = builder.get_entity_by_account_hash(*SYSTEM_ADDR).unwrap();
-    assert_eq!(
-        system_account.main_purse().addr(),
-        payment_purse_uref.addr()
     );
 }

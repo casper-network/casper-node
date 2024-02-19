@@ -13,11 +13,12 @@ use casper_contract::{
 use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes},
-    ApiError, PublicKey, U512,
+    ApiError, RuntimeArgs, URef, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_SOURCE_UREF: &str = "source";
+const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 
 /// This logic is intended to be used as SESSION PAYMENT LOGIC
 /// Alternate payment logic that allows payment from a purse other than the executing [Account]'s
@@ -33,17 +34,22 @@ pub extern "C" fn call() {
         }
     };
 
+    // handle payment contract
+    let handle_payment_contract_hash = system::get_handle_payment();
+
+    // get payment purse for current execution
+    let payment_purse: URef = runtime::call_contract(
+        handle_payment_contract_hash,
+        GET_PAYMENT_PURSE,
+        RuntimeArgs::default(),
+    );
+
     // amount to transfer from named purse to payment purse
     let amount: U512 = runtime::get_named_arg(ARG_AMOUNT);
 
     // transfer amount from named purse to payment purse, which will be used to pay for execution
-    system::transfer_from_purse_to_account(
-        purse_uref,
-        PublicKey::System.to_account_hash(),
-        amount,
-        None,
-    )
-    .unwrap_or_revert();
+    system::transfer_from_purse_to_purse(purse_uref, payment_purse, amount, None)
+        .unwrap_or_revert();
 }
 
 fn get_named_arg_if_exists<T: FromBytes>(name: &str) -> Option<T> {
