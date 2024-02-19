@@ -8,7 +8,7 @@
 //       to a lot of lock contention on drop. A careful redesign might ease this burden.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Debug,
     net::SocketAddr,
     sync::{Arc, RwLock},
@@ -103,11 +103,8 @@ struct ConManContext {
 struct ConManState {
     // TODO: Add pruning for tables, in case someone is flooding us with bogus addresses. We may
     //       need to add a queue for learning about new addresses.
-    /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
-    ///
-    /// This is strictly used by outgoing connections.
-    // TODO: Replace with set.
-    address_book: HashMap<SocketAddr, AddressBookEntry>,
+    /// A set of outgoing address for which a handler is currently running.
+    address_book: HashSet<SocketAddr>,
     /// The current route per node ID.
     ///
     /// An entry in this table indicates an established connection to a peer. Every entry in this
@@ -288,21 +285,10 @@ impl ConManContext {
 
         {
             let guard = self.state.read().expect("lock poisoned");
-
-            match guard.address_book.get(&peer_addr) {
-                Some(AddressBookEntry::Connecting) => {
-                    // There already exists a handler attempting to connect, exit.
-                    trace!(%peer_addr, "discarding peer address, already has outgoing handler");
-                    return;
-                }
-                Some(AddressBookEntry::Outgoing { remote }) => {
-                    // We are already connected, no need to anything further.
-                    trace!(%peer_addr, %remote, "discarding peer address, already has outgoing connection");
-                    return;
-                }
-                None => {
-                    // The address is unknown.
-                }
+            if guard.address_book.contains(&peer_addr) {
+                // There already exists a handler attempting to connect, exit.
+                trace!(%peer_addr, "discarding peer address, already has outgoing handler");
+                return;
             }
         }
 
@@ -538,19 +524,12 @@ impl OutgoingHandler {
         let outgoing_handler = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
-            match guard.address_book.get(&peer_addr) {
-                Some(AddressBookEntry::Connecting) | Some(AddressBookEntry::Outgoing { .. }) => {
-                    // Someone beat us to the punch.
-                    debug!("got raced by another outgoing handler, aborting");
-                    return;
-                }
-                None => {
-                    // We are the new outgoing handler for this address.
-                    guard
-                        .address_book
-                        .insert(peer_addr, AddressBookEntry::Connecting);
-                }
+            if guard.address_book.contains(&peer_addr) {
+                debug!("got raced by another outgoing handler, aborting");
+                return;
             }
+
+            guard.address_book.insert(peer_addr);
 
             Self {
                 ctx: ctx.clone(),
@@ -608,11 +587,6 @@ impl OutgoingHandler {
             }
             guard.unban(&peer_id);
 
-            guard.address_book.insert(
-                self.peer_addr,
-                AddressBookEntry::Outgoing { remote: peer_id },
-            );
-
             if guard
                 .routing_table
                 .insert(
@@ -651,7 +625,7 @@ impl Drop for OutgoingHandler {
     fn drop(&mut self) {
         // When being dropped, we relinquish exclusive control over the address book entry.
         let mut guard = self.ctx.state.write().expect("lock poisoned");
-        if guard.address_book.remove(&self.peer_addr).is_none() {
+        if !guard.address_book.remove(&self.peer_addr) {
             error!("address book should not be modified by anything but outgoing handler");
         }
     }
