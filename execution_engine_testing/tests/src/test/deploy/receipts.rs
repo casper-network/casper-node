@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, Gas, InitiatorAddr, PublicKey,
-    SecretKey, Transfer, TransferAddr, U512,
+    SecretKey, Transfer, TransferAddr, TransferV2, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -98,9 +98,11 @@ fn should_record_wasmless_transfer() {
     let transfers = txn_info.transfers;
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
+    let Transfer::V2(transfer) = builder
         .get_transfer(transfers[0])
-        .expect("should have transfer");
+        .expect("should have transfer") else {
+        panic!("wrong transfer variant");
+    };
 
     assert_eq!(transfer.transaction_hash, txn_hash);
     assert_eq!(
@@ -162,9 +164,11 @@ fn should_record_wasm_transfer() {
     let transfers = txn_info.transfers;
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
+    let Transfer::V2(transfer) = builder
         .get_transfer(transfers[0])
-        .expect("should have transfer");
+        .expect("should have transfer") else {
+        panic!("wrong transfer variant");
+    };
 
     assert_eq!(transfer.transaction_hash, txn_hash);
     assert_eq!(
@@ -227,9 +231,11 @@ fn should_record_wasm_transfer_with_id() {
     let transfers = txn_info.transfers;
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
+    let Transfer::V2(transfer) = builder
         .get_transfer(transfers[0])
-        .expect("should have transfer");
+        .expect("should have transfer") else {
+        panic!("wrong transfer variant");
+    };
 
     assert_eq!(transfer.transaction_hash, txn_hash);
     assert_eq!(
@@ -340,7 +346,7 @@ fn should_record_wasm_transfers() {
 
     assert_eq!(transfers.len(), EXPECTED_LENGTH);
 
-    assert!(transfers.contains(&Transfer {
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
         transaction_hash: txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
@@ -349,9 +355,9 @@ fn should_record_wasm_transfers() {
         amount: *TRANSFER_AMOUNT_1,
         gas: Gas::zero(),
         id: alice_id,
-    }));
+    })));
 
-    assert!(transfers.contains(&Transfer {
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
         transaction_hash: txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
@@ -360,9 +366,9 @@ fn should_record_wasm_transfers() {
         amount: *TRANSFER_AMOUNT_2,
         gas: Gas::zero(),
         id: bob_id,
-    }));
+    })));
 
-    assert!(transfers.contains(&Transfer {
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
         transaction_hash: txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
@@ -371,7 +377,7 @@ fn should_record_wasm_transfers() {
         amount: *TRANSFER_AMOUNT_3,
         gas: Gas::zero(),
         id: carol_id,
-    }));
+    })));
 }
 
 #[ignore]
@@ -499,7 +505,7 @@ fn should_record_wasm_transfers_with_subcall() {
         tmp
     };
 
-    let session_expected_alice = Transfer {
+    let session_expected_alice = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
@@ -508,9 +514,9 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_1,
         gas: Gas::zero(),
         id: alice_id,
-    };
+    });
 
-    let session_expected_bob = Transfer {
+    let session_expected_bob = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
@@ -519,9 +525,9 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_2,
         gas: Gas::zero(),
         id: bob_id,
-    };
+    });
 
-    let session_expected_carol = Transfer {
+    let session_expected_carol = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
@@ -530,7 +536,7 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_3,
         gas: Gas::zero(),
         id: carol_id,
-    };
+    });
 
     const SESSION_EXPECTED_COUNT: Option<usize> = Some(1);
     for (i, expected) in [
@@ -549,7 +555,7 @@ fn should_record_wasm_transfers_with_subcall() {
         );
     }
 
-    let stored_expected_alice = Transfer {
+    let stored_expected_alice = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
@@ -558,9 +564,9 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_1,
         gas: Gas::zero(),
         id: alice_id,
-    };
+    });
 
-    let stored_expected_bob = Transfer {
+    let stored_expected_bob = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
@@ -569,9 +575,9 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_2,
         gas: Gas::zero(),
         id: bob_id,
-    };
+    });
 
-    let stored_expected_carol = Transfer {
+    let stored_expected_carol = Transfer::V2(TransferV2 {
         transaction_hash: transfer_txn_hash,
         from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
@@ -580,7 +586,7 @@ fn should_record_wasm_transfers_with_subcall() {
         amount: *TRANSFER_AMOUNT_3,
         gas: Gas::zero(),
         id: carol_id,
-    };
+    });
 
     const STORED_EXPECTED_COUNT: Option<usize> = Some(1);
     for (i, expected) in [

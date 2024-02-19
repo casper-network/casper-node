@@ -392,8 +392,12 @@
                       }
                     ],
                     "transfers": [
-                      "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                      "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                      {
+                        "Version2": "transfer-v2-5959595959595959595959595959595959595959595959595959595959595959"
+                      },
+                      {
+                        "Version2": "transfer-v2-8282828282828282828282828282828282828282828282828282828282828282"
+                      }
                     ],
                     "gas": "123456"
                   }
@@ -570,8 +574,12 @@
                       }
                     ],
                     "transfers": [
-                      "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                      "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                      {
+                        "Version2": "transfer-v2-5959595959595959595959595959595959595959595959595959595959595959"
+                      },
+                      {
+                        "Version2": "transfer-v2-8282828282828282828282828282828282828282828282828282828282828282"
+                      }
                     ],
                     "gas": "123456"
                   }
@@ -1519,18 +1527,20 @@
               "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
               "transfers": [
                 {
-                  "transaction_hash": {
-                    "Version1": "0909090909090909090909090909090909090909090909090909090909090909"
-                  },
-                  "from": {
-                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
-                  },
-                  "to": "account-hash-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
-                  "source": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-007",
-                  "target": "uref-0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c-000",
-                  "amount": "3000000000",
-                  "gas": "2500000000",
-                  "id": 9
+                  "Version2": {
+                    "transaction_hash": {
+                      "Version1": "0909090909090909090909090909090909090909090909090909090909090909"
+                    },
+                    "from": {
+                      "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                    },
+                    "to": "account-hash-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+                    "source": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-007",
+                    "target": "uref-0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c-000",
+                    "amount": "3000000000",
+                    "gas": "2500000000",
+                    "id": 9
+                  }
                 }
               ]
             }
@@ -3374,10 +3384,10 @@
                     ]
                   },
                   "transfers": {
-                    "description": "A record of Transfers performed while executing the deploy.",
+                    "description": "A record of version 1 Transfers performed while executing the deploy.",
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
+                      "$ref": "#/components/schemas/TransferV1Addr"
                     }
                   },
                   "cost": {
@@ -3425,7 +3435,7 @@
                     "description": "A record of Transfers performed while executing the deploy.",
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/TransferAddr"
+                      "$ref": "#/components/schemas/TransferV1Addr"
                     }
                   },
                   "cost": {
@@ -3639,14 +3649,14 @@
             "additionalProperties": false
           },
           {
-            "description": "Writes the given Transfer to global state.",
+            "description": "Writes the given version 1 Transfer to global state.",
             "type": "object",
             "required": [
               "WriteTransfer"
             ],
             "properties": {
               "WriteTransfer": {
-                "$ref": "#/components/schemas/Transfer"
+                "$ref": "#/components/schemas/TransferV1"
               }
             },
             "additionalProperties": false
@@ -3848,10 +3858,10 @@
             ]
           },
           "transfers": {
-            "description": "Transfers performed by the Deploy.",
+            "description": "Version 1 transfers performed by the Deploy.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TransferAddr"
+              "$ref": "#/components/schemas/TransferV1Addr"
             }
           },
           "from": {
@@ -3881,8 +3891,8 @@
         },
         "additionalProperties": false
       },
-      "TransferAddr": {
-        "description": "Hex-encoded transfer address.",
+      "TransferV1Addr": {
+        "description": "Hex-encoded version 1 transfer address.",
         "type": "string"
       },
       "URef": {
@@ -3995,36 +4005,36 @@
           }
         ]
       },
-      "Transfer": {
-        "description": "Represents a transfer from one purse to another",
+      "TransferV1": {
+        "description": "Represents a version 1 transfer from one purse to another.",
         "type": "object",
         "required": [
           "amount",
+          "deploy_hash",
           "from",
           "gas",
           "source",
-          "target",
-          "transaction_hash"
+          "target"
         ],
         "properties": {
-          "transaction_hash": {
-            "description": "Transaction that created the transfer.",
+          "deploy_hash": {
+            "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/TransactionHash"
+                "$ref": "#/components/schemas/DeployHash"
               }
             ]
           },
           "from": {
-            "description": "Entity from which transfer was executed.",
+            "description": "Account from which transfer was executed",
             "allOf": [
               {
-                "$ref": "#/components/schemas/InitiatorAddr"
+                "$ref": "#/components/schemas/AccountHash"
               }
             ]
           },
           "to": {
-            "description": "Account to which funds are transferred.",
+            "description": "Account to which funds are transferred",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/AccountHash"
@@ -4035,7 +4045,7 @@
             ]
           },
           "source": {
-            "description": "Source purse.",
+            "description": "Source purse",
             "allOf": [
               {
                 "$ref": "#/components/schemas/URef"
@@ -4043,7 +4053,7 @@
             ]
           },
           "target": {
-            "description": "Target purse.",
+            "description": "Target purse",
             "allOf": [
               {
                 "$ref": "#/components/schemas/URef"
@@ -4051,7 +4061,7 @@
             ]
           },
           "amount": {
-            "description": "Transfer amount.",
+            "description": "Transfer amount",
             "allOf": [
               {
                 "$ref": "#/components/schemas/U512"
@@ -4059,15 +4069,15 @@
             ]
           },
           "gas": {
-            "description": "Gas.",
+            "description": "Gas",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Gas"
+                "$ref": "#/components/schemas/U512"
               }
             ]
           },
           "id": {
-            "description": "User-defined ID.",
+            "description": "User-defined id",
             "type": [
               "integer",
               "null"
@@ -4077,14 +4087,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "Gas": {
-        "description": "The `Gas` struct represents a `U512` amount of gas.",
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/U512"
-          }
-        ]
       },
       "Bid": {
         "description": "An entry in the validator map.",
@@ -4604,6 +4606,49 @@
           "$ref": "#/components/schemas/Transform"
         }
       },
+      "TransferAddr": {
+        "description": "A versioned wrapper for a transfer address.",
+        "oneOf": [
+          {
+            "description": "A version 1 transfer address.",
+            "type": "object",
+            "required": [
+              "Version1"
+            ],
+            "properties": {
+              "Version1": {
+                "$ref": "#/components/schemas/TransferV1Addr"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A version 2 transfer address.",
+            "type": "object",
+            "required": [
+              "Version2"
+            ],
+            "properties": {
+              "Version2": {
+                "$ref": "#/components/schemas/TransferV2Addr"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "TransferV2Addr": {
+        "description": "Hex-encoded version 2 transfer address.",
+        "type": "string"
+      },
+      "Gas": {
+        "description": "The `Gas` struct represents a `U512` amount of gas.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/U512"
+          }
+        ]
+      },
       "AccountIdentifier": {
         "description": "Identifier of an account.",
         "anyOf": [
@@ -4951,14 +4996,14 @@
             "additionalProperties": false
           },
           {
-            "description": "A `Transfer`.",
+            "description": "A version 1 (legacy) transfer.",
             "type": "object",
             "required": [
-              "Transfer"
+              "LegacyTransfer"
             ],
             "properties": {
-              "Transfer": {
-                "$ref": "#/components/schemas/Transfer"
+              "LegacyTransfer": {
+                "$ref": "#/components/schemas/TransferV1"
               }
             },
             "additionalProperties": false
@@ -5134,6 +5179,19 @@
             "properties": {
               "TransactionInfo": {
                 "$ref": "#/components/schemas/TransactionInfo"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A versioned transfer.",
+            "type": "object",
+            "required": [
+              "Transfer"
+            ],
+            "properties": {
+              "Transfer": {
+                "$ref": "#/components/schemas/Transfer"
               }
             },
             "additionalProperties": false
@@ -5866,6 +5924,120 @@
                 "$ref": "#/components/schemas/Gas"
               }
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Transfer": {
+        "description": "A versioned wrapper for a transfer.",
+        "oneOf": [
+          {
+            "description": "A version 1 transfer.",
+            "type": "object",
+            "required": [
+              "Version1"
+            ],
+            "properties": {
+              "Version1": {
+                "$ref": "#/components/schemas/TransferV1"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A version 2 transfer.",
+            "type": "object",
+            "required": [
+              "Version2"
+            ],
+            "properties": {
+              "Version2": {
+                "$ref": "#/components/schemas/TransferV2"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "TransferV2": {
+        "description": "Represents a version 2 transfer from one purse to another.",
+        "type": "object",
+        "required": [
+          "amount",
+          "from",
+          "gas",
+          "source",
+          "target",
+          "transaction_hash"
+        ],
+        "properties": {
+          "transaction_hash": {
+            "description": "Transaction that created the transfer.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionHash"
+              }
+            ]
+          },
+          "from": {
+            "description": "Entity from which transfer was executed.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitiatorAddr"
+              }
+            ]
+          },
+          "to": {
+            "description": "Account to which funds are transferred.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "description": "Source purse.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "target": {
+            "description": "Target purse.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "amount": {
+            "description": "Transfer amount.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/U512"
+              }
+            ]
+          },
+          "gas": {
+            "description": "Gas.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          },
+          "id": {
+            "description": "User-defined ID.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
           }
         },
         "additionalProperties": false

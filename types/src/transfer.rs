@@ -1,319 +1,179 @@
-use alloc::{format, string::String, vec::Vec};
-use core::{
-    array::TryFromSliceError,
-    convert::TryFrom,
-    fmt::{self, Debug, Display, Formatter},
-};
+mod error;
+mod transfer_addr;
+mod transfer_v1;
+mod transfer_v2;
+
+use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 #[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
+use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+#[cfg(feature = "json-schema")]
 use crate::{
-    account::AccountHash,
-    bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, CLType, CLTyped, Gas, InitiatorAddr, TransactionHash, URef, U512,
+    account::AccountHash, Gas, InitiatorAddr, TransactionHash, TransactionV1Hash, URef, U512,
 };
+pub use error::TransferFromStrError;
+pub use transfer_addr::TransferAddr;
+pub use transfer_v1::{TransferV1, TransferV1Addr, TRANSFER_V1_ADDR_LENGTH};
+pub use transfer_v2::{TransferV2, TransferV2Addr, TRANSFER_V2_ADDR_LENGTH};
 
-/// The length of a transfer address.
-pub const TRANSFER_ADDR_LENGTH: usize = 32;
-pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
+const V1_TAG: u8 = 0;
+const V2_TAG: u8 = 1;
 
-/// Represents a transfer from one purse to another
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "json-schema")]
+pub(super) static TRANSFER: Lazy<Transfer> = Lazy::new(|| {
+    let transaction_hash = TransactionHash::V1(TransactionV1Hash::from_raw([1; 32]));
+    let from = InitiatorAddr::AccountHash(AccountHash::new([2; 32]));
+    let to = Some(AccountHash::new([3; 32]));
+    let source = URef::from_formatted_str(
+        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+    )
+    .unwrap();
+    let target = URef::from_formatted_str(
+        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+    )
+    .unwrap();
+    let amount = U512::from(1_000_000_000_000_u64);
+    let gas = Gas::new(2_500_000_000_u64);
+    let id = Some(999);
+    Transfer::V2(TransferV2::new(
+        transaction_hash,
+        from,
+        to,
+        source,
+        target,
+        amount,
+        gas,
+        id,
+    ))
+});
+
+/// A versioned wrapper for a transfer.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[serde(deny_unknown_fields)]
-pub struct Transfer {
-    /// Transaction that created the transfer.
-    pub transaction_hash: TransactionHash,
-    /// Entity from which transfer was executed.
-    pub from: InitiatorAddr,
-    /// Account to which funds are transferred.
-    pub to: Option<AccountHash>,
-    /// Source purse.
-    pub source: URef,
-    /// Target purse.
-    pub target: URef,
-    /// Transfer amount.
-    pub amount: U512,
-    /// Gas.
-    pub gas: Gas,
-    /// User-defined ID.
-    pub id: Option<u64>,
+pub enum Transfer {
+    /// A version 1 transfer.
+    #[serde(rename = "Version1")]
+    V1(TransferV1),
+    /// A version 2 transfer.
+    #[serde(rename = "Version2")]
+    V2(TransferV2),
 }
 
 impl Transfer {
-    /// Creates a [`Transfer`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        transaction_hash: TransactionHash,
-        from: InitiatorAddr,
-        to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        gas: Gas,
-        id: Option<u64>,
-    ) -> Self {
-        Transfer {
-            transaction_hash,
-            from,
-            to,
-            source,
-            target,
-            amount,
-            gas,
-            id,
-        }
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TRANSFER
+    }
+}
+
+impl From<TransferV1> for Transfer {
+    fn from(v1_transfer: TransferV1) -> Self {
+        Transfer::V1(v1_transfer)
+    }
+}
+
+impl From<TransferV2> for Transfer {
+    fn from(v2_transfer: TransferV2) -> Self {
+        Transfer::V2(v2_transfer)
     }
 }
 
 impl ToBytes for Transfer {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Transfer::V1(transfer) => {
+                V1_TAG.write_bytes(writer)?;
+                transfer.write_bytes(writer)
+            }
+            Transfer::V2(transfer) => {
+                V2_TAG.write_bytes(writer)?;
+                transfer.write_bytes(writer)
+            }
+        }
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buf = Vec::new();
-        self.write_bytes(&mut buf)?;
-        Ok(buf)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.transaction_hash.serialized_length()
-            + self.from.serialized_length()
-            + self.to.serialized_length()
-            + self.source.serialized_length()
-            + self.target.serialized_length()
-            + self.amount.serialized_length()
-            + self.gas.serialized_length()
-            + self.id.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.transaction_hash.write_bytes(writer)?;
-        self.from.write_bytes(writer)?;
-        self.to.write_bytes(writer)?;
-        self.source.write_bytes(writer)?;
-        self.target.write_bytes(writer)?;
-        self.amount.write_bytes(writer)?;
-        self.gas.write_bytes(writer)?;
-        self.id.write_bytes(writer)
+        U8_SERIALIZED_LENGTH
+            + match self {
+                Transfer::V1(transfer) => transfer.serialized_length(),
+                Transfer::V2(transfer) => transfer.serialized_length(),
+            }
     }
 }
 
 impl FromBytes for Transfer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (transaction_hash, remainder) = TransactionHash::from_bytes(bytes)?;
-        let (from, remainder) = InitiatorAddr::from_bytes(remainder)?;
-        let (to, remainder) = <Option<AccountHash>>::from_bytes(remainder)?;
-        let (source, remainder) = URef::from_bytes(remainder)?;
-        let (target, remainder) = URef::from_bytes(remainder)?;
-        let (amount, remainder) = U512::from_bytes(remainder)?;
-        let (gas, remainder) = Gas::from_bytes(remainder)?;
-        let (id, remainder) = <Option<u64>>::from_bytes(remainder)?;
-        Ok((
-            Transfer {
-                transaction_hash,
-                from,
-                to,
-                source,
-                target,
-                amount,
-                gas,
-                id,
-            },
-            remainder,
-        ))
-    }
-}
-
-/// Error returned when decoding a `TransferAddr` from a formatted string.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum FromStrError {
-    /// The prefix is invalid.
-    InvalidPrefix,
-    /// The address is not valid hex.
-    Hex(base16::DecodeError),
-    /// The slice is the wrong length.
-    Length(TryFromSliceError),
-}
-
-impl From<base16::DecodeError> for FromStrError {
-    fn from(error: base16::DecodeError) -> Self {
-        FromStrError::Hex(error)
-    }
-}
-
-impl From<TryFromSliceError> for FromStrError {
-    fn from(error: TryFromSliceError) -> Self {
-        FromStrError::Length(error)
-    }
-}
-
-impl Display for FromStrError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            FromStrError::InvalidPrefix => write!(f, "prefix is not 'transfer-'"),
-            FromStrError::Hex(error) => {
-                write!(f, "failed to decode address portion from hex: {}", error)
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            V1_TAG => {
+                let (transfer, remainder) = TransferV1::from_bytes(remainder)?;
+                Ok((Transfer::V1(transfer), remainder))
             }
-            FromStrError::Length(error) => write!(f, "address portion is wrong length: {}", error),
+            V2_TAG => {
+                let (transfer, remainder) = TransferV2::from_bytes(remainder)?;
+                Ok((Transfer::V2(transfer), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
 
-/// A newtype wrapping a <code>[u8; [TRANSFER_ADDR_LENGTH]]</code> which is the raw bytes of the
-/// transfer address.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct TransferAddr([u8; TRANSFER_ADDR_LENGTH]);
-
-impl TransferAddr {
-    /// Constructs a new `TransferAddr` instance from the raw bytes.
-    pub const fn new(value: [u8; TRANSFER_ADDR_LENGTH]) -> TransferAddr {
-        TransferAddr(value)
-    }
-
-    /// Returns the raw bytes of the transfer address as an array.
-    pub fn value(&self) -> [u8; TRANSFER_ADDR_LENGTH] {
-        self.0
-    }
-
-    /// Returns the raw bytes of the transfer address as a `slice`.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Formats the `TransferAddr` as a prefixed, hex-encoded string.
-    pub fn to_formatted_string(self) -> String {
-        format!(
-            "{}{}",
-            TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
-            base16::encode_lower(&self.0),
-        )
-    }
-
-    /// Parses a string formatted as per `Self::to_formatted_string()` into a `TransferAddr`.
-    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
-            .strip_prefix(TRANSFER_ADDR_FORMATTED_STRING_PREFIX)
-            .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes =
-            <[u8; TRANSFER_ADDR_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
-        Ok(TransferAddr(bytes))
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for TransferAddr {
-    fn schema_name() -> String {
-        String::from("TransferAddr")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded transfer address.".to_string());
-        schema_object.into()
-    }
-}
-
-impl Serialize for TransferAddr {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            self.to_formatted_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for TransferAddr {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let formatted_string = String::deserialize(deserializer)?;
-            TransferAddr::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
-        } else {
-            let bytes = <[u8; TRANSFER_ADDR_LENGTH]>::deserialize(deserializer)?;
-            Ok(TransferAddr(bytes))
-        }
-    }
-}
-
-impl Display for TransferAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", base16::encode_lower(&self.0))
-    }
-}
-
-impl Debug for TransferAddr {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "TransferAddr({})", base16::encode_lower(&self.0))
-    }
-}
-
-impl CLTyped for TransferAddr {
-    fn cl_type() -> CLType {
-        CLType::ByteArray(TRANSFER_ADDR_LENGTH as u32)
-    }
-}
-
-impl ToBytes for TransferAddr {
-    #[inline(always)]
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    #[inline(always)]
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-
-    #[inline(always)]
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)
-    }
-}
-
-impl FromBytes for TransferAddr {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bytes, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((TransferAddr::new(bytes), remainder))
-    }
-}
-
-impl AsRef<[u8]> for TransferAddr {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl Distribution<TransferAddr> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransferAddr {
-        TransferAddr::new(rng.gen())
-    }
-}
-
-/// Generators for [`Transfer`]
+/// Proptest generators for [`Transfer`].
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
-    use proptest::prelude::{prop::option, Arbitrary, Strategy};
+    use proptest::prelude::{prop::option, prop_oneof, Arbitrary, Strategy};
 
+    use super::*;
     use crate::{
         gens::{u512_arb, uref_arb},
-        transaction_info::gens::{account_hash_arb, initiator_addr_arb, txn_hash_arb},
+        transaction_info::gens::{
+            account_hash_arb, deploy_hash_arb, initiator_addr_arb, txn_hash_arb,
+        },
         Gas, Transfer,
     };
 
-    /// Creates an arbitrary [`Transfer`]
-    pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
+    pub fn transfer_v1_arb() -> impl Strategy<Value = TransferV1> {
+        (
+            deploy_hash_arb(),
+            account_hash_arb(),
+            option::of(account_hash_arb()),
+            uref_arb(),
+            uref_arb(),
+            u512_arb(),
+            u512_arb(),
+            option::of(<u64>::arbitrary()),
+        )
+            .prop_map(|(deploy_hash, from, to, source, target, amount, gas, id)| {
+                TransferV1 {
+                    deploy_hash,
+                    from,
+                    to,
+                    source,
+                    target,
+                    amount,
+                    gas,
+                    id,
+                }
+            })
+    }
+
+    pub fn transfer_v2_arb() -> impl Strategy<Value = TransferV2> {
         (
             txn_hash_arb(),
             initiator_addr_arb(),
@@ -325,7 +185,7 @@ pub mod gens {
             option::of(<u64>::arbitrary()),
         )
             .prop_map(
-                |(transaction_hash, from, to, source, target, amount, gas, id)| Transfer {
+                |(transaction_hash, from, to, source, target, amount, gas, id)| TransferV2 {
                     transaction_hash,
                     from,
                     to,
@@ -336,6 +196,14 @@ pub mod gens {
                     id,
                 },
             )
+    }
+
+    /// Creates an arbitrary [`Transfer`]
+    pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
+        prop_oneof![
+            transfer_v1_arb().prop_map(Transfer::V1),
+            transfer_v2_arb().prop_map(Transfer::V2)
+        ]
     }
 }
 
@@ -349,51 +217,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_serialization_roundtrip(transfer in gens::transfer_arb()) {
+        fn bytesrepr_roundtrip(transfer in gens::transfer_arb()) {
             bytesrepr::test_serialization_roundtrip(&transfer)
         }
-    }
-
-    #[test]
-    fn transfer_addr_from_str() {
-        let transfer_address = TransferAddr([4; 32]);
-        let encoded = transfer_address.to_formatted_string();
-        let decoded = TransferAddr::from_formatted_str(&encoded).unwrap();
-        assert_eq!(transfer_address, decoded);
-
-        let invalid_prefix =
-            "transfe-0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(TransferAddr::from_formatted_str(invalid_prefix).is_err());
-
-        let invalid_prefix =
-            "transfer0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(TransferAddr::from_formatted_str(invalid_prefix).is_err());
-
-        let short_addr = "transfer-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(TransferAddr::from_formatted_str(short_addr).is_err());
-
-        let long_addr =
-            "transfer-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(TransferAddr::from_formatted_str(long_addr).is_err());
-
-        let invalid_hex =
-            "transfer-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(TransferAddr::from_formatted_str(invalid_hex).is_err());
-    }
-
-    #[test]
-    fn transfer_addr_serde_roundtrip() {
-        let transfer_address = TransferAddr([255; 32]);
-        let serialized = bincode::serialize(&transfer_address).unwrap();
-        let decoded = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(transfer_address, decoded);
-    }
-
-    #[test]
-    fn transfer_addr_json_roundtrip() {
-        let transfer_address = TransferAddr([255; 32]);
-        let json_string = serde_json::to_string_pretty(&transfer_address).unwrap();
-        let decoded = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(transfer_address, decoded);
     }
 }

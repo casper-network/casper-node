@@ -123,9 +123,9 @@ impl TransformKind {
                     let found = "ByteCode".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::Transfer(_) => {
+                StoredValue::LegacyTransfer(_) => {
                     let expected = "Contract or Account".to_string();
-                    let found = "Transfer".to_string();
+                    let found = "LegacyTransfer".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::DeployInfo(_) => {
@@ -186,6 +186,11 @@ impl TransformKind {
                 StoredValue::TransactionInfo(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "TransactionInfo".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::Transfer(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "Transfer".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },

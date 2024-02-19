@@ -632,8 +632,8 @@ where
                 StoredValue::ByteCode(_) => {
                     return Ok(query.into_not_found_result("ByteCode value found."));
                 }
-                StoredValue::Transfer(_) => {
-                    return Ok(query.into_not_found_result("Transfer value found."));
+                StoredValue::LegacyTransfer(_) => {
+                    return Ok(query.into_not_found_result("Legacy Transfer value found."));
                 }
                 StoredValue::DeployInfo(_) => {
                     return Ok(query.into_not_found_result("DeployInfo value found."));
@@ -661,6 +661,9 @@ where
                 }
                 StoredValue::TransactionInfo(_) => {
                     return Ok(query.into_not_found_result("TransactionInfo value found."));
+                }
+                StoredValue::Transfer(_) => {
+                    return Ok(query.into_not_found_result("Transfer value found."));
                 }
             }
         }

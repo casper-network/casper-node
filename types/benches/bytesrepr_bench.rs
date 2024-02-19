@@ -15,8 +15,9 @@ use casper_types::{
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
-    Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash, Transfer,
-    TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
+    Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash,
+    TransferV1Addr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_V1_ADDR_LENGTH, U128, U256, U512,
+    UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -619,8 +620,8 @@ fn deserialize_bid(delegators_len: u32, b: &mut Bencher) {
     b.iter(|| Bid::from_bytes(black_box(&bid_bytes)));
 }
 
-fn sample_transfer() -> Transfer {
-    Transfer::new(
+fn sample_transfer() -> TransferV2 {
+    TransferV2::new(
         TransactionHash::V1(TransactionV1Hash::default()),
         InitiatorAddr::AccountHash(AccountHash::default()),
         None,
@@ -634,21 +635,21 @@ fn sample_transfer() -> Transfer {
 
 fn serialize_transfer(b: &mut Bencher) {
     let transfer = sample_transfer();
-    b.iter(|| Transfer::to_bytes(&transfer));
+    b.iter(|| TransferV2::to_bytes(&transfer));
 }
 
 fn deserialize_transfer(b: &mut Bencher) {
     let transfer = sample_transfer();
     let transfer_bytes = transfer.to_bytes().unwrap();
-    b.iter(|| Transfer::from_bytes(&transfer_bytes));
+    b.iter(|| TransferV2::from_bytes(&transfer_bytes));
 }
 
 fn sample_deploy_info(transfer_len: u16) -> DeployInfo {
     let transfers = (0..transfer_len)
         .map(|i| {
-            let mut tmp = [0u8; TRANSFER_ADDR_LENGTH];
+            let mut tmp = [0u8; TRANSFER_V1_ADDR_LENGTH];
             U256::from(i).to_little_endian(&mut tmp);
-            TransferAddr::new(tmp)
+            TransferV1Addr::new(tmp)
         })
         .collect::<Vec<_>>();
     DeployInfo::new(

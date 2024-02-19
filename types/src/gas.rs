@@ -20,7 +20,9 @@ use crate::{
 };
 
 /// The `Gas` struct represents a `U512` amount of gas.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Gas(U512);

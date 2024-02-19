@@ -23,6 +23,8 @@ use super::Effects;
 use super::{Transform, TransformKind};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "json-schema", feature = "testing", test))]
+use crate::TransferV2Addr;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
     Gas, TransferAddr,
@@ -45,8 +47,8 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     effects.push(Transform::new(key2, TransformKind::Identity));
 
     let transfers = vec![
-        TransferAddr::new([89; KEY_HASH_LENGTH]),
-        TransferAddr::new([130; KEY_HASH_LENGTH]),
+        TransferAddr::V2(TransferV2Addr::new([89; KEY_HASH_LENGTH])),
+        TransferAddr::V2(TransferV2Addr::new([130; KEY_HASH_LENGTH])),
     ];
 
     ExecutionResultV2::Success {
@@ -90,7 +92,7 @@ impl Distribution<ExecutionResultV2> for Standard {
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = Vec::new();
         for _ in 0..transfer_count {
-            transfers.push(TransferAddr::new(rng.gen()))
+            transfers.push(TransferAddr::V2(TransferV2Addr::new(rng.gen())))
         }
 
         let effects = Effects::random(rng);
@@ -128,7 +130,7 @@ impl ExecutionResultV2 {
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
-            transfers.push(TransferAddr::new(rng.gen()))
+            transfers.push(TransferAddr::V2(TransferV2Addr::new(rng.gen())))
         }
 
         let gas = Gas::new(rng.gen::<u64>());

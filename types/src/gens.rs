@@ -39,8 +39,11 @@ use crate::{
         gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
         ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
     },
-    transaction_info::gens::{deploy_hash_arb, transfer_addr_arb, txn_info_arb},
-    transfer::{gens::transfer_arb, TransferAddr},
+    transaction_info::gens::{deploy_hash_arb, transfer_v1_addr_arb, txn_info_arb},
+    transfer::{
+        gens::{transfer_arb, transfer_v1_arb},
+        TransferV1Addr,
+    },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
     NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256,
@@ -103,7 +106,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
-        transfer_addr_arb().prop_map(Key::Transfer),
+        transfer_v1_addr_arb().prop_map(Key::LegacyTransfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
@@ -120,7 +123,7 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
         u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
         u2_slice_32().prop_map(Key::Hash),
         u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
-        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
+        u2_slice_32().prop_map(|bytes| Key::LegacyTransfer(TransferV1Addr::new(bytes))),
         u2_slice_32().prop_map(Key::Dictionary),
     ]
 }
@@ -705,7 +708,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         contract_arb().prop_map(StoredValue::Contract),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         package_arb().prop_map(StoredValue::Package),
-        transfer_arb().prop_map(StoredValue::Transfer),
+        transfer_v1_arb().prop_map(StoredValue::LegacyTransfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
@@ -717,6 +720,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
         txn_info_arb().prop_map(StoredValue::TransactionInfo),
+        transfer_arb().prop_map(StoredValue::Transfer),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -727,7 +731,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::ContractWasm(_) => stored_value,
                 StoredValue::Contract(_) => stored_value,
                 StoredValue::ContractPackage(_) => stored_value,
-                StoredValue::Transfer(_) => stored_value,
+                StoredValue::LegacyTransfer(_) => stored_value,
                 StoredValue::DeployInfo(_) => stored_value,
                 StoredValue::EraInfo(_) => stored_value,
                 StoredValue::Bid(_) => stored_value,
@@ -741,5 +745,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::Message(_) => stored_value,
                 StoredValue::NamedKey(_) => stored_value,
                 StoredValue::TransactionInfo(_) => stored_value,
+                StoredValue::Transfer(_) => stored_value,
             })
 }

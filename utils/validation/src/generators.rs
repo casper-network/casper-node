@@ -19,7 +19,8 @@ use casper_types::{
     CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, EraId, Gas, Group, Groups, InitiatorAddr, Key,
     Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TransactionHash, Transfer, TransferAddr, URef, U512,
+    StoredValue, TransactionHash, TransactionV1Hash, Transfer, TransferV1, TransferV1Addr,
+    TransferV2, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -66,19 +67,29 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         }
     };
 
-    let transfer = Transfer::new(
-        TransactionHash::from(DeployHash::from_raw([44; 32])),
-        InitiatorAddr::from(AccountHash::new([100; 32])),
+    let legacy_transfer = TransferV1::new(
+        DeployHash::from_raw([44; 32]),
+        AccountHash::new([100; 32]),
+        Some(AccountHash::new([101; 32])),
+        URef::new([10; 32], AccessRights::WRITE),
+        URef::new([11; 32], AccessRights::WRITE),
+        U512::from(15_000_000_000u64),
+        U512::from(2_500_000_000u64),
+        Some(1),
+    );
+    let transfer = Transfer::V2(TransferV2::new(
+        TransactionHash::V1(TransactionV1Hash::from_raw([44; 32])),
+        InitiatorAddr::AccountHash(AccountHash::new([100; 32])),
         Some(AccountHash::new([101; 32])),
         URef::new([10; 32], AccessRights::WRITE),
         URef::new([11; 32], AccessRights::WRITE),
         U512::from(15_000_000_000u64),
         Gas::new(2_500_000_000u64),
         Some(1),
-    );
+    ));
     let deploy_info = DeployInfo::new(
         DeployHash::from_raw([55; 32]),
-        &[TransferAddr::new([1; 32]), TransferAddr::new([2; 32])],
+        &[TransferV1Addr::new([1; 32]), TransferV1Addr::new([2; 32])],
         AccountHash::new([100; 32]),
         URef::new([10; 32], AccessRights::READ_ADD_WRITE),
         U512::from(2_500_000_000u64),
@@ -202,7 +213,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
         const HASH_KEY: Key = Key::Hash([42; 32]);
         const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
-        const TRANSFER_KEY: Key = Key::Transfer(TransferAddr::new([42; 32]));
+        const LEGACY_TRANSFER_KEY: Key = Key::LegacyTransfer(TransferV1Addr::new([42; 32]));
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
@@ -228,8 +239,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![UREF_KEY.into()])?,
         );
         keys.insert(
-            "Transfer".to_string(),
-            ABITestCase::from_inputs(vec![TRANSFER_KEY.into()])?,
+            "LegacyTransfer".to_string(),
+            ABITestCase::from_inputs(vec![LEGACY_TRANSFER_KEY.into()])?,
         );
         keys.insert(
             "DeployInfo".to_string(),
@@ -407,8 +418,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         stored_value.insert(
-            "Transfer".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Transfer(transfer).into()])?,
+            "LegacyTransfer".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::LegacyTransfer(legacy_transfer).into()])?,
         );
         stored_value.insert(
             "DeployInfo".to_string(),
@@ -450,6 +461,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 unbonding_purse_2,
             ])
             .into()])?,
+        );
+        stored_value.insert(
+            "Transfer".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::Transfer(transfer).into()])?,
         );
 
         Fixture::ABI {

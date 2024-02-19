@@ -35,8 +35,8 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
     KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, TransferAddr, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, TransferAddr,
+    TransferV2Addr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::Error};
@@ -367,7 +367,7 @@ where
     /// Creates a new transfer address using a transfer address generator.
     pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
         let transfer_addr = self.address_generator.borrow_mut().create_address();
-        Ok(TransferAddr::new(transfer_addr))
+        Ok(TransferAddr::V2(TransferV2Addr::new(transfer_addr)))
     }
 
     /// Puts `key` to the map of named keys of current context.
@@ -516,7 +516,6 @@ where
     /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
-            // Writing a `Transfer` will not exceed write size limit.
             self.tracking_copy
                 .borrow_mut()
                 .write(key, StoredValue::Transfer(value));
@@ -669,28 +668,28 @@ where
     fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
-            StoredValue::Account(_) => Ok(()),
-            StoredValue::ByteCode(_) => Ok(()),
-            StoredValue::Contract(_) => Ok(()),
-            StoredValue::AddressableEntity(_) => Ok(()),
-            // TODO: anything to validate here?
-            StoredValue::Package(_) => Ok(()),
-            StoredValue::Transfer(_) => Ok(()),
-            StoredValue::DeployInfo(_) => Ok(()),
-            StoredValue::EraInfo(_) => Ok(()),
-            StoredValue::Bid(_) => Ok(()),
-            StoredValue::BidKind(_) => Ok(()),
-            StoredValue::Withdraw(_) => Ok(()),
-            StoredValue::Unbonding(_) => Ok(()),
-            StoredValue::ContractPackage(_) => Ok(()),
-            StoredValue::ContractWasm(_) => Ok(()),
-            StoredValue::MessageTopic(_) => Ok(()),
-            StoredValue::Message(_) => Ok(()),
             StoredValue::NamedKey(named_key_value) => {
                 self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
                 self.validate_cl_value(named_key_value.get_name_as_cl_value())
             }
-            StoredValue::TransactionInfo(_) => Ok(()),
+            StoredValue::Account(_)
+            | StoredValue::ByteCode(_)
+            | StoredValue::Contract(_)
+            | StoredValue::AddressableEntity(_)
+            | StoredValue::Package(_)
+            | StoredValue::LegacyTransfer(_)
+            | StoredValue::DeployInfo(_)
+            | StoredValue::EraInfo(_)
+            | StoredValue::Bid(_)
+            | StoredValue::BidKind(_)
+            | StoredValue::Withdraw(_)
+            | StoredValue::Unbonding(_)
+            | StoredValue::ContractPackage(_)
+            | StoredValue::ContractWasm(_)
+            | StoredValue::MessageTopic(_)
+            | StoredValue::Message(_)
+            | StoredValue::TransactionInfo(_)
+            | StoredValue::Transfer(_) => Ok(()),
         }
     }
 
@@ -758,7 +757,7 @@ where
             Key::Balance(_) => false,
             Key::Account(_)
             | Key::Hash(_)
-            | Key::Transfer(_)
+            | Key::LegacyTransfer(_)
             | Key::DeployInfo(_)
             | Key::EraInfo(_)
             | Key::Bid(_)
@@ -775,7 +774,8 @@ where
             | Key::ByteCode(_)
             | Key::Message(_)
             | Key::NamedKey(_)
-            | Key::TransactionInfo(_) => true,
+            | Key::TransactionInfo(_)
+            | Key::Transfer(_) => true,
         }
     }
 
@@ -796,7 +796,7 @@ where
             }
             Key::Hash(_)
             | Key::Account(_)
-            | Key::Transfer(_)
+            | Key::LegacyTransfer(_)
             | Key::DeployInfo(_)
             | Key::EraInfo(_)
             | Key::Balance(_)
@@ -812,7 +812,8 @@ where
             | Key::Package(_)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::TransactionInfo(_) => false,
+            | Key::TransactionInfo(_)
+            | Key::Transfer(_) => false,
         }
     }
 
@@ -829,7 +830,7 @@ where
             }
             Key::Account(_)
             | Key::Hash(_)
-            | Key::Transfer(_)
+            | Key::LegacyTransfer(_)
             | Key::DeployInfo(_)
             | Key::EraInfo(_)
             | Key::Balance(_)
@@ -846,7 +847,8 @@ where
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::TransactionInfo(_) => false,
+            | Key::TransactionInfo(_)
+            | Key::Transfer(_) => false,
         }
     }
 

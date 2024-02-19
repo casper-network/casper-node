@@ -19,8 +19,8 @@ use casper_types::{
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, MINT,
     },
-    Account, AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
-    Phase, PublicKey, RuntimeArgs, StoredValue, U512,
+    Account, AddressableEntity, AddressableEntityHash, Digest, EntityAddr, Key, KeyTag, Phase,
+    PublicKey, RuntimeArgs, StoredValue, TransactionInfo, U512,
 };
 
 #[cfg(test)]
@@ -184,7 +184,7 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        let account_hash = request.address();
+        let account_hash = request.initiator().account_hash();
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
@@ -328,22 +328,17 @@ pub trait CommitProvider: StateProvider {
 
         let transfers = mint_provider.into_transfers();
 
-        {
-            // TODO: this block needs to be updated with version management for new style
-            // Transactions
-            let deploy_hash = DeployHash::new(request.transaction_hash());
-            let deploy_info = casper_types::DeployInfo::new(
-                deploy_hash,
-                &transfers,
-                account_hash,
-                entity.main_purse(),
-                request.cost(),
-            );
-            tc.borrow_mut().write(
-                Key::DeployInfo(deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
-            );
-        }
+        let txn_info = TransactionInfo::new(
+            request.transaction_hash(),
+            transfers.clone(),
+            request.initiator().clone(),
+            entity.main_purse(),
+            request.gas(),
+        );
+        tc.borrow_mut().write(
+            Key::TransactionInfo(txn_info.transaction_hash),
+            StoredValue::TransactionInfo(txn_info),
+        );
 
         let effects = tc.borrow_mut().effects();
 

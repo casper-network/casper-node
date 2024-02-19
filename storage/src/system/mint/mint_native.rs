@@ -19,9 +19,9 @@ use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, ContextAccessRights, DeployHash, Digest,
-    Gas, InitiatorAddr, Key, Phase, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry,
-    TransactionHash, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, ContextAccessRights, Gas, InitiatorAddr,
+    Key, Phase, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, TransactionHash,
+    Transfer, TransferAddr, TransferV2, TransferV2Addr, URef, U512,
 };
 
 pub struct NativeMintRuntime<S> {
@@ -36,7 +36,7 @@ pub struct NativeMintRuntime<S> {
     access_rights: ContextAccessRights,
     remaining_spending_limit: U512,
     transfers: Vec<TransferAddr>,
-    transaction_hash: Digest,
+    transaction_hash: TransactionHash,
     phase: Phase,
 }
 
@@ -54,10 +54,14 @@ where
         named_keys: NamedKeys,
         access_rights: ContextAccessRights,
         remaining_spending_limit: U512,
-        transaction_hash: Digest,
+        transaction_hash: TransactionHash,
         phase: Phase,
     ) -> Self {
-        let address_generator = AddressGenerator::new(transaction_hash.as_ref(), phase);
+        let hash_slice = match &transaction_hash {
+            TransactionHash::Deploy(hash) => hash.as_ref(),
+            TransactionHash::V1(hash) => hash.as_ref(),
+        };
+        let address_generator = AddressGenerator::new(hash_slice, phase);
         let transfers = vec![];
         NativeMintRuntime {
             address_generator,
@@ -270,23 +274,16 @@ where
         if self.phase != Phase::Session {
             return Ok(());
         }
-        let transfer_addr = TransferAddr::new(self.address_generator.create_address());
-        let key = Key::Transfer(transfer_addr); // <-- a new key variant needed to deal w/ versioned transaction hash
-        let transaction_hash = self.transaction_hash;
-        let transfer = {
-            // the below line is incorrect; new transaction hash is not currently supported here
-            // ...the transfer struct needs to be upgraded to TransactionHash
-            let deploy_hash = TransactionHash::Deploy(DeployHash::new(transaction_hash));
-            let from = InitiatorAddr::AccountHash(self.get_caller());
-            let fee = Gas::zero();
-            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
-        };
-        {
-            // im not sure why we need to collate these, but matching the existing impl
-            let transfers = &mut self.transfers;
-            transfers.push(transfer_addr);
-        }
-
+        let transfer_addr =
+            TransferAddr::from(TransferV2Addr::new(self.address_generator.create_address()));
+        let key = Key::Transfer(transfer_addr);
+        let txn_hash = self.transaction_hash;
+        let from = InitiatorAddr::AccountHash(self.get_caller());
+        let fee = Gas::zero(); // TODO
+        let transfer = Transfer::V2(TransferV2::new(
+            txn_hash, from, maybe_to, source, target, amount, fee, id,
+        ));
+        self.transfers.push(transfer_addr);
         self.tracking_copy
             .borrow_mut()
             .write(key, StoredValue::Transfer(transfer));

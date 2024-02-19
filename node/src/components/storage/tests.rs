@@ -17,27 +17,24 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    execution::{
-        execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
-        ExecutionResult, ExecutionResultV2,
-    },
+    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     generate_ed25519_keypair,
     system::auction::UnbondingPurse,
     testing::TestRng,
     AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2, BlockV2,
     ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest,
     EraId, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key, ProtocolVersion,
-    PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff,
-    Transaction, TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer, URef,
-    U512,
+    PublicKey, SecretKey, SignedBlockHeader, StoredValue, TestBlockBuilder, TestBlockV1Builder,
+    TimeDiff, Transaction, TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer,
+    TransferV2, URef, U512,
 };
 use tempfile::tempdir;
 
 use super::{
     initialize_block_metadata_dbs,
-    lmdb_ext::{deserialize_internal, serialize_internal, TransactionExt, WriteTransactionExt},
+    lmdb_ext::{deserialize_internal, serialize_internal},
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir,
-    BlockHashHeightAndEra, Config, Storage, FORCE_RESYNC_FILE_NAME,
+    BlockHashHeightAndEra, Config, Storage, Transfers, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -1332,7 +1329,7 @@ fn prepare_exec_result_with_transfer(
     rng: &mut TestRng,
     txn_hash: &TransactionHash,
 ) -> (ExecutionResult, Transfer) {
-    let transfer = Transfer::new(
+    let transfer = Transfer::V2(TransferV2::new(
         *txn_hash,
         InitiatorAddr::random(rng),
         Some(rng.gen()),
@@ -1341,19 +1338,17 @@ fn prepare_exec_result_with_transfer(
         rng.gen(),
         Gas::from(rng.gen::<u64>()),
         Some(rng.gen()),
+    ));
+    let transform = Transform::new(
+        Key::TransactionInfo(*txn_hash),
+        TransformKind::Write(StoredValue::Transfer(transfer.clone())),
     );
-    let transform = TransformEntry {
-        key: Key::TransactionInfo(*txn_hash).to_formatted_string(),
-        transform: Transform::WriteTransfer(transfer.clone()),
-    };
-    let effect = ExecutionEffect {
-        operations: vec![],
-        transforms: vec![transform],
-    };
-    let exec_result = ExecutionResult::V1(ExecutionResultV1::Success {
-        effect,
+    let mut effects = Effects::new();
+    effects.push(transform);
+    let exec_result = ExecutionResult::V2(ExecutionResultV2::Success {
+        effects,
         transfers: vec![],
-        cost: rng.gen(),
+        gas: Gas::new(rng.gen::<u64>()),
     });
     (exec_result, transfer)
 }
@@ -1458,10 +1453,8 @@ fn should_provide_transfers_if_not_stored() {
 
     // Check the empty collection has been stored.
     let mut txn = storage.env.begin_ro_txn().unwrap();
-    let maybe_transfers = txn
-        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
-        .unwrap();
-    assert_eq!(Some(vec![]), maybe_transfers);
+    let maybe_transfers = storage.transfer_dbs.get(&mut txn, &block_hash).unwrap();
+    assert_eq!(Some(Transfers::default()), maybe_transfers);
 }
 
 /// This is a regression test for the issue where a valid collection of `Transfer`s under a given
@@ -1501,13 +1494,10 @@ fn should_provide_transfers_after_emptied() {
     // Replace the valid collection with an empty one.
     {
         let mut txn = storage.env.begin_rw_txn().unwrap();
-        txn.put_value(
-            storage.transfer_db,
-            &block_hash,
-            &Vec::<Transfer>::new(),
-            true,
-        )
-        .unwrap();
+        storage
+            .transfer_dbs
+            .put(&mut txn, &block_hash, &Transfers::default(), true)
+            .unwrap();
         txn.commit().unwrap();
     }
 
@@ -1521,10 +1511,8 @@ fn should_provide_transfers_after_emptied() {
 
     // Check the correct value has been stored.
     let mut txn = storage.env.begin_ro_txn().unwrap();
-    let maybe_transfers = txn
-        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
-        .unwrap();
-    assert_eq!(Some(vec![transfer]), maybe_transfers);
+    let maybe_transfers = storage.transfer_dbs.get(&mut txn, &block_hash).unwrap();
+    assert_eq!(Some(Transfers(vec![transfer])), maybe_transfers);
 }
 
 /// Example state used in storage.
@@ -3011,9 +2999,9 @@ fn check_block_operations_with_node_1_5_2_storage() {
             let mut stored_transfers: Vec<DeployHash> = transfers
                 .unwrap()
                 .iter()
-                .map(|transfer| match transfer.transaction_hash {
-                    TransactionHash::Deploy(deploy_hash) => deploy_hash,
-                    TransactionHash::V1(_) => panic!("expected deploy"),
+                .map(|transfer| match transfer {
+                    Transfer::V1(transfer_v1) => transfer_v1.deploy_hash,
+                    _ => panic!("expected transfer v1 variant"),
                 })
                 .collect();
             stored_transfers.sort();

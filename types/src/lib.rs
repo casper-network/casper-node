@@ -185,7 +185,8 @@ pub use transaction::{
 };
 pub use transaction_info::TransactionInfo;
 pub use transfer::{
-    FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
+    Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV1Addr, TransferV2,
+    TransferV2Addr, TRANSFER_V1_ADDR_LENGTH, TRANSFER_V2_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{

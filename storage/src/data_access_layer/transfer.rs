@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, ProtocolVersion, PublicKey, RuntimeArgs,
-    TransferAddr, U512,
+    account::AccountHash, execution::Effects, Digest, Gas, InitiatorAddr, ProtocolVersion,
+    PublicKey, RuntimeArgs, TransactionHash, TransferAddr,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -92,15 +92,15 @@ pub struct TransferRequest {
     /// Public key of the proposer.
     proposer: PublicKey,
     /// Transaction hash.
-    transaction_hash: Digest,
+    transaction_hash: TransactionHash,
     /// Base account.
-    address: AccountHash,
+    initiator: InitiatorAddr,
     /// List of authorizing accounts.
     authorization_keys: BTreeSet<AccountHash>,
     /// Args.
     args: TransferRequestArgs,
     /// Cost.
-    cost: U512,
+    gas: Gas,
 }
 
 impl TransferRequest {
@@ -112,11 +112,11 @@ impl TransferRequest {
         block_time: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        transaction_hash: Digest,
-        address: AccountHash,
+        transaction_hash: TransactionHash,
+        initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
         args: TransferArgs,
-        cost: U512,
+        gas: Gas,
     ) -> Self {
         let args = TransferRequestArgs::Explicit(args);
         Self {
@@ -126,10 +126,10 @@ impl TransferRequest {
             protocol_version,
             proposer,
             transaction_hash,
-            address,
+            initiator,
             authorization_keys,
             args,
-            cost,
+            gas,
         }
     }
 
@@ -141,11 +141,11 @@ impl TransferRequest {
         block_time: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        transaction_hash: Digest, // <-- TODO: this should probably be TransactionHash
-        address: AccountHash,
+        transaction_hash: TransactionHash,
+        initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
         args: RuntimeArgs,
-        cost: U512,
+        gas: Gas,
     ) -> Self {
         let args = TransferRequestArgs::Raw(args);
         Self {
@@ -155,10 +155,10 @@ impl TransferRequest {
             protocol_version,
             proposer,
             transaction_hash,
-            address,
+            initiator,
             authorization_keys,
             args,
-            cost,
+            gas,
         }
     }
 
@@ -171,9 +171,9 @@ impl TransferRequest {
         self.state_hash
     }
 
-    /// Returns address.
-    pub fn address(&self) -> AccountHash {
-        self.address
+    /// Returns initiator.
+    pub fn initiator(&self) -> &InitiatorAddr {
+        &self.initiator
     }
 
     /// Returns authorization keys.
@@ -192,7 +192,7 @@ impl TransferRequest {
     }
 
     /// Returns transaction hash.
-    pub fn transaction_hash(&self) -> Digest {
+    pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
     }
 
@@ -202,8 +202,8 @@ impl TransferRequest {
     }
 
     /// The cost.
-    pub fn cost(&self) -> U512 {
-        self.cost
+    pub fn gas(&self) -> Gas {
+        self.gas
     }
 
     /// Returns transfer args.

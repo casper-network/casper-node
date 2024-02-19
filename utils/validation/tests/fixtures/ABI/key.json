@@ -80,16 +80,7 @@
     ],
     "output": "012a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
   },
-  "SystemContractRegistry": {
-    "input": [
-      {
-        "type": "Key",
-        "value": "system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000"
-      }
-    ],
-    "output": "0a0000000000000000000000000000000000000000000000000000000000000000"
-  },
-  "Transfer": {
+  "LegacyTransfer": {
     "input": [
       {
         "type": "Key",
@@ -97,6 +88,15 @@
       }
     ],
     "output": "032a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "SystemEntityRegistry": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "system-entity-registry-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0a0000000000000000000000000000000000000000000000000000000000000000"
   },
   "URef": {
     "input": [

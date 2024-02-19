@@ -25,6 +25,7 @@ mod trie;
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
+pub use execute::{ExecuteNativeRequest, NativeEntryPoint, NewNativeRequestError};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,

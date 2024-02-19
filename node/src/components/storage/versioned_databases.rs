@@ -17,12 +17,12 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash, TransferV1,
 };
 
 use super::{
     lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
-    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
+    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes, Transfers,
 };
 use crate::types::{ApprovalsHashes, FinalizedApprovals, FinalizedDeployApprovals};
 
@@ -89,6 +89,10 @@ impl VersionedValue for FinalizedApprovals {
 
 impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
+}
+
+impl VersionedValue for Transfers {
+    type Legacy = Vec<TransferV1>;
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the

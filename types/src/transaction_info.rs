@@ -109,7 +109,7 @@ pub(crate) mod gens {
         crypto::gens::public_key_arb_no_system,
         gens::{u512_arb, uref_arb},
         DeployHash, Gas, InitiatorAddr, TransactionHash, TransactionInfo, TransactionV1Hash,
-        TransferAddr,
+        TransferAddr, TransferV1Addr, TransferV2Addr,
     };
 
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
@@ -127,11 +127,21 @@ pub(crate) mod gens {
         ]
     }
 
-    pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
-        array::uniform32(<u8>::arbitrary()).prop_map(TransferAddr::new)
+    pub fn transfer_v1_addr_arb() -> impl Strategy<Value = TransferV1Addr> {
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferV1Addr::new)
     }
 
-    pub fn transfers_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<TransferAddr>> {
+    fn transfer_v2_addr_arb() -> impl Strategy<Value = TransferV2Addr> {
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferV2Addr::new)
+    }
+
+    fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
+        transfer_v2_addr_arb().prop_map(TransferAddr::from)
+    }
+
+    pub fn transfer_addrs_arb(
+        size: impl Into<SizeRange>,
+    ) -> impl Strategy<Value = Vec<TransferAddr>> {
         collection::vec(transfer_addr_arb(), size)
     }
 
@@ -151,7 +161,7 @@ pub(crate) mod gens {
         let transfers_length_range = 0..5;
         (
             txn_hash_arb(),
-            transfers_arb(transfers_length_range),
+            transfer_addrs_arb(transfers_length_range),
             initiator_addr_arb(),
             uref_arb(),
             u512_arb(),

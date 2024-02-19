@@ -56,8 +56,8 @@ use casper_types::{
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AddressableEntity, AddressableEntityHash, BlockTime, Digest, EntityAddr, FeeHandling, Gas, Key,
-    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    AddressableEntity, AddressableEntityHash, BlockTime, Digest, EntityAddr, FeeHandling, Gas,
+    InitiatorAddr, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionInfo, TransactionSessionKind,
     TransactionV1Hash, URef, U512,
 };
@@ -359,20 +359,19 @@ where
             self.config.administrative_accounts.clone(),
             self.config.allow_unrestricted_transfers,
         );
-        let wasmless_transfer_gas = Gas::new(U512::from(
-            self.config().system_config().wasmless_transfer_cost(),
-        ));
+        let wasmless_transfer_gas =
+            Gas::new(self.config().system_config().wasmless_transfer_cost());
         let transfer_req = TransferRequest::with_runtime_args(
             transfer_config,
             prestate_hash,
             blocktime.value(),
             protocol_version,
             proposer,
-            *deploy_hash.inner(),
-            deploy_item.address,
+            TransactionHash::Deploy(deploy_hash), // TODO - should have this passed in
+            InitiatorAddr::AccountHash(deploy_item.address), // TODO - should have this passed in
             deploy_item.authorization_keys,
             deploy_item.session.args().clone(),
-            wasmless_transfer_gas.value(),
+            wasmless_transfer_gas,
         );
         let transfer_result = self.state.transfer(transfer_req);
         ExecutionResult::from_transfer_result(transfer_result, wasmless_transfer_gas)

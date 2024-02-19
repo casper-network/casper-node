@@ -39,8 +39,11 @@
         "type": "StoredValue",
         "value": {
           "AddressableEntity": {
+            "protocol_version": "1.0.0",
+            "entity_kind": "SmartContract",
             "package_hash": "contract-package-6464646464646464646464646464646464646464646464646464646464646464",
             "byte_code_hash": "byte-code-6565656565656565656565656565656565656565656565656565656565656565",
+            "main_purse": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
             "entry_points": [
               {
                 "name": "public_entry_point_func",
@@ -62,16 +65,13 @@
                 }
               }
             ],
-            "protocol_version": "1.0.0",
-            "main_purse": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
             "associated_keys": [],
             "action_thresholds": {
               "deployment": 1,
               "upgrade_management": 1,
               "key_management": 1
             },
-            "message_topics": [],
-            "entity_kind": "SmartContract"
+            "message_topics": []
           }
         }
       }
@@ -173,8 +173,8 @@
           "DeployInfo": {
             "deploy_hash": "3737373737373737373737373737373737373737373737373737373737373737",
             "transfers": [
-              "transfer-0101010101010101010101010101010101010101010101010101010101010101",
-              "transfer-0202020202020202020202020202020202020202020202020202020202020202"
+              "transfer-v1-0101010101010101010101010101010101010101010101010101010101010101",
+              "transfer-v1-0202020202020202020202020202020202020202020202020202020202020202"
             ],
             "from": "account-hash-6464646464646464646464646464646464646464646464646464646464646464",
             "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
@@ -211,6 +211,26 @@
       }
     ],
     "output": "07020000000001197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610400ca9a3b010202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f201197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610400ca9a3b"
+  },
+  "LegacyTransfer": {
+    "input": [
+      {
+        "type": "StoredValue",
+        "value": {
+          "LegacyTransfer": {
+            "deploy_hash": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
+            "from": "account-hash-6464646464646464646464646464646464646464646464646464646464646464",
+            "to": "account-hash-6565656565656565656565656565656565656565656565656565656565656565",
+            "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-002",
+            "target": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-002",
+            "amount": "15000000000",
+            "gas": "2500000000",
+            "id": 1
+          }
+        }
+      }
+    ],
+    "output": "052c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c64646464646464646464646464646464646464646464646464646464646464640165656565656565656565656565656565656565656565656565656565656565650a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a020b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b020500d6117e030400f90295010100000000000000"
   },
   "Package": {
     "input": [
@@ -266,19 +286,25 @@
         "type": "StoredValue",
         "value": {
           "Transfer": {
-            "deploy_hash": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
-            "from": "account-hash-6464646464646464646464646464646464646464646464646464646464646464",
-            "to": "account-hash-6565656565656565656565656565656565656565656565656565656565656565",
-            "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-002",
-            "target": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-002",
-            "amount": "15000000000",
-            "gas": "2500000000",
-            "id": 1
+            "Version2": {
+              "transaction_hash": {
+                "Version1": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c"
+              },
+              "from": {
+                "AccountHash": "account-hash-6464646464646464646464646464646464646464646464646464646464646464"
+              },
+              "to": "account-hash-6565656565656565656565656565656565656565656565656565656565656565",
+              "source": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-002",
+              "target": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-002",
+              "amount": "15000000000",
+              "gas": "2500000000",
+              "id": 1
+            }
           }
         }
       }
     ],
-    "output": "052c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c64646464646464646464646464646464646464646464646464646464646464640165656565656565656565656565656565656565656565656565656565656565650a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a020b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b020500d6117e030400f90295010100000000000000"
+    "output": "1301012c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c0164646464646464646464646464646464646464646464646464646464646464640165656565656565656565656565656565656565656565656565656565656565650a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a020b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b020500d6117e030400f90295010100000000000000"
   },
   "Unbonding": {
     "input": [

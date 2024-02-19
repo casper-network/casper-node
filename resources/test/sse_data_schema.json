@@ -2120,10 +2120,10 @@
                   ]
                 },
                 "transfers": {
-                  "description": "A record of Transfers performed while executing the deploy.",
+                  "description": "A record of version 1 Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/TransferAddr"
+                    "$ref": "#/definitions/TransferV1Addr"
                   }
                 },
                 "cost": {
@@ -2171,7 +2171,7 @@
                   "description": "A record of Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/TransferAddr"
+                    "$ref": "#/definitions/TransferV1Addr"
                   }
                 },
                 "cost": {
@@ -2385,14 +2385,14 @@
           "additionalProperties": false
         },
         {
-          "description": "Writes the given Transfer to global state.",
+          "description": "Writes the given version 1 Transfer to global state.",
           "type": "object",
           "required": [
             "WriteTransfer"
           ],
           "properties": {
             "WriteTransfer": {
-              "$ref": "#/definitions/Transfer"
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
@@ -2594,10 +2594,10 @@
           ]
         },
         "transfers": {
-          "description": "Transfers performed by the Deploy.",
+          "description": "Version 1 transfers performed by the Deploy.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/TransferAddr"
+            "$ref": "#/definitions/TransferV1Addr"
           }
         },
         "from": {
@@ -2627,8 +2627,8 @@
       },
       "additionalProperties": false
     },
-    "TransferAddr": {
-      "description": "Hex-encoded transfer address.",
+    "TransferV1Addr": {
+      "description": "Hex-encoded version 1 transfer address.",
       "type": "string"
     },
     "URef": {
@@ -2737,36 +2737,36 @@
         }
       ]
     },
-    "Transfer": {
-      "description": "Represents a transfer from one purse to another",
+    "TransferV1": {
+      "description": "Represents a version 1 transfer from one purse to another.",
       "type": "object",
       "required": [
         "amount",
+        "deploy_hash",
         "from",
         "gas",
         "source",
-        "target",
-        "transaction_hash"
+        "target"
       ],
       "properties": {
-        "transaction_hash": {
-          "description": "Transaction that created the transfer.",
+        "deploy_hash": {
+          "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
           "allOf": [
             {
-              "$ref": "#/definitions/TransactionHash"
+              "$ref": "#/definitions/DeployHash"
             }
           ]
         },
         "from": {
-          "description": "Entity from which transfer was executed.",
+          "description": "Account from which transfer was executed",
           "allOf": [
             {
-              "$ref": "#/definitions/InitiatorAddr"
+              "$ref": "#/definitions/AccountHash"
             }
           ]
         },
         "to": {
-          "description": "Account to which funds are transferred.",
+          "description": "Account to which funds are transferred",
           "anyOf": [
             {
               "$ref": "#/definitions/AccountHash"
@@ -2777,7 +2777,7 @@
           ]
         },
         "source": {
-          "description": "Source purse.",
+          "description": "Source purse",
           "allOf": [
             {
               "$ref": "#/definitions/URef"
@@ -2785,7 +2785,7 @@
           ]
         },
         "target": {
-          "description": "Target purse.",
+          "description": "Target purse",
           "allOf": [
             {
               "$ref": "#/definitions/URef"
@@ -2793,7 +2793,7 @@
           ]
         },
         "amount": {
-          "description": "Transfer amount.",
+          "description": "Transfer amount",
           "allOf": [
             {
               "$ref": "#/definitions/U512"
@@ -2801,15 +2801,15 @@
           ]
         },
         "gas": {
-          "description": "Gas.",
+          "description": "Gas",
           "allOf": [
             {
-              "$ref": "#/definitions/Gas"
+              "$ref": "#/definitions/U512"
             }
           ]
         },
         "id": {
-          "description": "User-defined ID.",
+          "description": "User-defined id",
           "type": [
             "integer",
             "null"
@@ -2819,14 +2819,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "Gas": {
-      "description": "The `Gas` struct represents a `U512` amount of gas.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/U512"
-        }
-      ]
     },
     "Bid": {
       "description": "An entry in the validator map.",
@@ -3345,6 +3337,49 @@
       "items": {
         "$ref": "#/definitions/Transform"
       }
+    },
+    "TransferAddr": {
+      "description": "A versioned wrapper for a transfer address.",
+      "oneOf": [
+        {
+          "description": "A version 1 transfer address.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/TransferV1Addr"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 2 transfer address.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/TransferV2Addr"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransferV2Addr": {
+      "description": "Hex-encoded version 2 transfer address.",
+      "type": "string"
+    },
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/U512"
+        }
+      ]
     },
     "Message": {
       "description": "Message that was emitted by an addressable entity during execution.",

@@ -20,8 +20,8 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
-    ProtocolVersion, PublicKey, Transaction, TransactionHash, TransactionHeader, U512,
+    BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, InitiatorAddr,
+    Key, ProtocolVersion, PublicKey, Transaction, TransactionHash, TransactionHeader, U512,
 };
 
 use crate::{
@@ -112,12 +112,12 @@ pub fn execute_finalized_block(
                         block_time,
                         protocol_version,
                         PublicKey::clone(&executable_block.proposer),
-                        deploy_hash.into(),
-                        deploy.header().account().to_account_hash(),
+                        txn_hash,
+                        InitiatorAddr::PublicKey(deploy.header().account().clone()),
                         authorization_keys,
                         deploy.session().args().clone(),
-                        U512::zero(), /* <-- this should be the native transfer cost from the
-                                       * chainspec */
+                        Gas::zero(), /* <-- this should be the native transfer cost from the
+                                      * chainspec */
                     );
                     // native transfer auto-commits
                     let transfer_result = data_access_layer.transfer(transfer_req);

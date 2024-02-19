@@ -293,7 +293,7 @@ mod tests {
     use casper_types::{
         execution::{execution_result_v1::ExecutionEffect, ExecutionResultV1},
         testing::TestRng,
-        ChunkWithProof, TransferAddr,
+        ChunkWithProof, TransferV1Addr,
     };
 
     use super::*;
@@ -315,7 +315,7 @@ mod tests {
         // The serialized_length() of this should be equal to `ChunkWithProof::CHUNK_SIZE_BYTES`
         let execution_results_v1 = vec![ExecutionResultV1::Failure {
             effect: ExecutionEffect::default(),
-            transfers: vec![TransferAddr::new([1; 32]); 262143],
+            transfers: vec![TransferV1Addr::new([1; 32]); 262143],
             cost: 2_u64.into(),
             error_message: "ninebytes".to_string(),
         }];

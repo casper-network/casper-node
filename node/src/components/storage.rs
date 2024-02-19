@@ -43,6 +43,7 @@ mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
+mod transfers;
 mod versioned_databases;
 
 #[cfg(test)]
@@ -111,9 +112,10 @@ pub use error::FatalStorageError;
 use error::GetRequestError;
 pub(crate) use event::Event;
 use legacy_approvals_hashes::LegacyApprovalsHashes;
-use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
+use lmdb_ext::{BytesreprError, LmdbExtError};
 use metrics::Metrics;
 use object_pool::ObjectPool;
+use transfers::Transfers;
 use versioned_databases::VersionedDatabases;
 
 const COMPONENT_NAME: &str = "storage";
@@ -126,7 +128,7 @@ const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 const MAX_TRANSACTIONS: u32 = 1;
 
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 16;
+const MAX_DB_COUNT: u32 = 17;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
@@ -172,8 +174,7 @@ pub struct Storage {
     /// hash for legacy DB.
     execution_result_dbs: VersionedDatabases<TransactionHash, ExecutionResult>,
     /// The transfer database.
-    #[data_size(skip)]
-    transfer_db: Database,
+    transfer_dbs: VersionedDatabases<BlockHash, Transfers>,
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
@@ -339,7 +340,7 @@ impl Storage {
         let transaction_dbs = VersionedDatabases::new(&env, "deploys", "transactions")?;
         let execution_result_dbs =
             VersionedDatabases::new(&env, "deploy_metadata", "execution_results")?;
-        let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
+        let transfer_dbs = VersionedDatabases::new(&env, "transfer", "versioned_transfers")?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let block_body_dbs =
             VersionedDatabases::<_, BlockBody>::new(&env, "block_body", "block_body_v2")?;
@@ -463,7 +464,7 @@ impl Storage {
             approvals_hashes_dbs,
             transaction_dbs,
             execution_result_dbs,
-            transfer_db,
+            transfer_dbs,
             state_store_db,
             finalized_transaction_approvals_dbs,
             block_height_index,
@@ -1541,9 +1542,9 @@ impl Storage {
             era_id,
             transaction_hashes,
         )?;
-        let mut transfers: Vec<Transfer> = vec![];
+        let mut transfers = Transfers::default();
         for (transaction_hash, execution_result) in execution_results.into_iter() {
-            transfers.extend(successful_transfers(&execution_result));
+            transfers.0.extend(successful_transfers(&execution_result));
 
             let was_written =
                 self.execution_result_dbs
@@ -1559,7 +1560,7 @@ impl Storage {
             }
         }
 
-        let was_written = txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
+        let was_written = self.transfer_dbs.put(txn, block_hash, &transfers, true)?;
         if !was_written {
             error!(?block_hash, "failed to write transfers");
             debug_assert!(was_written);
@@ -2211,7 +2212,7 @@ impl Storage {
     /// Retrieves successful transfers associated with block.
     ///
     /// If there is no record of successful transfers for this block, then the list will be built
-    /// from the execution results and stored to `transfer_db`.  The record could have been missing
+    /// from the execution results and stored to `transfer_dbs`.  The record could have been missing
     /// or incorrectly set to an empty collection due to previous synchronization and storage
     /// issues.  See https://github.com/casper-network/casper-node/issues/4255 and
     /// https://github.com/casper-network/casper-node/issues/4268 for further info.
@@ -2220,9 +2221,9 @@ impl Storage {
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<Transfer>>, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        if let Some(transfers) = txn.get_value::<_, Vec<Transfer>>(self.transfer_db, block_hash)? {
-            if !transfers.is_empty() {
-                return Ok(Some(transfers));
+        if let Some(transfers) = self.transfer_dbs.get(&mut txn, block_hash)? {
+            if !transfers.0.is_empty() {
+                return Ok(Some(transfers.0));
             }
         }
 
@@ -2231,33 +2232,30 @@ impl Storage {
             None => return Ok(None),
         };
 
-        let deploy_hashes: Vec<DeployHash> = match block.clone_body() {
-            BlockBody::V1(v1) => v1.deploy_and_transfer_hashes().copied().collect(),
-            BlockBody::V2(v2) => v2
-                .all_transactions()
-                .filter_map(|transaction_hash| match transaction_hash {
-                    TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
-                    TransactionHash::V1(_) => None,
-                })
+        let transaction_hashes: Vec<TransactionHash> = match block.clone_body() {
+            BlockBody::V1(v1) => v1
+                .deploy_and_transfer_hashes()
+                .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
                 .collect(),
+            BlockBody::V2(v2) => v2.all_transactions().copied().collect(),
         };
 
-        let mut transfers: Vec<Transfer> = vec![];
-        for deploy_hash in deploy_hashes {
-            let transaction_hash = TransactionHash::Deploy(deploy_hash);
+        let mut transfers = Transfers::default();
+        for transaction_hash in transaction_hashes {
             let successful_xfers =
                 match self.execution_result_dbs.get(&mut txn, &transaction_hash)? {
                     Some(exec_result) => successful_transfers(&exec_result),
                     None => {
-                        error!(%deploy_hash, %block_hash, "should have exec result");
+                        error!(%transaction_hash, %block_hash, "should have exec result");
                         vec![]
                     }
                 };
-            transfers.extend(successful_xfers);
+            transfers.0.extend(successful_xfers);
         }
-        txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
+        self.transfer_dbs
+            .put(&mut txn, block_hash, &transfers, true)?;
         txn.commit()?;
-        Ok(Some(transfers))
+        Ok(Some(transfers.0))
     }
 
     /// Retrieves block signatures for a block with a given block hash.
@@ -2970,10 +2968,10 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
             for transform_entry in &effect.transforms {
-                if let execution_result_v1::Transform::WriteTransfer(transfer) =
+                if let execution_result_v1::Transform::WriteTransfer(transfer_v1) =
                     &transform_entry.transform
                 {
-                    transfers.push(transfer.clone());
+                    transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }

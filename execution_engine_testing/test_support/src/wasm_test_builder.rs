@@ -1218,9 +1218,9 @@ where
     }
 
     /// Queries for a transfer by `TransferAddr`.
-    pub fn get_transfer(&self, transfer: TransferAddr) -> Option<Transfer> {
+    pub fn get_transfer(&self, transfer_addr: TransferAddr) -> Option<Transfer> {
         let transfer_value: StoredValue = self
-            .query(None, Key::Transfer(transfer), &[])
+            .query(None, Key::Transfer(transfer_addr), &[])
             .expect("should have transfer value");
 
         if let StoredValue::Transfer(transfer) = transfer_value {

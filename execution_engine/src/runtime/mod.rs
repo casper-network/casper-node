@@ -52,7 +52,7 @@ use casper_types::{
     ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion, EntityVersionKey,
     EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost,
     InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
+    RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -2054,17 +2054,14 @@ where
         }
 
         let transfer_addr = self.context.new_transfer_addr()?;
-        let transfer = {
-            // TODO - update once decision is made on recording transfers.
-            let txn_hash = self.context.get_transaction_hash();
-            let from = InitiatorAddr::AccountHash(self.context.get_caller());
-            let fee = Gas::zero(); // TODO
-            Transfer::new(txn_hash, from, maybe_to, source, target, amount, fee, id)
-        };
-        {
-            let transfers = self.context.transfers_mut();
-            transfers.push(transfer_addr);
-        }
+        // TODO - update once decision is made on recording transfers.
+        let txn_hash = self.context.get_transaction_hash();
+        let from = InitiatorAddr::AccountHash(self.context.get_caller());
+        let fee = Gas::zero(); // TODO
+        let transfer = Transfer::V2(TransferV2::new(
+            txn_hash, from, maybe_to, source, target, amount, fee, id,
+        ));
+        self.context.transfers_mut().push(transfer_addr);
         self.context
             .write_transfer(Key::Transfer(transfer_addr), transfer);
         Ok(())

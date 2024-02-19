@@ -7,8 +7,6 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(doc)]
-use super::TransactionV1;
 use super::{DeployHash, TransactionV1Hash};
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
