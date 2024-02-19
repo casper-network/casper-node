@@ -562,6 +562,22 @@ enum OutgoingError {
 }
 
 impl OutgoingHandler {
+    /// Creates a new outgoing handler.
+    ///
+    /// This should be the only method used to create new instances of `OutgoingHandler`, to
+    /// preserve the invariant of all of them being registered in an address book.
+    fn new(state: &mut ConManState, arc_ctx: Arc<ConManContext>, peer_addr: SocketAddr) -> Self {
+        state.address_book.insert(peer_addr);
+        Self {
+            ctx: arc_ctx,
+            peer_addr,
+        }
+    }
+
+    /// Runs the outgoing handler.
+    ///
+    /// Will perform repeated connection attempts to `peer_addr`, controlled by the configuration
+    /// settings on the context.
     async fn run(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
         debug!("spawned new outgoing handler");
 
@@ -583,11 +599,7 @@ impl OutgoingHandler {
             }
             guard.prune_should_not_call(&peer_addr);
 
-            guard.address_book.insert(peer_addr);
-            Self {
-                ctx: ctx.clone(),
-                peer_addr,
-            }
+            Self::new(&mut guard.state, ctx.clone(), peer_addr)
         };
 
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
