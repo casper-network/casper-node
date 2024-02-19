@@ -379,6 +379,26 @@ struct IncomingHandler {
 }
 
 impl IncomingHandler {
+    /// Creates a new incoming handler.
+    ///
+    /// This should be the only method used to create new instances of `IncomingHandler`, to
+    /// preserve the invariant of all of them being registered in a routing table.
+    fn new(
+        state: &mut ConManState,
+        rpc_client: RpcClient,
+        ctx: Arc<ConManContext>,
+        peer_id: NodeId,
+    ) -> Self {
+        state.routing_table.insert(
+            peer_id,
+            Route {
+                peer: peer_id,
+                client: rpc_client,
+            },
+        );
+        Self { ctx, peer_id }
+    }
+
     /// Handles an incoming connection by setting up, spawning an [`IncomingHandler`] on success.
     ///
     /// Will exit early and close the connection if it is a low-ranking connection.
@@ -462,21 +482,7 @@ impl IncomingHandler {
             }
 
             // At this point we are becoming the new route for the peer.
-            guard.routing_table.insert(
-                peer_id,
-                Route {
-                    peer: peer_id,
-                    client: rpc_client,
-                },
-            );
-
-            // We are now connected, and the authority for this specific connection. Before
-            // releasing the lock, instantiate `Self`. This ensures the routing state is always
-            // updated correctly, since `Self` will remove itself from the routing table on drop.
-            Self {
-                ctx: ctx.clone(),
-                peer_id,
-            }
+            Self::new(&mut *guard, rpc_client, ctx.clone(), peer_id)
         };
 
         info!("now connected via incoming connection");
