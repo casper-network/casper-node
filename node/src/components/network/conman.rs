@@ -105,6 +105,8 @@ struct ConManState {
     //       need to add a queue for learning about new addresses.
     /// A set of outgoing address for which a handler is currently running.
     address_book: HashSet<SocketAddr>,
+    /// Mapping of [`SocketAddr`]s to an instant in the future until which they must not be dialed.
+    do_not_call: HashMap<SocketAddr, Instant>,
     /// The current route per node ID.
     ///
     /// An entry in this table indicates an established connection to a peer. Every entry in this
@@ -280,11 +282,16 @@ impl ConManContext {
 
         // TODO: Filter loopback.
 
-        // We have been informed of a new address. Find out if it is truly new.
-        trace!(%peer_addr, "learned about address");
-
+        // We have been informed of a new address. Find out if it is truly new and/or uncallable.
         {
             let guard = self.state.read().expect("lock poisoned");
+
+            let now = Instant::now();
+            if guard.should_not_call(&peer_addr, now) {
+                trace!(%peer_addr, "is on do-not-call list");
+                return;
+            }
+
             if guard.address_book.contains(&peer_addr) {
                 // There already exists a handler attempting to connect, exit.
                 trace!(%peer_addr, "discarding peer address, already has outgoing handler");
@@ -294,6 +301,8 @@ impl ConManContext {
 
         // Our initial check whether or not we can connect was succesful, spawn a handler.
         let span = error_span!("outgoing", %peer_addr, peer_id=Empty, consensus_key=Empty);
+        trace!(%peer_addr, "learned about address");
+
         tokio::spawn(
             shutdown
                 .cancellable(OutgoingHandler::spawn_new(self, peer_addr))
@@ -309,6 +318,22 @@ impl ConManContext {
 }
 
 impl ConManState {
+    /// Determines if an address is on the do-not-call list.
+    #[inline(always)]
+    fn should_not_call(&self, addr: &SocketAddr, now: Instant) -> bool {
+        if let Some(until) = self.do_not_call.get(addr) {
+            now <= *until
+        } else {
+            false
+        }
+    }
+
+    /// Unconditionally removes an address from the do-not-call list.
+    #[inline(always)]
+    fn prune_should_not_call(&self, addr: &SocketAddr) {
+        self.do_not_call.remove(addr);
+    }
+
     /// Determines if a peer is still banned.
     ///
     /// Returns `None` if the peer is NOT banned, its remaining sentence otherwise.
@@ -530,6 +555,15 @@ impl OutgoingHandler {
             }
 
             guard.address_book.insert(peer_addr);
+
+            let now = Instant::now();
+            if guard.should_not_call(&peer_addr, now) {
+                // This should happen very rarely, it requires a racing handler to complete and the
+                // resulting do-not-call to expire all while this function was starting.
+                debug!("address turned do-not-call");
+                return;
+            }
+            guard.prune_should_not_call(&peer_addr);
 
             Self {
                 ctx: ctx.clone(),
