@@ -50,8 +50,8 @@ macro_rules! rate_limited {
     ($key:ident, $action:expr) => {
         static $key: OncePer = OncePer::new();
 
-        if $key.active(WARNING_INTERVAL) {
-            $action;
+        if let Some(skipped) = $key.active(WARNING_INTERVAL) {
+            $action(skipped);
         }
     };
 }
@@ -272,7 +272,7 @@ impl ConMan {
                             Err(TryAcquireError::NoPermits) => {
                                 rate_limited!(
                                     INCOMING_LIMITER,
-                                    warn!(%peer_addr, "exceeded incoming connection limit, are you getting spammed?")
+                                    |dropped| warn!(most_recent_skipped=%peer_addr, dropped, "exceeded incoming connection limit, are you getting spammed?")
                                 );
                             }
                             Err(TryAcquireError::Closed) => {
@@ -332,7 +332,7 @@ impl ConManContext {
             if guard.address_book.len() >= MAX_OUTGOING_CONNECTIONS {
                 rate_limited!(
                     OUTGOING_WARNING,
-                    warn!(lost_addr=%peer_addr, "exceeding maximum number of outgoing connections, you may be getting spammed")
+                    |dropped| warn!(most_recent_lost=%peer_addr, dropped, "exceeding maximum number of outgoing connections, you may be getting spammed")
                 );
 
                 return;
@@ -815,30 +815,40 @@ where
 }
 
 #[derive(Debug)]
-struct OncePer(OnceLock<Mutex<Option<Instant>>>);
+struct OncePer(OnceLock<Mutex<OncePerData>>);
+
+#[derive(Default, Debug)]
+struct OncePerData {
+    last: Option<Instant>,
+    skipped: usize,
+}
 
 impl OncePer {
     const fn new() -> Self {
         Self(OnceLock::new())
     }
 
-    fn active(&self, max_interval: Duration) -> bool {
+    fn active(&self, max_interval: Duration) -> Option<usize> {
         let mut guard = self
             .0
-            .get_or_init(|| Mutex::new(None))
+            .get_or_init(|| Mutex::new(OncePerData::default()))
             .lock()
             .expect("lock poisoned");
 
         let now = Instant::now();
-        if let Some(last_firing) = *guard {
-            if now.duration_since(last_firing) < max_interval {
-                // Nothing to do, we already fired.
-                return false;
+        if let Some(last) = guard.last {
+            if now.duration_since(last) < max_interval {
+                // We already fired.
+                guard.skipped += 1;
+
+                return None;
             }
         }
 
-        *guard = Some(now);
-        return true;
+        guard.last = Some(now);
+        let skipped = guard.skipped;
+        guard.skipped = 0;
+        Some(skipped)
     }
 }
 
