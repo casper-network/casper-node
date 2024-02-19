@@ -374,3 +374,61 @@ pub(super) fn serialize_bytesrepr<T: ToBytes>(value: &T) -> Result<Vec<u8>, Lmdb
         .to_bytes()
         .map_err(|err| LmdbExtError::Other(Box::new(BytesreprError(err))))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use casper_types::{AccessRights, EraId, PublicKey, SecretKey, URef, U512};
+
+    #[test]
+    fn should_read_legacy_unbonding_purse() {
+        // These bytes represent the `UnbondingPurse` struct with the `new_validator` field removed
+        // and serialized with `bincode`.
+        // In theory, we can generate these bytes by serializing the `WithdrawPurse`, but at some
+        // point, these two structs may diverge and it's a safe bet to rely on the bytes
+        // that are consistent with what we keep in the current storage.
+        const LEGACY_BYTES: &str = "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e07010000002000000000000000197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610100000020000000000000004508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ffffffffffffffffff40feffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+        let decoded = base16::decode(LEGACY_BYTES).expect("decode");
+        let deserialized: UnbondingPurse = deserialize_internal(&decoded)
+            .expect("should deserialize w/o error")
+            .expect("should be Some");
+
+        // Make sure the new field is set to default.
+        assert_eq!(*deserialized.new_validator(), Option::default())
+    }
+
+    #[test]
+    fn unbonding_purse_serialization_roundtrip() {
+        let original = UnbondingPurse::new(
+            URef::new([14; 32], AccessRights::READ_ADD_WRITE),
+            {
+                let secret_key =
+                    SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+                PublicKey::from(&secret_key)
+            },
+            {
+                let secret_key =
+                    SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+                PublicKey::from(&secret_key)
+            },
+            EraId::MAX,
+            U512::max_value() - 1,
+            Some({
+                let secret_key =
+                    SecretKey::ed25519_from_bytes([44; SecretKey::ED25519_LENGTH]).unwrap();
+                PublicKey::from(&secret_key)
+            }),
+        );
+
+        let serialized = serialize_internal(&original).expect("serialization");
+        let deserialized: UnbondingPurse = deserialize_internal(&serialized)
+            .expect("should deserialize w/o error")
+            .expect("should be Some");
+
+        assert_eq!(original, deserialized);
+
+        // Explicitly assert that the `new_validator` is not `None`
+        assert!(deserialized.new_validator().is_some())
+    }
+}
