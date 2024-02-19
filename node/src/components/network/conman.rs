@@ -242,7 +242,7 @@ impl ConMan {
 
                         match server_ctx.incoming_limiter.clone().try_acquire_owned() {
                             Ok(permit) => server_shutdown.spawn(
-                                IncomingHandler::handle(
+                                handle_incoming(
                                     server_ctx.clone(),
                                     stream,
                                     server_shutdown.clone(),
@@ -381,152 +381,89 @@ impl ConManState {
 /// The existance of an [`IncomingHandler`] is tied to an entry in the `routing_table` in
 /// [`ConManState`]; as long as the handler exists, there will be a [`Route`] present.
 struct IncomingHandler {
-    /// The context this handler is tied to.
-    ctx: Arc<ConManContext>,
     /// ID of the peer connecting to us.
     peer_id: NodeId,
 }
 
-impl IncomingHandler {
-    /// Creates a new incoming handler.
-    ///
-    /// This should be the only method used to create new instances of `IncomingHandler`, to
-    /// preserve the invariant of all of them being registered in a routing table.
-    fn new(
-        state: &mut ConManState,
-        rpc_client: RpcClient,
-        ctx: Arc<ConManContext>,
-        peer_id: NodeId,
-    ) -> Self {
-        state.routing_table.insert(
-            peer_id,
-            Route {
-                peer: peer_id,
-                client: rpc_client,
-            },
-        );
-        Self { ctx, peer_id }
+async fn handle_incoming(
+    ctx: Arc<ConManContext>,
+    stream: TcpStream,
+    shutdown: ObservableFuse,
+    _permit: OwnedSemaphorePermit,
+) {
+    debug!("handling new connection attempt");
+
+    let ProtocolHandshakeOutcome {
+        peer_id,
+        handshake_outcome,
+    } = match ctx
+        .protocol_handler
+        .setup_incoming(stream)
+        .await
+        .map(move |outcome| {
+            outcome.record_on(Span::current());
+            outcome
+        }) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            debug!(%error, "failed to complete handshake on incoming");
+            return;
+        }
+    };
+
+    if peer_id == ctx.our_id {
+        // Loopback connection established.
+        error!("should never complete an incoming loopback connection");
+        return;
     }
 
-    /// Handles an incoming connection by setting up, spawning an [`IncomingHandler`] on success.
-    ///
-    /// Will exit early and close the connection if it is a low-ranking connection.
-    ///
-    /// ## Cancellation safety
-    ///
-    /// This function is cancellation safe, if cancelled, the connection will be closed. In any case
-    /// routing table will be cleaned up if it was altered.
-    async fn handle(
-        ctx: Arc<ConManContext>,
-        stream: TcpStream,
-        shutdown: ObservableFuse,
-        _permit: OwnedSemaphorePermit,
-    ) {
-        debug!("handling new connection attempt");
+    if we_should_be_outgoing(ctx.our_id, peer_id) {
+        // The connection is supposed to be outgoing from our perspective.
+        debug!("closing low-ranking incoming connection");
 
-        let ProtocolHandshakeOutcome {
-            peer_id,
-            handshake_outcome,
-        } = match ctx
-            .protocol_handler
-            .setup_incoming(stream)
-            .await
-            .map(move |outcome| {
-                outcome.record_on(Span::current());
-                outcome
-            }) {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                debug!(%error, "failed to complete handshake on incoming");
-                return;
-            }
-        };
+        // Conserve public address, but drop the stream early, so that when we learn, the
+        // connection is hopefully already closed.
+        let public_addr = handshake_outcome.public_addr;
+        drop(handshake_outcome);
 
-        if peer_id == ctx.our_id {
-            // Loopback connection established.
-            error!("should never complete an incoming loopback connection");
+        // Note: This is the original "Magic Mike" functionality.
+        ctx.learn_addr(public_addr, shutdown.clone());
+
+        return;
+    }
+
+    debug!("high-ranking incoming connection established");
+
+    // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC
+    // transport, which we will need regardless to send errors.
+    let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
+
+    let active_route = {
+        let mut guard = ctx.state.write().expect("lock poisoned");
+
+        // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
+        let now = Instant::now();
+        if let Some(entry) = guard.is_still_banned(&peer_id, now) {
+            debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
+            // TODO: Send a proper error using RPC client/server here (requires appropriate
+            //       Juliet API). This would allow the peer to update its backoff timer.
+            return;
+        }
+        guard.unban(&peer_id);
+
+        // Check if there is a route registered, i.e. an incoming handler is already running.
+        if guard.routing_table.contains_key(&peer_id) {
+            // We are already connected, meaning we got raced by another connection. Keep
+            // the existing and exit.
+            debug!("additional incoming connection ignored");
             return;
         }
 
-        if we_should_be_outgoing(ctx.our_id, peer_id) {
-            // The connection is supposed to be outgoing from our perspective.
-            debug!("closing low-ranking incoming connection");
+        ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client)
+    };
 
-            // Conserve public address, but drop the stream early, so that when we learn, the
-            // connection is hopefully already closed.
-            let public_addr = handshake_outcome.public_addr;
-            drop(handshake_outcome);
-
-            // Note: This is the original "Magic Mike" functionality.
-            ctx.learn_addr(public_addr, shutdown.clone());
-
-            return;
-        }
-
-        debug!("high-ranking incoming connection established");
-
-        // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC
-        // transport, which we will need regardless to send errors.
-        let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
-
-        let active_route = {
-            let mut guard = ctx.state.write().expect("lock poisoned");
-
-            // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
-            let now = Instant::now();
-            if let Some(entry) = guard.is_still_banned(&peer_id, now) {
-                debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
-                // TODO: Send a proper error using RPC client/server here (requires appropriate
-                //       Juliet API). This would allow the peer to update its backoff timer.
-                return;
-            }
-            guard.unban(&peer_id);
-
-            // Check if there is a route registered, i.e. an incoming handler is already running.
-            if guard.routing_table.contains_key(&peer_id) {
-                // We are already connected, meaning we got raced by another connection. Keep
-                // the existing and exit.
-                debug!("additional incoming connection ignored");
-                return;
-            }
-
-            ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client)
-        };
-
-        info!("now connected via incoming connection");
-        active_route.serve(rpc_server).await; // TODO: Handle errors.
-    }
-
-    /// Runs the incoming handler's main acceptance loop.
-    async fn run(self, mut rpc_server: RpcServer) {
-        loop {
-            match rpc_server.next_request().await {
-                Ok(Some(request)) => {
-                    // Incoming requests are directly handed off to the protocol handler.
-                    trace!(%request, "received incoming request");
-                    self.ctx
-                        .protocol_handler
-                        .handle_incoming_request(self.peer_id, request);
-                }
-                Ok(None) => {
-                    // The connection was closed. Not an issue, the peer should reconnect to us.
-                    info!("lost incoming connection");
-                    return;
-                }
-                Err(err) => {
-                    // TODO: this should not be a warning, downgrade to info before shipping
-                    warn!(%err, "closing incoming connection due to error");
-                    return;
-                }
-            }
-        }
-    }
-}
-
-impl Drop for IncomingHandler {
-    fn drop(&mut self) {
-        // TODO: What to do here?
-    }
+    info!("now connected via incoming connection");
+    active_route.serve(rpc_server).await; // TODO: Handle errors.
 }
 
 impl Debug for ConManContext {
