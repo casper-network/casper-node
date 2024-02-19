@@ -7,6 +7,8 @@ pub(crate) mod ds;
 mod external;
 pub(crate) mod fmt_limit;
 mod fuse;
+#[macro_use]
+pub(crate) mod once_per;
 pub(crate) mod opt_display;
 pub(crate) mod registered_metric;
 #[cfg(target_os = "linux")]

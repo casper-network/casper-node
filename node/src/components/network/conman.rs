@@ -11,7 +11,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     net::SocketAddr,
-    sync::{Arc, Mutex, OnceLock, RwLock},
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
@@ -33,7 +33,7 @@ use tracing::{
 
 use crate::{
     types::NodeId,
-    utils::{display_error, DropSwitch, ObservableFuse},
+    utils::{display_error, once_per::rate_limited, DropSwitch, ObservableFuse},
 };
 
 use super::{
@@ -45,16 +45,6 @@ type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 
 type RpcServer =
     JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
-
-macro_rules! rate_limited {
-    ($key:ident, $action:expr) => {
-        static $key: OncePer = OncePer::new();
-
-        if let Some(skipped) = $key.active(WARNING_INTERVAL) {
-            $action(skipped);
-        }
-    };
-}
 
 /// The timeout for a connection to be established, from a single `connect` call.
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -78,17 +68,11 @@ const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(60 * 60);
 /// How long to wait before attempting to reconnect when an outgoing connection is lost.
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
-/// Maximum interval for spammable warnings.
-const WARNING_INTERVAL: Duration = Duration::from_secs(60);
-
 /// Number of incoming connections before refusing to accept any new ones.
 const MAX_INCOMING_CONNECTIONS: usize = 10_000;
 
 /// Number of outgoing connections before stopping to connect.
 const MAX_OUTGOING_CONNECTIONS: usize = 10_000;
-
-/// Tracker for last outgoing connection exceedance warning.
-static OUTGOING_WARNING: OncePer = OncePer::new();
 
 /// Connection manager.
 ///
@@ -811,44 +795,6 @@ where
                 tokio::time::sleep(backoff).await;
             }
         }
-    }
-}
-
-#[derive(Debug)]
-struct OncePer(OnceLock<Mutex<OncePerData>>);
-
-#[derive(Default, Debug)]
-struct OncePerData {
-    last: Option<Instant>,
-    skipped: usize,
-}
-
-impl OncePer {
-    const fn new() -> Self {
-        Self(OnceLock::new())
-    }
-
-    fn active(&self, max_interval: Duration) -> Option<usize> {
-        let mut guard = self
-            .0
-            .get_or_init(|| Mutex::new(OncePerData::default()))
-            .lock()
-            .expect("lock poisoned");
-
-        let now = Instant::now();
-        if let Some(last) = guard.last {
-            if now.duration_since(last) < max_interval {
-                // We already fired.
-                guard.skipped += 1;
-
-                return None;
-            }
-        }
-
-        guard.last = Some(now);
-        let skipped = guard.skipped;
-        guard.skipped = 0;
-        Some(skipped)
     }
 }
 
