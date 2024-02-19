@@ -124,7 +124,10 @@ impl ObservableFuse {
     ///
     /// Similar to [`tokio::time::timeout`], except instead of a duration, the cancellation of the
     /// future depends on the given observable fuse.
-    pub(crate) async fn cancellable<F: Future>(self, f: F) -> Result<F::Output, Cancelled> {
+    pub(crate) async fn cancellable<F>(self, f: F) -> Result<F::Output, Cancelled>
+    where
+        F: Future,
+    {
         let wait = self.wait_owned();
 
         pin_mut!(wait);
@@ -134,6 +137,22 @@ impl ObservableFuse {
             Either::Left(((), _)) => Err(Cancelled),
             Either::Right((rv, _)) => Ok(rv),
         }
+    }
+
+    /// Convenience method to spawn a cancellable future.
+    ///
+    /// Uses the [`tokio::spawn`] function to spawn `f` wrapped in `ObservableFuse::cancellable`.
+    ///
+    /// Note that the join handle and return value of the future are lost; if you need access to
+    /// these, use `cancellable` directly.
+    #[inline(always)]
+    pub(crate) fn spawn<F>(&self, f: F)
+    where
+        F: Future + Send + 'static,
+    {
+        tokio::spawn(self.clone().cancellable(async {
+            f.await;
+        }));
     }
 }
 

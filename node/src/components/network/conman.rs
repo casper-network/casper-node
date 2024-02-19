@@ -18,7 +18,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures::{FutureExt, TryFuture, TryFutureExt};
+use futures::{TryFuture, TryFutureExt};
 use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
 use strum::EnumCount;
 use thiserror::Error;
@@ -231,19 +231,15 @@ impl ConMan {
                             error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty);
 
                         match server_ctx.incoming_limiter.clone().try_acquire_owned() {
-                            Ok(permit) => {
-                                tokio::spawn(
-                                    server_shutdown
-                                        .clone()
-                                        .cancellable(IncomingHandler::handle(
-                                            server_ctx.clone(),
-                                            stream,
-                                            server_shutdown.clone(),
-                                            permit,
-                                        ))
-                                        .instrument(span),
-                                );
-                            }
+                            Ok(permit) => server_shutdown.spawn(
+                                IncomingHandler::handle(
+                                    server_ctx.clone(),
+                                    stream,
+                                    server_shutdown.clone(),
+                                    permit,
+                                )
+                                .instrument(span),
+                            ),
                             Err(TryAcquireError::NoPermits) => {
                                 rate_limited!(
                                     INCOMING_LIMITER,
@@ -275,7 +271,7 @@ impl ConMan {
             }
         };
 
-        tokio::spawn(shutdown.inner().clone().cancellable(server).map(|_| ()));
+        shutdown.inner().spawn(server);
 
         Self { ctx, shutdown }
     }
@@ -324,11 +320,7 @@ impl ConManContext {
         let span = error_span!("outgoing", %peer_addr, peer_id=Empty, consensus_key=Empty);
         trace!(%peer_addr, "learned about address");
 
-        tokio::spawn(
-            shutdown
-                .cancellable(OutgoingHandler::run(self, peer_addr))
-                .instrument(span),
-        );
+        shutdown.spawn(OutgoingHandler::run(self, peer_addr).instrument(span));
     }
 
     /// Sets up an instance of the [`juliet`] protocol on a transport returned.
