@@ -103,6 +103,8 @@ struct ConManContext {
     state: RwLock<ConManState>,
     /// Our own address (for loopback filtering).
     public_addr: SocketAddr,
+    /// Our own node ID.
+    our_id: NodeId,
     /// Limiter for incoming connections.
     incoming_limiter: Arc<Semaphore>,
 }
@@ -173,9 +175,6 @@ pub(crate) trait ProtocolHandler: Send + Sync {
 
 /// The outcome of a handshake performed by the [`ProtocolHandler`].
 pub(crate) struct ProtocolHandshakeOutcome {
-    /// Our own `NodeId`.
-    // TODO: Consider moving our own `NodeId` elsewhere, it should not change during our lifetime.
-    our_id: NodeId,
     /// Peer's `NodeId`.
     peer_id: NodeId,
     /// The actual handshake outcome.
@@ -201,6 +200,7 @@ impl ConMan {
     pub(crate) fn new<H: Into<Box<dyn ProtocolHandler>>>(
         listener: TcpListener,
         public_addr: SocketAddr,
+        our_id: NodeId,
         protocol_handler: H,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
     ) -> Self {
@@ -211,6 +211,7 @@ impl ConMan {
             rpc_builder,
             state: Default::default(),
             public_addr,
+            our_id,
             incoming_limiter: Arc::new(Semaphore::new(cfg.max_incoming_connections)),
         });
 
@@ -393,7 +394,6 @@ impl IncomingHandler {
         debug!("handling new connection attempt");
 
         let ProtocolHandshakeOutcome {
-            our_id,
             peer_id,
             handshake_outcome,
         } = match ctx
@@ -411,13 +411,13 @@ impl IncomingHandler {
             }
         };
 
-        if peer_id == our_id {
+        if peer_id == ctx.our_id {
             // Loopback connection established.
             error!("should never complete an incoming loopback connection");
             return;
         }
 
-        if we_should_be_outgoing(our_id, peer_id) {
+        if we_should_be_outgoing(ctx.our_id, peer_id) {
             // The connection is supposed to be outgoing from our perspective.
             debug!("closing low-ranking incoming connection");
 
@@ -655,7 +655,6 @@ impl OutgoingHandler {
         .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
 
         let ProtocolHandshakeOutcome {
-            our_id,
             peer_id,
             handshake_outcome,
         } = self
@@ -669,11 +668,11 @@ impl OutgoingHandler {
                 outcome
             })?;
 
-        if peer_id == our_id {
+        if peer_id == self.ctx.our_id {
             return Err(OutgoingError::LoopbackEncountered);
         }
 
-        if !we_should_be_outgoing(our_id, peer_id) {
+        if !we_should_be_outgoing(self.ctx.our_id, peer_id) {
             return Err(OutgoingError::ShouldBeIncoming);
         }
 
