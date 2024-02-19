@@ -176,11 +176,11 @@ impl BlockValidationState {
                     let deploy_approvals: BTreeSet<_> = approvals
                         .iter()
                         .cloned()
-                        .map(|transaction_approval| match transaction_approval {
-                            TransactionApproval::Deploy(deploy_approval) => deploy_approval,
+                        .flat_map(|transaction_approval| match transaction_approval {
+                            TransactionApproval::Deploy(deploy_approval) => Some(deploy_approval),
                             TransactionApproval::V1(_) => {
-                                // TODO[RC]: Don't panic, report error.
-                                panic!("unexpected V1 approval on legacy deploy")
+                                error!(%dt_hash, "unexpected V1 approval on legacy deploy");
+                                None
                             }
                         })
                         .collect();
@@ -197,12 +197,13 @@ impl BlockValidationState {
                     let transaction_v1_approvals: BTreeSet<_> = approvals
                         .iter()
                         .cloned()
-                        .map(|transaction_approval| match transaction_approval {
+                        .flat_map(|transaction_approval| match transaction_approval {
                             TransactionApproval::Deploy(_) => {
-                                panic!("unexpected legacy deploy approval on V1 transaction")
+                                error!(%dt_hash,"unexpected legacy deploy approval on V1 transaction");
+                                None
                             }
                             TransactionApproval::V1(transaction_v1_approval) => {
-                                transaction_v1_approval
+                                Some(transaction_v1_approval)
                             }
                         })
                         .collect();
