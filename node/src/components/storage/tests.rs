@@ -2962,9 +2962,13 @@ fn check_block_operations_with_node_1_5_2_storage() {
         storage_info.block_range.1
     );
 
-    /* TODO: Now we can't easily determine the lowest block in storage since we don't have access to the index.
-             This will probably need refactoring, or testing capability to get the lowest block needs to be added.
-    let lowest_stored_block_height = *storage.block_height_index.keys().min().unwrap();
+    let mut lowest_stored_block_height = storage_info.block_range.0;
+    for height in 0..storage_info.block_range.0 {
+        if get_block_header_by_height(&mut harness, &mut storage, height, false).is_some() {
+            lowest_stored_block_height = height;
+            break;
+        }
+    }
 
     // Now add some blocks and test if they can be retrieved correctly
     if let Some(new_lowest_height) = lowest_stored_block_height.checked_sub(1) {
@@ -3013,13 +3017,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
             false,
             true,
         );
-
-        assert_eq!(
-            *storage.block_height_index.keys().min().unwrap(),
-            new_lowest_height
-        );
     }
-    */
 
     {
         let new_highest_block_height = storage.read_highest_block().unwrap().height() + 1;
