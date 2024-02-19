@@ -664,22 +664,16 @@ mod tests {
         ) -> (BlockValidationState, Option<Responder<bool>>) {
             let ttl = TimeDiff::from_seconds(10);
             let transactions: Vec<_> = (0..transaction_count)
-                .map(|index| {
-                    Transaction::from(new_legacy_deploy(
-                        &mut self.rng,
-                        Timestamp::from(1000 + index),
-                        ttl,
-                    ))
-                })
+                .map(|index| new_non_transfer(&mut self.rng, Timestamp::from(1000 + index), ttl))
                 .collect();
             self.transactions.extend(transactions);
             let transfers: Vec<_> = (0..transfer_count)
                 .map(|index| {
-                    Transaction::from(new_legacy_transfer(
+                    new_transfer(
                         &mut self.rng,
                         Timestamp::from(1000 + transaction_count + index),
                         ttl,
-                    ))
+                    )
                 })
                 .collect();
             self.transfers.extend(transfers);
@@ -725,23 +719,65 @@ mod tests {
         fn footprints(&self) -> Vec<(DeployOrTransactionHash, TransactionFootprint)> {
             self.transactions
                 .iter()
-                .map(|transaction| {
-                    let dt_hash = match transaction {
-                        Transaction::Deploy(deploy) => {
-                            DeployOrTransferHash::Deploy(*deploy.hash()).into()
+                .map(|transaction| match transaction {
+                    Transaction::Deploy(deploy) => {
+                        let hash = deploy.hash();
+                        let footprint = deploy.footprint().unwrap();
+                        if footprint.is_transfer {
+                            panic!("unexpected transfer in transactions");
+                        } else {
+                            (
+                                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(
+                                    *hash,
+                                )),
+                                TransactionFootprint::from(footprint),
+                            )
                         }
-                        Transaction::V1(v1) => (*v1.hash()).into(),
-                    };
-                    (dt_hash, transaction.footprint().unwrap())
+                    }
+                    Transaction::V1(v1) => {
+                        let hash = v1.hash();
+                        let footprint = v1.footprint().unwrap();
+                        if footprint.is_transfer() {
+                            panic!("unexpected transfer in transactions");
+                        } else {
+                            (
+                                DeployOrTransactionHash::V1(
+                                    TransactionV1OrTransferV1Hash::Transaction(*hash),
+                                ),
+                                TransactionFootprint::from(footprint),
+                            )
+                        }
+                    }
                 })
-                .chain(self.transfers.iter().map(|transfer| {
-                    let dt_hash = match transfer {
-                        Transaction::Deploy(deploy) => {
-                            DeployOrTransferHash::Transfer(*deploy.hash()).into()
+                .chain(self.transfers.iter().map(|transfer| match transfer {
+                    Transaction::Deploy(deploy) => {
+                        let hash = deploy.hash();
+                        let footprint = deploy.footprint().unwrap();
+                        if footprint.is_transfer {
+                            (
+                                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Transfer(
+                                    *hash,
+                                )),
+                                TransactionFootprint::from(footprint),
+                            )
+                        } else {
+                            panic!("unexpected transaction in transfers");
                         }
-                        Transaction::V1(v1) => (*v1.hash()).into(),
-                    };
-                    (dt_hash, transfer.footprint().unwrap())
+                    }
+                    Transaction::V1(v1) => {
+                        let hash = v1.hash();
+                        let footprint = v1.footprint().unwrap();
+                        if footprint.is_transfer() {
+                            (
+                                DeployOrTransactionHash::V1(
+                                    TransactionV1OrTransferV1Hash::Transfer(*hash),
+                                ),
+                                TransactionFootprint::from(footprint),
+                            )
+                        } else {
+                            panic!("unexpected transaction in transfers");
+                        }
+                    }
                 }))
                 .collect()
         }
@@ -792,16 +828,11 @@ mod tests {
 
         let timestamp = Timestamp::from(1000);
         let transfers =
-            vec![new_legacy_transfer(&mut fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
+            vec![new_transfer(&mut fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
         let transfers_for_block = transfers
             .iter()
-            .map(|transfer| {
-                TransactionHashWithApprovals::new_deploy(
-                    *transfer.hash(),
-                    transfer.approvals().clone(),
-                )
-            })
+            .map(TransactionHashWithApprovals::from)
             .collect();
 
         let proposed_block =
