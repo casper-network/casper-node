@@ -146,6 +146,12 @@ struct Route {
     client: RpcClient,
 }
 
+#[derive(Debug)]
+struct ActiveRoute {
+    ctx: Arc<ConManContext>,
+    peer_id: NodeId,
+}
+
 /// External integration.
 ///
 /// Contains callbacks for transport setup (via [`setup_incoming`] and [`setup_outgoing`]) and
@@ -550,7 +556,6 @@ impl Debug for ConManContext {
 struct OutgoingHandler {
     ctx: Arc<ConManContext>,
     peer_addr: SocketAddr,
-    peer_id: Option<NodeId>,
 }
 
 #[derive(Debug, Error)]
@@ -581,7 +586,6 @@ impl OutgoingHandler {
         Self {
             ctx: arc_ctx,
             peer_addr,
-            peer_id: None,
         }
     }
 
@@ -651,19 +655,7 @@ impl OutgoingHandler {
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
         // and repeat the loop, connecting again, or `break` with a do-not-call timer.
         let do_not_call_until = loop {
-            let outcome = outgoing_handler.connect_and_serve().await;
-
-            // Immediately update routing table, clearing the route if a successful connection had
-            // been established.
-            {
-                let mut guard = ctx.state.write().expect("lock poisoned");
-
-                if let Some(peer_id) = outgoing_handler.peer_id.take() {
-                    guard.routing_table.remove(&peer_id);
-                }
-            }
-
-            match outcome {
+            match outgoing_handler.connect_and_serve().await {
                 Ok(()) => {
                     // Regular connection closure, i.e. without error.
                     // TODO: Currently, peers that have banned us will end up here. They need a
@@ -763,10 +755,10 @@ impl OutgoingHandler {
             return Err(OutgoingError::ShouldBeIncoming);
         }
 
-        let (rpc_client, mut rpc_server) = self.ctx.setup_juliet(handshake_outcome.transport);
+        let (rpc_client, rpc_server) = self.ctx.setup_juliet(handshake_outcome.transport);
 
         // Update routing and outgoing state.
-        {
+        let active_route = {
             let mut guard = self.ctx.state.write().expect("lock poisoned");
 
             let now = Instant::now();
@@ -777,23 +769,11 @@ impl OutgoingHandler {
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
             guard.unban(&peer_id);
-            Self::register_route(&mut self.peer_id, &mut guard, peer_id, rpc_client)?;
-        }
 
-        // All shared state has been updated, we can now run the server loop.
-        while let Some(request) = rpc_server
-            .next_request()
-            .await
-            .map_err(OutgoingError::RpcServerError)?
-        {
-            trace!(%request, "received incoming request");
-            self.ctx
-                .protocol_handler
-                .handle_incoming_request(peer_id, request);
-        }
+            ActiveRoute::new(&mut *guard, self.ctx.clone(), peer_id, rpc_client)?
+        };
 
-        // Regular connection closing.
-        Ok(())
+        active_route.serve(rpc_server).await
     }
 }
 
@@ -804,12 +784,50 @@ impl Drop for OutgoingHandler {
         if !guard.address_book.remove(&self.peer_addr) {
             error!("address book should not be modified by anything but outgoing handler");
         }
+    }
+}
 
-        // Also remove ourselves from the routing table, if still present. Since the `NodeId`
-        // ranking determines whether an incoming or outgoing connection is intended for this
-        // pairing, we know it is always going to be us inserting ourselves there.
-        if let Some(peer_id) = self.peer_id.take() {
-            guard.routing_table.remove(&peer_id);
+impl ActiveRoute {
+    fn new(
+        state: &mut ConManState,
+        ctx: Arc<ConManContext>,
+        peer_id: NodeId,
+        rpc_client: RpcClient,
+    ) -> Result<Self, OutgoingError> {
+        let route = Route {
+            peer: peer_id,
+            client: rpc_client,
+        };
+
+        if state.routing_table.insert(peer_id, route).is_some() {
+            return Err(OutgoingError::ResidualRoute);
+        }
+
+        Ok(Self { ctx, peer_id })
+    }
+
+    async fn serve(self, mut rpc_server: RpcServer) -> Result<(), OutgoingError> {
+        while let Some(request) = rpc_server
+            .next_request()
+            .await
+            .map_err(OutgoingError::RpcServerError)?
+        {
+            trace!(%request, "received incoming request");
+            self.ctx
+                .protocol_handler
+                .handle_incoming_request(self.peer_id, request);
+        }
+
+        // Regular connection closing.
+        Ok(())
+    }
+}
+
+impl Drop for ActiveRoute {
+    fn drop(&mut self) {
+        let mut guard = self.ctx.state.write().expect("lock poisoned");
+        if guard.routing_table.remove(&self.peer_id).is_none() {
+            error!("routing table should only be touched by active route");
         }
     }
 }
