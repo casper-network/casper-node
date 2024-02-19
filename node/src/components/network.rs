@@ -63,7 +63,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 
-use juliet::rpc::{JulietRpcClient, JulietRpcServer, RequestGuard};
+use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RequestGuard};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -84,6 +84,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
+    conman::{ConMan, ProtocolHandler, ProtocolHandshakeOutcome},
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     event::{IncomingConnection, OutgoingConnection},
     message::NodeKeyPair,
@@ -166,6 +167,10 @@ where
     context: Arc<NetworkContext<REv>>,
     /// A reference to the global validator matrix.
     validator_matrix: ValidatorMatrix,
+
+    /// Connection manager for incoming and outgoing connections.
+    #[data_size(skip)] // Skipped, to reduce lock contention.
+    conman: Option<ConMan>,
 
     /// Outgoing connections manager.
     outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
@@ -267,6 +272,7 @@ where
             cfg,
             context,
             validator_matrix,
+            conman: None,
             outgoing_manager,
             incoming_validator_status: Default::default(),
             connection_symmetries: HashMap::new(),
@@ -337,14 +343,16 @@ where
         info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
 
         let context = self.context.clone();
-        self.server_join_handle = Some(tokio::spawn(
-            tasks::server(
-                context,
-                tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-                self.shutdown_fuse.inner().clone(),
-            )
-            .in_current_span(),
-        ));
+
+        // Disabled, remove later:
+        // self.server_join_handle = Some(tokio::spawn(
+        //     tasks::server(
+        //         context,
+        //         tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
+        //         self.shutdown_fuse.inner().clone(),
+        //     )
+        //     .in_current_span(),
+        // ));
 
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
@@ -368,6 +376,23 @@ where
                 .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
                 .event(|_| Event::SweepOutgoing),
         );
+
+        // Start connection manager.
+        let protocol_handler = ComponentProtocolHandler;
+
+        let rpc_builder = transport::create_rpc_builder(
+            self.context.chain_info.networking_config,
+            self.cfg.send_buffer_size,
+            self.cfg.ack_timeout,
+        );
+
+        self.conman = Some(ConMan::new(
+            tokio::net::TcpListener::from_std(listener).expect("not in tokio runtime"),
+            public_addr,
+            context.our_id,
+            Box::new(protocol_handler),
+            rpc_builder,
+        ));
 
         <Self as InitializedComponent<REv>>::set_state(self, ComponentState::Initialized);
         Ok(effects)
@@ -1484,6 +1509,40 @@ fn process_request_guard(channel: Channel, guard: RequestGuard) {
             // No ACK received yet, forget, so we don't cancel.
             guard.forget();
         }
+    }
+}
+
+struct ComponentProtocolHandler;
+
+impl ComponentProtocolHandler {
+    async fn setup_connection(
+        &self,
+        stream: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        todo!()
+    }
+}
+
+#[async_trait::async_trait]
+impl ProtocolHandler for ComponentProtocolHandler {
+    #[inline(always)]
+    async fn setup_incoming(
+        &self,
+        stream: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        self.setup_connection(stream).await
+    }
+
+    #[inline(always)]
+    async fn setup_outgoing(
+        &self,
+        stream: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        self.setup_connection(stream).await
+    }
+
+    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
+        todo!()
     }
 }
 

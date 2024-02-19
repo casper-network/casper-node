@@ -213,17 +213,17 @@ impl ConMan {
     ///
     /// Immediately spawns a task accepting incoming connections on a tokio task. The task will be
     /// stopped if the returned [`ConMan`] is dropped.
-    pub(crate) fn new<H: Into<Box<dyn ProtocolHandler>>>(
+    pub(crate) fn new(
         listener: TcpListener,
         public_addr: SocketAddr,
         our_id: NodeId,
-        protocol_handler: H,
+        protocol_handler: Box<dyn ProtocolHandler>,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
     ) -> Self {
         let cfg = Config::default();
         let ctx = Arc::new(ConManContext {
             cfg,
-            protocol_handler: protocol_handler.into(),
+            protocol_handler,
             rpc_builder,
             state: Default::default(),
             public_addr,

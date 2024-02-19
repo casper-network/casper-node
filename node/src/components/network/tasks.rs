@@ -185,7 +185,7 @@ where
     #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     net_metrics: Weak<Metrics>,
     /// Chain info extract from chainspec.
-    chain_info: ChainInfo,
+    pub(super) chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
     node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
