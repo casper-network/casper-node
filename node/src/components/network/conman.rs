@@ -58,6 +58,9 @@ const TCP_CONNECT_BASE_BACKOFF: Duration = Duration::from_secs(1);
 /// How long to back off from reconnecting to an address after a failure.
 const HANDSHAKE_FAILURE_BACKOFF: Duration = Duration::from_secs(60);
 
+/// How long to back of from reconnecting to an address if the error is likely never changing.
+const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(4 * 60 * 60);
+
 /// How long to wait before attempting to reconnect when an outgoing connection is lost.
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
@@ -381,7 +384,6 @@ impl IncomingHandler {
         if peer_id == our_id {
             // Loopback connection established.
             error!("should never complete an incoming loopback connection");
-            tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
             return;
         }
 
@@ -517,7 +519,6 @@ impl OutgoingHandler {
         let outgoing_handler = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
-            let now = Instant::now();
             match guard.address_book.get(&peer_addr) {
                 Some(AddressBookEntry::Connecting) | Some(AddressBookEntry::Outgoing { .. }) => {
                     // Someone beat us to the punch.
@@ -588,7 +589,16 @@ impl OutgoingHandler {
         if peer_id == our_id {
             // Loopback connection established.
             error!("should never complete an outgoing loopback connection");
-            tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
+            drop(handshake_outcome);
+            tokio::time::sleep(PERMANENT_ERROR_BACKOFF).await;
+            return;
+        }
+
+        if !we_should_be_outgoing(our_id, peer_id) {
+            debug!("closing low-ranking outgoing connection");
+            drop(handshake_outcome);
+            tokio::time::sleep(PERMANENT_ERROR_BACKOFF).await;
+            // TODO: Replace `sleep` workaround with separate blocklist that filters on learning.
             return;
         }
 
@@ -605,9 +615,9 @@ impl OutgoingHandler {
                 // TODO: Verify we are not in a fast reconnect loop if only one sides bans the peer.
 
                 // Block outgoing until the ban is lifted.
-                let ban_expires = entry.until.into();
+                // let ban_expires = entry.until.into();
                 drop(guard); // Important: Release lock on address book.
-                tokio::time::sleep_until(ban_expires).await;
+                             // tokio::time::sleep_until(ban_expires).await; // TODO: Make this sleep timer work.
                 return;
             }
             guard.unban(&peer_id);
@@ -672,6 +682,9 @@ impl Drop for OutgoingHandler {
     }
 }
 
+/// Connects to given address.
+///
+/// Will cancel the connection attempt once `TCP_CONNECT_TIMEOUT` is hit.
 async fn connect(addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
     tokio::time::timeout(TCP_CONNECT_TIMEOUT, TcpStream::connect(addr))
         .await
@@ -679,6 +692,7 @@ async fn connect(addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
         .map_err(ConnectionError::TcpConnection)
 }
 
+/// Retries a given future with an exponential backoff timer between retries.
 async fn retry_with_exponential_backoff<Fut, F>(
     max_attempts: usize,
     base_backoff: Duration,
