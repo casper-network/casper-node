@@ -798,11 +798,11 @@ where
                     approvals_hash,
                 },
                 (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
-                    error!("can not fetch 'legacy deploy' using 'transaction' approvals hash");
+                    error!(%dt_hash, "can not fetch 'legacy deploy' using 'transaction' approvals hash");
                     return Effects::new();
                 }
                 (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
-                    error!("can not fetch 'transaction' using 'legacy deploy' approvals hash");
+                    error!(%dt_hash, "can not fetch 'transaction' using 'legacy deploy' approvals hash");
                     return Effects::new();
                 }
             };
