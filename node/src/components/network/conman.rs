@@ -550,6 +550,7 @@ impl Debug for ConManContext {
 struct OutgoingHandler {
     ctx: Arc<ConManContext>,
     peer_addr: SocketAddr,
+    peer_id: Option<NodeId>,
 }
 
 #[derive(Debug, Error)]
@@ -580,6 +581,37 @@ impl OutgoingHandler {
         Self {
             ctx: arc_ctx,
             peer_addr,
+            peer_id: None,
+        }
+    }
+
+    /// Update a registered route.
+    ///
+    /// The awkward function signature without a `self` receiver is from partial borrow limits.
+    fn register_route(
+        self_peer_id: &mut Option<NodeId>,
+        state: &mut ConManState,
+        peer_id: NodeId,
+        rpc_client: RpcClient,
+    ) -> Result<(), OutgoingError> {
+        if self_peer_id.replace(peer_id).is_some() {
+            error!("did not expect to replace a route");
+        }
+
+        if state
+            .routing_table
+            .insert(
+                peer_id,
+                Route {
+                    peer: peer_id,
+                    client: rpc_client,
+                },
+            )
+            .is_some()
+        {
+            Err(OutgoingError::ResidualRoute)
+        } else {
+            Ok(())
         }
     }
 
@@ -587,6 +619,11 @@ impl OutgoingHandler {
     ///
     /// Will perform repeated connection attempts to `peer_addr`, controlled by the configuration
     /// settings on the context.
+    ///
+    /// ## Cancellation safety
+    ///
+    /// This function is cancellation safe, specifically the routing table found on `ctx` will
+    /// always be updated correctly.
     async fn run(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
         debug!("spawned new outgoing handler");
 
@@ -614,7 +651,19 @@ impl OutgoingHandler {
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
         // and repeat the loop, connecting again, or `break` with a do-not-call timer.
         let do_not_call_until = loop {
-            match outgoing_handler.connect_and_serve().await {
+            let outcome = outgoing_handler.connect_and_serve().await;
+
+            // Immediately update routing table, clearing the route if a successful connection had
+            // been established.
+            {
+                let mut guard = ctx.state.write().expect("lock poisoned");
+
+                if let Some(peer_id) = outgoing_handler.peer_id.take() {
+                    guard.routing_table.remove(&peer_id);
+                }
+            }
+
+            match outcome {
                 Ok(()) => {
                     // Regular connection closure, i.e. without error.
                     // TODO: Currently, peers that have banned us will end up here. They need a
@@ -671,11 +720,18 @@ impl OutgoingHandler {
                 guard.do_not_call.insert(peer_addr, do_not_call_until);
             }
         }
-
-        // Release the slot.
-        drop(outgoing_handler);
     }
 
+    /// Performs one iteration of a connection cycle.
+    ///
+    /// Will attempet several times to TCP connect, then handshake and establish a connection. If
+    /// the connection is closed without errors, returns `Ok(())`, otherwise a more specific `Err`
+    /// is returned.
+    ///
+    /// ## Cancellation safety
+    ///
+    /// This function is cancellation safe, it willl at worst result in an abrupt termination of the
+    /// connection (which peers must be able to handle).
     async fn connect_and_serve(&mut self) -> Result<(), OutgoingError> {
         let stream = retry_with_exponential_backoff(
             self.ctx.cfg.tcp_connect_attempts,
@@ -721,20 +777,7 @@ impl OutgoingHandler {
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
             guard.unban(&peer_id);
-
-            if guard
-                .routing_table
-                .insert(
-                    peer_id,
-                    Route {
-                        peer: peer_id,
-                        client: rpc_client,
-                    },
-                )
-                .is_some()
-            {
-                return Err(OutgoingError::ResidualRoute);
-            }
+            Self::register_route(&mut self.peer_id, &mut guard, peer_id, rpc_client)?;
         }
 
         // All shared state has been updated, we can now run the server loop.
@@ -761,12 +804,23 @@ impl Drop for OutgoingHandler {
         if !guard.address_book.remove(&self.peer_addr) {
             error!("address book should not be modified by anything but outgoing handler");
         }
+
+        // Also remove ourselves from the routing table, if still present. Since the `NodeId`
+        // ranking determines whether an incoming or outgoing connection is intended for this
+        // pairing, we know it is always going to be us inserting ourselves there.
+        if let Some(peer_id) = self.peer_id.take() {
+            guard.routing_table.remove(&peer_id);
+        }
     }
 }
 
 /// Connects to given address.
 ///
 /// Will cancel the connection attempt once `TCP_CONNECT_TIMEOUT` is hit.
+///
+/// ## Cancellation safety
+///
+/// This function is cancellation safe, similar to [`TcpStream::connect`].
 async fn connect(timeout: Duration, addr: SocketAddr) -> Result<TcpStream, ConnectionError> {
     tokio::time::timeout(timeout, TcpStream::connect(addr))
         .await
