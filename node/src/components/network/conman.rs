@@ -96,6 +96,8 @@ struct ConManContext {
     rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
     /// The shared state.
     state: RwLock<ConManState>,
+    /// Our own address (for loopback filtering).
+    public_addr: SocketAddr,
 }
 
 /// Share state for [`ConMan`].
@@ -206,6 +208,7 @@ impl ConMan {
     /// stopped if the returned [`ConMan`] is dropped.
     pub(crate) fn new<H: Into<Box<dyn ProtocolHandler>>>(
         listener: TcpListener,
+        public_addr: SocketAddr,
         protocol_handler: H,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
     ) -> Self {
@@ -213,6 +216,7 @@ impl ConMan {
             protocol_handler: protocol_handler.into(),
             rpc_builder,
             state: Default::default(),
+            public_addr,
         });
 
         let shutdown = DropSwitch::new(ObservableFuse::new());
@@ -277,7 +281,10 @@ impl ConManContext {
     fn learn_address(self: Arc<Self>, peer_addr: SocketAddr, shutdown: ObservableFuse) {
         // TODO: Limit number of outgoing (and incoming) connections.
 
-        // TODO: Filter loopback.
+        if peer_addr == self.public_addr {
+            trace!("ignoring loopback address");
+            return;
+        }
 
         // We have been informed of a new address. Find out if it is truly new and/or uncallable.
         {
