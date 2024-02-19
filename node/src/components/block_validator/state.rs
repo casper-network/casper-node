@@ -124,13 +124,13 @@ impl BlockValidationState {
         responder: Responder<bool>,
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
-        let transaction_count = block.transactions().len() + block.transfers().len();
+        let transaction_count = block.non_transfer_transactions().len() + block.transfers().len();
         if transaction_count == 0 {
             let state = BlockValidationState::Valid(block.timestamp());
             return (state, Some(responder));
         }
 
-        if block.transactions().len()
+        if block.non_transfer_transactions().len()
             > chainspec.transaction_config.block_max_standard_count as usize
         {
             warn!("too many non-transfer transactions");
@@ -148,7 +148,7 @@ impl BlockValidationState {
             AppendableBlock::new(chainspec.transaction_config, block.timestamp());
 
         let mut missing_transactions = HashMap::new();
-        let transactions_iter = block.transactions().into_iter().map(|dhwa| {
+        let transactions_iter = block.non_transfer_transactions().into_iter().map(|dhwa| {
             let dt_hash = match &dhwa {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(*deploy_hash))
@@ -1143,9 +1143,16 @@ mod tests {
         };
 
         // Create a new, random transaction.
-        let deploy = new_legacy_deploy(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
-        let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash()).into();
-        let footprint = deploy.footprint().unwrap().into();
+        let transaction = new_standard(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
+        let dt_hash = match &transaction {
+            Transaction::Deploy(deploy) => {
+                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(*deploy.hash()))
+            }
+            Transaction::V1(v1) => {
+                DeployOrTransactionHash::V1(TransactionV1OrTransferV1Hash::Transaction(*v1.hash()))
+            }
+        };
+        let footprint = transaction.footprint().unwrap();
 
         // Ensure trying to add it doesn't change the state.
         let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
@@ -1171,11 +1178,10 @@ mod tests {
     fn state_should_change_to_validation_failed() {
         let mut fixture = Fixture::new();
         // Add an invalid (future-dated) transaction to the fixture.
-        let invalid_deploy =
-            new_legacy_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
-        let invalid_deploy_hash = *invalid_deploy.hash();
-        let invalid_deploy = Transaction::from(invalid_deploy);
-        fixture.transactions.push(invalid_deploy.clone());
+        let invalid_transaction =
+            new_standard(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
+        let invalid_transaction_hash = invalid_transaction.hash();
+        fixture.transactions.push(invalid_transaction.clone());
         let (mut state, _maybe_responder) = fixture.new_state(2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
@@ -1183,18 +1189,30 @@ mod tests {
         let mut footprints = fixture.footprints();
         while footprints.len() > 3 {
             let (dt_hash, footprint) = footprints.pop().unwrap();
-            if dt_hash.transaction_hash() == invalid_deploy_hash.into() {
+            if dt_hash.transaction_hash() == invalid_transaction_hash {
                 continue;
             }
             let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
             assert!(responders.is_empty());
         }
 
-        // The invalid deploy should cause the state to go to `Invalid` and the responders to be
-        // returned.
-        let dt_hash =
-            DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(invalid_deploy_hash));
-        let footprint = invalid_deploy.footprint().unwrap();
+        // The invalid transaction should cause the state to go to `Invalid` and the responders to
+        // be returned.
+        let dt_hash = match &invalid_transaction {
+            Transaction::Deploy(deploy) => {
+                DeployOrTransactionHash::Deploy(if deploy.is_transfer() {
+                    DeployOrTransferHash::Transfer(*deploy.hash())
+                } else {
+                    DeployOrTransferHash::Deploy(*deploy.hash())
+                })
+            }
+            Transaction::V1(v1) => DeployOrTransactionHash::V1(if v1.is_transfer() {
+                TransactionV1OrTransferV1Hash::Transfer(*v1.hash())
+            } else {
+                TransactionV1OrTransferV1Hash::Transaction(*v1.hash())
+            }),
+        };
+        let footprint = invalid_transaction.footprint().unwrap();
         let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));

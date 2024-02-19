@@ -535,7 +535,6 @@ async fn transfer_deploy_mixup_and_replay() {
         transaction_v1.clone(),
     ];
     assert!(!validate_block(&mut rng, timestamp, transactions, transfers, vec![], vec![]).await);
-
     // Each transaction must be unique
     let transactions = vec![
         deploy_legacy.clone(),

@@ -55,8 +55,8 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn transactions(&self) -> Vec<TransactionHashWithApprovals> {
-        self.value().standard().cloned().collect()
+    fn non_transfer_transactions(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().non_transfer().cloned().collect()
     }
 
     fn transfers(&self) -> Vec<TransactionHashWithApprovals> {

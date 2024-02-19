@@ -56,6 +56,14 @@ impl BlockPayload {
         self.transfer.iter()
     }
 
+    /// Returns the hashes and approvals of the non-transfer transactions within the block.
+    pub fn non_transfer(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
+        self.standard
+            .iter()
+            .chain(self.staking.iter())
+            .chain(self.install_upgrade.iter())
+    }
+
     /// Returns the hashes and approvals of the non-transfer, native transactions within the block.
     pub fn staking(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
         self.staking.iter()
