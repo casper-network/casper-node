@@ -16,12 +16,8 @@ mod rewarded_signatures;
 mod rewards;
 mod signed_block;
 mod signed_block_header;
-
-#[cfg(any(feature = "testing", test))]
-mod test_block_builder {
-    pub mod test_block_v1_builder;
-    pub mod test_block_v2_builder;
-}
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
@@ -60,11 +56,8 @@ pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures}
 pub use rewards::Rewards;
 pub use signed_block::SignedBlock;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
-#[cfg(any(feature = "testing", test))]
-pub use test_block_builder::{
-    test_block_v1_builder::TestBlockV1Builder,
-    test_block_v2_builder::TestBlockV2Builder as TestBlockBuilder,
-};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use test_block_builder::{TestBlockBuilder, TestBlockV1Builder};
 
 #[cfg(feature = "json-schema")]
 static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());

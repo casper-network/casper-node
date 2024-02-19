@@ -168,9 +168,6 @@ pub enum Error {
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
-    /// Failed to transfer tokens on a private chain.
-    #[error("Failed to transfer with unrestricted transfers disabled")]
-    DisabledUnrestrictedTransfers,
     /// Weight of all used associated keys does not meet entity's upgrade threshold.
     #[error("Deployment authorization failure")]
     UpgradeAuthorizationFailure,
@@ -195,6 +192,9 @@ pub enum Error {
     /// Missing bid.
     #[error("Missing bid: {0}")]
     MissingBid(Key),
+    /// Not authorized.
+    #[error("Authorization error")]
+    Authorization,
 }
 
 impl Error {

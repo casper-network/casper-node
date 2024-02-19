@@ -4,7 +4,9 @@ use thiserror::Error;
 
 use casper_storage::{
     global_state::{self, state::CommitError},
-    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
+    system::{
+        genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError, transfer::TransferError,
+    },
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
@@ -120,6 +122,9 @@ pub enum Error {
     /// Storage error.
     #[error("Tracking copy error: {0}")]
     TrackingCopy(TrackingCopyError),
+    /// Native transfer error.
+    #[error("Transfer error: {0}")]
+    Transfer(TransferError),
 }
 
 impl Error {
@@ -130,6 +135,12 @@ impl Error {
     /// code.
     pub fn reverter(api_error: impl Into<ApiError>) -> Error {
         Error::Exec(execution::Error::Revert(api_error.into()))
+    }
+}
+
+impl From<TransferError> for Error {
+    fn from(err: TransferError) -> Self {
+        Error::Transfer(err)
     }
 }
 
