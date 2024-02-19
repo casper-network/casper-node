@@ -243,7 +243,7 @@ impl ConMan {
                             ),
                             Err(TryAcquireError::NoPermits) => {
                                 rate_limited!(
-                                    INCOMING_LIMITER,
+                                    EXCEED_INCOMING,
                                     |dropped| warn!(most_recent_skipped=%peer_addr, dropped, "exceeded incoming connection limit, are you getting spammed?")
                                 );
                             }
@@ -291,7 +291,7 @@ impl ConManContext {
             return;
         }
 
-        // We have been informed of a new address. Find out if it is truly new and/or uncallable.
+        // We have been informed of a new address. Find out if it is new or uncallable.
         {
             let guard = self.state.read().expect("lock poisoned");
 
@@ -301,18 +301,20 @@ impl ConManContext {
                 return;
             }
 
-            if guard.address_book.len() >= self.cfg.max_outgoing_connections {
-                rate_limited!(
-                    OUTGOING_WARNING,
-                    |dropped| warn!(most_recent_lost=%peer_addr, dropped, "exceeding maximum number of outgoing connections, you may be getting spammed")
-                );
-
-                return;
-            }
-
             if guard.address_book.contains(&peer_addr) {
                 // There already exists a handler attempting to connect, exit.
                 trace!(%peer_addr, "discarding peer address, already has outgoing handler");
+                return;
+            }
+
+            // If we exhausted our address book capacity, discard the address, we will have to wait
+            // until some active connections time out.
+            if guard.address_book.len() >= self.cfg.max_outgoing_connections {
+                rate_limited!(
+                    EXCEED_ADDRESS_BOOK,
+                    |dropped| warn!(most_recent_lost=%peer_addr, dropped, "exceeding maximum number of outgoing connections, you may be getting spammed")
+                );
+
                 return;
             }
         }
@@ -635,11 +637,19 @@ impl OutgoingHandler {
         };
 
         // Update the do-not-call list.
-        ctx.state
-            .write()
-            .expect("lock poisoned")
-            .do_not_call
-            .insert(peer_addr, do_not_call_until);
+        {
+            let mut guard = ctx.state.write().expect("lock poisoned");
+
+            if guard.do_not_call.len() >= ctx.cfg.max_outgoing_connections {
+                rate_limited!(EXCEEDED_DO_NOT_CALL, |dropped| warn!(
+                    most_recent_skipped=%peer_addr,
+                    dropped,
+                    "did not outgoing address to do-not-call list, already at capacity"
+                ));
+            } else {
+                guard.do_not_call.insert(peer_addr, do_not_call_until);
+            }
+        }
 
         // Release the slot.
         drop(outgoing_handler);
