@@ -621,7 +621,7 @@ fn block_not_fully_saturated() {
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert!(appendable_block.transaction_and_transfer_set().len() <= total_allowed as usize);
 
-    // Assert the number of proposed transaction types, block should be fully saturated.
+    // Assert the number of proposed transaction types, block should not be fully saturated.
     let mut proposed_transfers = 0;
     let mut proposed_stakings = 0;
     let mut proposed_install_upgrades = 0;

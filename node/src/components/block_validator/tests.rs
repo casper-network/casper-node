@@ -237,14 +237,14 @@ pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     }
 }
 
-pub(super) fn new_transaction(
+pub(super) fn new_non_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
 ) -> Transaction {
     match rng.gen_range(0..3) {
         0 => new_standard(rng, timestamp, ttl),
-        1 => new_v1_install_upgrade(rng, timestamp, ttl).into(), /*  */
+        1 => new_v1_install_upgrade(rng, timestamp, ttl).into(),
         2 => new_v1_staking(rng, timestamp, ttl).into(),
         _ => unreachable!(),
     }
@@ -382,8 +382,8 @@ async fn ttl() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let transactions = vec![
-        new_transaction(&mut rng, 1000.into(), ttl),
-        new_transaction(&mut rng, 900.into(), ttl),
+        new_non_transfer(&mut rng, 1000.into(), ttl),
+        new_non_transfer(&mut rng, 900.into(), ttl),
     ];
     let transfers = vec![
         new_transfer(&mut rng, 1000.into(), ttl),
@@ -578,7 +578,7 @@ async fn should_fetch_from_multiple_peers() {
         let mut rng = TestRng::new();
         let ttl = TimeDiff::from_seconds(200);
         let transactions = (0..peer_count)
-            .map(|i| new_transaction(&mut rng, (900 + i).into(), ttl))
+            .map(|i| new_non_transfer(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
             .map(|i| new_transfer(&mut rng, (1000 + i).into(), ttl))
