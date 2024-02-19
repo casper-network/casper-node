@@ -571,7 +571,7 @@ impl OutgoingHandler {
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
         // and repeat the loop, connecting again, or `break` with a do-not-call timer.
         let do_not_call_until = loop {
-            // We need a subspan to avoid duplicate registrations of the peer's data,
+            // We need a subspan to avoid duplicate registrations of peer data on retries.
             let sub_span = error_span!("connect-and-serve");
             match outgoing_handler
                 .connect_and_serve()
