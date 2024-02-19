@@ -45,12 +45,12 @@ type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 type RpcServer =
     JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
 
-macro_rules! warn_once {
-    ($key:ident, $args:tt) => {
+macro_rules! rate_limited {
+    ($key:ident, $action:expr) => {
         static $key: OncePer = OncePer::new();
 
         if $key.active(WARNING_INTERVAL) {
-            warn!($args);
+            $action;
         }
     };
 }
@@ -311,9 +311,9 @@ impl ConManContext {
             }
 
             if guard.address_book.len() >= MAX_OUTGOING_CONNECTIONS {
-                warn_once!(
+                rate_limited!(
                     OUTGOING_WARNING,
-                    "exceeding maximum number of outgoing connections, you may be getting spammed"
+                    warn!(lost_addr=%peer_addr, "exceeding maximum number of outgoing connections, you may be getting spammed")
                 );
 
                 return;
