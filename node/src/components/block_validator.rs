@@ -360,7 +360,8 @@ impl BlockValidator {
                 for (block_with_metadata, single_block_rewarded_sigs) in blocks_and_signatures {
                     let era_id = block_with_metadata.block.era_id();
                     let Some(all_validators) = validators.get(&era_id) else {
-                        return fatal!(effect_builder, "couldn't get validators for {}", era_id).ignore();
+                        return fatal!(effect_builder, "couldn't get validators for {}", era_id)
+                            .ignore();
                     };
                     let public_keys = single_block_rewarded_sigs
                         .clone()

@@ -207,58 +207,57 @@ pub fn execute_finalized_block(
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators.
-    let maybe_step_effects_and_upcoming_era_validators = if let Some(era_report) =
-        &executable_block.era_report
-    {
-        let StepSuccess {
-            post_state_hash: _, // ignore the post-state-hash returned from scratch
-            effects: step_effects,
-        } = commit_step(
-            &scratch_state, // engine_state
-            metrics,
-            protocol_version,
-            state_root_hash,
-            era_report.clone(),
-            executable_block.timestamp.millis(),
-            executable_block.era_id.successor(),
-        )?;
+    let maybe_step_effects_and_upcoming_era_validators =
+        if let Some(era_report) = &executable_block.era_report {
+            let StepSuccess {
+                post_state_hash: _, // ignore the post-state-hash returned from scratch
+                effects: step_effects,
+            } = commit_step(
+                &scratch_state, // engine_state
+                metrics,
+                protocol_version,
+                state_root_hash,
+                era_report.clone(),
+                executable_block.timestamp.millis(),
+                executable_block.era_id.successor(),
+            )?;
 
-        state_root_hash =
-            engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
-        // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+            // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
 
-        let era_validators_req = EraValidatorsRequest::new(state_root_hash, protocol_version);
-        let era_validators_result = data_access_layer.era_validators(era_validators_req);
+            let era_validators_req = EraValidatorsRequest::new(state_root_hash, protocol_version);
+            let era_validators_result = data_access_layer.era_validators(era_validators_req);
 
-        let upcoming_era_validators = match era_validators_result {
-            EraValidatorsResult::AuctionNotFound => {
-                panic!("auction not found");
-            }
-            EraValidatorsResult::RootNotFound => {
-                panic!("root not found");
-            }
-            EraValidatorsResult::ValueNotFound(msg) => {
-                panic!("validator snapshot not found: {}", msg);
-            }
-            EraValidatorsResult::Failure(tce) => {
-                return Err(BlockExecutionError::GetEraValidators(tce));
-            }
-            EraValidatorsResult::Success { era_validators } => era_validators,
+            let upcoming_era_validators = match era_validators_result {
+                EraValidatorsResult::AuctionNotFound => {
+                    panic!("auction not found");
+                }
+                EraValidatorsResult::RootNotFound => {
+                    panic!("root not found");
+                }
+                EraValidatorsResult::ValueNotFound(msg) => {
+                    panic!("validator snapshot not found: {}", msg);
+                }
+                EraValidatorsResult::Failure(tce) => {
+                    return Err(BlockExecutionError::GetEraValidators(tce));
+                }
+                EraValidatorsResult::Success { era_validators } => era_validators,
+            };
+
+            Some(StepEffectsAndUpcomingEraValidators {
+                step_effects,
+                upcoming_era_validators,
+            })
+        } else {
+            // Finally, the new state-root-hash from the cumulative changes to global state is
+            // returned when they are written to LMDB.
+            state_root_hash =
+                engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
+            // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+            None
         };
-
-        Some(StepEffectsAndUpcomingEraValidators {
-            step_effects,
-            upcoming_era_validators,
-        })
-    } else {
-        // Finally, the new state-root-hash from the cumulative changes to global state is
-        // returned when they are written to LMDB.
-        state_root_hash =
-            engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
-        // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
-        None
-    };
 
     // Flush once, after all deploys have been executed.
     engine_state.flush_environment()?;

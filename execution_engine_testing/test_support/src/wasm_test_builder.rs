@@ -284,6 +284,7 @@ impl LmdbWasmTestBuilder {
                 chainspec_config.core_config.max_runtime_call_stack_height,
             )
             .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_maximum_delegation_amount(chainspec_config.core_config.maximum_delegation_amount)
             .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
             .with_vesting_schedule_period_millis(
                 chainspec_config
@@ -456,6 +457,7 @@ impl LmdbWasmTestBuilder {
                 chainspec_config.core_config.max_runtime_call_stack_height,
             )
             .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_maximum_delegation_amount(chainspec_config.core_config.maximum_delegation_amount)
             .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
             .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
             .with_max_delegators_per_validator(

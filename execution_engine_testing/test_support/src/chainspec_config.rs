@@ -65,6 +65,8 @@ pub struct CoreConfig {
     pub(crate) max_runtime_call_stack_height: u32,
     /// The minimum bound of motes that can be delegated to a validator.
     pub(crate) minimum_delegation_amount: u64,
+    /// The maximum bound of motes that can be delegated to a validator.
+    pub(crate) maximum_delegation_amount: u64,
     /// Enables strict arguments checking when calling a contract.
     pub(crate) strict_argument_checking: bool,
     /// The maximum amount of delegators per validator.
@@ -151,6 +153,7 @@ impl ChainspecConfig {
             max_associated_keys: _,
             max_runtime_call_stack_height: _,
             minimum_delegation_amount: _,
+            maximum_delegation_amount: _,
             strict_argument_checking: _,
             max_delegators_per_validator: _,
             refund_handling: _,

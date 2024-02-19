@@ -378,21 +378,20 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let (to, target_uref) = match self
-            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
-        {
-            NewTransferTargetMode::ExistingAccount {
-                main_purse: purse_uref,
-                target_account_hash: target_account,
-            } => (Some(target_account), purse_uref),
-            NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
-            NewTransferTargetMode::CreateAccount(_) => {
-                // Method "build()" is called after `resolve_transfer_target_mode` is first called
-                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
-                // for the second time should never return `CreateAccount` variant.
-                return Err(TransferError::InvalidOperation);
-            }
-        };
+        let (to, target_uref) =
+            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
+                NewTransferTargetMode::ExistingAccount {
+                    main_purse: purse_uref,
+                    target_account_hash: target_account,
+                } => (Some(target_account), purse_uref),
+                NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
+                NewTransferTargetMode::CreateAccount(_) => {
+                    // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                    // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                    // for the second time should never return `CreateAccount` variant.
+                    return Err(TransferError::InvalidOperation);
+                }
+            };
 
         let source_uref =
             self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;

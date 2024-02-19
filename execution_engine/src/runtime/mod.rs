@@ -871,6 +871,8 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
+                let maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
 
                 let result = runtime
                     .delegate(
@@ -910,6 +912,8 @@ where
 
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
+                let maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
 
                 let result = runtime
                     .redelegate(
@@ -936,6 +940,8 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
+                let maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
 
                 runtime
                     .run_auction(
@@ -3428,7 +3434,8 @@ where
 
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
-            self.context.read_gs(&topic_key)? else {
+            self.context.read_gs(&topic_key)?
+        else {
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 
@@ -3473,8 +3480,7 @@ where
 #[cfg(feature = "test-support")]
 fn dump_runtime_stack_info(instance: casper_wasmi::ModuleRef, max_stack_height: u32) {
     let globals = instance.globals();
-    let Some(current_runtime_call_stack_height) = globals.last()
-    else {
+    let Some(current_runtime_call_stack_height) = globals.last() else {
         return;
     };
 

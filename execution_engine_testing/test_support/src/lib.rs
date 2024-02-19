@@ -28,8 +28,9 @@ use once_cell::sync::Lazy;
 #[doc(inline)]
 #[allow(deprecated)]
 pub use casper_execution_engine::engine_state::engine_config::{
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+    DEFAULT_MAXIMUM_DELEGATION_AMOUNT, DEFAULT_MAX_ASSOCIATED_KEYS,
+    DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
+    DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
@@ -202,6 +203,10 @@ mod tests {
         assert_eq!(
             production.core_config.minimum_delegation_amount,
             DEFAULT_MINIMUM_DELEGATION_AMOUNT
+        );
+        assert_eq!(
+            production.core_config.maximum_delegation_amount,
+            DEFAULT_MAXIMUM_DELEGATION_AMOUNT
         );
 
         assert_eq!(production.wasm_config, WasmConfig::default());

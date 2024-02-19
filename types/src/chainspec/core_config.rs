@@ -80,6 +80,9 @@ pub struct CoreConfig {
     /// The minimum bound of motes that can be delegated to a validator.
     pub minimum_delegation_amount: u64,
 
+    /// The maximum bound of motes that can be delegated to a validator.
+    pub maximum_delegation_amount: u64,
+
     /// Global state prune batch size (0 means the feature is off in the current protocol version).
     pub prune_batch_size: u64,
 
@@ -171,6 +174,7 @@ impl CoreConfig {
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
+        let maximum_delegation_amount = rng.gen::<u32>() as u64; // FIXME: must be greater than `minimum_delegation_amount`
         let prune_batch_size = rng.gen_range(0..100);
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
@@ -212,6 +216,7 @@ impl CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
@@ -251,6 +256,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
         buffer.extend(self.minimum_delegation_amount.to_bytes()?);
+        buffer.extend(self.maximum_delegation_amount.to_bytes()?);
         buffer.extend(self.prune_batch_size.to_bytes()?);
         buffer.extend(self.strict_argument_checking.to_bytes()?);
         buffer.extend(self.simultaneous_peer_requests.to_bytes()?);
@@ -286,6 +292,7 @@ impl ToBytes for CoreConfig {
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
             + self.minimum_delegation_amount.serialized_length()
+            + self.maximum_delegation_amount.serialized_length()
             + self.prune_batch_size.serialized_length()
             + self.strict_argument_checking.serialized_length()
             + self.simultaneous_peer_requests.serialized_length()
@@ -321,6 +328,7 @@ impl FromBytes for CoreConfig {
         let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
+        let (maximum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (prune_batch_size, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
         let (simultaneous_peer_requests, remainder) = u8::from_bytes(remainder)?;
@@ -351,6 +359,7 @@ impl FromBytes for CoreConfig {
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,
+            maximum_delegation_amount,
             prune_batch_size,
             strict_argument_checking,
             simultaneous_peer_requests,
