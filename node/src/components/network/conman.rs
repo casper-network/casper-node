@@ -292,6 +292,16 @@ impl ConMan {
 
         Self { ctx, shutdown }
     }
+
+    /// Learns a new address.
+    ///
+    /// Will eventually connect to the address, if not overloaded or blocked.
+    #[inline(always)]
+    pub(crate) fn learn_addr(&self, peer_addr: SocketAddr) {
+        self.ctx
+            .clone()
+            .learn_addr(peer_addr, self.shutdown.inner().clone())
+    }
 }
 
 impl ConManContext {
