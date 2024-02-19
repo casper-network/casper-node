@@ -184,6 +184,8 @@ pub(crate) struct ProtocolHandshakeOutcome {
 impl ProtocolHandshakeOutcome {
     /// Registers the handshake outcome on the tracing span, to give context to logs.
     fn record_on(&self, span: Span) {
+        // TODO: This is not safe to call multiple times, we will need to re-create the span. See
+        //       https://github.com/tokio-rs/tracing/issues/2334#issuecomment-1270751200.
         span.record("peer_id", &field::display(self.peer_id));
 
         if let Some(ref public_key) = self.handshake_outcome.peer_consensus_public_key {
@@ -612,7 +614,6 @@ impl OutgoingHandler {
         // and repeat the loop, connecting again, or `break` with a do-not-call timer.
         let do_not_call_until = loop {
             match outgoing_handler.connect_and_serve().await {
-                // Note: `connect_and_serve` will have updated the tracing span fields for us.
                 Ok(()) => {
                     // Regular connection closure, i.e. without error.
                     // TODO: Currently, peers that have banned us will end up here. They need a
