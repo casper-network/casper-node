@@ -11,7 +11,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     net::SocketAddr,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, OnceLock, RwLock},
     time::{Duration, Instant},
 };
 
@@ -45,6 +45,16 @@ type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 type RpcServer =
     JulietRpcServer<{ super::Channel::COUNT }, ReadHalf<Transport>, WriteHalf<Transport>>;
 
+macro_rules! warn_once {
+    ($key:ident, $args:tt) => {
+        static $key: OncePer = OncePer::new();
+
+        if $key.active(WARNING_INTERVAL) {
+            warn!($args);
+        }
+    };
+}
+
 /// The timeout for a connection to be established, from a single `connect` call.
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -67,11 +77,17 @@ const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(60 * 60);
 /// How long to wait before attempting to reconnect when an outgoing connection is lost.
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
+/// Maximum interval for spammable warnings.
+const WARNING_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Number of incoming connections before refusing to accept any new ones.
 const MAX_INCOMING_CONNECTIONS: usize = 10_000;
 
 /// Number of outgoing connections before stopping to connect.
 const MAX_OUTGOING_CONNECTIONS: usize = 10_000;
+
+/// Tracker for last outgoing connection exceedance warning.
+static OUTGOING_WARNING: OncePer = OncePer::new();
 
 /// Connection manager.
 ///
@@ -278,9 +294,7 @@ impl ConManContext {
     /// supplied `peer_address`. These checks are performed on a read lock to avoid write lock
     /// contention, but repeated by the spawned handler (if any are spawned) afterwards to avoid
     /// race conditions.
-    fn learn_address(self: Arc<Self>, peer_addr: SocketAddr, shutdown: ObservableFuse) {
-        // TODO: Limit number of outgoing (and incoming) connections.
-
+    fn learn_addr(self: Arc<Self>, peer_addr: SocketAddr, shutdown: ObservableFuse) {
         if peer_addr == self.public_addr {
             trace!("ignoring loopback address");
             return;
@@ -293,6 +307,15 @@ impl ConManContext {
             let now = Instant::now();
             if guard.should_not_call(&peer_addr, now) {
                 trace!(%peer_addr, "is on do-not-call list");
+                return;
+            }
+
+            if guard.address_book.len() >= MAX_OUTGOING_CONNECTIONS {
+                warn_once!(
+                    OUTGOING_WARNING,
+                    "exceeding maximum number of outgoing connections, you may be getting spammed"
+                );
+
                 return;
             }
 
@@ -413,7 +436,7 @@ impl IncomingHandler {
             drop(handshake_outcome);
 
             // Note: This is the original "Magic Mike" functionality.
-            ctx.learn_address(public_addr, shutdown.clone());
+            ctx.learn_addr(public_addr, shutdown.clone());
 
             return;
         }
@@ -593,7 +616,7 @@ impl OutgoingHandler {
                     break until;
                 }
                 Err(OutgoingError::FailedToCompleteHandshake(err)) => {
-                    debug!("failed to complete handshake");
+                    debug!(%err, "failed to complete handshake");
                     break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
                 }
                 Err(OutgoingError::LoopbackEncountered) => {
@@ -764,6 +787,34 @@ where
                 tokio::time::sleep(backoff).await;
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct OncePer(OnceLock<Mutex<Option<Instant>>>);
+
+impl OncePer {
+    const fn new() -> Self {
+        Self(OnceLock::new())
+    }
+
+    fn active(&self, max_interval: Duration) -> bool {
+        let mut guard = self
+            .0
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("lock poisoned");
+
+        let now = Instant::now();
+        if let Some(last_firing) = *guard {
+            if now.duration_since(last_firing) < max_interval {
+                // Nothing to do, we already fired.
+                return false;
+            }
+        }
+
+        *guard = Some(now);
+        return true;
     }
 }
 
