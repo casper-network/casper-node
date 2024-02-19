@@ -146,9 +146,12 @@ struct Route {
     client: RpcClient,
 }
 
+/// An active route that is registered in a routing table.
 #[derive(Debug)]
 struct ActiveRoute {
+    /// The context containig the routing table this active route is contained in.
     ctx: Arc<ConManContext>,
+    /// The peer ID for which the route is registered.
     peer_id: NodeId,
 }
 
@@ -376,21 +379,18 @@ impl ConManState {
     }
 }
 
-/// Handler for incoming connections.
+/// Handles an incoming connections.
 ///
-/// The existance of an [`IncomingHandler`] is tied to an entry in the `routing_table` in
-/// [`ConManState`]; as long as the handler exists, there will be a [`Route`] present.
-struct IncomingHandler {
-    /// ID of the peer connecting to us.
-    peer_id: NodeId,
-}
-
+/// There is no reconnection logic for incoming connection, thus their handling is strictly linear.
 async fn handle_incoming(
     ctx: Arc<ConManContext>,
     stream: TcpStream,
     shutdown: ObservableFuse,
     _permit: OwnedSemaphorePermit,
 ) {
+    // Note: Initial errors are too spammable and triggered by foreign services connecting, so we
+    //       restrict them to `info` level. Once a handshake has been completed, we are more
+    //       interested in errors, so they are rate limited warnings.
     debug!("handling new connection attempt");
 
     let ProtocolHandshakeOutcome {
@@ -412,7 +412,7 @@ async fn handle_incoming(
     };
 
     if peer_id == ctx.our_id {
-        // Loopback connection established.
+        // Loopback connection established, this should never happen.
         error!("should never complete an incoming loopback connection");
         return;
     }
@@ -444,7 +444,13 @@ async fn handle_incoming(
         // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
         let now = Instant::now();
         if let Some(entry) = guard.is_still_banned(&peer_id, now) {
-            debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
+            // Logged at info level - does not require operator intervention usually, but it is nice
+            // to know.
+            rate_limited!(
+                REFUSED_BANNED_PEER,
+                |dropped| info!(until=?entry.until, justification=%entry.justification, dropped, "peer is still banned")
+            );
+
             // TODO: Send a proper error using RPC client/server here (requires appropriate
             //       Juliet API). This would allow the peer to update its backoff timer.
             return;
@@ -463,7 +469,18 @@ async fn handle_incoming(
     };
 
     info!("now connected via incoming connection");
-    active_route.serve(rpc_server).await; // TODO: Handle errors.
+    match active_route.serve(rpc_server).await {
+        Ok(()) => {
+            debug!("connection closed, peer will reconnect");
+        }
+        Err(err) => {
+            // Log a warning if an error occurs on an incoming connection.
+            rate_limited!(
+                INCOMING_CLOSED_WITH_ERR,
+                |dropped| warn!(%err, dropped, "closed incoming connection with error")
+            );
+        }
+    }
 }
 
 impl Debug for ConManContext {
@@ -679,6 +696,7 @@ impl Drop for OutgoingHandler {
 }
 
 impl ActiveRoute {
+    /// Creates a new active route by registering it on the given context.
     fn new(
         state: &mut ConManState,
         ctx: Arc<ConManContext>,
@@ -697,6 +715,7 @@ impl ActiveRoute {
         Self { ctx, peer_id }
     }
 
+    /// Serve data received from an active route.
     async fn serve(self, mut rpc_server: RpcServer) -> Result<(), RpcServerError> {
         while let Some(request) = rpc_server.next_request().await? {
             trace!(%request, "received incoming request");
