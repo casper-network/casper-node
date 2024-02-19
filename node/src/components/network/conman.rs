@@ -565,7 +565,7 @@ impl OutgoingHandler {
     async fn run(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
         debug!("spawned new outgoing handler");
 
-        // First, we need to register ourselves on the address book.
+        // Check if we should connect at all, then register in address book.
         let mut outgoing_handler = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
@@ -573,8 +573,6 @@ impl OutgoingHandler {
                 debug!("got raced by another outgoing handler, aborting");
                 return;
             }
-
-            guard.address_book.insert(peer_addr);
 
             let now = Instant::now();
             if guard.should_not_call(&peer_addr, now) {
@@ -585,6 +583,7 @@ impl OutgoingHandler {
             }
             guard.prune_should_not_call(&peer_addr);
 
+            guard.address_book.insert(peer_addr);
             Self {
                 ctx: ctx.clone(),
                 peer_addr,
