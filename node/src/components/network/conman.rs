@@ -620,6 +620,7 @@ impl OutgoingHandler {
                     //       longer reconnection delay.
                     info!("lost connection");
                     tokio::time::sleep(ctx.cfg.reconnect_delay).await;
+                    // After this, the loop will repeat, triggering a reconnect.
                 }
                 Err(OutgoingError::EncounteredBannedPeer(until)) => {
                     // We will not keep attempting to connect to banned peers, put them on the
@@ -644,7 +645,8 @@ impl OutgoingHandler {
                     break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::RpcServerError(err)) => {
-                    warn!(%err, "encountered RPC error");
+                    warn!(%err, "encountered juliet RPC error");
+                    // TODO: If there was a user error, try to extract a reconnection hint.
                     break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
