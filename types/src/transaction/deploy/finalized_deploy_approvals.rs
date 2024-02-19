@@ -34,7 +34,7 @@ impl FinalizedDeployApprovals {
     }
 
     /// Returns a random FinalizedDeployApprovals.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let count = rng.gen_range(1..10);
         let approvals = (0..count)
