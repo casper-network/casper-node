@@ -228,7 +228,6 @@ impl AppendableBlock {
 
     /// Attempts to add a transaction V1 to the block; returns an error if that would violate a
     /// validity condition.
-    // TODO[RC]: Deduplicate this with the above functions.
     pub(crate) fn add_transaction_v1(
         &mut self,
         transaction: TransactionV1HashWithApprovals,

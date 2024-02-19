@@ -5,7 +5,7 @@ use derive_more::Display;
 
 use casper_types::{Transaction, TransactionHash, TransactionV1Hash};
 
-use super::{DeployOrTransferHash, TransactionV1OrTransferV1Hash};
+use super::{transaction_v1::TransactionV1OrTransferV1Hash, DeployOrTransferHash};
 
 #[derive(Copy, Clone, Display, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, DataSize)]
 pub(crate) enum DeployOrTransactionHash {
