@@ -13,6 +13,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     net::SocketAddr,
+    num::NonZeroUsize,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
@@ -74,7 +75,7 @@ struct Config {
     /// How often to reattempt a connection.
     ///
     /// At one second, 8 attempts means that the last attempt will be delayed for 128 seconds.
-    tcp_connect_attempts: usize,
+    tcp_connect_attempts: NonZeroUsize,
     /// Base delay for the backoff, grows exponentially until `tcp_connect_attempts` maxes out.
     tcp_connect_base_backoff: Duration,
     /// How long to back off from reconnecting to an address after a failure that indicates a
@@ -774,8 +775,17 @@ async fn connect(timeout: Duration, addr: SocketAddr) -> Result<TcpStream, Conne
 }
 
 /// Retries a given future with an exponential backoff timer between retries.
+///
+/// ## Cancellation safety
+///
+/// This function is cancellation safe if and only if the returned future `Fut` is cancellation
+/// safe.
+///
+/// ## Panics
+///
+/// Will panic in debug mode if `max_attempts` is 0.
 async fn retry_with_exponential_backoff<Fut, F>(
-    max_attempts: usize,
+    max_attempts: NonZeroUsize,
     base_backoff: Duration,
     mut f: F,
 ) -> Result<<Fut as TryFuture>::Ok, <Fut as TryFuture>::Error>
@@ -783,9 +793,7 @@ where
     Fut: TryFuture,
     F: FnMut() -> Fut,
 {
-    debug_assert!(max_attempts > 0);
-
-    let mut failed_attempts = 0;
+    let mut failed_attempts: usize = 0;
 
     loop {
         match f().into_future().await {
@@ -794,13 +802,13 @@ where
                 let backoff = 2u32.pow(failed_attempts as u32) * base_backoff;
 
                 failed_attempts += 1;
-                if failed_attempts >= max_attempts {
+                if failed_attempts >= max_attempts.get() {
                     return Err(err);
                 }
 
                 trace!(
                     failed_attempts,
-                    remaining = max_attempts - failed_attempts,
+                    remaining = max_attempts.get() - failed_attempts,
                     ?backoff,
                     "attempt failed, backing off"
                 );
@@ -821,7 +829,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             tcp_connect_timeout: Duration::from_secs(10),
-            tcp_connect_attempts: 8,
+            tcp_connect_attempts: NonZeroUsize::new(8).unwrap(),
             tcp_connect_base_backoff: Duration::from_secs(1),
             significant_error_backoff: Duration::from_secs(60),
             permanent_error_backoff: Duration::from_secs(60 * 60),
