@@ -10,7 +10,7 @@
 // TODO: Consider adding pruning for tables, in case someone is flooding us with bogus addresses.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     fmt::Debug,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -301,6 +301,49 @@ impl ConMan {
         self.ctx
             .clone()
             .learn_addr(peer_addr, self.shutdown.inner().clone())
+    }
+
+    /// Bans a peer.
+    ///
+    /// The peer will be disconnected from and prevent from reconnecting.
+    pub(crate) fn ban_peer(
+        &self,
+        peer_id: NodeId,
+        justification: BlocklistJustification,
+        until: Instant,
+    ) {
+        {
+            let mut guard = self.ctx.state.write().expect("lock poisoned");
+
+            rate_limited!(
+                BANNING_PEER,
+                |dropped| warn!(%peer_id, %justification, dropped, "banning peer")
+            );
+            match guard.banlist.entry(peer_id) {
+                Entry::Occupied(mut occupied) => {
+                    if occupied.get().until > until {
+                        debug!("peer is already serving longer sentence sentence");
+
+                        // Leave as-is, the old sentence is longer.
+                        return;
+                    }
+
+                    occupied.insert(Sentence {
+                        until,
+                        justification,
+                    });
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(Sentence {
+                        until,
+                        justification,
+                    });
+                }
+            }
+        }
+
+        // TODO: We still need to implement the connection closing part.
+        error!("missing implementation for banned peer connection shutdown");
     }
 }
 
