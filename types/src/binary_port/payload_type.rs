@@ -156,7 +156,12 @@ impl TryFrom<u8> for PayloadType {
                 Ok(PayloadType::FinalizedDeployApprovals)
             }
             x if x == PayloadType::FinalizedApprovals as u8 => Ok(PayloadType::FinalizedApprovals),
+            x if x == PayloadType::SignedBlock as u8 => Ok(PayloadType::SignedBlock),
+            x if x == PayloadType::TransactionWithExecutionInfo as u8 => {
+                Ok(PayloadType::TransactionWithExecutionInfo)
+            }
             x if x == PayloadType::Peers as u8 => Ok(PayloadType::Peers),
+            x if x == PayloadType::Uptime as u8 => Ok(PayloadType::Uptime),
             x if x == PayloadType::LastProgress as u8 => Ok(PayloadType::LastProgress),
             x if x == PayloadType::ReactorState as u8 => Ok(PayloadType::ReactorState),
             x if x == PayloadType::NetworkName as u8 => Ok(PayloadType::NetworkName),
@@ -172,7 +177,6 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::NextUpgrade as u8 => Ok(PayloadType::NextUpgrade),
             x if x == PayloadType::ConsensusStatus as u8 => Ok(PayloadType::ConsensusStatus),
             x if x == PayloadType::ChainspecRawBytes as u8 => Ok(PayloadType::ChainspecRawBytes),
-            x if x == PayloadType::Uptime as u8 => Ok(PayloadType::Uptime),
             x if x == PayloadType::HighestBlockSequenceCheckResult as u8 => {
                 Ok(PayloadType::HighestBlockSequenceCheckResult)
             }
@@ -243,7 +247,7 @@ const BLOCK_HEADER_TAG: u8 = 1;
 const BLOCK_BODY_V1_TAG: u8 = 2;
 const BLOCK_BODY_TAG: u8 = 3;
 const APPROVALS_HASHES_TAG: u8 = 4;
-const APPROVALS_HASHES_V1: u8 = 5;
+const APPROVALS_HASHES_V1_TAG: u8 = 5;
 const BLOCK_SIGNATURES_TAG: u8 = 6;
 const DEPLOY_TAG: u8 = 7;
 const TRANSACTION_TAG: u8 = 8;
@@ -286,7 +290,7 @@ impl ToBytes for PayloadType {
             PayloadType::BlockBodyV1 => BLOCK_BODY_V1_TAG,
             PayloadType::BlockBody => BLOCK_BODY_TAG,
             PayloadType::ApprovalsHashes => APPROVALS_HASHES_TAG,
-            PayloadType::ApprovalsHashesV1 => APPROVALS_HASHES_V1,
+            PayloadType::ApprovalsHashesV1 => APPROVALS_HASHES_V1_TAG,
             PayloadType::BlockSignatures => BLOCK_SIGNATURES_TAG,
             PayloadType::Deploy => DEPLOY_TAG,
             PayloadType::Transaction => TRANSACTION_TAG,
@@ -332,7 +336,7 @@ impl FromBytes for PayloadType {
             BLOCK_BODY_V1_TAG => PayloadType::BlockBodyV1,
             BLOCK_BODY_TAG => PayloadType::BlockBody,
             APPROVALS_HASHES_TAG => PayloadType::ApprovalsHashes,
-            APPROVALS_HASHES_V1 => PayloadType::ApprovalsHashesV1,
+            APPROVALS_HASHES_V1_TAG => PayloadType::ApprovalsHashesV1,
             BLOCK_SIGNATURES_TAG => PayloadType::BlockSignatures,
             DEPLOY_TAG => PayloadType::Deploy,
             TRANSACTION_TAG => PayloadType::Transaction,
