@@ -174,7 +174,8 @@ impl CoreConfig {
         let max_associated_keys = rng.gen();
         let max_runtime_call_stack_height = rng.gen();
         let minimum_delegation_amount = rng.gen::<u32>() as u64;
-        let maximum_delegation_amount = rng.gen::<u32>() as u64; // FIXME: must be greater than `minimum_delegation_amount`
+        // `maximum_delegation_amount` must be greater than `minimum_delegation_amount`.
+        let maximum_delegation_amount = rng.gen_range(minimum_delegation_amount..u32::MAX as u64);
         let prune_batch_size = rng.gen_range(0..100);
         let strict_argument_checking = rng.gen();
         let simultaneous_peer_requests = rng.gen_range(3..100);
