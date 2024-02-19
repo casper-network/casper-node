@@ -7,6 +7,8 @@
 // TODO: This module's core design of removing entries on drop is safe, but suboptimal, as it leads
 //       to a lot of lock contention on drop. A careful redesign might ease this burden.
 
+// TODO: Consider adding pruning for tables, in case someone is flooding us with bogus addresses.
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -54,35 +56,38 @@ type RpcServer =
 ///
 /// `N` is the number of channels by the instantiated `juliet` protocol.
 #[derive(Debug)]
-struct ConMan {
+pub(crate) struct ConMan {
     /// The shared connection manager state, which contains per-peer and per-address information.
     ctx: Arc<ConManContext>,
     /// A fuse used to cancel execution.
+    ///
+    /// Causes all background tasks (incoming, outgoing and server) to be shutdown as soon as
+    /// `ConMan` is dropped.
     shutdown: DropSwitch<ObservableFuse>,
 }
 
 #[derive(Copy, Clone, Debug)]
 /// Configuration settings for the connection manager.
 struct Config {
-    /// The timeout for a connection to be established, from a single `connect` call.
+    /// The timeout for one TCP to be connection to be established, from a single `connect` call.
     tcp_connect_timeout: Duration,
     /// How often to reattempt a connection.
     ///
-    /// 8 attempts means a maximum delay between attempts of 2:08 and total attempt time of < 5 minutes.
+    /// At one second, 8 attempts means that the last attempt will be delayed for 128 seconds.
     tcp_connect_attempts: usize,
-    /// Base delay for the backoff, grows exponentially until `TCP_CONNECT_ATTEMPTS` maxes out).
+    /// Base delay for the backoff, grows exponentially until `tcp_connect_attempts` maxes out.
     tcp_connect_base_backoff: Duration,
     /// How long to back off from reconnecting to an address after a failure that indicates a
     /// significant problem.
     significant_error_backoff: Duration,
-    /// How long to back of from reconnecting to an address if the error is likely not going to change
-    /// for a long time.
+    /// How long to back off from reconnecting to an address if the error is likely not going to
+    /// change for a long time.
     permanent_error_backoff: Duration,
     /// How long to wait before attempting to reconnect when an outgoing connection is lost.
     reconnect_delay: Duration,
     /// Number of incoming connections before refusing to accept any new ones.
     max_incoming_connections: usize,
-    /// Number of outgoing connections before stopping to connect.
+    /// Number of outgoing connections before stopping to connect to learned addresses.
     max_outgoing_connections: usize,
 }
 
@@ -107,8 +112,6 @@ struct ConManContext {
 /// Tracks outgoing and incoming connections.
 #[derive(Debug, Default)]
 struct ConManState {
-    // TODO: Add pruning for tables, in case someone is flooding us with bogus addresses. We may
-    //       need to add a queue for learning about new addresses.
     /// A set of outgoing address for which a handler is currently running.
     address_book: HashSet<SocketAddr>,
     /// Mapping of [`SocketAddr`]s to an instant in the future until which they must not be dialed.
@@ -122,23 +125,10 @@ struct ConManState {
     banlist: HashMap<NodeId, Sentence>,
 }
 
-/// An entry in the address book.
-#[derive(Debug)]
-enum AddressBookEntry {
-    /// There currently is a task in charge of this outgoing address and trying to establish a
-    /// connection.
-    Connecting,
-    /// An outgoing connection has been established to the given address.
-    Outgoing {
-        /// The node ID of the peer we are connected to at this address.
-        remote: NodeId,
-    },
-}
-
 /// Record of punishment for a peers malicious behavior.
 #[derive(Debug)]
 struct Sentence {
-    /// Time ban is lifted.
+    /// Time until the ban is lifted.
     until: Instant,
     /// Justification for the ban.
     justification: BlocklistJustification,
@@ -149,7 +139,7 @@ struct Sentence {
 struct Route {
     /// Node ID of the peer.
     peer: NodeId,
-    /// The established [`juliet`] RPC client, can be used to send requests to the peer.
+    /// The established [`juliet`] RPC client that is used to send requests to the peer.
     client: RpcClient,
 }
 
@@ -181,7 +171,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest);
 }
 
-/// The outcome of a handshake performed by the external protocol.
+/// The outcome of a handshake performed by the [`ProtocolHandler`].
 pub(crate) struct ProtocolHandshakeOutcome {
     /// Our own `NodeId`.
     // TODO: Consider moving our own `NodeId` elsewhere, it should not change during our lifetime.
@@ -195,8 +185,8 @@ pub(crate) struct ProtocolHandshakeOutcome {
 impl ProtocolHandshakeOutcome {
     /// Registers the handshake outcome on the tracing span, to give context to logs.
     fn record_on(&self, span: Span) {
-        // Register `peer_id` and potential consensus key on the [`Span`] for logging from here on.
         span.record("peer_id", &field::display(self.peer_id));
+
         if let Some(ref public_key) = self.handshake_outcome.peer_consensus_public_key {
             span.record("consensus_key", &field::display(public_key));
         }
