@@ -23,6 +23,7 @@ use thiserror::Error;
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::{TcpListener, TcpStream},
+    sync::{OwnedSemaphorePermit, Semaphore, TryAcquireError},
 };
 use tracing::{
     debug, error, error_span,
@@ -114,6 +115,8 @@ struct ConManContext {
     state: RwLock<ConManState>,
     /// Our own address (for loopback filtering).
     public_addr: SocketAddr,
+    /// Limiter for incoming connections.
+    incoming_limiter: Arc<Semaphore>,
 }
 
 /// Share state for [`ConMan`].
@@ -233,6 +236,7 @@ impl ConMan {
             rpc_builder,
             state: Default::default(),
             public_addr,
+            incoming_limiter: Arc::new(Semaphore::new(MAX_INCOMING_CONNECTIONS)),
         });
 
         let shutdown = DropSwitch::new(ObservableFuse::new());
@@ -251,16 +255,31 @@ impl ConMan {
                         let span =
                             error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty);
 
-                        tokio::spawn(
-                            server_shutdown
-                                .clone()
-                                .cancellable(IncomingHandler::handle(
-                                    server_ctx.clone(),
-                                    stream,
-                                    server_shutdown.clone(),
-                                ))
-                                .instrument(span),
-                        );
+                        match server_ctx.incoming_limiter.clone().try_acquire_owned() {
+                            Ok(permit) => {
+                                tokio::spawn(
+                                    server_shutdown
+                                        .clone()
+                                        .cancellable(IncomingHandler::handle(
+                                            server_ctx.clone(),
+                                            stream,
+                                            server_shutdown.clone(),
+                                            permit,
+                                        ))
+                                        .instrument(span),
+                                );
+                            }
+                            Err(TryAcquireError::NoPermits) => {
+                                rate_limited!(
+                                    INCOMING_LIMITER,
+                                    warn!(%peer_addr, "exceeded incoming connection limit, are you getting spammed?")
+                                );
+                            }
+                            Err(TryAcquireError::Closed) => {
+                                // We may be shutting down.
+                                debug!("incoming limiter semaphore closed");
+                            }
+                        }
                     }
 
                     // TODO: Handle resource errors gracefully. In general, two kinds of errors
@@ -398,7 +417,12 @@ impl IncomingHandler {
     ///
     /// This function is cancellation safe, if cancelled, the connection will be closed. In any case
     /// routing table will be cleaned up if it was altered.
-    async fn handle(ctx: Arc<ConManContext>, stream: TcpStream, shutdown: ObservableFuse) {
+    async fn handle(
+        ctx: Arc<ConManContext>,
+        stream: TcpStream,
+        shutdown: ObservableFuse,
+        _permit: OwnedSemaphorePermit,
+    ) {
         debug!("handling new connection attempt");
 
         let ProtocolHandshakeOutcome {
