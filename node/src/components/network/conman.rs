@@ -469,7 +469,7 @@ impl IncomingHandler {
         // transport, which we will need regardless to send errors.
         let (rpc_client, rpc_server) = ctx.setup_juliet(handshake_outcome.transport);
 
-        let incoming_handler = {
+        let active_route = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
             // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
@@ -490,12 +490,11 @@ impl IncomingHandler {
                 return;
             }
 
-            // At this point we are becoming the new route for the peer.
-            Self::new(&mut *guard, rpc_client, ctx.clone(), peer_id)
+            ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client)
         };
 
         info!("now connected via incoming connection");
-        incoming_handler.run(rpc_server).await;
+        active_route.serve(rpc_server).await; // TODO: Handle errors.
     }
 
     /// Runs the incoming handler's main acceptance loop.
@@ -526,19 +525,7 @@ impl IncomingHandler {
 
 impl Drop for IncomingHandler {
     fn drop(&mut self) {
-        // Connection was closed, we need to ensure our entry in the routing table gets released.
-        let mut guard = self.ctx.state.write().expect("lock poisoned");
-        match guard.routing_table.remove(&self.peer_id) {
-            Some(_) => {
-                // TODO: Do we need to shut down the juliet clients? Likely not, if the server is
-                //       shut down? In other words, verify that if the `juliet` server has shut
-                //       down, all the clients are invalidated.
-            }
-            None => {
-                // This must never happen.
-                error!("nothing but `IncomingHandler` should modifiy the routing table");
-            }
-        }
+        // TODO: What to do here?
     }
 }
 
@@ -570,8 +557,6 @@ enum OutgoingError {
     ShouldBeIncoming,
     #[error("remote peer is banned")]
     EncounteredBannedPeer(Instant),
-    #[error("found residual routing data")]
-    ResidualRoute,
     #[error("RPC server error")]
     RpcServerError(RpcServerError),
 }
@@ -586,36 +571,6 @@ impl OutgoingHandler {
         Self {
             ctx: arc_ctx,
             peer_addr,
-        }
-    }
-
-    /// Update a registered route.
-    ///
-    /// The awkward function signature without a `self` receiver is from partial borrow limits.
-    fn register_route(
-        self_peer_id: &mut Option<NodeId>,
-        state: &mut ConManState,
-        peer_id: NodeId,
-        rpc_client: RpcClient,
-    ) -> Result<(), OutgoingError> {
-        if self_peer_id.replace(peer_id).is_some() {
-            error!("did not expect to replace a route");
-        }
-
-        if state
-            .routing_table
-            .insert(
-                peer_id,
-                Route {
-                    peer: peer_id,
-                    client: rpc_client,
-                },
-            )
-            .is_some()
-        {
-            Err(OutgoingError::ResidualRoute)
-        } else {
-            Ok(())
         }
     }
 
@@ -681,10 +636,6 @@ impl OutgoingHandler {
                     // We could not connect to the address, so we are going to forget it.
                     debug!(%err, "forgetting address after error");
                     return;
-                }
-                Err(OutgoingError::ResidualRoute) => {
-                    error!("encountered residual route, this should not happen");
-                    break Instant::now() + ctx.cfg.significant_error_backoff;
                 }
                 Err(OutgoingError::RpcServerError(err)) => {
                     warn!(%err, "encountered juliet RPC error");
@@ -770,10 +721,13 @@ impl OutgoingHandler {
             }
             guard.unban(&peer_id);
 
-            ActiveRoute::new(&mut *guard, self.ctx.clone(), peer_id, rpc_client)?
+            ActiveRoute::new(&mut *guard, self.ctx.clone(), peer_id, rpc_client)
         };
 
-        active_route.serve(rpc_server).await
+        active_route
+            .serve(rpc_server)
+            .await
+            .map_err(OutgoingError::RpcServerError)
     }
 }
 
@@ -793,25 +747,21 @@ impl ActiveRoute {
         ctx: Arc<ConManContext>,
         peer_id: NodeId,
         rpc_client: RpcClient,
-    ) -> Result<Self, OutgoingError> {
+    ) -> Self {
         let route = Route {
             peer: peer_id,
             client: rpc_client,
         };
 
         if state.routing_table.insert(peer_id, route).is_some() {
-            return Err(OutgoingError::ResidualRoute);
+            error!("should never encounter residual route");
         }
 
-        Ok(Self { ctx, peer_id })
+        Self { ctx, peer_id }
     }
 
-    async fn serve(self, mut rpc_server: RpcServer) -> Result<(), OutgoingError> {
-        while let Some(request) = rpc_server
-            .next_request()
-            .await
-            .map_err(OutgoingError::RpcServerError)?
-        {
+    async fn serve(self, mut rpc_server: RpcServer) -> Result<(), RpcServerError> {
+        while let Some(request) = rpc_server.next_request().await? {
             trace!(%request, "received incoming request");
             self.ctx
                 .protocol_handler
