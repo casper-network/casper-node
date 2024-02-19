@@ -17,8 +17,9 @@ use std::{
 
 use async_trait::async_trait;
 use futures::{FutureExt, TryFuture, TryFutureExt};
-use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder};
+use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
 use strum::EnumCount;
+use thiserror::Error;
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::{TcpListener, TcpStream},
@@ -511,6 +512,24 @@ struct OutgoingHandler {
     peer_addr: SocketAddr,
 }
 
+#[derive(Debug, Error)]
+enum OutgoingError {
+    #[error("exhausted TCP reconnection attempts")]
+    ReconnectionAttemptsExhausted(#[source] ConnectionError),
+    #[error("failed to complete handshake")]
+    FailedToCompleteHandshake(#[source] ConnectionError),
+    #[error("loopback encountered")]
+    LoopbackEncountered,
+    #[error("should be incoming connection")]
+    ShouldBeIncoming,
+    #[error("remote peer is banned")]
+    EncounteredBannedPeer(Instant),
+    #[error("found residual routing data")]
+    ResidualRoute,
+    #[error("RPC server error")]
+    RpcServerError(RpcServerError),
+}
+
 impl OutgoingHandler {
     async fn spawn_new(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
         debug!("spawned new outgoing handler");
@@ -542,64 +561,36 @@ impl OutgoingHandler {
         outgoing_handler.run().await;
     }
 
-    async fn run(self) {
-        let con_result = retry_with_exponential_backoff(
+    async fn run(self) -> Result<(), OutgoingError> {
+        let stream = retry_with_exponential_backoff(
             TCP_CONNECT_ATTEMPTS,
             TCP_CONNECT_BASE_BACKOFF,
             move || connect(self.peer_addr),
         )
-        .await;
-
-        let stream = match con_result {
-            Ok(value) => value,
-            Err(err) => {
-                // We failed to connect.
-                debug!(failed_attempts=TCP_CONNECT_ATTEMPTS, last_error=%err, "giving up on connection");
-
-                // We will remove ourselves from the address book when `Drop` is called, no need to
-                // do anything else.
-                return;
-            }
-        };
+        .await
+        .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
 
         let ProtocolHandshakeOutcome {
             our_id,
             peer_id,
             handshake_outcome,
-        } = match self
+        } = self
             .ctx
             .protocol_handler
             .setup_outgoing(stream)
             .await
+            .map_err(OutgoingError::FailedToCompleteHandshake)
             .map(move |outcome| {
                 outcome.record_on(Span::current());
                 outcome
-            }) {
-            Ok(rv) => rv,
-            Err(err) => {
-                debug!(%err, "failed to complete handshake on outgoing");
-
-                // We are keeping the task alive here, thus blocking the address from being learned
-                // and reconnected to again.
-                tokio::time::sleep(HANDSHAKE_FAILURE_BACKOFF).await;
-                return;
-            }
-        };
+            })?;
 
         if peer_id == our_id {
-            // Loopback connection established.
-            error!("should never complete an outgoing loopback connection");
-            drop(handshake_outcome);
-            tokio::time::sleep(PERMANENT_ERROR_BACKOFF).await;
-            return;
+            return Err(OutgoingError::LoopbackEncountered);
         }
 
         if !we_should_be_outgoing(our_id, peer_id) {
-            debug!("closing low-ranking outgoing connection");
-            drop(handshake_outcome);
-            tokio::time::sleep(PERMANENT_ERROR_BACKOFF).await;
-            // TODO: Replace `sleep` workaround with separate blocklist that filters on learning.
-            return;
+            return Err(OutgoingError::ShouldBeIncoming);
         }
 
         let (rpc_client, mut rpc_server) = self.ctx.setup_juliet(handshake_outcome.transport);
@@ -612,13 +603,8 @@ impl OutgoingHandler {
             if let Some(entry) = guard.is_still_banned(&peer_id, now) {
                 debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
                 // TODO: Send a proper error using RPC client/server here.
-                // TODO: Verify we are not in a fast reconnect loop if only one sides bans the peer.
 
-                // Block outgoing until the ban is lifted.
-                // let ban_expires = entry.until.into();
-                drop(guard); // Important: Release lock on address book.
-                             // tokio::time::sleep_until(ban_expires).await; // TODO: Make this sleep timer work.
-                return;
+                return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
             guard.unban(&peer_id);
 
@@ -627,48 +613,37 @@ impl OutgoingHandler {
                 AddressBookEntry::Outgoing { remote: peer_id },
             );
 
-            let residual = guard.routing_table.insert(
-                peer_id,
-                Route {
-                    peer: peer_id,
-                    client: rpc_client,
-                },
-            );
-
-            if residual.is_some() {
-                // This should never happen, since it is clear from the `NodeId` whether we expect
-                // and incoming or outgoing handler to take over this specific pairing.
-                error!("should never find residual connection after inserting outgoing");
-
-                // We'll close the connection and try again.
-                return;
+            if guard
+                .routing_table
+                .insert(
+                    peer_id,
+                    Route {
+                        peer: peer_id,
+                        client: rpc_client,
+                    },
+                )
+                .is_some()
+            {
+                return Err(OutgoingError::ResidualRoute);
             }
         }
 
         // All shared state has been updated, we can now run the server loop.
-        loop {
-            match rpc_server.next_request().await {
-                Ok(Some(request)) => {
-                    trace!(%request, "received incoming request");
-                    self.ctx
-                        .protocol_handler
-                        .handle_incoming_request(peer_id, request);
-                }
-                Ok(None) => {
-                    // The connection was closed.
-                    info!("lost outgoing connection");
-                    tokio::time::sleep(RECONNECT_DELAY).await;
-                    // TODO: Schedule reconnect.
-                    return;
-                }
-                Err(err) => {
-                    // TODO: this should not be a warning, downgrade to info before shipping
-                    warn!(%err, "closing outgoing connection due to error");
-                    tokio::time::sleep(RECONNECT_DELAY).await;
-                    return;
-                }
-            }
+        while let Some(request) = rpc_server
+            .next_request()
+            .await
+            .map_err(OutgoingError::RpcServerError)?
+        {
+            trace!(%request, "received incoming request");
+            self.ctx
+                .protocol_handler
+                .handle_incoming_request(peer_id, request);
         }
+
+        // Regular connection closing.
+        Ok(())
+
+        // TODO: Actually use result to curb reconnections.
     }
 }
 
