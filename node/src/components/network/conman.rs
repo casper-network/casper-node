@@ -56,11 +56,13 @@ const TCP_CONNECT_ATTEMPTS: usize = 8;
 /// Base delay for the backoff, grows exponentially until `TCP_CONNECT_ATTEMPTS` maxes out).
 const TCP_CONNECT_BASE_BACKOFF: Duration = Duration::from_secs(1);
 
-/// How long to back off from reconnecting to an address after a failure.
-const HANDSHAKE_FAILURE_BACKOFF: Duration = Duration::from_secs(60);
+/// How long to back off from reconnecting to an address after a failure that indicates a
+/// significant problem.
+const SIGNIFICANT_ERROR_BACKOFF: Duration = Duration::from_secs(60);
 
-/// How long to back of from reconnecting to an address if the error is likely never changing.
-const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(4 * 60 * 60);
+/// How long to back of from reconnecting to an address if the error is likely not going to change
+/// for a long time.
+const PERMANENT_ERROR_BACKOFF: Duration = Duration::from_secs(60 * 60);
 
 /// How long to wait before attempting to reconnect when an outgoing connection is lost.
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
@@ -272,12 +274,7 @@ impl ConManContext {
     /// supplied `peer_address`. These checks are performed on a read lock to avoid write lock
     /// contention, but repeated by the spawned handler (if any are spawned) afterwards to avoid
     /// race conditions.
-    fn learn_address(
-        self: Arc<Self>,
-        peer_addr: SocketAddr,
-        now: Instant,
-        shutdown: ObservableFuse,
-    ) {
+    fn learn_address(self: Arc<Self>, peer_addr: SocketAddr, shutdown: ObservableFuse) {
         // TODO: Limit number of outgoing (and incoming) connections.
 
         // TODO: Filter loopback.
@@ -305,7 +302,7 @@ impl ConManContext {
 
         tokio::spawn(
             shutdown
-                .cancellable(OutgoingHandler::spawn_new(self, peer_addr))
+                .cancellable(OutgoingHandler::run(self, peer_addr))
                 .instrument(span),
         );
     }
@@ -330,7 +327,7 @@ impl ConManState {
 
     /// Unconditionally removes an address from the do-not-call list.
     #[inline(always)]
-    fn prune_should_not_call(&self, addr: &SocketAddr) {
+    fn prune_should_not_call(&mut self, addr: &SocketAddr) {
         self.do_not_call.remove(addr);
     }
 
@@ -399,7 +396,6 @@ impl IncomingHandler {
             return;
         }
 
-        let now = Instant::now();
         if we_should_be_outgoing(our_id, peer_id) {
             // The connection is supposed to be outgoing from our perspective.
             debug!("closing low-ranking incoming connection");
@@ -410,7 +406,7 @@ impl IncomingHandler {
             drop(handshake_outcome);
 
             // Note: This is the original "Magic Mike" functionality.
-            ctx.learn_address(public_addr, now, shutdown.clone());
+            ctx.learn_address(public_addr, shutdown.clone());
 
             return;
         }
@@ -425,6 +421,7 @@ impl IncomingHandler {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
             // Check if the peer is still banned. If it isn't, ensure the banlist is cleared.
+            let now = Instant::now();
             if let Some(entry) = guard.is_still_banned(&peer_id, now) {
                 debug!(until=?entry.until, justification=%entry.justification, "peer is still banned");
                 // TODO: Send a proper error using RPC client/server here (requires appropriate
@@ -542,11 +539,11 @@ enum OutgoingError {
 }
 
 impl OutgoingHandler {
-    async fn spawn_new(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
+    async fn run(ctx: Arc<ConManContext>, peer_addr: SocketAddr) {
         debug!("spawned new outgoing handler");
 
         // First, we need to register ourselves on the address book.
-        let outgoing_handler = {
+        let mut outgoing_handler = {
             let mut guard = ctx.state.write().expect("lock poisoned");
 
             if guard.address_book.contains(&peer_addr) {
@@ -571,17 +568,69 @@ impl OutgoingHandler {
             }
         };
 
-        outgoing_handler.run().await;
+        // We now enter a connection loop. After attempting to connect and serve, we either sleep
+        // and repeat the loop, connecting again, or `break` with a do-not-call timer.
+        let do_not_call_until = loop {
+            match outgoing_handler.connect_and_serve().await {
+                // Note: `connect_and_serve` will have updated the tracing span fields for us.
+                Ok(()) => {
+                    // Regular connection closure, i.e. without error.
+                    // TODO: Currently, peers that have banned us will end up here. They need a
+                    //       longer reconnection delay.
+                    info!("lost connection");
+                    tokio::time::sleep(RECONNECT_DELAY).await;
+                }
+                Err(OutgoingError::EncounteredBannedPeer(until)) => {
+                    // We will not keep attempting to connect to banned peers, put them on the
+                    // do-not-call list.
+                    break until;
+                }
+                Err(OutgoingError::FailedToCompleteHandshake(err)) => {
+                    debug!("failed to complete handshake");
+                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                }
+                Err(OutgoingError::LoopbackEncountered) => {
+                    info!("found loopback");
+                    break Instant::now() + PERMANENT_ERROR_BACKOFF;
+                }
+                Err(OutgoingError::ReconnectionAttemptsExhausted(err)) => {
+                    // We could not connect to the address, so we are going to forget it.
+                    debug!(%err, "forgetting address after error");
+                    return;
+                }
+                Err(OutgoingError::ResidualRoute) => {
+                    error!("encountered residual route, this should not happen");
+                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                }
+                Err(OutgoingError::RpcServerError(err)) => {
+                    warn!(%err, "encountered RPC error");
+                    break Instant::now() + SIGNIFICANT_ERROR_BACKOFF;
+                }
+                Err(OutgoingError::ShouldBeIncoming) => {
+                    debug!("should be incoming connection");
+                    break Instant::now() + PERMANENT_ERROR_BACKOFF;
+                }
+            }
+        };
+
+        // Update the do-not-call list.
+        ctx.state
+            .write()
+            .expect("lock poisoned")
+            .do_not_call
+            .insert(peer_addr, do_not_call_until);
+
+        // Release the slot.
+        drop(outgoing_handler);
     }
 
-    async fn run(self) -> Result<(), OutgoingError> {
-        let stream = retry_with_exponential_backoff(
-            TCP_CONNECT_ATTEMPTS,
-            TCP_CONNECT_BASE_BACKOFF,
-            move || connect(self.peer_addr),
-        )
-        .await
-        .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
+    async fn connect_and_serve(&mut self) -> Result<(), OutgoingError> {
+        let stream =
+            retry_with_exponential_backoff(TCP_CONNECT_ATTEMPTS, TCP_CONNECT_BASE_BACKOFF, || {
+                connect(self.peer_addr)
+            })
+            .await
+            .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
 
         let ProtocolHandshakeOutcome {
             our_id,
@@ -650,8 +699,6 @@ impl OutgoingHandler {
 
         // Regular connection closing.
         Ok(())
-
-        // TODO: Actually use result to curb reconnections.
     }
 }
 
