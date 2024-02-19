@@ -599,7 +599,7 @@ impl OutgoingHandler {
             }
             guard.prune_should_not_call(&peer_addr);
 
-            Self::new(&mut guard.state, ctx.clone(), peer_addr)
+            Self::new(&mut *guard, ctx.clone(), peer_addr)
         };
 
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
@@ -655,7 +655,7 @@ impl OutgoingHandler {
                 rate_limited!(EXCEEDED_DO_NOT_CALL, |dropped| warn!(
                     most_recent_skipped=%peer_addr,
                     dropped,
-                    "did not outgoing address to do-not-call list, already at capacity"
+                    "did not add outgoing address to do-not-call list, already at capacity"
                 ));
             } else {
                 guard.do_not_call.insert(peer_addr, do_not_call_until);
