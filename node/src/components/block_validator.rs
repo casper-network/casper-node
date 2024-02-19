@@ -514,7 +514,7 @@ impl BlockValidator {
                 debug!(%dt_hash, %peer, "fetched transaction from peer")
             }
             Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched transaction locally"),
-            Err(error) => warn!(%dt_hash, %error, "could not fetch transactiony"),
+            Err(error) => warn!(%dt_hash, %error, "could not fetch transaction"),
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
