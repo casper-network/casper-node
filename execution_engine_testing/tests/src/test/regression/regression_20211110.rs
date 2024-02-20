@@ -25,7 +25,7 @@ fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

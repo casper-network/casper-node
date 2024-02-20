@@ -8,11 +8,10 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{
-    engine_state::{
-        genesis::ExecConfigBuilder, EngineConfigBuilder, Error, ExecuteRequest, RunGenesisRequest,
-    },
+    engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
     execution,
 };
+use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::{AccountHash, Weight},
     bytesrepr::ToBytes,
@@ -22,8 +21,8 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Package, PackageHash,
-    RuntimeArgs, U512,
+    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, GenesisConfigBuilder, Key,
+    Package, PackageHash, RuntimeArgs, U512,
 };
 use tempfile::TempDir;
 
@@ -91,7 +90,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         accounts
     };
 
-    let genesis_config = ExecConfigBuilder::default()
+    let genesis_config = GenesisConfigBuilder::default()
         .with_accounts(duplicated_administrator_accounts)
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -105,14 +104,14 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         .with_fee_handling(PRIVATE_CHAIN_FEE_HANDLING)
         .build();
 
-    let modified_genesis_request = RunGenesisRequest::new(
+    let modified_genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    builder.run_genesis(&modified_genesis_request);
+    builder.run_genesis(modified_genesis_request);
 }
 
 #[ignore]
@@ -337,7 +336,7 @@ fn administrator_account_should_disable_any_account() {
     let error = builder.get_error().expect("should have error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::DeploymentAuthorizationFailure)
+        Error::TrackingCopy(TrackingCopyError::DeploymentAuthorizationFailure)
     ));
 
     let account_1_disabled = builder

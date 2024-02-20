@@ -13,7 +13,7 @@ const MESSAGE_VALUE: &str = "Hello, world!";
 #[test]
 fn should_run_hello_world() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let session_args = runtime_args! {

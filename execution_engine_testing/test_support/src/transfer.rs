@@ -45,7 +45,7 @@ pub fn create_initial_accounts_and_run_genesis(
 ) {
     let exec_request = create_accounts_request(accounts, amount);
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();

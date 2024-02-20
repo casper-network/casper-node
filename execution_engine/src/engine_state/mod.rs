@@ -5,23 +5,17 @@ mod error;
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
-pub mod genesis;
 mod prune;
-pub mod run_genesis_request;
 pub mod step;
-mod transfer;
-pub mod upgrade;
 
 use itertools::Itertools;
 
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    convert::TryFrom,
     rc::Rc,
 };
 
-use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, trace, warn};
@@ -31,49 +25,42 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, PutTrieRequest, TrieRequest,
+        transfer::TransferConfig,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        TransferRequest, TrieRequest,
     },
     global_state::{
         self,
+        error::Error as GlobalStateError,
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
         },
-        trie::{merkle_proof::TrieMerkleProof, TrieRaw},
+        trie::TrieRaw,
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
     system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
-    AddressGenerator,
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
 use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
-    },
+    account::AccountHash,
+    addressable_entity::{EntityKind, EntityKindTag, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
-            BidAddr, BidKind, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP,
+            ARG_VALIDATOR_PUBLIC_KEYS, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
-        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, ChainspecRegistry, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntityAddr,
-    EntryPoints, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
-    UpgradeConfig, U512,
+    AddressableEntity, AddressableEntityHash, BlockTime, DeployHash, DeployInfo, Digest,
+    EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion,
+    PublicKey, RuntimeArgs, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
-use self::transfer::NewTransferTargetMode;
 pub use self::{
     deploy_item::DeployItem,
     engine_config::{
@@ -84,26 +71,16 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     prune::{PruneConfig, PruneResult},
-    run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
-    transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
-    upgrade::UpgradeSuccess,
 };
 
 use crate::{
-    engine_state::{
-        execution_kind::ExecutionKind,
-        execution_result::{ExecutionResultBuilder, ExecutionResults},
-        genesis::GenesisInstaller,
-        upgrade::{ProtocolUpgradeError, SystemUpgrader},
-    },
+    engine_state::{execution_kind::ExecutionKind, execution_result::ExecutionResults},
     execution::{self, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
 };
 
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
@@ -112,10 +89,6 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// executing payment code, as such amount is held as collateral to compensate for
 /// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
-
-/// A special contract wasm hash for contracts representing Accounts.
-pub static ACCOUNT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
-    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
@@ -197,10 +170,10 @@ impl EngineState<LmdbGlobalState> {
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
-        if self.state.environment().is_manual_sync_enabled() {
-            self.state.environment().sync()?
+        match self.state.flush(FlushRequest::new()) {
+            FlushResult::ManualSyncDisabled | FlushResult::Success => Ok(()),
+            FlushResult::Failure(err) => Err(err),
         }
-        Ok(())
     }
 
     /// Provide a local cached-only version of engine-state.
@@ -263,369 +236,21 @@ where
     /// This process is run only once per network to initiate the system. By definition users are
     /// unable to execute smart contracts on a network without a genesis.
     ///
-    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
-    /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
-    /// the process, [`SystemContractRegistry`] is persisted under the special global state space
-    /// [`Key::SystemContractRegistry`].
-    ///
-    /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
-    pub fn commit_genesis(
-        &self,
-        genesis_config_hash: Digest,
-        protocol_version: ProtocolVersion,
-        ee_config: &ExecConfig,
-        chainspec_registry: ChainspecRegistry,
-    ) -> Result<GenesisSuccess, Error> {
-        // Preliminaries
-        let initial_root_hash = self.state.empty_root();
-
-        let tracking_copy = match self.tracking_copy(initial_root_hash) {
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is run once per instance condition below is considered programming
-            // error
-            Ok(None) => panic!("state has not been initialized properly"),
-            Err(error) => return Err(Error::TrackingCopy(error)),
-        };
-
-        let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
-            genesis_config_hash,
-            protocol_version,
-            ee_config.clone(),
-            tracking_copy,
-        );
-
-        genesis_installer.install(chainspec_registry)?;
-
-        // Commit the transforms.
-        let effects = genesis_installer.finalize();
-
-        let post_state_hash = self
-            .state
-            .commit(initial_root_hash, effects.clone())
-            .map_err(Into::<execution::Error>::into)?;
-
-        // Return the result
-        Ok(GenesisSuccess {
-            post_state_hash,
-            effects,
-        })
+    /// Takes genesis configuration passed through [`GenesisRequest`] and creates the system
+    /// contracts, sets up the genesis accounts, and sets up the auction state based on that. At
+    /// the end of the process, [`SystemEntityRegistry`] is persisted under the special global
+    /// state space [`Key::SystemEntityRegistry`].
+    pub fn commit_genesis(&self, request: GenesisRequest) -> GenesisResult {
+        self.state.genesis(request)
     }
 
     /// Commits upgrade.
     ///
     /// This process applies changes to the global state.
     ///
-    /// Returns [`UpgradeSuccess`].
-    pub fn commit_upgrade(&self, upgrade_config: UpgradeConfig) -> Result<UpgradeSuccess, Error> {
-        // per specification:
-        // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/139854367/Upgrading+System+Contracts+Specification
-
-        // 3.1.1.1.1.1 validate pre state hash exists
-        // 3.1.2.1 get a tracking_copy at the provided pre_state_hash
-        let pre_state_hash = upgrade_config.pre_state_hash();
-        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(Error::RootNotFound(pre_state_hash)),
-        };
-
-        // 3.1.1.1.1.2 current protocol version is required
-        let current_protocol_version = upgrade_config.current_protocol_version();
-
-        // 3.1.1.1.1.3 activation point is not currently used by EE; skipping
-        // 3.1.1.1.1.4 upgrade point protocol version validation
-        let new_protocol_version = upgrade_config.new_protocol_version();
-
-        let upgrade_check_result =
-            current_protocol_version.check_next_version(&new_protocol_version);
-
-        if upgrade_check_result.is_invalid() {
-            return Err(Error::InvalidProtocolVersion(new_protocol_version));
-        }
-
-        let mut registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
-            registry
-        } else {
-            // Check the upgrade config for the registry
-            let upgrade_registry = upgrade_config
-                .global_state_update()
-                .get(&Key::SystemContractRegistry)
-                .ok_or_else(|| {
-                    error!("Registry is absent in upgrade config");
-                    Error::ProtocolUpgrade(ProtocolUpgradeError::FailedToCreateSystemRegistry)
-                })?
-                .to_owned();
-            if let StoredValue::CLValue(cl_registry) = upgrade_registry {
-                CLValue::into_t::<SystemContractRegistry>(cl_registry).map_err(|error| {
-                    let error_msg = format!("Conversion to system registry failed: {:?}", error);
-                    error!("{}", error_msg);
-                    Error::Bytesrepr(error_msg)
-                })?
-            } else {
-                error!("Failed to create registry as StoreValue in upgrade config is not CLValue");
-                return Err(Error::ProtocolUpgrade(
-                    ProtocolUpgradeError::FailedToCreateSystemRegistry,
-                ));
-            }
-        };
-
-        let mint_hash = *registry.get(MINT).ok_or_else(|| {
-            error!("Missing system mint contract hash");
-            Error::MissingSystemContractHash(MINT.to_string())
-        })?;
-        let auction_hash = *registry.get(AUCTION).ok_or_else(|| {
-            error!("Missing system auction contract hash");
-            Error::MissingSystemContractHash(AUCTION.to_string())
-        })?;
-
-        let handle_payment_hash = *registry.get(HANDLE_PAYMENT).ok_or_else(|| {
-            error!("Missing system handle payment contract hash");
-            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
-        })?;
-
-        if let Some(standard_payment_hash) = registry.remove_standard_payment() {
-            // Write the chainspec registry to global state
-            let cl_value_chainspec_registry =
-                CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-            tracking_copy.borrow_mut().write(
-                Key::SystemContractRegistry,
-                StoredValue::CLValue(cl_value_chainspec_registry),
-            );
-
-            // Prune away standard payment from global state.
-            tracking_copy
-                .borrow_mut()
-                .prune(Key::Hash(standard_payment_hash.value()));
-        };
-
-        // Write the chainspec registry to global state
-        let cl_value_chainspec_registry =
-            CLValue::from_t(upgrade_config.chainspec_registry().clone())
-                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-        tracking_copy.borrow_mut().write(
-            Key::ChainspecRegistry,
-            StoredValue::CLValue(cl_value_chainspec_registry),
-        );
-
-        // Cycle through the system contracts and update
-        // their metadata if there is a change in entry points.
-        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
-            new_protocol_version,
-            current_protocol_version,
-            tracking_copy.clone(),
-        );
-
-        system_upgrader.migrate_system_account(pre_state_hash)?;
-
-        system_upgrader
-            .create_accumulation_purse_if_required(&handle_payment_hash, &self.config)
-            .map_err(Error::ProtocolUpgrade)?;
-
-        system_upgrader
-            .refresh_system_contracts(&mint_hash, &auction_hash, &handle_payment_hash)
-            .map_err(Error::ProtocolUpgrade)?;
-
-        // Prune away the standard payment record.
-
-        // 3.1.1.1.1.7 new total validator slots is optional
-        if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
-            // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let validator_slots_key = auction_named_keys
-                .get(VALIDATOR_SLOTS_KEY)
-                .expect("validator_slots key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_validator_slots)
-                    .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*validator_slots_key, value);
-        }
-
-        if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
-            debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let auction_delay_key = auction_named_keys
-                .get(AUCTION_DELAY_KEY)
-                .expect("auction_delay key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_auction_delay)
-                    .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
-            );
-            tracking_copy.borrow_mut().write(*auction_delay_key, value);
-        }
-
-        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let locked_funds_period_key = auction_named_keys
-                .get(LOCKED_FUNDS_PERIOD_KEY)
-                .expect("locked_funds_period key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_locked_funds_period)
-                    .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
-        }
-
-        if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
-            let new_round_seigniorage_rate: Ratio<U512> = {
-                let (numer, denom) = new_round_seigniorage_rate.into();
-                Ratio::new(numer.into(), denom.into())
-            };
-
-            let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
-
-            let mint_named_keys = tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
-
-            let locked_funds_period_key = mint_named_keys
-                .get(ROUND_SEIGNIORAGE_RATE_KEY)
-                .expect("round_seigniorage_rate key must exist in mint contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_round_seigniorage_rate)
-                    .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
-        }
-
-        // One time upgrade of existing bids
-        {
-            let mut borrow = tracking_copy.borrow_mut();
-            if let Ok(existing_bid_keys) = borrow.get_keys(&KeyTag::Bid) {
-                for key in existing_bid_keys {
-                    if let Some(StoredValue::Bid(existing_bid)) =
-                        borrow.get(&key).map_err(Into::<Error>::into)?
-                    {
-                        // prune away the original record, we don't need it anymore
-                        borrow.prune(key);
-
-                        if existing_bid.staked_amount().is_zero() {
-                            // the previous logic enforces unbonding all delegators of
-                            // a validator that reduced their personal stake to 0 (and we have
-                            // various existent tests that prove this), thus there is no need
-                            // to handle the complicated hypothetical case of one or more
-                            // delegator stakes being > 0 if the validator stake is 0.
-                            //
-                            // tl;dr this is a "zombie" bid and we don't need to continue
-                            // carrying it forward at tip.
-                            continue;
-                        }
-
-                        let validator_public_key = existing_bid.validator_public_key();
-                        let validator_bid_addr = BidAddr::from(validator_public_key.clone());
-                        let validator_bid = ValidatorBid::from(*existing_bid.clone());
-                        borrow.write(
-                            validator_bid_addr.into(),
-                            StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
-                        );
-
-                        let delegators = existing_bid.delegators().clone();
-                        for (_, delegator) in delegators {
-                            let delegator_bid_addr = BidAddr::new_from_public_keys(
-                                validator_public_key,
-                                Some(delegator.delegator_public_key()),
-                            );
-                            // the previous code was removing a delegator bid from the embedded
-                            // collection within their validator's bid when the delegator fully
-                            // unstaked, so technically we don't need to check for 0 balance here.
-                            // However, since it is low effort to check, doing it just to be sure.
-                            if !delegator.staked_amount().is_zero() {
-                                borrow.write(
-                                    delegator_bid_addr.into(),
-                                    StoredValue::BidKind(BidKind::Delegator(Box::new(delegator))),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // apply accepted global state updates (if any)
-        for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
-        }
-
-        // We insert the new unbonding delay once the purses to be paid out have been transformed
-        // based on the previous unbonding delay.
-        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let unbonding_delay_key = auction_named_keys
-                .get(UNBONDING_DELAY_KEY)
-                .expect("unbonding_delay key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_unbonding_delay)
-                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*unbonding_delay_key, value);
-        }
-
-        // EraInfo migration
-        if let Some(activation_point) = upgrade_config.activation_point() {
-            // The highest stored era is the immediate predecessor of the activation point.
-            let highest_era_info_id = activation_point.saturating_sub(1);
-            let highest_era_info_key = Key::EraInfo(highest_era_info_id);
-
-            let get_result = tracking_copy
-                .borrow_mut()
-                .get(&highest_era_info_key)
-                .map_err(|error| Error::Exec(error.into()))?;
-
-            match get_result {
-                Some(stored_value @ StoredValue::EraInfo(_)) => {
-                    tracking_copy
-                        .borrow_mut()
-                        .write(Key::EraSummary, stored_value);
-                }
-                Some(other_stored_value) => {
-                    // This should not happen as we only write EraInfo variants.
-                    error!(stored_value_type_name=%other_stored_value.type_name(),
-                        "EraInfo key contains unexpected StoredValue variant");
-                    return Err(Error::ProtocolUpgrade(
-                        ProtocolUpgradeError::UnexpectedStoredValueVariant,
-                    ));
-                }
-                None => {
-                    // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
-                    // prune
-                }
-            };
-        }
-
-        let effects = tracking_copy.borrow().effects();
-
-        // commit
-        let post_state_hash = self
-            .state
-            .commit(pre_state_hash, effects.clone())
-            .map_err(Into::<Error>::into)?;
-
-        // return result and effects
-        Ok(UpgradeSuccess {
-            post_state_hash,
-            effects,
-        })
+    /// Returns [`ProtocolUpgradeResult`].
+    pub fn commit_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
+        self.state.protocol_upgrade(request)
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
@@ -669,14 +294,8 @@ where
     pub fn tracking_copy(
         &self,
         hash: Digest,
-    ) -> Result<Option<TrackingCopy<S::Reader>>, TrackingCopyError> {
-        match self.state.checkout(hash) {
-            Ok(ret) => match ret {
-                Some(tc) => Ok(Some(TrackingCopy::new(tc, self.config.max_query_depth))),
-                None => Ok(None),
-            },
-            Err(err) => Err(TrackingCopyError::Storage(err)),
-        }
+    ) -> Result<Option<TrackingCopy<S::Reader>>, GlobalStateError> {
+        self.state.tracking_copy(hash)
     }
 
     /// Executes a query.
@@ -685,30 +304,7 @@ where
     ///
     /// Returns the value stored under a [`URef`] wrapped in a [`QueryResult`].
     pub fn run_query(&self, query_request: QueryRequest) -> QueryResult {
-        let state_hash = query_request.state_hash();
-        let query_key = query_request.key();
-        let query_path = query_request.path();
-        let query_result = match self.tracking_copy(state_hash) {
-            Ok(Some(tc)) => match tc.query(query_key, query_path) {
-                Ok(ret) => ret.into(),
-                Err(err) => QueryResult::Failure(err),
-            },
-            Ok(None) => QueryResult::RootNotFound,
-            Err(err) => QueryResult::Failure(err),
-        };
-
-        if let QueryResult::ValueNotFound(_) = query_result {
-            if query_key.is_system_key() {
-                if let Some(entity_addr) = query_key.into_entity_hash_addr() {
-                    debug!("Compensating for AddressableEntity move");
-                    let legacy_query_key = Key::Hash(entity_addr);
-                    let legacy_request =
-                        QueryRequest::new(state_hash, legacy_query_key, query_path.to_vec());
-                    return self.run_query(legacy_request);
-                }
-            }
-        }
-        query_result
+        self.state.query(query_request)
     }
 
     /// Runs a deploy execution request.
@@ -754,180 +350,6 @@ where
         Ok(results)
     }
 
-    fn get_authorized_addressable_entity(
-        &self,
-        protocol_version: ProtocolVersion,
-        account_hash: AccountHash,
-        authorization_keys: &BTreeSet<AccountHash>,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(AddressableEntity, AddressableEntityHash), Error> {
-        let entity_record = match tracking_copy
-            .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
-        {
-            Ok(entity) => entity,
-            Err(_) => return Err(Error::MissingContractByAccountHash(account_hash)),
-        };
-
-        let entity_hash: AddressableEntityHash = match tracking_copy
-            .borrow_mut()
-            .get_entity_hash_by_account_hash(account_hash)
-        {
-            Ok(contract_hash) => contract_hash,
-            Err(error) => {
-                return Err(error.into());
-            }
-        };
-
-        let admin_set = self.config().administrative_accounts();
-
-        if !admin_set.is_empty() && admin_set.intersection(authorization_keys).next().is_some() {
-            // Exit early if there's at least a single signature coming from an admin.
-            return Ok((entity_record, entity_hash));
-        }
-
-        // Authorize using provided authorization keys
-        if !entity_record.can_authorize(authorization_keys) {
-            return Err(Error::Authorization);
-        }
-
-        // Check total key weight against deploy threshold
-        if !entity_record.can_deploy_with(authorization_keys) {
-            return Err(execution::Error::DeploymentAuthorizationFailure.into());
-        }
-
-        Ok((entity_record, entity_hash))
-    }
-
-    fn create_addressable_entity_from_account(
-        &self,
-        account: Account,
-        protocol_version: ProtocolVersion,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        let account_hash = account.account_hash();
-
-        let mut generator =
-            AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
-
-        let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
-        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
-        let package_hash = PackageHash::new(generator.new_hash_address());
-
-        let entry_points = EntryPoints::new();
-
-        let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
-        let action_thresholds = {
-            let account_threshold = account.action_thresholds().clone();
-            ActionThresholds::new(
-                Weight::new(account_threshold.deployment.value()),
-                Weight::new(1u8),
-                Weight::new(account_threshold.key_management.value()),
-            )
-            .map_err(|_| Error::Authorization)?
-        };
-
-        let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
-
-        self.migrate_named_keys(
-            entity_addr,
-            account.named_keys().clone(),
-            Rc::clone(&tracking_copy),
-        )?;
-
-        let entity = AddressableEntity::new(
-            package_hash,
-            contract_wasm_hash,
-            entry_points,
-            protocol_version,
-            account.main_purse(),
-            associated_keys,
-            action_thresholds,
-            MessageTopics::default(),
-            EntityKind::Account(account_hash),
-        );
-
-        let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
-
-        let package = {
-            let mut package = Package::new(
-                access_key,
-                EntityVersions::default(),
-                BTreeSet::default(),
-                Groups::default(),
-                PackageStatus::Locked,
-            );
-            package.insert_entity_version(protocol_version.value().major, entity_hash);
-            package
-        };
-
-        let entity_key: Key = entity.entity_key(entity_hash);
-
-        tracking_copy.borrow_mut().write(entity_key, entity.into());
-        tracking_copy
-            .borrow_mut()
-            .write(package_hash.into(), package.into());
-        let contract_by_account = match CLValue::from_t(entity_key) {
-            Ok(cl_value) => cl_value,
-            Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),
-        };
-
-        tracking_copy.borrow_mut().write(
-            Key::Account(account_hash),
-            StoredValue::CLValue(contract_by_account),
-        );
-        Ok(())
-    }
-
-    fn migrate_account(
-        &self,
-        account_hash: AccountHash,
-        protocol_version: ProtocolVersion,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        let maybe_stored_value = tracking_copy
-            .borrow_mut()
-            .read(&Key::Account(account_hash))
-            .map_err(Into::<Error>::into)?;
-
-        match maybe_stored_value {
-            Some(StoredValue::Account(account)) => self.create_addressable_entity_from_account(
-                account,
-                protocol_version,
-                Rc::clone(&tracking_copy),
-            ),
-            Some(StoredValue::CLValue(_)) => Ok(()),
-            // This means the Account does not exist, which we consider to be
-            // an authorization error. As used by the node, this type of deploy
-            // will have already been filtered out, but for other EE use cases
-            // and testing it is reachable.
-            Some(_) | None => Err(Error::Authorization),
-        }
-    }
-
-    fn migrate_named_keys(
-        &self,
-        entity_addr: EntityAddr,
-        named_keys: NamedKeys,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        for (string, key) in named_keys.into_inner().into_iter() {
-            let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
-                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-            let named_key_value = StoredValue::NamedKey(
-                NamedKeyValue::from_concrete_values(key, string.clone())
-                    .map_err(|cl_error| Error::Bytesrepr(cl_error.to_string()))?,
-            );
-
-            let entry_key = Key::NamedKey(entry_addr);
-
-            tracking_copy.borrow_mut().write(entry_key, named_key_value)
-        }
-
-        Ok(())
-    }
-
     fn get_named_keys(
         &self,
         entity_addr: EntityAddr,
@@ -965,580 +387,36 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &self,
-        executor: &Executor,
+        _executor: &Executor,
         protocol_version: ProtocolVersion,
         prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
     ) -> Result<ExecutionResult, Error> {
-        let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(tce) => {
-                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                    tce,
-                )))
-            }
-            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-        };
-
-        let account_hash = deploy_item.address;
-
-        let authorization_keys = deploy_item.authorization_keys;
-
-        // Migrate the legacy account structure if necessary.
-        if let Err(e) =
-            self.migrate_account(account_hash, protocol_version, Rc::clone(&tracking_copy))
-        {
-            return Ok(ExecutionResult::precondition_failure(e));
-        }
-
-        let (entity, entity_hash) = match self.get_authorized_addressable_entity(
-            protocol_version,
-            account_hash,
-            &authorization_keys,
-            Rc::clone(&tracking_copy),
-        ) {
-            Ok(account) => account,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-        };
-
-        let package_kind = entity.entity_kind();
-
-        let entity_addr = EntityAddr::new_with_tag(package_kind, entity_hash.value());
-
-        let entity_named_keys = match self.get_named_keys(entity_addr, Rc::clone(&tracking_copy)) {
-            Ok(named_keys) => named_keys,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
-        };
-
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
-
-        let handle_payment_contract_hash = system_contract_registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| {
-                error!("Missing system handle payment contract hash");
-                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
-            })?;
-
-        let handle_payment_contract = match tracking_copy
-            .borrow_mut()
-            .get_addressable_entity(*handle_payment_contract_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
-
-        let handle_payment_addr =
-            EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
-
-        let handle_payment_named_keys =
-            match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
-                Ok(named_keys) => named_keys,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error));
-                }
-            };
-
-        let mut handle_payment_access_rights = handle_payment_contract
-            .extract_access_rights(*handle_payment_contract_hash, &handle_payment_named_keys);
-
-        let gas_limit = Gas::new(U512::from(std::u64::MAX));
-
-        let wasmless_transfer_gas_cost = Gas::new(U512::from(
+        let deploy_hash = deploy_item.deploy_hash;
+        let transfer_config = TransferConfig::new(
+            self.config.administrative_accounts.clone(),
+            self.config.allow_unrestricted_transfers,
+        );
+        let wasmless_transfer_gas = Gas::new(U512::from(
             self.config().system_config().wasmless_transfer_cost(),
         ));
-
-        let wasmless_transfer_motes = match Motes::from_gas(
-            wasmless_transfer_gas_cost,
-            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-        ) {
-            Some(motes) => motes,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::GasConversionOverflow,
-                ))
-            }
-        };
-
-        let rewards_target_purse =
-            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
-                Ok(target_purse) => target_purse,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            };
-
-        let rewards_target_purse_balance_key = {
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(rewards_target_purse.into())
-            {
-                Ok(balance_key) => balance_key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                        error,
-                    )))
-                }
-            }
-        };
-
-        let account_main_purse = entity.main_purse();
-
-        let account_main_purse_balance_key = match tracking_copy
-            .borrow_mut()
-            .get_purse_balance_key(account_main_purse.into())
-        {
-            Ok(balance_key) => balance_key,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                    error,
-                )))
-            }
-        };
-
-        let account_main_purse_balance = match tracking_copy
-            .borrow_mut()
-            .get_purse_balance(account_main_purse_balance_key)
-        {
-            Ok(balance_key) => balance_key,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                    error,
-                )))
-            }
-        };
-
-        if account_main_purse_balance < wasmless_transfer_motes {
-            // We don't have minimum balance to operate and therefore we can't charge for user
-            // errors.
-            return Ok(ExecutionResult::precondition_failure(
-                Error::InsufficientPayment,
-            ));
-        }
-
-        // Function below creates an ExecutionResult with precomputed effects of "finalize_payment".
-        let make_charged_execution_failure = |error| match ExecutionResult::new_payment_code_error(
-            error,
-            wasmless_transfer_motes,
-            account_main_purse_balance,
-            wasmless_transfer_gas_cost,
-            account_main_purse_balance_key,
-            rewards_target_purse_balance_key,
-        ) {
-            Ok(execution_result) => execution_result,
-            Err(error) => ExecutionResult::precondition_failure(error),
-        };
-
-        // All wasmless transfer preconditions are met.
-        // Any error that occurs in logic below this point would result in a charge for user error.
-        let mut runtime_args_builder =
-            TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
-
-        let transfer_target_mode = match runtime_args_builder
-            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
-        {
-            Ok(transfer_target_mode) => transfer_target_mode,
-            Err(error) => return Ok(make_charged_execution_failure(error)),
-        };
-
-        // At this point we know target refers to either a purse on an existing account or an
-        // account which has to be created.
-
-        if !self.config.allow_unrestricted_transfers()
-            && !self.config.is_administrator(&account_hash)
-        {
-            // We need to make sure that source or target has to be admin.
-            match transfer_target_mode {
-                NewTransferTargetMode::ExistingAccount {
-                    target_account_hash,
-                    ..
-                }
-                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
-                    let is_target_system_account =
-                        target_account_hash == PublicKey::System.to_account_hash();
-                    let is_target_administrator =
-                        self.config.is_administrator(&target_account_hash);
-                    if !(is_target_system_account || is_target_administrator) {
-                        // Transferring from normal account to a purse doesn't work.
-                        return Ok(make_charged_execution_failure(
-                            execution::Error::DisabledUnrestrictedTransfers.into(),
-                        ));
-                    }
-                }
-                NewTransferTargetMode::PurseExists(_) => {
-                    // We don't know who is the target and we can't simply reverse search
-                    // account/contract that owns it. We also can't know if purse is owned exactly
-                    // by one entity in the system.
-                    return Ok(make_charged_execution_failure(
-                        execution::Error::DisabledUnrestrictedTransfers.into(),
-                    ));
-                }
-            }
-        }
-
-        match transfer_target_mode {
-            NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists(_) => {
-                // Noop
-            }
-            NewTransferTargetMode::CreateAccount(account_hash) => {
-                let create_purse_stack = self.get_new_system_call_stack();
-
-                let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
-                    .call_system_contract(
-                        DirectSystemContractCall::CreatePurse,
-                        RuntimeArgs::new(), // mint create takes no arguments
-                        &entity,
-                        package_kind,
-                        authorization_keys.clone(),
-                        account_hash,
-                        blocktime,
-                        deploy_item.deploy_hash,
-                        gas_limit,
-                        protocol_version,
-                        Rc::clone(&tracking_copy),
-                        Phase::Session,
-                        create_purse_stack,
-                        // We're just creating a purse.
-                        U512::zero(),
-                    );
-                match maybe_uref {
-                    Some(main_purse) => {
-                        let account = Account::create(account_hash, NamedKeys::new(), main_purse);
-                        if let Err(error) = self.create_addressable_entity_from_account(
-                            account,
-                            protocol_version,
-                            Rc::clone(&tracking_copy),
-                        ) {
-                            return Ok(make_charged_execution_failure(error));
-                        }
-                    }
-                    None => {
-                        // This case implies that the execution_result is a failure variant as
-                        // implemented inside host_exec().
-                        let error = execution_result
-                            .take_error()
-                            .unwrap_or(Error::InsufficientPayment);
-                        return Ok(make_charged_execution_failure(error));
-                    }
-                }
-            }
-        }
-
-        let transfer_args = match runtime_args_builder.build(
-            &entity,
-            entity_named_keys,
+        let transfer_req = TransferRequest::with_runtime_args(
+            transfer_config,
+            prestate_hash,
+            blocktime.value(),
             protocol_version,
-            Rc::clone(&tracking_copy),
-        ) {
-            Ok(transfer_args) => transfer_args,
-            Err(error) => return Ok(make_charged_execution_failure(error)),
-        };
-
-        let payment_uref;
-
-        // Construct a payment code that will put cost of wasmless payment into payment purse
-        let payment_result = {
-            // Check source purses minimum balance
-            let source_uref = transfer_args.source();
-            let source_purse_balance = if source_uref != account_main_purse {
-                let source_purse_balance_key = match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance_key(Key::URef(source_uref))
-                {
-                    Ok(purse_balance_key) => purse_balance_key,
-                    Err(error) => {
-                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
-                    }
-                };
-
-                match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance(source_purse_balance_key)
-                {
-                    Ok(purse_balance) => purse_balance,
-                    Err(error) => {
-                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
-                    }
-                }
-            } else {
-                // If source purse is main purse then we already have the balance.
-                account_main_purse_balance
-            };
-
-            let transfer_amount_motes = Motes::new(transfer_args.amount());
-
-            match wasmless_transfer_motes.checked_add(transfer_amount_motes) {
-                Some(total_amount) if source_purse_balance < total_amount => {
-                    // We can't continue if the minimum funds in source purse are lower than the
-                    // required cost.
-                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
-                }
-                None => {
-                    // When trying to send too much that could cause an overflow.
-                    return Ok(make_charged_execution_failure(Error::InsufficientPayment));
-                }
-                Some(_) => {}
-            }
-
-            let get_payment_purse_stack = self.get_new_system_call_stack();
-            let (maybe_payment_uref, get_payment_purse_result): (Option<URef>, ExecutionResult) =
-                executor.call_system_contract(
-                    DirectSystemContractCall::GetPaymentPurse,
-                    RuntimeArgs::default(),
-                    &entity,
-                    package_kind,
-                    authorization_keys.clone(),
-                    account_hash,
-                    blocktime,
-                    deploy_item.deploy_hash,
-                    gas_limit,
-                    protocol_version,
-                    Rc::clone(&tracking_copy),
-                    Phase::Payment,
-                    get_payment_purse_stack,
-                    // Getting payment purse does not require transfering tokens.
-                    U512::zero(),
-                );
-
-            payment_uref = match maybe_payment_uref {
-                Some(payment_uref) => payment_uref,
-                None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
-            };
-
-            if let Some(error) = get_payment_purse_result.take_error() {
-                return Ok(make_charged_execution_failure(error));
-            }
-
-            // Create a new arguments to transfer cost of wasmless transfer into the payment purse.
-
-            let new_transfer_args = TransferArgs::new(
-                transfer_args.to(),
-                transfer_args.source(),
-                payment_uref,
-                wasmless_transfer_motes.value(),
-                transfer_args.arg_id(),
-            );
-
-            let runtime_args = match RuntimeArgs::try_from(new_transfer_args) {
-                Ok(runtime_args) => runtime_args,
-                Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error.into()))),
-            };
-
-            let transfer_to_payment_purse_stack = self.get_new_system_call_stack();
-            let (actual_result, payment_result): (Option<Result<(), u8>>, ExecutionResult) =
-                executor.call_system_contract(
-                    DirectSystemContractCall::Transfer,
-                    runtime_args,
-                    &entity,
-                    package_kind,
-                    authorization_keys.clone(),
-                    account_hash,
-                    blocktime,
-                    deploy_item.deploy_hash,
-                    gas_limit,
-                    protocol_version,
-                    Rc::clone(&tracking_copy),
-                    Phase::Payment,
-                    transfer_to_payment_purse_stack,
-                    // We should use only as much as transfer costs.
-                    // We're not changing the allowed spending limit since this is a system cost.
-                    wasmless_transfer_motes.value(),
-                );
-
-            if let Some(error) = payment_result.as_error().cloned() {
-                return Ok(make_charged_execution_failure(error));
-            }
-
-            let transfer_result = match actual_result {
-                Some(Ok(())) => Ok(()),
-                Some(Err(mint_error)) => match mint::Error::try_from(mint_error) {
-                    Ok(mint_error) => Err(ApiError::from(mint_error)),
-                    Err(_) => Err(ApiError::Transfer),
-                },
-                None => Err(ApiError::Transfer),
-            };
-
-            if let Err(error) = transfer_result {
-                return Ok(make_charged_execution_failure(Error::Exec(
-                    ExecError::Revert(error),
-                )));
-            }
-
-            let payment_purse_balance = {
-                let payment_purse_balance_key = match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance_key(Key::URef(payment_uref))
-                {
-                    Ok(payment_purse_balance_key) => payment_purse_balance_key,
-                    Err(error) => {
-                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
-                    }
-                };
-
-                match tracking_copy
-                    .borrow_mut()
-                    .get_purse_balance(payment_purse_balance_key)
-                {
-                    Ok(payment_purse_balance) => payment_purse_balance,
-                    Err(error) => {
-                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
-                    }
-                }
-            };
-
-            // Wasmless transfer payment code pre & post conditions:
-            // (a) payment purse should be empty before the payment operation
-            // (b) after executing payment code it's balance has to be equal to the wasmless gas
-            // cost price
-
-            let payment_gas =
-                match Gas::from_motes(payment_purse_balance, WASMLESS_TRANSFER_FIXED_GAS_PRICE) {
-                    Some(gas) => gas,
-                    None => {
-                        return Ok(make_charged_execution_failure(Error::GasConversionOverflow))
-                    }
-                };
-
-            debug_assert_eq!(payment_gas, wasmless_transfer_gas_cost);
-
-            // This assumes the cost incurred is already denominated in gas
-
-            payment_result.with_cost(payment_gas)
-        };
-
-        let runtime_args = match RuntimeArgs::try_from(transfer_args) {
-            Ok(runtime_args) => runtime_args,
-            Err(error) => {
-                return Ok(make_charged_execution_failure(
-                    ExecError::from(error).into(),
-                ))
-            }
-        };
-
-        let transfer_stack = self.get_new_system_call_stack();
-        let (_, mut session_result): (Option<Result<(), u8>>, ExecutionResult) = executor
-            .call_system_contract(
-                DirectSystemContractCall::Transfer,
-                runtime_args,
-                &entity,
-                package_kind,
-                authorization_keys.clone(),
-                account_hash,
-                blocktime,
-                deploy_item.deploy_hash,
-                gas_limit,
-                protocol_version,
-                Rc::clone(&tracking_copy),
-                Phase::Session,
-                transfer_stack,
-                // We limit native transfer to the amount that user signed over as `amount`
-                // argument.
-                transfer_args.amount(),
-            );
-
-        // User is already charged fee for wasmless contract, and we need to make sure we will not
-        // charge for anything that happens while calling transfer entrypoint.
-        session_result = session_result.with_cost(Gas::default());
-
-        let finalize_result = {
-            let handle_payment_args = {
-                // Gas spent during payment code execution
-                let finalize_cost_motes = {
-                    // A case where payment_result.cost() is different than wasmless transfer cost
-                    // is considered a programming error.
-                    debug_assert_eq!(payment_result.cost(), wasmless_transfer_gas_cost);
-                    wasmless_transfer_motes
-                };
-
-                let account = deploy_item.address;
-                let maybe_runtime_args = RuntimeArgs::try_new(|args| {
-                    args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
-                    args.insert(handle_payment::ARG_ACCOUNT, account)?;
-                    args.insert(handle_payment::ARG_TARGET, rewards_target_purse)?;
-                    Ok(())
-                });
-
-                match maybe_runtime_args {
-                    Ok(runtime_args) => runtime_args,
-                    Err(error) => {
-                        let exec_error = ExecError::from(error);
-                        return Ok(ExecutionResult::precondition_failure(exec_error.into()));
-                    }
-                }
-            };
-
-            let system_addressable_entity = {
-                tracking_copy
-                    .borrow_mut()
-                    .get_addressable_entity_by_account_hash(
-                        protocol_version,
-                        PublicKey::System.to_account_hash(),
-                    )?
-            };
-
-            let tc = tracking_copy.borrow();
-            let finalization_tc = Rc::new(RefCell::new(tc.fork()));
-
-            let finalize_payment_stack = self.get_new_system_call_stack();
-            handle_payment_access_rights.extend(&[payment_uref, rewards_target_purse]);
-
-            let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
-                .call_system_contract(
-                    DirectSystemContractCall::FinalizePayment,
-                    handle_payment_args,
-                    &system_addressable_entity,
-                    EntityKind::Account(PublicKey::System.to_account_hash()),
-                    authorization_keys,
-                    PublicKey::System.to_account_hash(),
-                    blocktime,
-                    deploy_item.deploy_hash,
-                    gas_limit,
-                    protocol_version,
-                    finalization_tc,
-                    Phase::FinalizePayment,
-                    finalize_payment_stack,
-                    // Spending limit is cost of wasmless execution.
-                    U512::from(self.config().system_config().wasmless_transfer_cost()),
-                );
-
-            finalize_result
-        };
-
-        // Create + persist deploy info.
-        {
-            let transfers = session_result.transfers();
-            let cost = wasmless_transfer_gas_cost.value();
-            let deploy_info = DeployInfo::new(
-                deploy_item.deploy_hash,
-                transfers,
-                account_hash,
-                entity.main_purse(),
-                cost,
-            );
-            tracking_copy.borrow_mut().write(
-                Key::DeployInfo(deploy_item.deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
-            );
-        }
-
-        if session_result.is_success() {
-            session_result = session_result.with_effects(tracking_copy.borrow().effects())
-        }
-
-        let mut execution_result_builder = ExecutionResultBuilder::new();
-        execution_result_builder.set_payment_execution_result(payment_result);
-        execution_result_builder.set_session_execution_result(session_result);
-        execution_result_builder.set_finalize_execution_result(finalize_result);
-
-        let execution_result = execution_result_builder
-            .build()
-            .expect("ExecutionResultBuilder not initialized properly");
-
-        Ok(execution_result)
+            proposer,
+            *deploy_hash.inner(),
+            deploy_item.address,
+            deploy_item.authorization_keys,
+            deploy_item.session.args().clone(),
+            wasmless_transfer_gas.value(),
+        );
+        let transfer_result = self.state.transfer(transfer_req);
+        ExecutionResult::from_transfer_result(transfer_result, wasmless_transfer_gas)
+            .map_err(|_| Error::RootNotFound(prestate_hash))
     }
 
     /// Executes a deploy.
@@ -1567,11 +445,7 @@ where
         // validation_spec_2: prestate_hash check
         // do this second; as there is no reason to proceed if the prestate hash is invalid
         let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(tce) => {
-                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                    tce,
-                )))
-            }
+            Err(gse) => return Ok(ExecutionResult::precondition_failure(Error::Storage(gse))),
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -1582,23 +456,26 @@ where
         let authorization_keys = deploy_item.authorization_keys;
         let account_hash = deploy_item.address;
 
-        if let Err(error) =
-            self.migrate_account(account_hash, protocol_version, Rc::clone(&tracking_copy))
+        if let Err(e) = tracking_copy
+            .borrow_mut()
+            .migrate_account(account_hash, protocol_version)
         {
-            return Ok(ExecutionResult::precondition_failure(error));
+            return Ok(ExecutionResult::precondition_failure(e.into()));
         }
 
         // Get account from tracking copy
         // validation_spec_3: account validity
         let (entity, entity_hash) = {
-            match self.get_authorized_addressable_entity(
-                protocol_version,
-                account_hash,
-                &authorization_keys,
-                Rc::clone(&tracking_copy),
-            ) {
+            match tracking_copy
+                .borrow_mut()
+                .get_authorized_addressable_entity(
+                    protocol_version,
+                    account_hash,
+                    &authorization_keys,
+                    &self.config().administrative_accounts,
+                ) {
                 Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
-                Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
+                Err(e) => return Ok(ExecutionResult::precondition_failure(e.into())),
             }
         };
 
@@ -1682,7 +559,7 @@ where
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
+        let system_contract_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
@@ -1848,7 +725,7 @@ where
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
+        let system_contract_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
@@ -2077,7 +954,8 @@ where
 
             // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let system_contract_registry = finalization_tc.borrow_mut().get_system_contracts()?;
+            let system_contract_registry =
+                finalization_tc.borrow_mut().get_system_entity_registry()?;
 
             let handle_payment_contract_hash = system_contract_registry
                 .get(HANDLE_PAYMENT)
@@ -2155,7 +1033,7 @@ where
         prestate_hash: Digest,
     ) -> Result<URef, Error> {
         let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(tce) => return Err(Error::TrackingCopy(tce)),
+            Err(gse) => return Err(Error::Storage(gse)),
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -2219,22 +1097,6 @@ where
     pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error> {
         let req = TrieRequest::new(trie_key, None);
         self.state.trie(req).into_legacy().map_err(Error::Storage)
-    }
-
-    /// Puts a trie if no children are missing from the global state; otherwise reports the missing
-    /// children hashes via the `Error` enum.
-    pub fn put_trie_if_all_children_present(&self, trie_bytes: &[u8]) -> Result<Digest, Error> {
-        let missing_children = match self.state.missing_children(trie_bytes) {
-            Ok(ret) => ret,
-            Err(err) => return Err(err.into()),
-        };
-        let raw = TrieRaw::new(trie_bytes.into());
-        let req = PutTrieRequest::new(raw);
-        if missing_children.is_empty() {
-            Ok(self.state.put_trie(req).as_legacy()?)
-        } else {
-            Err(Error::MissingTrieNodeChildren(missing_children))
-        }
     }
 
     /// Obtains validator weights for given era.
@@ -2633,14 +1495,14 @@ where
     pub fn get_system_contract_registry(
         &self,
         state_root_hash: Digest,
-    ) -> Result<SystemContractRegistry, Error> {
+    ) -> Result<SystemEntityRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
         let result = tracking_copy
             .borrow_mut()
-            .get_system_contracts()
+            .get_system_entity_registry()
             .map_err(|error| {
                 warn!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
@@ -2687,37 +1549,6 @@ where
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
-    }
-
-    /// Returns the checksum registry at the given state root hash.
-    pub fn get_checksum_registry(
-        &self,
-        state_root_hash: Digest,
-    ) -> Result<Option<ChecksumRegistry>, Error> {
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
-            None => return Err(Error::RootNotFound(state_root_hash)),
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-        };
-        let maybe_checksum_registry = tracking_copy
-            .borrow_mut()
-            .get_checksum_registry()
-            .map_err(Error::TrackingCopy);
-        maybe_checksum_registry
-    }
-
-    /// Returns the Merkle proof for the checksum registry at the given state root hash.
-    pub fn get_checksum_registry_proof(
-        &self,
-        state_root_hash: Digest,
-    ) -> Result<TrieMerkleProof<Key, StoredValue>, Error> {
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
-            None => return Err(Error::RootNotFound(state_root_hash)),
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-        };
-
-        let key = Key::ChecksumRegistry;
-        let maybe_proof = tracking_copy.borrow_mut().reader().read_with_proof(&key)?;
-        maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
 }
 
@@ -2858,6 +1689,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::MissingTrieNodeChildren(_)
             | Error::FailedToRetrieveAccumulationPurse
             | Error::FailedToPrune(_)
+            | Error::Transfer(_)
             | Error::TrackingCopy(_) => false,
         },
         ExecutionResult::Success { .. } => false,

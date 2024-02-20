@@ -46,7 +46,7 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
@@ -58,7 +58,6 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::ACCOUNT_BYTE_CODE_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
@@ -397,7 +396,7 @@ where
             return true;
         }
 
-        if let Some(CallStackElement::Session { account_hash }) = self.get_immediate_caller() {
+        if let Some(Caller::Session { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }
         false
@@ -1383,10 +1382,7 @@ where
         let stack = {
             let mut stack = self.try_get_stack()?.clone();
 
-            stack.push(CallStackElement::stored_contract(
-                entity.package_hash(),
-                entity_hash,
-            ))?;
+            stack.push(Caller::stored_contract(entity.package_hash(), entity_hash))?;
 
             stack
         };
@@ -2481,7 +2477,7 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+                let byte_code_hash = ByteCodeHash::default();
                 let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
@@ -2491,7 +2487,7 @@ where
 
                 let entity = AddressableEntity::new(
                     package_hash,
-                    contract_wasm_hash,
+                    byte_code_hash,
                     entry_points,
                     protocol_version,
                     main_purse,
@@ -3277,11 +3273,11 @@ where
         };
 
         match immediate_caller {
-            CallStackElement::Session { account_hash } => {
+            Caller::Session { account_hash } => {
                 // This case can happen during genesis where we're setting up purses for accounts.
                 Ok(account_hash == &PublicKey::System.to_account_hash())
             }
-            CallStackElement::AddressableEntity {
+            Caller::AddressableEntity {
                 entity_hash: contract_hash,
                 ..
             } => Ok(self.context.is_system_addressable_entity(contract_hash)?),

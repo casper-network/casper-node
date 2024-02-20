@@ -14,13 +14,13 @@ use crate::{
 
 /// The system contract registry.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
-pub struct SystemContractRegistry(BTreeMap<String, AddressableEntityHash>);
+pub struct SystemEntityRegistry(BTreeMap<String, AddressableEntityHash>);
 
-impl SystemContractRegistry {
+impl SystemEntityRegistry {
     /// Returns a new `SystemContractRegistry`.
     #[allow(clippy::new_without_default)] // This empty `new()` will be replaced in the future.
     pub fn new() -> Self {
-        SystemContractRegistry(BTreeMap::new())
+        SystemEntityRegistry(BTreeMap::new())
     }
 
     /// Inserts a contract's details into the registry.
@@ -51,7 +51,7 @@ impl SystemContractRegistry {
     }
 }
 
-impl ToBytes for SystemContractRegistry {
+impl ToBytes for SystemEntityRegistry {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -61,14 +61,14 @@ impl ToBytes for SystemContractRegistry {
     }
 }
 
-impl FromBytes for SystemContractRegistry {
+impl FromBytes for SystemEntityRegistry {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = BTreeMap::from_bytes(bytes)?;
-        Ok((SystemContractRegistry(inner), remainder))
+        Ok((SystemEntityRegistry(inner), remainder))
     }
 }
 
-impl CLTyped for SystemContractRegistry {
+impl CLTyped for SystemEntityRegistry {
     fn cl_type() -> CLType {
         BTreeMap::<String, AddressableEntityHash>::cl_type()
     }
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut system_contract_registry = SystemContractRegistry::new();
+        let mut system_contract_registry = SystemEntityRegistry::new();
         system_contract_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
         bytesrepr::test_serialization_roundtrip(&system_contract_registry);
     }

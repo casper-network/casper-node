@@ -9,12 +9,10 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, run_genesis_request::RunGenesisRequest, ExecConfig,
-};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, ProtocolVersion,
-    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, GenesisConfig,
+    GenesisConfigBuilder, ProtocolVersion, RefundHandling, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -134,7 +132,7 @@ impl ChainspecConfig {
         filename: P,
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
-    ) -> Result<RunGenesisRequest, Error> {
+    ) -> Result<GenesisRequest, Error> {
         let chainspec_config = ChainspecConfig::from_path(filename)?;
 
         // if you get a compilation error here, make sure to update the builder below accordingly
@@ -159,7 +157,7 @@ impl ChainspecConfig {
             fee_handling: _,
         } = core_config;
 
-        let exec_config = ExecConfigBuilder::new()
+        let genesis_config = GenesisConfigBuilder::new()
             .with_accounts(genesis_accounts)
             .with_wasm_config(wasm_config)
             .with_system_config(system_costs_config)
@@ -171,10 +169,10 @@ impl ChainspecConfig {
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .build();
 
-        Ok(RunGenesisRequest::new(
+        Ok(GenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
-            exec_config,
+            genesis_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         ))
     }
@@ -183,7 +181,7 @@ impl ChainspecConfig {
     pub fn create_genesis_request_from_production_chainspec(
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
-    ) -> Result<RunGenesisRequest, Error> {
+    ) -> Result<GenesisRequest, Error> {
         Self::create_genesis_request_from_chainspec(
             &*PRODUCTION_PATH,
             genesis_accounts,
@@ -192,11 +190,11 @@ impl ChainspecConfig {
     }
 }
 
-impl TryFrom<ChainspecConfig> for ExecConfig {
+impl TryFrom<ChainspecConfig> for GenesisConfig {
     type Error = Error;
 
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
-        Ok(ExecConfigBuilder::new()
+        Ok(GenesisConfigBuilder::new()
             .with_accounts(DEFAULT_ACCOUNTS.clone())
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
@@ -216,9 +214,10 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
 mod tests {
     use std::{convert::TryFrom, path::PathBuf};
 
+    use casper_types::GenesisConfig;
     use once_cell::sync::Lazy;
 
-    use super::{ChainspecConfig, ExecConfig, CHAINSPEC_NAME};
+    use super::{ChainspecConfig, CHAINSPEC_NAME};
 
     pub static LOCAL_PATH: Lazy<PathBuf> =
         Lazy::new(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/local/"));
@@ -235,7 +234,7 @@ mod tests {
     fn should_get_exec_config_from_chainspec_values() {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
         let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
-        let exec_config = ExecConfig::try_from(chainspec_config).unwrap();
-        assert_eq!(exec_config.auction_delay(), 1)
+        let config = GenesisConfig::try_from(chainspec_config).unwrap();
+        assert_eq!(config.auction_delay(), 1)
     }
 }

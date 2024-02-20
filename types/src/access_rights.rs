@@ -7,6 +7,7 @@ use core::fmt::{self, Display, Formatter};
 use bitflags::bitflags;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -124,6 +125,7 @@ impl<'de> Deserialize<'de> for AccessRights {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<AccessRights> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccessRights {
         let mut result = AccessRights::NONE;

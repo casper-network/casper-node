@@ -1,4 +1,5 @@
 //! Errors that the contract runtime component may raise.
+use derive_more::From;
 use std::collections::BTreeMap;
 
 use serde::Serialize;
@@ -8,11 +9,11 @@ use casper_execution_engine::engine_state::{Error as EngineStateError, StepError
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
-    types::{ExecutableBlock, InternalEraReport},
+    types::{ChunkingError, ExecutableBlock, InternalEraReport},
 };
 
 /// An error returned from mis-configuring the contract runtime component.
@@ -24,6 +25,20 @@ pub(crate) enum ConfigError {
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
+}
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error, From)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(#[source] bincode::Error),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(#[source] GlobalStateError),
+    /// Chunking error.
+    #[error("failed to chunk the data {0}")]
+    ChunkingError(#[source] ChunkingError),
 }
 
 /// An error during block execution.
@@ -97,4 +112,7 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         TrackingCopyError,
     ),
+    /// A root state hash was not found.
+    #[error("Root state hash not found in global state.")]
+    RootNotFound(Digest),
 }

@@ -12,8 +12,8 @@ pub trait StorageProvider {
     /// Read data from [`URef`].
     fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error>;
 
-    /// Write data under a [`URef`].
-    fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+    /// Write a [`U512`] amount under a [`URef`].
+    fn write_amount(&mut self, uref: URef, amount: U512) -> Result<(), Error>;
 
     /// Add data to a [`URef`].
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;

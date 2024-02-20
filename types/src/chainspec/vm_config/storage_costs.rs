@@ -3,7 +3,11 @@
 use datasize::DataSize;
 use derive_more::Add;
 use num_traits::Zero;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -49,6 +53,7 @@ impl Default for StorageCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<StorageCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> StorageCosts {
         StorageCosts {

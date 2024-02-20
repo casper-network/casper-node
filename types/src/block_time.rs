@@ -29,6 +29,11 @@ impl BlockTime {
     pub fn saturating_sub(self, other: BlockTime) -> Self {
         BlockTime(self.0.saturating_sub(other.0))
     }
+
+    /// Returns inner value.
+    pub fn value(&self) -> u64 {
+        self.0
+    }
 }
 
 impl From<BlockTime> for u64 {

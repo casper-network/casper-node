@@ -20,7 +20,7 @@ fn should_run_get_blocktime_contract() {
     .with_block_time(block_time)
     .build();
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
         .expect_success();

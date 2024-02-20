@@ -42,7 +42,7 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
 #[test]
 fn should_return_different_random_bytes_on_different_phases() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let execute_request = {
         let mut rng = rand::thread_rng();
@@ -79,7 +79,7 @@ fn should_return_different_random_bytes_on_each_call() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let all_addresses: HashSet<_> = (0..RUNS)
         .map(|_| {
@@ -109,7 +109,7 @@ fn should_hash() {
     let mut rng = rand::thread_rng();
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for _ in 0..RUNS {
         let input: [u8; INPUT_LENGTH] = rng.gen();

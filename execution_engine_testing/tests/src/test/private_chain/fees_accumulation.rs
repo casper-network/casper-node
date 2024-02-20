@@ -32,7 +32,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract =
@@ -278,6 +278,7 @@ fn should_accumulate_fees_after_upgrade() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(EraId::default())
+            .with_fee_handling(FeeHandling::Accumulate)
             .build()
     };
 

@@ -3,9 +3,9 @@ use num_traits::One;
 use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity,
-    AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr,
-    PackageHash, StoredValue, U512,
+    addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
+    CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -130,23 +130,17 @@ impl AccountExt for EntityWithKeys {
 }
 
 trait BuilderExt {
-    fn get_call_stack_from_session_context(
-        &mut self,
-        stored_call_stack_key: &str,
-    ) -> Vec<CallStackElement>;
+    fn get_call_stack_from_session_context(&mut self, stored_call_stack_key: &str) -> Vec<Caller>;
 
     fn get_call_stack_from_contract_context(
         &mut self,
         stored_call_stack_key: &str,
         contract_package_hash: HashAddr,
-    ) -> Vec<CallStackElement>;
+    ) -> Vec<Caller>;
 }
 
 impl BuilderExt for LmdbWasmTestBuilder {
-    fn get_call_stack_from_session_context(
-        &mut self,
-        stored_call_stack_key: &str,
-    ) -> Vec<CallStackElement> {
+    fn get_call_stack_from_session_context(&mut self, stored_call_stack_key: &str) -> Vec<Caller> {
         let cl_value = self
             .query(
                 None,
@@ -157,7 +151,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 
         cl_value
             .into_cl_value()
-            .map(CLValue::into_t::<Vec<CallStackElement>>)
+            .map(CLValue::into_t::<Vec<Caller>>)
             .unwrap()
             .unwrap()
     }
@@ -166,7 +160,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
         &mut self,
         stored_call_stack_key: &str,
         contract_package_hash: HashAddr,
-    ) -> Vec<CallStackElement> {
+    ) -> Vec<Caller> {
         let value = self
             .query(None, Key::Package(contract_package_hash), &[])
             .unwrap();
@@ -190,7 +184,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 
         cl_value
             .into_cl_value()
-            .map(CLValue::into_t::<Vec<CallStackElement>>)
+            .map(CLValue::into_t::<Vec<Caller>>)
             .unwrap()
             .unwrap()
     }
@@ -237,7 +231,7 @@ fn assert_each_context_has_correct_call_stack_info(
 
         assert_eq!(
             head,
-            [CallStackElement::Session {
+            [Caller::Session {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -269,7 +263,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
     let (head, _) = call_stack.split_at(usize::one());
     assert_eq!(
         head,
-        [CallStackElement::Session {
+        [Caller::Session {
             account_hash: *DEFAULT_ACCOUNT_ADDR,
         }],
     );
@@ -290,7 +284,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let (head, rest) = call_stack.split_at(usize::one());
         assert_eq!(
             head,
-            [CallStackElement::Session {
+            [Caller::Session {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -298,7 +292,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
     }
 }
 
-fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[Call]) {
+fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
     for (index, expected_call_stack_element) in call_stack.iter().enumerate() {
         let maybe_call = calls.get(index);
         match (maybe_call, expected_call_stack_element) {
@@ -310,7 +304,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                         ContractAddress::ContractPackageHash(current_contract_package_hash),
                     ..
                 }),
-                CallStackElement::AddressableEntity {
+                Caller::AddressableEntity {
                     package_hash: contract_package_hash,
                     ..
                 },
@@ -324,7 +318,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                     contract_address: ContractAddress::ContractHash(current_contract_hash),
                     ..
                 }),
-                CallStackElement::AddressableEntity {
+                Caller::AddressableEntity {
                     entity_hash: contract_hash,
                     ..
                 },

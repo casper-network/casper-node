@@ -11,7 +11,7 @@ const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 #[test]
 fn regression_20220222_escalate() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

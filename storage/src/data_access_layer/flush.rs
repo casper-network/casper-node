@@ -22,6 +22,6 @@ pub enum FlushResult {
     ManualSyncDisabled,
     /// Successfully flushed.
     Success,
-    /// Failed to get total supply.
+    /// Failed to flush.
     Failure(GlobalStateError),
 }

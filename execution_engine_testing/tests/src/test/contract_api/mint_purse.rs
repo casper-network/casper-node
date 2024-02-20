@@ -23,7 +23,7 @@ fn should_run_mint_purse_contract() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).commit().expect_success();
     builder.exec(exec_request_2).commit().expect_success();
@@ -40,7 +40,7 @@ fn should_not_allow_non_system_accounts_to_mint() {
     .build();
 
     assert!(LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
         .is_error());

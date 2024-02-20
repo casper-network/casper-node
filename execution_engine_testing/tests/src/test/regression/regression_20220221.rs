@@ -61,7 +61,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
     .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::default()
         .with_new_validator_slots(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT + 1)

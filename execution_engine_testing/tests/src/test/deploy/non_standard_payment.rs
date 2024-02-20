@@ -42,7 +42,7 @@ fn should_charge_non_main_purse() {
     )
     .build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(setup_exec_request)

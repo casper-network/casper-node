@@ -1,10 +1,9 @@
-use casper_types::{execution::Effects, Digest, EraId};
-
 use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
     trie_store::operations::PruneResult,
 };
+use casper_types::{execution::Effects, Digest, EraId};
 
 use crate::tracking_copy::TrackingCopy;
 
@@ -13,10 +12,13 @@ pub mod balance;
 pub mod era_validators;
 mod execution_results_checksum;
 mod flush;
+mod genesis;
 pub mod get_bids;
+mod protocol_upgrade;
 pub mod query;
 mod round_seigniorage;
 mod total_supply;
+pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
@@ -27,10 +29,13 @@ pub use execution_results_checksum::{
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 pub use flush::{FlushRequest, FlushResult};
+pub use genesis::{GenesisRequest, GenesisResult};
 pub use get_bids::{BidsRequest, BidsResult};
+pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
+pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
 pub struct Block {

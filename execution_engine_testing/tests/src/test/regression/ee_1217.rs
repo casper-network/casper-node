@@ -55,7 +55,7 @@ fn should_fail_to_add_bid_from_stored_session_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(store_call_auction_request)
@@ -97,7 +97,7 @@ fn should_fail_to_add_bid_from_stored_contract_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(store_call_auction_request)
@@ -150,7 +150,7 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(add_bid_request).commit().expect_success();
 
@@ -205,7 +205,7 @@ fn should_fail_to_withdraw_bid_from_stored_contract_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(add_bid_request).commit().expect_success();
 
@@ -280,7 +280,7 @@ fn should_fail_to_delegate_from_stored_session_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(validator_fund_request)
@@ -360,7 +360,7 @@ fn should_fail_to_delegate_from_stored_contract_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(validator_fund_request)
@@ -428,7 +428,7 @@ fn should_fail_to_undelegate_from_stored_session_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -522,7 +522,7 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -607,7 +607,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(add_bid_request).commit().expect_success();
     builder.exec(withdraw_bid_request).commit().expect_success();
@@ -673,7 +673,7 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(add_bid_request).commit().expect_success();
     builder.exec(withdraw_bid_request).commit().expect_success();
