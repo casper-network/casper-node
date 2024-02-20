@@ -135,6 +135,8 @@ where
     cfg: Config,
     /// Read-only networking information shared across tasks.
     context: Arc<NetworkContext<REv>>,
+    /// The set of known addresses that are eternally kept.
+    known_addresses: HashSet<SocketAddr>,
     /// A reference to the global validator matrix.
     validator_matrix: ValidatorMatrix,
 
@@ -216,6 +218,7 @@ where
         let component = Network {
             cfg,
             context,
+            known_addresses: Default::default(),
             validator_matrix,
             conman: None,
             incoming_validator_status: Default::default(),
@@ -231,29 +234,21 @@ where
         Ok(component)
     }
 
+    /// Initializes the networking component.
     fn initialize(
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Event<P>>, Error> {
-        let mut known_addresses = HashSet::new();
-        for address in &self.cfg.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    if !known_addresses.insert(known_address) {
-                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
-                    };
-                }
-                Err(ref err) => {
-                    warn!(%address, err=display_error(err), "failed to resolve known address");
-                }
-            }
-        }
+        // Start by resolving all known addresses.
+        let known_addresses =
+            resolve_addresses(self.cfg.known_addresses.iter().map(String::as_str));
 
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::EmptyKnownHosts);
         }
+        self.known_addresses = known_addresses;
 
         let mut public_addr =
             utils::resolve_address(&self.cfg.public_address).map_err(Error::ResolveAddr)?;
@@ -279,21 +274,9 @@ where
             .expect("should be no other pointers")
             .initialize(public_addr, effect_builder.into_inner());
 
-        let protocol_version = self.context.chain_info().protocol_version;
-        // Run the server task.
-        // We spawn it ourselves instead of through an effect to get a hold of the join handle,
-        // which we need to shutdown cleanly later on.
-        info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
-
-        let context = self.context.clone();
-
-        // Learn all known addresses and mark them as unforgettable.
-        let now = Instant::now();
-
         let mut effects = Effects::new();
 
-        // Start broadcasting our public listening address. TODO: Learn unforgettable addresses (and
-        // periodically refresh). Hooking this to our own gossip is not a bad idea?
+        // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
                 .set_timeout(self.cfg.initial_gossip_delay.into())
@@ -309,16 +292,32 @@ where
             self.cfg.ack_timeout,
         );
 
-        self.conman = Some(ConMan::new(
+        // Setup connection manager, then learn all known addresses.
+        let conman = ConMan::new(
             tokio::net::TcpListener::from_std(listener).expect("not in tokio runtime"),
             public_addr,
-            context.our_id,
+            self.context.our_id,
             Box::new(protocol_handler),
             rpc_builder,
-        ));
+        );
+        self.conman = Some(conman);
+        self.learn_known_addresses();
 
+        // Done, set initialized state.
         <Self as InitializedComponent<REv>>::set_state(self, ComponentState::Initialized);
+
         Ok(effects)
+    }
+
+    /// Submits all known addresses to the connection manager.
+    fn learn_known_addresses(&self) {
+        if let Some(ref conman) = self.conman {
+            for known_address in &self.known_addresses {
+                conman.learn_addr(*known_address);
+            }
+        } else {
+            error!("cannot learn known addresses, component not initialized");
+        }
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
@@ -712,6 +711,23 @@ where
     }
 }
 
+fn resolve_addresses<'a>(addresses: impl Iterator<Item = &'a str>) -> HashSet<SocketAddr> {
+    let mut resolved = HashSet::new();
+    for address in addresses {
+        match utils::resolve_address(address) {
+            Ok(addr) => {
+                if !resolved.insert(addr) {
+                    warn!(%address, resolved=%addr, "ignoring duplicated address");
+                };
+            }
+            Err(ref err) => {
+                warn!(%address, err=display_error(err), "failed to resolve address");
+            }
+        }
+    }
+    resolved
+}
+
 fn choose_gossip_peers<F>(
     rng: &mut NodeRng,
     gossip_target: GossipTarget,
@@ -857,7 +873,8 @@ where
                             .event(|_| Event::GossipOurAddress),
                     );
 
-                    // TODO: Learn known addresses here again.
+                    // We also ensure we know our known addresses still.
+                    self.learn_known_addresses();
 
                     effects
                 }
