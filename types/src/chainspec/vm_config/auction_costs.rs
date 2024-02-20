@@ -38,6 +38,8 @@ pub const DEFAULT_WITHDRAW_VALIDATOR_REWARD_COST: u32 = 10_000;
 pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 /// Default cost of the `activate_bid` auction entry point.
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
+/// Default cost of the `transfer_validator` auction entry point.
+pub const DEFAULT_TRANSFER_VALIDATOR_COST: u32 = 2_500_000_000;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -72,6 +74,8 @@ pub struct AuctionCosts {
     pub activate_bid: u32,
     /// Cost of calling the `redelegate` entry point.
     pub redelegate: u32,
+    /// Cost of calling the `transfer_validator` entry point.
+    pub transfer_validator: u32,
 }
 
 impl Default for AuctionCosts {
@@ -91,6 +95,7 @@ impl Default for AuctionCosts {
             read_era_id: DEFAULT_READ_ERA_ID_COST,
             activate_bid: DEFAULT_ACTIVATE_BID_COST,
             redelegate: DEFAULT_REDELEGATE_COST,
+            transfer_validator: DEFAULT_TRANSFER_VALIDATOR_COST,
         }
     }
 }
@@ -114,6 +119,7 @@ impl ToBytes for AuctionCosts {
             read_era_id,
             activate_bid,
             redelegate,
+            transfer_validator,
         } = self;
 
         ret.append(&mut get_era_validators.to_bytes()?);
@@ -130,6 +136,7 @@ impl ToBytes for AuctionCosts {
         ret.append(&mut read_era_id.to_bytes()?);
         ret.append(&mut activate_bid.to_bytes()?);
         ret.append(&mut redelegate.to_bytes()?);
+        ret.append(&mut transfer_validator.to_bytes()?);
 
         Ok(ret)
     }
@@ -150,6 +157,7 @@ impl ToBytes for AuctionCosts {
             read_era_id,
             activate_bid,
             redelegate,
+            transfer_validator,
         } = self;
 
         get_era_validators.serialized_length()
@@ -166,6 +174,7 @@ impl ToBytes for AuctionCosts {
             + read_era_id.serialized_length()
             + activate_bid.serialized_length()
             + redelegate.serialized_length()
+            + transfer_validator.serialized_length()
     }
 }
 
@@ -185,6 +194,7 @@ impl FromBytes for AuctionCosts {
         let (read_era_id, rem) = FromBytes::from_bytes(rem)?;
         let (activate_bid, rem) = FromBytes::from_bytes(rem)?;
         let (redelegate, rem) = FromBytes::from_bytes(rem)?;
+        let (transfer_validator, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Self {
                 get_era_validators,
@@ -201,6 +211,7 @@ impl FromBytes for AuctionCosts {
                 read_era_id,
                 activate_bid,
                 redelegate,
+                transfer_validator,
             },
             rem,
         ))
@@ -225,6 +236,7 @@ impl Distribution<AuctionCosts> for Standard {
             read_era_id: rng.gen(),
             activate_bid: rng.gen(),
             redelegate: rng.gen(),
+            transfer_validator: rng.gen(),
         }
     }
 }
@@ -252,6 +264,7 @@ pub mod gens {
             read_era_id in num::u32::ANY,
             activate_bid in num::u32::ANY,
             redelegate in num::u32::ANY,
+            transfer_validator in num::u32::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
@@ -268,6 +281,7 @@ pub mod gens {
                 read_era_id,
                 activate_bid,
                 redelegate,
+                transfer_validator,
             }
         }
     }
