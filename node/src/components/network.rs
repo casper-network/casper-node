@@ -78,7 +78,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    conman::{ConMan, ProtocolHandler, ProtocolHandshakeOutcome},
+    conman::{ConMan, ConManState, ConManStateReadLock, ProtocolHandler, ProtocolHandshakeOutcome},
     error::ConnectionError,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -108,8 +108,8 @@ use crate::{
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{
-        self, display_error, DropSwitch, Fuse, LockedLineWriter, ObservableFuse, Source,
-        TokenizedCount,
+        self, display_error, rate_limited::rate_limited, DropSwitch, Fuse, LockedLineWriter,
+        ObservableFuse, Source,
     },
     NodeRng,
 };
@@ -311,33 +311,39 @@ where
 
     /// Submits all known addresses to the connection manager.
     fn learn_known_addresses(&self) {
-        if let Some(ref conman) = self.conman {
-            for known_address in &self.known_addresses {
-                conman.learn_addr(*known_address);
-            }
-        } else {
+        let Some(ref conman) = self.conman else {
             error!("cannot learn known addresses, component not initialized");
+            return;
+        };
+
+        for known_address in &self.known_addresses {
+            conman.learn_addr(*known_address);
         }
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
     fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
+        let Some(ref conman) = self.conman else {
+            error!(
+                "cannot broadcast message to validators on non-initialized networking component"
+            );
+            return;
+        };
+
         self.net_metrics.broadcast_requests.inc();
 
         let mut total_connected_validators_in_era = 0;
         let mut total_outgoing_manager_connected_peers = 0;
 
-        for peer_id in self
-            .conman
-            .as_ref()
-            .expect("internal component state corrupted")
-            .connected_peers()
-        {
+        let state = conman.read_state();
+
+        for &peer_id in state.routing_table().keys() {
             total_outgoing_manager_connected_peers += 1;
 
+            // TODO: Filter by validator state.
             if true {
                 total_connected_validators_in_era += 1;
-                self.send_message(peer_id, msg.clone(), None)
+                self.send_message(&*state, peer_id, msg.clone(), None)
             }
         }
 
@@ -406,102 +412,99 @@ where
     /// Queues a message to be sent to a specific node.
     fn send_message(
         &self,
+        state: &ConManState,
         dest: NodeId,
-        msg: Arc<Message<P>>,
+        msg: Arc<Message<P>>, // TODO: Pass serialized with channel here?
         message_queued_responder: Option<AutoClosingResponder<()>>,
     ) {
-        todo!()
-        // // Try to send the message.
-        // if let Some(connection) = self.outgoing_manager.get_route(dest) {
-        //     let channel = msg.get_channel();
+        // Try to send the message.
+        if let Some(route) = state.routing_table().get(&dest) {
+            let channel = msg.get_channel();
 
-        //     let payload = if let Some(payload) = serialize_network_message(&msg) {
-        //         payload
-        //     } else {
-        //         // No need to log, `serialize_network_message` already logs the failure.
-        //         return;
-        //     };
-        //     trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
+            let Some(payload) = serialize_network_message(&msg) else {
+                // No need to log, `serialize_network_message` already logs the failure.
+                return;
+            };
 
-        //     /// Build the request.
-        //     ///
-        //     /// Internal helper function to ensure requests are always built the same way.
-        //     // Note: Ideally, this would be a closure, but lifetime inference does not
-        //     //       work out here, and we cannot annotate lifetimes on closures.
-        //     #[inline(always)]
-        //     fn mk_request(
-        //         rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
-        //         channel: Channel,
-        //         payload: Bytes,
-        //     ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
-        //         rpc_client
-        //             .create_request(channel.into_channel_id())
-        //             .with_payload(payload)
-        //     }
+            trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-        //     let request = mk_request(&connection.rpc_client, channel, payload);
+            /// Build the request.
+            ///
+            /// Internal helper function to ensure requests are always built the same way.
+            // Note: Ideally, this would be a closure, but lifetime inference does not
+            //       work out here, and we cannot annotate lifetimes on closures.
+            #[inline(always)]
+            fn mk_request(
+                rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
+                channel: Channel,
+                payload: Bytes,
+            ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
+                rpc_client
+                    .create_request(channel.into_channel_id())
+                    .with_payload(payload)
+            }
+            let request = mk_request(&route.client, channel, payload);
 
-        //     // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
-        //     match request.try_queue_for_sending() {
-        //         Ok(guard) => process_request_guard(channel, guard),
-        //         Err(builder) => {
-        //             // Failed to queue immediately, our next step depends on whether we were asked
-        //             // to keep trying or to discard.
+            // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
+            match request.try_queue_for_sending() {
+                Ok(guard) => process_request_guard(channel, guard),
+                Err(builder) => {
+                    // Failed to queue immediately, our next step depends on whether we were asked
+                    // to keep trying or to discard.
 
-        //             // Reconstruct the payload.
-        //             let payload = match builder.into_payload() {
-        //                 None => {
-        //                     // This should never happen.
-        //                     error!("payload unexpectedly disappeard");
-        //                     return;
-        //                 }
-        //                 Some(payload) => payload,
-        //             };
+                    // Reconstruct the payload.
+                    let payload = match builder.into_payload() {
+                        None => {
+                            // This should never happen.
+                            error!("payload unexpectedly disappeard");
+                            return;
+                        }
+                        Some(payload) => payload,
+                    };
 
-        //             if let Some(responder) = message_queued_responder {
-        //                 // Reconstruct the client.
-        //                 let client = connection.rpc_client.clone();
+                    if let Some(responder) = message_queued_responder {
+                        // Reconstruct the client.
+                        let client = route.client.clone();
 
-        //                 // Technically, the queueing future should be spawned by the reactor, but
-        //                 // since the networking component usually controls its own futures, we are
-        //                 // allowed to spawn these as well.
-        //                 tokio::spawn(async move {
-        //                     let guard = mk_request(&client, channel, payload)
-        //                         .queue_for_sending()
-        //                         .await;
-        //                     responder.respond(()).await;
+                        // Technically, the queueing future should be spawned by the reactor, but
+                        // since the networking component usually controls its own futures, we are
+                        // allowed to spawn these as well.
+                        tokio::spawn(async move {
+                            let guard = mk_request(&client, channel, payload)
+                                .queue_for_sending()
+                                .await;
+                            responder.respond(()).await;
 
-        //                     // We need to properly process the guard, so it does not cause a
-        //                     // cancellation from being dropped.
-        //                     process_request_guard(channel, guard)
-        //                 });
-        //             } else {
-        //                 // We had to drop the message, since we hit the buffer limit.
-        //                 debug!(%channel, "node is sending at too high a rate, message dropped");
+                            // We need to properly process the guard, so it does not cause a
+                            // cancellation from being dropped.
+                            process_request_guard(channel, guard)
+                        });
+                    } else {
+                        // We had to drop the message, since we hit the buffer limit.
+                        match deserialize_network_message::<P>(&payload) {
+                            Ok(reconstructed_message) => {
+                                debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                            }
+                            Err(err) => {
+                                error!(our_id=%self.context.our_id(),
+                                       %dest,
+                                       reconstruction_error=%err,
+                                       ?payload,
+                                       "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
+                                );
+                            }
+                        }
 
-        //                 match deserialize_network_message::<P>(&payload) {
-        //                     Ok(reconstructed_message) => {
-        //                         debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
-        //                     }
-        //                     Err(err) => {
-        //                         error!(our_id=%self.context.our_id(),
-        //                                %dest,
-        //                                reconstruction_error=%err,
-        //                                ?payload,
-        //                                "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
-        //                         );
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-
-        //     let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
-        //     // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
-        // } else {
-        //     // We are not connected, so the reconnection is likely already in progress.
-        //     debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
-        // }
+                        rate_limited!(
+                            MESSAGE_RATE_EXCEEDED,
+                            1,
+                            Duration::from_secs(5),
+                            |dropped| warn!(%channel, %msg, dropped, "node is sending at too high a rate, message dropped")
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Determines whether an outgoing peer should be blocked based on the connection error.
@@ -563,15 +566,21 @@ where
                 payload,
                 message_queued_responder,
             } => {
-                // We're given a message to send. Pass on the responder so that confirmation
-                // can later be given once the message has actually been buffered.
-                self.net_metrics.direct_message_requests.inc();
+                if let Some(ref conman) = self.conman {
+                    self.net_metrics.direct_message_requests.inc();
 
-                self.send_message(
-                    *dest,
-                    Arc::new(Message::Payload(*payload)),
-                    message_queued_responder,
-                );
+                    // We're given a message to send. Pass on the responder so that confirmation
+                    // can later be given once the message has actually been buffered.
+                    self.send_message(
+                        &*conman.read_state(),
+                        *dest,
+                        Arc::new(Message::Payload(*payload)),
+                        message_queued_responder,
+                    );
+                } else {
+                    error!("cannot send message on non-initialized network component");
+                }
+
                 Effects::new()
             }
             NetworkRequest::ValidatorBroadcast {

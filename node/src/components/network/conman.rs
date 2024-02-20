@@ -44,6 +44,8 @@ use super::{
     Transport,
 };
 
+pub(crate) type ConManStateReadLock<'a> = std::sync::RwLockReadGuard<'a, ConManState>;
+
 type RpcClient = JulietRpcClient<{ super::Channel::COUNT }>;
 
 type RpcServer =
@@ -152,7 +154,7 @@ impl ConManState {
 
 /// Record of punishment for a peers malicious behavior.
 #[derive(Debug)]
-struct Sentence {
+pub(crate) struct Sentence {
     /// Time until the ban is lifted.
     pub(crate) until: Instant,
     /// Justification for the ban.
@@ -161,11 +163,11 @@ struct Sentence {
 
 /// Data related to an established connection.
 #[derive(Debug)]
-struct Route {
+pub(crate) struct Route {
     /// Node ID of the peer.
-    peer: NodeId,
+    pub(crate) peer: NodeId,
     /// The established [`juliet`] RPC client that is used to send requests to the peer.
-    client: RpcClient,
+    pub(crate) client: RpcClient,
 }
 
 /// An active route that is registered in a routing table.
@@ -368,22 +370,6 @@ impl ConMan {
         error!("missing implementation for banned peer connection shutdown");
     }
 
-    /// Returns a set of all connected peers.
-    ///
-    /// Peers are returned in no specific order.
-    #[inline]
-    pub(crate) fn connected_peers(&self) -> Vec<NodeId> {
-        // TODO: Offer an alternative interface that does not require copying?
-        self.ctx
-            .state
-            .read()
-            .expect("lock poisoned")
-            .routing_table
-            .keys()
-            .cloned()
-            .collect()
-    }
-
     /// Returns a read lock onto the state of this connection manager.
     ///
     /// ## Warning
@@ -392,7 +378,7 @@ impl ConMan {
     /// non-async read lock that will potentially block a large number of threads (not tasks!) of
     /// the tokio runtime. You have been warned!
     #[inline]
-    pub(crate) fn read_state(&self) -> std::sync::RwLockReadGuard<'_, ConManState> {
+    pub(crate) fn read_state(&self) -> ConManStateReadLock<'_> {
         self.ctx.state.read().expect("lock poisoned")
     }
 }

@@ -35,7 +35,7 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self, IntGauge};
+use prometheus::{self};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -161,33 +161,6 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 #[inline]
 pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
-}
-
-/// An "unlimited semaphore".
-///
-/// Upon construction, `TokenizedCount` increases a given `IntGauge` by one for metrics purposed.
-///
-/// Once it is dropped, the underlying gauge will be decreased by one.
-#[derive(Debug)]
-pub(crate) struct TokenizedCount {
-    /// The gauge modified on construction/drop.
-    gauge: Option<IntGauge>,
-}
-
-impl TokenizedCount {
-    /// Create a new tokenized count, increasing the given gauge.
-    pub(crate) fn new(gauge: IntGauge) -> Self {
-        gauge.inc();
-        TokenizedCount { gauge: Some(gauge) }
-    }
-}
-
-impl Drop for TokenizedCount {
-    fn drop(&mut self) {
-        if let Some(gauge) = self.gauge.take() {
-            gauge.dec();
-        }
-    }
 }
 
 /// A display-helper that shows iterators display joined by ",".
@@ -488,7 +461,7 @@ mod tests {
 
     use crate::utils::resolve_address;
 
-    use super::{wait_for_arc_drop, xor, TokenizedCount};
+    use super::{wait_for_arc_drop, xor};
 
     /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
 
@@ -560,25 +533,6 @@ mod tests {
         // Immedetialy after, we should not be able to obtain a strong reference anymore.
         // This test fails only if we have a race condition, so false positive tests are possible.
         assert!(weak.upgrade().is_none());
-    }
-
-    #[test]
-    fn tokenized_count_sanity_check() {
-        let gauge = IntGauge::new("sanity_gauge", "tokenized count test gauge")
-            .expect("failed to construct IntGauge in test");
-
-        gauge.inc();
-        gauge.inc();
-        assert_eq!(gauge.get(), 2);
-
-        let ticket1 = TokenizedCount::new(gauge.clone());
-        let ticket2 = TokenizedCount::new(gauge.clone());
-
-        assert_eq!(gauge.get(), 4);
-        drop(ticket2);
-        assert_eq!(gauge.get(), 3);
-        drop(ticket1);
-        assert_eq!(gauge.get(), 2);
     }
 
     #[test]
