@@ -322,7 +322,7 @@ where
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
-    fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
+    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, era_id: EraId) {
         let Some(ref conman) = self.conman else {
             error!(
                 "cannot broadcast message to validators on non-initialized networking component"
@@ -332,28 +332,14 @@ where
 
         self.net_metrics.broadcast_requests.inc();
 
-        let mut total_connected_validators_in_era = 0;
-        let mut total_outgoing_manager_connected_peers = 0;
-
         let state = conman.read_state();
 
         for &peer_id in state.routing_table().keys() {
-            total_outgoing_manager_connected_peers += 1;
-
             // TODO: Filter by validator state.
             if true {
-                total_connected_validators_in_era += 1;
-                self.send_message(&*state, peer_id, msg.clone(), None)
+                self.send_message(&*state, peer_id, channel, payload.clone(), None)
             }
         }
-
-        debug!(
-            msg = %msg,
-            era = era_id.value(),
-            total_connected_validators_in_era,
-            total_outgoing_manager_connected_peers,
-            "broadcast_message_to_validators"
-        );
     }
 
     /// Queues a message to `count` random nodes on the network.
@@ -414,20 +400,12 @@ where
         &self,
         state: &ConManState,
         dest: NodeId,
-        msg: Arc<Message<P>>, // TODO: Pass serialized with channel here?
+        channel: Channel,
+        payload: Bytes,
         message_queued_responder: Option<AutoClosingResponder<()>>,
     ) {
         // Try to send the message.
         if let Some(route) = state.routing_table().get(&dest) {
-            let channel = msg.get_channel();
-
-            let Some(payload) = serialize_network_message(&msg) else {
-                // No need to log, `serialize_network_message` already logs the failure.
-                return;
-            };
-
-            trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
-
             /// Build the request.
             ///
             /// Internal helper function to ensure requests are always built the same way.
@@ -499,7 +477,7 @@ where
                             MESSAGE_RATE_EXCEEDED,
                             1,
                             Duration::from_secs(5),
-                            |dropped| warn!(%channel, %msg, dropped, "node is sending at too high a rate, message dropped")
+                            |dropped| warn!(%channel, payload_len=payload.len(), dropped, "node is sending at too high a rate, message dropped")
                         );
                     }
                 }
@@ -566,20 +544,27 @@ where
                 payload,
                 message_queued_responder,
             } => {
-                if let Some(ref conman) = self.conman {
-                    self.net_metrics.direct_message_requests.inc();
-
-                    // We're given a message to send. Pass on the responder so that confirmation
-                    // can later be given once the message has actually been buffered.
-                    self.send_message(
-                        &*conman.read_state(),
-                        *dest,
-                        Arc::new(Message::Payload(*payload)),
-                        message_queued_responder,
-                    );
-                } else {
+                let Some(ref conman) = self.conman else {
                     error!("cannot send message on non-initialized network component");
-                }
+
+                    return Effects::new();
+                };
+
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
+                self.net_metrics.direct_message_requests.inc();
+
+                // We're given a message to send. Pass on the responder so that confirmation
+                // can later be given once the message has actually been buffered.
+                self.send_message(
+                    &*conman.read_state(),
+                    *dest,
+                    channel,
+                    payload,
+                    message_queued_responder,
+                );
 
                 Effects::new()
             }
@@ -589,7 +574,11 @@ where
                 auto_closing_responder,
             } => {
                 // We're given a message to broadcast.
-                self.broadcast_message_to_validators(Arc::new(Message::Payload(*payload)), era_id);
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
+                self.broadcast_message_to_validators(channel, payload, era_id);
                 auto_closing_responder.respond(()).ignore()
             }
             NetworkRequest::Gossip {
@@ -1023,6 +1012,16 @@ where
             err
         })
         .ok()
+}
+
+/// Given a message payload, puts it into a proper message envelope and returns the serialized
+/// envlope along with the channel it should be sent on.
+#[inline(always)]
+fn stuff_into_envelope<P: Payload>(payload: P) -> Option<(Channel, Bytes)> {
+    let msg = Message::Payload(payload);
+    let channel = msg.get_channel();
+    let byte_payload = serialize_network_message(&msg)?;
+    Some((channel, byte_payload))
 }
 
 /// Deserializes a networking message from the protocol specified encoding.
