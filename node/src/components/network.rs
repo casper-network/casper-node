@@ -343,17 +343,19 @@ where
     }
 
     /// Queues a message to `count` random nodes on the network.
+    ///
+    /// Returns the IDs of the nodes the message has been gossiped to.
     fn gossip_message(
         &self,
         rng: &mut NodeRng,
-        msg: Arc<Message<P>>,
+        channel: Channel,
+        payload: Bytes,
         _gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        todo!()
-        // // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
-        // //       See #4247.
+        // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
+        //       See #4247.
         // let is_validator_in_era = |_, _: &_| true;
         // let gossip_target = GossipTarget::All;
 
@@ -393,6 +395,26 @@ where
         // }
 
         // peer_ids.into_iter().collect()
+
+        let Some(ref conman) = self.conman else {
+            error!("cannot gossip on non-initialized networking component");
+            return Default::default();
+        };
+
+        let mut selected = HashSet::new();
+        let state = conman.read_state();
+        for route in state
+            .routing_table()
+            .values()
+            .filter(move |route| !exclude.contains(&route.peer))
+            .choose_multiple(rng, count)
+        {
+            self.send_message(&*state, route.peer, channel, payload.clone(), None);
+
+            selected.insert(route.peer);
+        }
+
+        selected
     }
 
     /// Queues a message to be sent to a specific node.
@@ -579,6 +601,7 @@ where
                 };
 
                 self.broadcast_message_to_validators(channel, payload, era_id);
+
                 auto_closing_responder.respond(()).ignore()
             }
             NetworkRequest::Gossip {
@@ -589,13 +612,13 @@ where
                 auto_closing_responder,
             } => {
                 // We're given a message to gossip.
-                let sent_to = self.gossip_message(
-                    rng,
-                    Arc::new(Message::Payload(*payload)),
-                    gossip_target,
-                    count,
-                    exclude,
-                );
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
+                let sent_to =
+                    self.gossip_message(rng, channel, payload, gossip_target, count, exclude);
+
                 auto_closing_responder.respond(sent_to).ignore()
             }
         }
