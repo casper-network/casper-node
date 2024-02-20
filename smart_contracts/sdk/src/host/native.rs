@@ -49,7 +49,7 @@ pub struct BorrowedTaggedValue<'a> {
     tag: u64,
     value: &'a [u8],
 }
-type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
+pub type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
 #[derive(Clone, Debug)]
 pub struct NativeParam(String);
@@ -115,26 +115,42 @@ impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
 }
 
 #[derive(Default, Clone, Debug)]
-pub struct Stub {
+pub struct Environment {
     pub db: Arc<RwLock<Container>>,
     manifests: Arc<RwLock<BTreeMap<Address, NativeManifest>>>,
     // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
+    contract_address: Option<Address>,
     caller: Address,
 }
 
-impl Stub {
+pub const DEFAULT_ADDRESS: Address = [42; 32];
+
+impl Environment {
     pub fn new(db: Container, caller: Address) -> Self {
         Self {
             db: Arc::new(RwLock::new(db)),
             manifests: Arc::new(RwLock::new(BTreeMap::new())),
             input_data: Default::default(),
+            contract_address: None,
             caller,
         }
     }
+
+    pub fn with_caller(&self, caller: Address) -> Self {
+        let mut env = self.clone();
+        env.caller = caller;
+        env
+    }
 }
 
-impl Stub {
+impl Environment {
+    fn key_prefix(&self, key: &[u8]) -> Bytes {
+        let mut data = self.contract_address.unwrap_or(self.caller).to_vec();
+        data.extend(key);
+        Bytes::from(data)
+    }
+
     fn casper_read(
         &self,
         key_space: u64,
@@ -144,17 +160,13 @@ impl Stub {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<i32, NativeTrap> {
-        let prefixed = {
-            let mut data = self.caller.to_vec();
-            let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
-            data.extend(key_bytes);
-            Bytes::from(data)
-        };
+        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
+        let key_bytes = self.key_prefix(key_bytes);
 
         let mut db = self.db.read().unwrap();
 
         let value = match db.get(&key_space) {
-            Some(values) => values.get(&prefixed).cloned(),
+            Some(values) => values.get(&key_bytes).cloned(),
             None => return Ok(1),
         };
         match value {
@@ -199,17 +211,14 @@ impl Stub {
         assert!(!key_ptr.is_null());
         assert!(!value_ptr.is_null());
         // let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
-        let prefixed = {
-            let mut data = self.caller.to_vec();
-            let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
-            data.extend(key_bytes);
-            Bytes::from(data)
-        };
+        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
+        let key_bytes = self.key_prefix(&key_bytes);
+
         let value_bytes = unsafe { slice::from_raw_parts(value_ptr, value_size) };
 
         let mut db = self.db.write().unwrap();
         db.entry(key_space).or_default().insert(
-            prefixed,
+            key_bytes,
             TaggedValue {
                 tag: value_tag,
                 value: Bytes::copy_from_slice(value_bytes),
@@ -326,8 +335,8 @@ impl Stub {
                 .find(|entry_point| entry_point.selector == entry_point_selector.get())
                 .expect("Entry point exists");
 
-            let mut stub = with_stub(|stub| stub);
-            stub.caller = contract_address;
+            let mut stub = with_current_environment(|stub| stub);
+            stub.contract_address = Some(contract_address);
             stub.input_data = input_data.map(Bytes::copy_from_slice);
 
             // Call constructor, expect a trap
@@ -388,14 +397,14 @@ impl Stub {
 
         // self.input_data
 
-        let mut new_stub = with_stub(|stub| stub.clone());
+        let mut new_stub = with_current_environment(|stub| stub.clone());
         new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
-        new_stub.caller = address.try_into().expect("Size to match");
+        new_stub.contract_address = Some(address.try_into().expect("Size to match"));
 
         let ret = dispatch_with(new_stub, || {
             (entry_point.fptr)();
         });
-        // dbg!(&ret);
+
         match ret {
             Ok(()) => Ok(0),
             Err(NativeTrap::Return(_flags, bytes)) => {
@@ -442,11 +451,14 @@ Example paths:
 
 thread_local! {
     pub(crate) static LAST_TRAP: RefCell<Option<NativeTrap>> = RefCell::new(None);
-    static STUB_STACK: RefCell<VecDeque<Stub>> = RefCell::new(VecDeque::new());
+    static ENV_STACK: RefCell<VecDeque<Environment>> = RefCell::new(VecDeque::from_iter([
+        // Stack of environments has a default element so unit tests do not require extra effort.
+        // Environment::default()
+    ]));
 }
 
-pub fn with_stub<T>(f: impl FnOnce(Stub) -> T) -> T {
-    STUB_STACK.with(|stack| {
+pub fn with_current_environment<T>(f: impl FnOnce(Environment) -> T) -> T {
+    ENV_STACK.with(|stack| {
         let stub = {
             let borrowed = stack.borrow();
             let front = borrowed.front().expect("Stub exists").clone();
@@ -454,6 +466,10 @@ pub fn with_stub<T>(f: impl FnOnce(Stub) -> T) -> T {
         };
         f(stub)
     })
+}
+
+pub fn current_environment() -> Environment {
+    with_current_environment(|env| env)
 }
 
 fn handle_ret_with<T>(value: Result<T, NativeTrap>, ret: impl FnOnce() -> T) -> T {
@@ -474,8 +490,8 @@ fn handle_ret<T: Default>(value: Result<T, NativeTrap>) -> T {
     handle_ret_with(value, || Default::default())
 }
 
-pub fn dispatch_with<T>(stub: Stub, f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
-    STUB_STACK.with(|stack| {
+pub fn dispatch_with<T>(stub: Environment, f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
+    ENV_STACK.with(|stack| {
         let mut borrowed = stack.borrow_mut();
         borrowed.push_front(stub);
     });
@@ -496,7 +512,7 @@ pub fn dispatch_with<T>(stub: Stub, f: impl FnOnce() -> T) -> Result<T, NativeTr
     };
 
     // Pop the stub from the stack
-    STUB_STACK.with(|stack| {
+    ENV_STACK.with(|stack| {
         let mut borrowed = stack.borrow_mut();
         borrowed.pop_front();
     });
@@ -547,7 +563,7 @@ mod symbols {
     ) -> i32 {
         let _name = "casper_read";
         let _args = (&key_space, &key_ptr, &key_size, &info, &alloc, &alloc_ctx);
-        let _call_result = with_stub(|stub| {
+        let _call_result = with_current_environment(|stub| {
             stub.casper_read(key_space, key_ptr, key_size, info, alloc, alloc_ctx)
         });
         crate::host::native::handle_ret(_call_result)
@@ -571,7 +587,7 @@ mod symbols {
             &value_ptr,
             &value_size,
         );
-        let _call_result = with_stub(|stub| {
+        let _call_result = with_current_environment(|stub| {
             stub.casper_write(
                 key_space, key_ptr, key_size, value_tag, value_ptr, value_size,
             )
@@ -583,7 +599,7 @@ mod symbols {
     pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) {
         let _name = "casper_print";
         let _args = (&msg_ptr, &msg_size);
-        let _call_result = with_stub(|stub| stub.casper_print(msg_ptr, msg_size));
+        let _call_result = with_current_environment(|stub| stub.casper_print(msg_ptr, msg_size));
         crate::host::native::handle_ret(_call_result)
     }
 
@@ -593,7 +609,8 @@ mod symbols {
     pub extern "C" fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) {
         let _name = "casper_return";
         let _args = (&flags, &data_ptr, &data_len);
-        let _call_result = with_stub(|stub| stub.casper_return(flags, data_ptr, data_len));
+        let _call_result =
+            with_current_environment(|stub| stub.casper_return(flags, data_ptr, data_len));
         let err = _call_result.unwrap_err(); // SAFE
         LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
     }
@@ -605,7 +622,8 @@ mod symbols {
     ) -> *mut u8 {
         let _name = "casper_copy_input";
         let _args = (&alloc, &alloc_ctx);
-        let _call_result = with_stub(|stub| stub.casper_copy_input(alloc, alloc_ctx));
+        let _call_result =
+            with_current_environment(|stub| stub.casper_copy_input(alloc, alloc_ctx));
         crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
     }
 
@@ -613,7 +631,8 @@ mod symbols {
     pub extern "C" fn casper_copy_output(output_ptr: *const u8, output_len: usize) {
         let _name = "casper_copy_output";
         let _args = (&output_ptr, &output_len);
-        let _call_result = with_stub(|stub| stub.casper_copy_output(output_ptr, output_len));
+        let _call_result =
+            with_current_environment(|stub| stub.casper_copy_output(output_ptr, output_len));
         crate::host::native::handle_ret(_call_result)
     }
 
@@ -637,7 +656,7 @@ mod symbols {
             &input_size,
             &result_ptr,
         );
-        let _call_result = with_stub(|stub| {
+        let _call_result = with_current_environment(|stub| {
             stub.casper_create_contract(
                 code_ptr,
                 code_size,
@@ -673,7 +692,7 @@ mod symbols {
             &alloc,
             &alloc_ctx,
         );
-        let _call_result = with_stub(|stub| {
+        let _call_result = with_current_environment(|stub| {
             stub.casper_call(
                 address_ptr,
                 address_size,
@@ -690,7 +709,7 @@ mod symbols {
 
     use std::ptr;
 
-    use super::with_stub;
+    use super::with_current_environment;
 
     #[no_mangle]
     /**Obtain data from the blockchain environemnt of current wasm invocation.
@@ -713,8 +732,9 @@ mod symbols {
     ) -> *mut u8 {
         let _name = "casper_env_read";
         let _args = (&env_path, &env_path_size, &alloc, &alloc_ctx);
-        let _call_result =
-            with_stub(|stub| stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx));
+        let _call_result = with_current_environment(|stub| {
+            stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx)
+        });
         crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
     }
 
@@ -722,7 +742,7 @@ mod symbols {
     pub extern "C" fn casper_env_caller(dest: *mut u8, dest_len: usize) -> *const u8 {
         let _name = "casper_env_caller";
         let _args = (&dest, &dest_len);
-        let _call_result = with_stub(|stub| stub.casper_env_caller(dest, dest_len));
+        let _call_result = with_current_environment(|stub| stub.casper_env_caller(dest, dest_len));
         crate::host::native::handle_ret_with(_call_result, || ptr::null())
     }
 }
@@ -736,7 +756,12 @@ mod tests {
         let msg = "Hello";
         // let stub = STUB.read().unwrap();
         // stub.casper_print(msg.as_ptr(), msg.len());
-        let res = with_stub(|stub| stub.casper_print(msg.as_ptr(), msg.len())).expect("Ok");
-        assert_eq!(res, 0);
+        let () = with_current_environment(|stub| stub.casper_print(msg.as_ptr(), msg.len()))
+            .expect("Ok");
+    }
+
+    #[test]
+    fn test_returns() {
+        let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
     }
 }

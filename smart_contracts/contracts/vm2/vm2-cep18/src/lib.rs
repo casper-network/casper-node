@@ -16,11 +16,11 @@ pub fn call() {
 
 #[cfg(test)]
 mod tests {
-    use casper_sdk::host::native::{dispatch_with, Stub};
+    use casper_sdk::host::native::{dispatch_with, Environment};
 
     #[test]
     fn call_should_work() {
-        let _ = dispatch_with(Stub::default(), || {
+        let _ = dispatch_with(Environment::default(), || {
             super::call(&[]);
         });
     }

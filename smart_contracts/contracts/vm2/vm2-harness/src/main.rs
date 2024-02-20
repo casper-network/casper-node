@@ -299,7 +299,7 @@ mod tests {
     use alloc::collections::{BTreeMap, BTreeSet};
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
-        host::native::{dispatch_with, Stub},
+        host::native::{dispatch_with, Environment},
         manifest::ToManifest,
         schema::{schema_helper, CasperSchema},
         sys::Manifest,
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn verify_check_private_and_public_methods() {
-        dispatch_with(Stub::default(), || {
+        dispatch_with(Environment::default(), || {
             Harness::default().private_function_that_should_not_be_exported();
             Harness::default().restricted_function_that_should_be_part_of_manifest();
         })

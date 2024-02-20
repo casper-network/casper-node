@@ -124,7 +124,7 @@ mod tests {
         abi::{Definition, StructField},
         host::{
             self,
-            native::{dispatch_with, Stub},
+            native::{dispatch_with, Environment},
         },
         schema::{CasperSchema, SchemaEntryPoint, SchemaType},
         sys::CreateResult,
@@ -135,7 +135,7 @@ mod tests {
     #[should_panic(query = "Entry point exists")]
     #[test]
     fn cant_call_private1() {
-        let _ = dispatch_with(Stub::default(), || {
+        let _ = dispatch_with(Environment::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
 
             // TODO: native impl currently is panicking, fix error handling in it
@@ -153,7 +153,7 @@ mod tests {
     #[should_panic(query = "Entry point exists")]
     #[test]
     fn cant_call_private2() {
-        let _ = dispatch_with(Stub::default(), || {
+        let _ = dispatch_with(Environment::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
 
             // TODO: native impl currently is panicking, fix error handling in it
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn foo_with_custom_constructor() {
-        let _ret = dispatch_with(Stub::default(), || {
+        let _ret = dispatch_with(Environment::default(), || {
             let constructor = super::HasTraitsRef::new(5);
 
             let CreateResult {
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn foo() {
-        let _ = dispatch_with(Stub::default(), || {
+        let _ = dispatch_with(Environment::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
             {
                 let ret = host::call(

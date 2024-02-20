@@ -1391,3 +1391,14 @@ pub(crate) fn compute_selector(bytes: &[u8]) -> Selector {
 
     Selector::new(selector)
 }
+
+#[proc_macro]
+pub fn test(item: TokenStream) -> TokenStream {
+    // #[casper::test] fn foo() { }
+    let input = parse_macro_input!(item as ItemFn);
+    TokenStream::from(quote! {
+        #[test]
+        #input
+    })
+    .into()
+}

@@ -118,6 +118,10 @@ impl CEP18 {
         self.balances.get(&address).unwrap_or_default()
     }
 
+    pub fn my_balance(&self) -> u64 {
+        self.balances.get(&host::get_caller()).unwrap_or_default()
+    }
+
     pub fn allowance(&self, spender: Address, owner: Address) {
         self.allowances.get(&(spender, owner)).unwrap_or_default();
     }
@@ -239,32 +243,33 @@ impl CEP18 {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, thread::current};
 
     use crate::security_badge::SecurityBadge;
 
     use super::*;
 
     use casper_sdk::{
-        host::{self, native::Stub},
+        host::{
+            self,
+            native::{current_environment, with_current_environment, Environment, DEFAULT_ADDRESS},
+        },
         types::Address,
         ContractHandle, ContractRef,
     };
 
+    use casper_macros;
     const ALICE: Address = [1; 32];
     const BOB: Address = [2; 32];
 
     #[test]
     fn it_works() {
-        let stub = Stub::new(Default::default(), [42; 32]);
+        let stub = Environment::new(Default::default(), [42; 32]);
 
         let result = host::native::dispatch_with(stub, || {
             let mut contract = CEP18::new("Foo Token".to_string());
 
-            assert_eq!(
-                contract.sec_check(&[SecurityBadge::Admin]).unwrap_err(),
-                Cep18Error::InsufficientRights
-            );
+            assert_eq!(contract.sec_check(&[SecurityBadge::Admin]), Ok(()));
 
             assert_eq!(contract.name(), "Foo Token");
             assert_eq!(contract.balance_of(ALICE), 0);
@@ -287,15 +292,21 @@ mod tests {
 
     #[test]
     fn e2e() {
-        let stub = Stub::new(Default::default(), [42; 32]);
+        let db = host::native::Container::default();
+        let env = Environment::new(db.clone(), DEFAULT_ADDRESS);
 
-        let result = host::native::dispatch_with(stub.clone(), move || {
+        let result = host::native::dispatch_with(env, move || {
             let constructor = CEP18Ref::new("Foo Token".to_string());
-
             let cep18_handle = CEP18::create(constructor).expect("Should create");
 
-            let builder = cep18_handle.build_call();
-            builder.call(|cep18| cep18.name()).expect("Should call");
+            {
+                // As a builder that allows you to specify value to pass etc.
+                cep18_handle
+                    .build_call()
+                    .with_value(1234)
+                    .call(|cep18| cep18.name())
+                    .expect("Should call");
+            }
 
             let name1: String = cep18_handle
                 .call(|cep18| cep18.name())
@@ -322,22 +333,55 @@ mod tests {
                 .expect("Should call");
             assert_eq!(bob_balance, 0);
 
-            let mint_result = cep18_handle
+            let _mint_succeed: () = cep18_handle
                 .call(|cep18| cep18.mint(ALICE, 1000))
-                .expect("Mint succeed");
+                .expect("Should succeed")
+                .expect("Mint succeeded");
 
             let alice_balance_after: u64 = cep18_handle
                 .call(|cep18| cep18.balance_of(ALICE))
                 .expect("Should call");
             assert_eq!(alice_balance_after, 1000);
 
-            // // [42; 32] -> ALICE - not much balance
-            // assert_eq!(contract.balance_of(host::get_caller()), 0);
-            // assert_eq!(
-            //     contract.transfer(ALICE, 1),
-            //     Err(Cep18Error::InsufficientBalance)
-            // );
+            // Default account -> ALICE
+            assert_eq!(
+                cep18_handle
+                    .build_call()
+                    .call(|cep18| cep18.transfer(ALICE, 1))
+                    .expect("Should call"),
+                Err(Cep18Error::InsufficientBalance)
+            );
+            assert_eq!(host::get_caller(), DEFAULT_ADDRESS);
+
+            let alice_env = current_environment().with_caller(ALICE);
+            host::native::dispatch_with(alice_env, || {
+                assert_eq!(host::get_caller(), ALICE);
+                assert_eq!(
+                    cep18_handle
+                        .call(|cep18| cep18.my_balance())
+                        .expect("Should call"),
+                    1000
+                );
+                assert_eq!(
+                    cep18_handle
+                        .call(|cep18| cep18.transfer(BOB, 1))
+                        .expect("Should call"),
+                    Ok(())
+                );
+            })
+            .expect("Success");
+
+            let bob_balance = cep18_handle
+                .call(|cep18| cep18.balance_of(BOB))
+                .expect("Should call");
+            assert_eq!(bob_balance, 1);
+
+            let alice_balance = cep18_handle
+                .call(|cep18| cep18.balance_of(ALICE))
+                .expect("Should call");
+            assert_eq!(alice_balance, 999);
         });
+
         assert_eq!(result, Ok(()));
     }
 }
