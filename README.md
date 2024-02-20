@@ -2,7 +2,7 @@
 
 # casper-node
 
-Reference client for the Casper Blockchain Protocol.
+Reference node for the Casper Blockchain Protocol.
 
 ## Casper Blockchain
 
