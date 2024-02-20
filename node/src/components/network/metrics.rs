@@ -3,8 +3,9 @@ use std::sync::Weak;
 use prometheus::{Counter, IntCounter, IntGauge, Registry};
 use tracing::debug;
 
-use super::{outgoing::OutgoingMetrics, MessageKind};
 use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
+
+use super::MessageKind;
 
 /// Network-type agnostic networking metrics.
 #[derive(Debug)]
@@ -492,17 +493,6 @@ impl Metrics {
             }
         } else {
             debug!("not recording metrics, component already shut down");
-        }
-    }
-
-    /// Creates a set of outgoing metrics that is connected to this set of metrics.
-    pub(super) fn create_outgoing_metrics(&self) -> OutgoingMetrics {
-        OutgoingMetrics {
-            out_state_connecting: self.out_state_connecting.inner().clone(),
-            out_state_waiting: self.out_state_waiting.inner().clone(),
-            out_state_connected: self.out_state_connected.inner().clone(),
-            out_state_blocked: self.out_state_blocked.inner().clone(),
-            out_state_loopback: self.out_state_loopback.inner().clone(),
         }
     }
 

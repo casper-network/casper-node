@@ -345,6 +345,22 @@ impl ConMan {
         // TODO: We still need to implement the connection closing part.
         error!("missing implementation for banned peer connection shutdown");
     }
+
+    /// Returns a set of all connected peers.
+    ///
+    /// Peers are returned in no specific order.
+    #[inline]
+    pub(crate) fn connected_peers(&self) -> Vec<NodeId> {
+        // TODO: Offer an alternative interface that does not require copying?
+        self.ctx
+            .state
+            .read()
+            .expect("lock poisoned")
+            .routing_table
+            .keys()
+            .cloned()
+            .collect()
+    }
 }
 
 impl ConManContext {

@@ -36,7 +36,6 @@ mod identity;
 mod insights;
 mod message;
 mod metrics;
-mod outgoing;
 mod per_channel;
 mod symmetry;
 pub(crate) mod tasks;
@@ -74,10 +73,9 @@ use strum::EnumCount;
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::TcpStream,
-    task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tracing::{debug, error, info, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, trace, warn, Span};
 
 use casper_types::{EraId, PublicKey, SecretKey};
 
@@ -85,12 +83,9 @@ use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
     conman::{ConMan, ProtocolHandler, ProtocolHandshakeOutcome},
-    error::{ConnectionError, MessageReceiverError, MessageSenderError},
-    event::{IncomingConnection, OutgoingConnection},
+    error::ConnectionError,
     message::NodeKeyPair,
     metrics::Metrics,
-    outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
-    symmetry::ConnectionSymmetry,
     tasks::NetworkContext,
 };
 pub(crate) use self::{
@@ -130,31 +125,6 @@ const COMPONENT_NAME: &str = "network";
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-/// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
-/// delays increase exponentially!
-const RECONNECTION_ATTEMPTS: u8 = 8;
-
-/// Basic reconnection timeout.
-///
-/// The first reconnection attempt will be made after 2x this timeout.
-const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
-
-/// Interval during which to perform outgoing manager housekeeping.
-const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
-
-#[derive(Clone, DataSize, Debug)]
-pub(crate) struct OutgoingHandle {
-    #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    rpc_client: JulietRpcClient<{ Channel::COUNT }>,
-    peer_addr: SocketAddr,
-}
-
-impl Display for OutgoingHandle {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "outgoing handle to {}", self.peer_addr)
-    }
-}
-
 #[derive(DataSize)]
 pub(crate) struct Network<REv, P>
 where
@@ -172,22 +142,14 @@ where
     #[data_size(skip)] // Skipped, to reduce lock contention.
     conman: Option<ConMan>,
 
-    /// Outgoing connections manager.
-    outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
     /// Incoming validator map.
     ///
     /// Tracks which incoming connections are from validators. The atomic bool is shared with the
     /// receiver tasks to determine queue position.
     incoming_validator_status: HashMap<PublicKey, Weak<AtomicBool>>,
-    /// Tracks whether a connection is symmetric or not.
-    connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
     /// Fuse signaling a shutdown of the small network.
     shutdown_fuse: DropSwitch<ObservableFuse>,
-
-    /// Join handle for the server thread.
-    #[data_size(skip)]
-    server_join_handle: Option<JoinHandle<()>>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -228,16 +190,6 @@ where
 
         let chain_info = chain_info_source.into();
 
-        let outgoing_manager = OutgoingManager::with_metrics(
-            OutgoingConfig {
-                retry_attempts: RECONNECTION_ATTEMPTS,
-                base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: cfg.blocklist_retain_duration.into(),
-                sweep_timeout: cfg.max_addr_pending_time.into(),
-            },
-            net_metrics.create_outgoing_metrics(),
-        );
-
         let keylog = match cfg.keylog_path {
             Some(ref path) => {
                 let keylog = OpenOptions::new()
@@ -273,15 +225,13 @@ where
             context,
             validator_matrix,
             conman: None,
-            outgoing_manager,
             incoming_validator_status: Default::default(),
-            connection_symmetries: HashMap::new(),
             net_metrics,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
-            server_join_handle: None,
+
             _payload: PhantomData,
         };
 
@@ -344,37 +294,17 @@ where
 
         let context = self.context.clone();
 
-        // Disabled, remove later:
-        // self.server_join_handle = Some(tokio::spawn(
-        //     tasks::server(
-        //         context,
-        //         tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-        //         self.shutdown_fuse.inner().clone(),
-        //     )
-        //     .in_current_span(),
-        // ));
-
         // Learn all known addresses and mark them as unforgettable.
         let now = Instant::now();
-        let dial_requests: Vec<_> = known_addresses
-            .into_iter()
-            .filter_map(|addr| self.outgoing_manager.learn_addr(addr, true, now))
-            .collect();
 
-        let mut effects = self.process_dial_requests(dial_requests);
+        let mut effects = Effects::new();
 
-        // Start broadcasting our public listening address.
+        // Start broadcasting our public listening address. TODO: Learn unforgettable addresses (and
+        // periodically refresh). Hooking this to our own gossip is not a bad idea?
         effects.extend(
             effect_builder
                 .set_timeout(self.cfg.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
-        );
-
-        // Start regular housekeeping of the outgoing connections.
-        effects.extend(
-            effect_builder
-                .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
-                .event(|_| Event::SweepOutgoing),
         );
 
         // Start connection manager.
@@ -405,7 +335,12 @@ where
         let mut total_connected_validators_in_era = 0;
         let mut total_outgoing_manager_connected_peers = 0;
 
-        for peer_id in self.outgoing_manager.connected_peers() {
+        for peer_id in self
+            .conman
+            .as_ref()
+            .expect("internal component state corrupted")
+            .connected_peers()
+        {
             total_outgoing_manager_connected_peers += 1;
 
             if true {
@@ -432,47 +367,48 @@ where
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
-        //       See #4247.
-        let is_validator_in_era = |_, _: &_| true;
-        let gossip_target = GossipTarget::All;
+        todo!()
+        // // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
+        // //       See #4247.
+        // let is_validator_in_era = |_, _: &_| true;
+        // let gossip_target = GossipTarget::All;
 
-        let peer_ids = choose_gossip_peers(
-            rng,
-            gossip_target,
-            count,
-            exclude.clone(),
-            self.outgoing_manager.connected_peers(),
-            is_validator_in_era,
-        );
+        // let peer_ids = choose_gossip_peers(
+        //     rng,
+        //     gossip_target,
+        //     count,
+        //     exclude.clone(),
+        //     self.outgoing_manager.connected_peers(),
+        //     is_validator_in_era,
+        // );
 
-        // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
+        // // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
 
-        if peer_ids.len() != count {
-            let not_excluded = self
-                .outgoing_manager
-                .connected_peers()
-                .filter(|peer_id| !exclude.contains(peer_id))
-                .count();
-            if not_excluded > 0 {
-                let connected = self.outgoing_manager.connected_peers().count();
-                debug!(
-                    our_id=%self.context.our_id(),
-                    %gossip_target,
-                    wanted = count,
-                    connected,
-                    not_excluded,
-                    selected = peer_ids.len(),
-                    "could not select enough random nodes for gossiping"
-                );
-            }
-        }
+        // if peer_ids.len() != count {
+        //     let not_excluded = self
+        //         .outgoing_manager
+        //         .connected_peers()
+        //         .filter(|peer_id| !exclude.contains(peer_id))
+        //         .count();
+        //     if not_excluded > 0 {
+        //         let connected = self.outgoing_manager.connected_peers().count();
+        //         debug!(
+        //             our_id=%self.context.our_id(),
+        //             %gossip_target,
+        //             wanted = count,
+        //             connected,
+        //             not_excluded,
+        //             selected = peer_ids.len(),
+        //             "could not select enough random nodes for gossiping"
+        //         );
+        //     }
+        // }
 
-        for &peer_id in &peer_ids {
-            self.send_message(peer_id, msg.clone(), None);
-        }
+        // for &peer_id in &peer_ids {
+        //     self.send_message(peer_id, msg.clone(), None);
+        // }
 
-        peer_ids.into_iter().collect()
+        // peer_ids.into_iter().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -482,296 +418,98 @@ where
         msg: Arc<Message<P>>,
         message_queued_responder: Option<AutoClosingResponder<()>>,
     ) {
-        // Try to send the message.
-        if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            let channel = msg.get_channel();
+        todo!()
+        // // Try to send the message.
+        // if let Some(connection) = self.outgoing_manager.get_route(dest) {
+        //     let channel = msg.get_channel();
 
-            let payload = if let Some(payload) = serialize_network_message(&msg) {
-                payload
-            } else {
-                // No need to log, `serialize_network_message` already logs the failure.
-                return;
-            };
-            trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
+        //     let payload = if let Some(payload) = serialize_network_message(&msg) {
+        //         payload
+        //     } else {
+        //         // No need to log, `serialize_network_message` already logs the failure.
+        //         return;
+        //     };
+        //     trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            /// Build the request.
-            ///
-            /// Internal helper function to ensure requests are always built the same way.
-            // Note: Ideally, this would be a closure, but lifetime inference does not
-            //       work out here, and we cannot annotate lifetimes on closures.
-            #[inline(always)]
-            fn mk_request(
-                rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
-                channel: Channel,
-                payload: Bytes,
-            ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
-                rpc_client
-                    .create_request(channel.into_channel_id())
-                    .with_payload(payload)
-            }
+        //     /// Build the request.
+        //     ///
+        //     /// Internal helper function to ensure requests are always built the same way.
+        //     // Note: Ideally, this would be a closure, but lifetime inference does not
+        //     //       work out here, and we cannot annotate lifetimes on closures.
+        //     #[inline(always)]
+        //     fn mk_request(
+        //         rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
+        //         channel: Channel,
+        //         payload: Bytes,
+        //     ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
+        //         rpc_client
+        //             .create_request(channel.into_channel_id())
+        //             .with_payload(payload)
+        //     }
 
-            let request = mk_request(&connection.rpc_client, channel, payload);
+        //     let request = mk_request(&connection.rpc_client, channel, payload);
 
-            // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
-            match request.try_queue_for_sending() {
-                Ok(guard) => process_request_guard(channel, guard),
-                Err(builder) => {
-                    // Failed to queue immediately, our next step depends on whether we were asked
-                    // to keep trying or to discard.
+        //     // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
+        //     match request.try_queue_for_sending() {
+        //         Ok(guard) => process_request_guard(channel, guard),
+        //         Err(builder) => {
+        //             // Failed to queue immediately, our next step depends on whether we were asked
+        //             // to keep trying or to discard.
 
-                    // Reconstruct the payload.
-                    let payload = match builder.into_payload() {
-                        None => {
-                            // This should never happen.
-                            error!("payload unexpectedly disappeard");
-                            return;
-                        }
-                        Some(payload) => payload,
-                    };
+        //             // Reconstruct the payload.
+        //             let payload = match builder.into_payload() {
+        //                 None => {
+        //                     // This should never happen.
+        //                     error!("payload unexpectedly disappeard");
+        //                     return;
+        //                 }
+        //                 Some(payload) => payload,
+        //             };
 
-                    if let Some(responder) = message_queued_responder {
-                        // Reconstruct the client.
-                        let client = connection.rpc_client.clone();
+        //             if let Some(responder) = message_queued_responder {
+        //                 // Reconstruct the client.
+        //                 let client = connection.rpc_client.clone();
 
-                        // Technically, the queueing future should be spawned by the reactor, but
-                        // since the networking component usually controls its own futures, we are
-                        // allowed to spawn these as well.
-                        tokio::spawn(async move {
-                            let guard = mk_request(&client, channel, payload)
-                                .queue_for_sending()
-                                .await;
-                            responder.respond(()).await;
+        //                 // Technically, the queueing future should be spawned by the reactor, but
+        //                 // since the networking component usually controls its own futures, we are
+        //                 // allowed to spawn these as well.
+        //                 tokio::spawn(async move {
+        //                     let guard = mk_request(&client, channel, payload)
+        //                         .queue_for_sending()
+        //                         .await;
+        //                     responder.respond(()).await;
 
-                            // We need to properly process the guard, so it does not cause a
-                            // cancellation from being dropped.
-                            process_request_guard(channel, guard)
-                        });
-                    } else {
-                        // We had to drop the message, since we hit the buffer limit.
-                        debug!(%channel, "node is sending at too high a rate, message dropped");
+        //                     // We need to properly process the guard, so it does not cause a
+        //                     // cancellation from being dropped.
+        //                     process_request_guard(channel, guard)
+        //                 });
+        //             } else {
+        //                 // We had to drop the message, since we hit the buffer limit.
+        //                 debug!(%channel, "node is sending at too high a rate, message dropped");
 
-                        match deserialize_network_message::<P>(&payload) {
-                            Ok(reconstructed_message) => {
-                                debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
-                            }
-                            Err(err) => {
-                                error!(our_id=%self.context.our_id(),
-                                       %dest,
-                                       reconstruction_error=%err,
-                                       ?payload,
-                                       "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
+        //                 match deserialize_network_message::<P>(&payload) {
+        //                     Ok(reconstructed_message) => {
+        //                         debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+        //                     }
+        //                     Err(err) => {
+        //                         error!(our_id=%self.context.our_id(),
+        //                                %dest,
+        //                                reconstruction_error=%err,
+        //                                ?payload,
+        //                                "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
+        //                         );
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
 
-            let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
-            // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
-        } else {
-            // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
-        }
-    }
-
-    fn handle_incoming_connection(
-        &mut self,
-        incoming: Box<IncomingConnection>,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        span.clone().in_scope(|| match *incoming {
-            IncomingConnection::FailedEarly {
-                peer_addr: _,
-                ref error,
-            } => {
-                // Failed without much info, there is little we can do about this.
-                debug!(err=%display_error(error), "incoming connection failed early");
-                Effects::new()
-            }
-            IncomingConnection::Failed {
-                peer_addr: _,
-                peer_id: _,
-                ref error,
-            } => {
-                // TODO: At this point, we could consider blocking peers by [`PeerID`], but this
-                //       feature is not implemented yet.
-                debug!(
-                    err = display_error(error),
-                    "incoming connection failed after TLS setup"
-                );
-                Effects::new()
-            }
-            IncomingConnection::Loopback => {
-                // Loopback connections are closed immediately, but will be marked as such by the
-                // outgoing manager. We still record that it succeeded in the log, but this should
-                // be the only time per component instantiation that this happens.
-                info!("successful incoming loopback connection, will be dropped");
-                Effects::new()
-            }
-            IncomingConnection::Established {
-                peer_addr,
-                public_addr,
-                peer_id,
-                peer_consensus_public_key,
-                transport,
-            } => {
-                if self.cfg.max_incoming_peer_connections != 0 {
-                    if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
-                        let incoming_count = symmetries
-                            .incoming_addrs()
-                            .map(|addrs| addrs.len())
-                            .unwrap_or_default();
-
-                        if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
-                            info!(%public_addr,
-                                  %peer_id,
-                                  count=incoming_count,
-                                  limit=self.cfg.max_incoming_peer_connections,
-                                  "rejecting new incoming connection, limit for peer exceeded"
-                            );
-                            return Effects::new();
-                        }
-                    }
-                }
-
-                info!(%public_addr, "new incoming connection established");
-
-                // Learn the address the peer gave us.
-                let dial_requests =
-                    self.outgoing_manager
-                        .learn_addr(public_addr, false, Instant::now());
-                let mut effects = self.process_dial_requests(dial_requests);
-
-                // Update connection symmetries.
-                if self
-                    .connection_symmetries
-                    .entry(peer_id)
-                    .or_default()
-                    .add_incoming(peer_addr, Instant::now())
-                {
-                    self.connection_completed(peer_id);
-
-                    // We should NOT update the syncing set when we receive an incoming connection,
-                    // because the `message_sender` which is handling the corresponding outgoing
-                    // connection will not receive the update of the syncing state of the remote
-                    // peer.
-                    //
-                    // Such desync may cause the node to try to send "unsafe" requests to the
-                    // syncing node, because the outgoing connection may outlive the
-                    // incoming one, i.e. it may take some time to drop "our" outgoing
-                    // connection after a peer has closed the corresponding incoming connection.
-                }
-
-                // If given a key, determine validator status.
-                let validator_status = peer_consensus_public_key
-                    .as_ref()
-                    .map(|public_key| {
-                        let status = self
-                            .validator_matrix
-                            .is_active_or_upcoming_validator(public_key);
-
-                        // Find the shared `Arc` that holds validator status for this specific key.
-                        match self.incoming_validator_status.entry((**public_key).clone()) {
-                            // TODO: Use `Arc` for public key-key.
-                            Entry::Occupied(mut occupied) => {
-                                match occupied.get().upgrade() {
-                                    Some(arc) => {
-                                        arc.store(status, Ordering::Relaxed);
-                                        arc
-                                    }
-                                    None => {
-                                        // Failed to ugprade, the weak pointer is just a leftover
-                                        // that has not been cleaned up yet. We can replace it.
-                                        let arc = Arc::new(AtomicBool::new(status));
-                                        occupied.insert(Arc::downgrade(&arc));
-                                        arc
-                                    }
-                                }
-                            }
-                            Entry::Vacant(vacant) => {
-                                let arc = Arc::new(AtomicBool::new(status));
-                                vacant.insert(Arc::downgrade(&arc));
-                                arc
-                            }
-                        }
-                    })
-                    .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let (rpc_client, rpc_server) =
-                    self.context.rpc_builder.build(read_half, write_half);
-
-                // Now we can start the message reader.
-                let boxed_span = Box::new(span.clone());
-                effects.extend(
-                    tasks::message_receiver(
-                        self.context.clone(),
-                        validator_status,
-                        rpc_server,
-                        self.shutdown_fuse.inner().clone(),
-                        peer_id,
-                        span.clone(),
-                    )
-                    .instrument(span)
-                    .event(move |result| {
-                        // By moving the `rpc_client` into this closure to drop it, we ensure it
-                        // does not get dropped until after `tasks::message_receiver` has returned.
-                        // This is important because dropping `rpc_client` is one of the ways to
-                        // trigger a connection shutdown from our end.
-                        drop(rpc_client);
-
-                        Event::IncomingClosed {
-                            result: result.map_err(Box::new),
-                            peer_id: Box::new(peer_id),
-                            peer_addr,
-                            peer_consensus_public_key,
-                            span: boxed_span,
-                        }
-                    }),
-                );
-
-                effects
-            }
-        })
-    }
-
-    fn handle_incoming_closed(
-        &mut self,
-        result: Result<(), Box<MessageReceiverError>>,
-        peer_id: Box<NodeId>,
-        peer_addr: SocketAddr,
-        peer_consensus_public_key: Option<Box<PublicKey>>,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        span.in_scope(|| {
-            // Log the outcome.
-            match result {
-                Ok(()) => {
-                    info!("regular connection closing")
-                }
-                Err(ref err) => {
-                    warn!(err = display_error(err), "connection dropped")
-                }
-            }
-
-            // Update the connection symmetries and cleanup if necessary.
-            if !self
-                .connection_symmetries
-                .entry(*peer_id)
-                .or_default() // Should never occur.
-                .remove_incoming(peer_addr, Instant::now())
-            {
-                if let Some(ref public_key) = peer_consensus_public_key {
-                    self.incoming_validator_status.remove(public_key);
-                }
-
-                self.connection_symmetries.remove(&peer_id);
-            }
-
-            Effects::new()
-        })
+        //     let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
+        //     // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
+        // } else {
+        //     // We are not connected, so the reconnection is likely already in progress.
+        //     debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
+        // }
     }
 
     /// Determines whether an outgoing peer should be blocked based on the connection error.
@@ -820,106 +558,6 @@ where
                 Some(BlocklistJustification::MissingChainspecHash)
             }
         }
-    }
-
-    /// Sets up an established outgoing connection.
-    ///
-    /// Initiates sending of the handshake as soon as the connection is established.
-    #[allow(clippy::redundant_clone)]
-    fn handle_outgoing_connection(
-        &mut self,
-        outgoing: OutgoingConnection,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        let now = Instant::now();
-        span.clone().in_scope(|| match outgoing {
-            OutgoingConnection::FailedEarly { peer_addr, error }
-            | OutgoingConnection::Failed {
-                peer_addr,
-                peer_id: _,
-                error,
-            } => {
-                debug!(err=%display_error(&error), "outgoing connection failed");
-                // We perform blocking first, to not trigger a reconnection before blocking.
-                let mut requests = Vec::new();
-
-                if let Some(justification) = self.is_blockable_offense_for_outgoing(&error) {
-                    requests.extend(self.outgoing_manager.block_addr(
-                        peer_addr,
-                        now,
-                        justification,
-                    ));
-                }
-
-                // Now we can proceed with the regular updates.
-                requests.extend(
-                    self.outgoing_manager
-                        .handle_dial_outcome(DialOutcome::Failed {
-                            addr: peer_addr,
-                            error,
-                            when: now,
-                        }),
-                );
-
-                self.process_dial_requests(requests)
-            }
-            OutgoingConnection::Loopback { peer_addr } => {
-                // Loopback connections are marked, but closed.
-                info!("successful outgoing loopback connection, will be dropped");
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
-                self.process_dial_requests(request)
-            }
-            OutgoingConnection::Established {
-                peer_addr,
-                peer_id,
-                peer_consensus_public_key: _, // TODO: Use for limiting or remove. See also #4247.
-                transport,
-            } => {
-                info!("new outgoing connection established");
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let (rpc_client, rpc_server) =
-                    self.context.rpc_builder.build(read_half, write_half);
-
-                let handle = OutgoingHandle {
-                    rpc_client,
-                    peer_addr,
-                };
-
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Successful {
-                        addr: peer_addr,
-                        handle,
-                        node_id: peer_id,
-                    });
-
-                let mut effects = self.process_dial_requests(request);
-
-                // Update connection symmetries.
-                if self
-                    .connection_symmetries
-                    .entry(peer_id)
-                    .or_default()
-                    .mark_outgoing(now)
-                {
-                    self.connection_completed(peer_id);
-                }
-
-                effects.extend(tasks::rpc_sender_loop(rpc_server).instrument(span).event(
-                    move |result| Event::OutgoingDropped {
-                        peer_id: Box::new(peer_id),
-                        peer_addr,
-                        opt_err: result.err().map(Box::new),
-                    },
-                ));
-
-                effects
-            }
-        })
     }
 
     fn handle_network_request(
@@ -973,60 +611,6 @@ where
         }
     }
 
-    fn handle_outgoing_dropped(
-        &mut self,
-        peer_id: NodeId,
-        peer_addr: SocketAddr,
-        opt_err: Option<Box<MessageSenderError>>,
-    ) -> Effects<Event<P>> {
-        if let Some(ref err) = opt_err {
-            debug!(err=%display_error(err), %peer_id, %peer_addr, "outgoing connection dropped due to error");
-        } else {
-            debug!(%peer_id, %peer_addr, "outgoing connection was dropped without error (i.e. closed by peer)")
-        }
-
-        let requests = self
-            .outgoing_manager
-            .handle_connection_drop(peer_addr, Instant::now());
-
-        self.connection_symmetries
-            .entry(peer_id)
-            .or_default()
-            .unmark_outgoing(Instant::now());
-
-        self.process_dial_requests(requests)
-    }
-
-    /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
-    fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
-    where
-        T: IntoIterator<Item = DialRequest<OutgoingHandle>>,
-    {
-        let mut effects = Effects::new();
-
-        for request in requests.into_iter() {
-            trace!(%request, "processing dial request");
-            match request {
-                DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing::<P, _>(self.context.clone(), addr)
-                        .instrument(span.clone())
-                        .event(|outgoing| Event::OutgoingConnection {
-                            outgoing: Box::new(outgoing),
-                            span,
-                        }),
-                ),
-                DialRequest::Disconnect { handle: _, span } => {
-                    // Dropping the `handle` is enough to signal the connection to shutdown.
-                    span.in_scope(|| {
-                        debug!("dropping connection, as requested");
-                    })
-                }
-            }
-        }
-
-        effects
-    }
-
     /// Handles a received message.
     fn handle_incoming_message(
         &mut self,
@@ -1062,25 +646,27 @@ where
 
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
-        let mut ret = BTreeMap::new();
-        for node_id in self.outgoing_manager.connected_peers() {
-            if let Some(connection) = self.outgoing_manager.get_route(node_id) {
-                ret.insert(node_id, connection.peer_addr.to_string());
-            } else {
-                // This should never happen unless the state of `OutgoingManager` is corrupt.
-                warn!(%node_id, "route disappeared unexpectedly")
-            }
-        }
+        // let mut ret = BTreeMap::new();
+        // for node_id in self.outgoing_manager.connected_peers() {
+        //     if let Some(connection) = self.outgoing_manager.get_route(node_id) {
+        //         ret.insert(node_id, connection.peer_addr.to_string());
+        //     } else {
+        //         // This should never happen unless the state of `OutgoingManager` is corrupt.
+        //         warn!(%node_id, "route disappeared unexpectedly")
+        //     }
+        // }
 
-        for (node_id, sym) in &self.connection_symmetries {
-            if let Some(addrs) = sym.incoming_addrs() {
-                for addr in addrs {
-                    ret.entry(*node_id).or_insert_with(|| addr.to_string());
-                }
-            }
-        }
+        // for (node_id, sym) in &self.connection_symmetries {
+        //     if let Some(addrs) = sym.incoming_addrs() {
+        //         for addr in addrs {
+        //             ret.entry(*node_id).or_insert_with(|| addr.to_string());
+        //         }
+        //     }
+        // }
 
-        ret
+        // ret
+
+        todo!()
     }
 
     pub(crate) fn fully_connected_peers_random(
@@ -1088,19 +674,21 @@ where
         rng: &mut NodeRng,
         count: usize,
     ) -> Vec<NodeId> {
-        self.connection_symmetries
-            .iter()
-            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-            .map(|(node_id, _)| *node_id)
-            .choose_multiple(rng, count)
+        todo!()
+        // self.connection_symmetries
+        //     .iter()
+        //     .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+        //     .map(|(node_id, _)| *node_id)
+        //     .choose_multiple(rng, count)
     }
 
     pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
-        self.connection_symmetries
-            .iter()
-            .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-            .count()
-            >= self.cfg.min_peers_for_initialization as usize
+        todo!()
+        // self.connection_symmetries
+        //     .iter()
+        //     .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+        //     .count()
+        //     >= self.cfg.min_peers_for_initialization as usize
     }
 
     #[cfg(test)]
@@ -1118,16 +706,6 @@ where
     fn finalize(mut self) -> BoxFuture<'static, ()> {
         async move {
             self.shutdown_fuse.inner().set();
-
-            // Wait for the server to exit cleanly.
-            if let Some(join_handle) = self.server_join_handle.take() {
-                match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.context.our_id(), "server exited cleanly"),
-                    Err(ref err) => {
-                        error!(our_id=%self.context.our_id(), err=display_error(err), "could not join server task cleanly")
-                    }
-                }
-            }
 
             // Ensure there are no ongoing metrics updates.
             utils::wait_for_arc_drop(
@@ -1227,16 +805,11 @@ where
                         Effects::new()
                     }
                 },
-                Event::IncomingConnection { .. }
-                | Event::IncomingMessage { .. }
-                | Event::IncomingClosed { .. }
-                | Event::OutgoingConnection { .. }
-                | Event::OutgoingDropped { .. }
+                Event::IncomingMessage { .. }
                 | Event::NetworkRequest { .. }
                 | Event::NetworkInfoRequest { .. }
                 | Event::GossipOurAddress
                 | Event::PeerAddressReceived(_)
-                | Event::SweepOutgoing
                 | Event::BlocklistAnnouncement(_) => {
                     warn!(
                         ?event,
@@ -1255,36 +828,12 @@ where
                     );
                     Effects::new()
                 }
-                Event::IncomingConnection { incoming, span } => {
-                    self.handle_incoming_connection(incoming, span)
-                }
                 Event::IncomingMessage {
                     peer_id,
                     msg,
                     span,
                     ticket,
                 } => self.handle_incoming_message(effect_builder, *peer_id, *msg, ticket, span),
-                Event::IncomingClosed {
-                    result,
-                    peer_id,
-                    peer_addr,
-                    peer_consensus_public_key,
-                    span,
-                } => self.handle_incoming_closed(
-                    result,
-                    peer_id,
-                    peer_addr,
-                    peer_consensus_public_key,
-                    *span,
-                ),
-                Event::OutgoingConnection { outgoing, span } => {
-                    self.handle_outgoing_connection(*outgoing, span)
-                }
-                Event::OutgoingDropped {
-                    peer_id,
-                    peer_addr,
-                    opt_err,
-                } => self.handle_outgoing_dropped(*peer_id, peer_addr, opt_err),
                 Event::NetworkRequest { req: request } => {
                     self.handle_network_request(*request, rng)
                 }
@@ -1314,50 +863,38 @@ where
                             .set_timeout(self.cfg.gossip_interval.into())
                             .event(|_| Event::GossipOurAddress),
                     );
+
+                    // TODO: Learn known addresses here again.
+
                     effects
                 }
                 Event::PeerAddressReceived(gossiped_address) => {
-                    let requests = self.outgoing_manager.learn_addr(
-                        gossiped_address.into(),
-                        false,
-                        Instant::now(),
-                    );
-                    self.process_dial_requests(requests)
-                }
-                Event::SweepOutgoing => {
-                    let now = Instant::now();
-                    let requests = self.outgoing_manager.perform_housekeeping(now);
+                    if let Some(ref conman) = self.conman {
+                        conman.learn_addr(gossiped_address.into());
+                    } else {
+                        error!("received gossiped address while component was not initialized");
+                    }
 
-                    let mut effects = self.process_dial_requests(requests);
-
-                    effects.extend(
-                        effect_builder
-                            .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
-                            .event(|_| Event::SweepOutgoing),
-                    );
-
-                    effects
+                    Effects::new()
                 }
                 Event::BlocklistAnnouncement(announcement) => match announcement {
                     PeerBehaviorAnnouncement::OffenseCommitted {
                         offender,
                         justification,
                     } => {
-                        // TODO: We do not have a proper by-node-ID blocklist, but rather only block
-                        // the current outgoing address of a peer.
-                        info!(%offender, %justification, "adding peer to blocklist after transgression");
+                        if let Some(ref conman) = self.conman {
+                            let now = Instant::now();
+                            let until = now
+                                + Duration::from_millis(
+                                    self.cfg.blocklist_retain_duration.millis(),
+                                );
 
-                        if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
-                            let requests = self.outgoing_manager.block_addr(
-                                addr,
-                                Instant::now(),
-                                *justification,
-                            );
-                            self.process_dial_requests(requests)
+                            conman.ban_peer(*offender, *justification, until);
                         } else {
-                            // Peer got away with it, no longer an outgoing connection.
-                            Effects::new()
-                        }
+                            error!("cannot ban, component not initialized");
+                        };
+
+                        Effects::new()
                     }
                 },
             },
