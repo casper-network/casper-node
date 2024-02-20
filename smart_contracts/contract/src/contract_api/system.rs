@@ -5,8 +5,8 @@ use core::mem::MaybeUninit;
 
 use casper_types::{
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     api_error, bytesrepr,
-    package::PackageKindTag,
     system::{
         auction::{self, EraInfo},
         SystemEntityType,
@@ -55,7 +55,7 @@ pub fn get_mint() -> AddressableEntityHash {
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_mint_key() -> Key {
-    Key::addressable_entity_key(PackageKindTag::System, get_mint())
+    Key::addressable_entity_key(EntityKindTag::System, get_mint())
 }
 
 /// Returns a read-only pointer to the Handle Payment contract.
@@ -69,7 +69,7 @@ pub fn get_handle_payment() -> AddressableEntityHash {
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_handle_payment_key() -> Key {
-    Key::addressable_entity_key(PackageKindTag::System, get_handle_payment())
+    Key::addressable_entity_key(EntityKindTag::System, get_handle_payment())
 }
 
 /// Returns a read-only pointer to the Standard Payment contract.
@@ -83,7 +83,7 @@ pub fn get_standard_payment() -> AddressableEntityHash {
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_standard_payment_key() -> Key {
-    Key::addressable_entity_key(PackageKindTag::System, get_standard_payment())
+    Key::addressable_entity_key(EntityKindTag::System, get_standard_payment())
 }
 
 /// Returns a read-only pointer to the Auction contract.
@@ -97,7 +97,7 @@ pub fn get_auction() -> AddressableEntityHash {
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_auction_key() -> Key {
-    Key::addressable_entity_key(PackageKindTag::System, get_auction())
+    Key::addressable_entity_key(EntityKindTag::System, get_auction())
 }
 
 /// Creates a new empty purse and returns its [`URef`].

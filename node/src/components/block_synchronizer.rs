@@ -28,10 +28,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::engine_state;
+use casper_storage::data_access_layer::ExecutionResultsChecksumResult;
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp, Transaction, TransactionId,
+    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Digest, FinalitySignature,
+    FinalitySignatureId, Timestamp, Transaction,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -58,7 +58,6 @@ use crate::{
         BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
         NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
-    utils::fetch_id,
     NodeRng,
 };
 
@@ -487,7 +486,10 @@ impl BlockSynchronizer {
                                         effect_builder.announce_meta_block(meta_block).await;
                                     }
                                     None => {
-                                        warn!("should have execution results for {}", block.hash());
+                                        error!(
+                                            "should have execution results for {}",
+                                            block.hash()
+                                        );
                                     }
                                 }
                             })
@@ -659,9 +661,7 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::DeployById(block_hash, deploy_id) => {
-                    let (deploy_hash, approvals_hash) = deploy_id.destructure();
-                    let txn_id = TransactionId::new_deploy(deploy_hash, approvals_hash);
+                NeedNext::TransactionById(block_hash, txn_id) => {
                     builder.latch_by(peers.len());
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -1081,41 +1081,55 @@ impl BlockSynchronizer {
     fn got_execution_results_checksum(
         &mut self,
         block_hash: BlockHash,
-        result: Result<Option<Digest>, engine_state::Error>,
+        result: ExecutionResultsChecksumResult,
     ) {
-        let execution_results_checksum = match result {
-            Ok(Some(digest)) => {
-                debug!(
-                    "BlockSynchronizer: got execution_results_checksum for {}",
-                    block_hash
-                );
-                ExecutionResultsChecksum::Checkable(digest)
+        let builder = match &mut self.historical {
+            None => {
+                // execution results checksums are only relevant to historical blocks
+                debug!(%block_hash, "BlockSynchronizer: not currently synchronising block");
+                return;
             }
-            Err(engine_state::Error::MissingChecksumRegistry) => {
-                // The registry will not exist for legacy blocks.
-                ExecutionResultsChecksum::Uncheckable
-            }
-            Ok(None) => {
-                warn!("BlockSynchronizer: the checksum registry should contain the execution results checksum");
-                ExecutionResultsChecksum::Uncheckable
-            }
-            Err(error) => {
-                error!(%error, "BlockSynchronizer: unexpected error getting checksum registry");
-                ExecutionResultsChecksum::Uncheckable
+            Some(builder) => {
+                let current_block_hash = builder.block_hash();
+                if current_block_hash != block_hash {
+                    debug!(%block_hash, %current_block_hash, "BlockSynchronizer: currently synchronising different block");
+                    return;
+                }
+                builder
             }
         };
 
-        if let Some(builder) = &mut self.historical {
-            if builder.block_hash() != block_hash {
-                debug!(%block_hash, "BlockSynchronizer: not currently synchronising block");
-            } else {
-                builder.latch_decrement();
-                if let Err(error) =
-                    builder.register_execution_results_checksum(execution_results_checksum)
-                {
-                    error!(%block_hash, %error, "BlockSynchronizer: failed to apply execution results checksum");
-                }
+        let execution_results_checksum = match result {
+            ExecutionResultsChecksumResult::Failure(error) => {
+                error!(%block_hash, %error, "BlockSynchronizer: unexpected error getting checksum registry");
+                ExecutionResultsChecksum::Uncheckable
             }
+            ExecutionResultsChecksumResult::RootNotFound => {
+                error!(%block_hash, "BlockSynchronizer: unexpected error getting checksum registry (root not found)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::ChecksumNotFound => {
+                error!(%block_hash, "BlockSynchronizer: checksum not found (should exist)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::RegistryNotFound => {
+                // we didn't track this checksum pre-1.5
+                debug!(%block_hash, "BlockSynchronizer: checksum registry not found (legacy record)");
+                ExecutionResultsChecksum::Uncheckable
+            }
+            ExecutionResultsChecksumResult::Success { checksum } => {
+                debug!(
+                    %block_hash, "BlockSynchronizer: got execution_results_checksum {}",
+                    checksum
+                );
+                ExecutionResultsChecksum::Checkable(checksum)
+            }
+        };
+
+        builder.latch_decrement();
+        if let Err(error) = builder.register_execution_results_checksum(execution_results_checksum)
+        {
+            error!(%block_hash, %error, "BlockSynchronizer: failed to apply execution results checksum");
         }
     }
 
@@ -1228,14 +1242,18 @@ impl BlockSynchronizer {
         }
     }
 
-    fn deploy_fetched(&mut self, block_hash: BlockHash, fetched_deploy: FetchedData<Deploy>) {
-        let (deploy, maybe_peer) = match fetched_deploy {
+    fn transaction_fetched(
+        &mut self,
+        block_hash: BlockHash,
+        fetched_txn: FetchedData<Transaction>,
+    ) {
+        let (txn, maybe_peer) = match fetched_txn {
             FetchedData::FromPeer { item, peer } => (item, Some(peer)),
             FetchedData::FromStorage { item } => (item, None),
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if let Err(error) = builder.register_deploy(fetch_id(&deploy), maybe_peer) {
+            if let Err(error) = builder.register_deploy(txn.fetch_id(), maybe_peer) {
                 error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
             }
         }
@@ -1597,29 +1615,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         Either::Left(Ok(fetched_legacy_deploy)) => {
                             let deploy_id = fetched_legacy_deploy.id();
                             debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched legacy deploy");
-                            self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
+                            self.transaction_fetched(block_hash, fetched_legacy_deploy.convert())
                         }
                         Either::Right(Ok(fetched_txn)) => {
                             let txn_id = fetched_txn.id();
-                            // This conversion including the panicking code will be removed as part
-                            // of https://github.com/casper-network/roadmap/issues/190.
-                            let fetched_deploy = match fetched_txn {
-                                FetchedData::FromStorage { item } => match *item {
-                                    Transaction::Deploy(deploy) => FetchedData::FromStorage {
-                                        item: Box::new(deploy),
-                                    },
-                                    Transaction::V1(_) => unreachable!(),
-                                },
-                                FetchedData::FromPeer { item, peer } => match *item {
-                                    Transaction::Deploy(deploy) => FetchedData::FromPeer {
-                                        item: Box::new(deploy),
-                                        peer,
-                                    },
-                                    Transaction::V1(_) => unreachable!(),
-                                },
-                            };
-                            debug!(%block_hash, %txn_id, "BlockSynchronizer: fetched deploy");
-                            self.deploy_fetched(block_hash, fetched_deploy)
+                            debug!(%block_hash, %txn_id, "BlockSynchronizer: fetched transaction");
+                            self.transaction_fetched(block_hash, fetched_txn)
                         }
                         Either::Left(Err(error)) => {
                             if let Some(builder) = self.get_builder(block_hash, false) {

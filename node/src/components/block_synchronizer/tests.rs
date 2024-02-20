@@ -3,6 +3,7 @@ pub(crate) mod test_utils;
 use std::{
     cmp::min,
     collections::{BTreeMap, VecDeque},
+    convert::TryInto,
     iter,
     time::Duration,
 };
@@ -12,11 +13,14 @@ use derive_more::From;
 use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::{
+    data_access_layer::ExecutionResultsChecksumResult,
+    global_state::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_types::{
-    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, EraId, Key,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, Deploy, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
-    TimeDiff, URef, U512,
+    TestBlockV1Builder, TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -101,7 +105,7 @@ impl MockReactor {
 }
 
 struct TestEnv {
-    block: BlockV2,
+    block: Block,
     validator_keys: Vec<Arc<SecretKey>>,
     peers: Vec<NodeId>,
 }
@@ -109,7 +113,7 @@ struct TestEnv {
 // Utility struct used to generate common test artifacts
 impl TestEnv {
     // Replaces the test block with the one provided as parameter
-    fn with_block(self, block: BlockV2) -> Self {
+    fn with_block(self, block: Block) -> Self {
         Self {
             block,
             validator_keys: self.validator_keys,
@@ -117,7 +121,7 @@ impl TestEnv {
         }
     }
 
-    fn block(&self) -> &BlockV2 {
+    fn block(&self) -> &Block {
         &self.block
     }
 
@@ -163,7 +167,7 @@ impl TestEnv {
         let num_peers = rng.gen_range(10..20);
 
         TestEnv {
-            block: TestBlockBuilder::new().build(rng),
+            block: TestBlockBuilder::new().build(rng).into(),
             validator_keys,
             peers: iter::repeat(())
                 .take(num_peers)
@@ -173,7 +177,7 @@ impl TestEnv {
     }
 }
 
-fn check_sync_global_state_event(event: MockReactorEvent, block: &BlockV2) {
+fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) {
     assert!(matches!(
         event,
         MockReactorEvent::SyncGlobalStateRequest { .. }
@@ -204,7 +208,7 @@ async fn need_next(
 
 fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
     builder: &mut BlockBuilder,
-    block: &BlockV2,
+    block: &Block,
     validator_keys_iter: I,
 ) {
     for secret_key in validator_keys_iter {
@@ -338,8 +342,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
-            .build(&mut rng),
+            .random_transactions(1, &mut rng)
+            .build(&mut rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -362,7 +367,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let historical_builder = block_synchronizer.historical.as_mut().unwrap();
     assert!(
         historical_builder
-            .register_block_header(block.header().clone().into(), None)
+            .register_block_header(block.clone_header(), None)
             .is_ok(),
         "historical builder should register header"
     );
@@ -378,7 +383,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     );
     assert!(
         historical_builder
-            .register_block(block.into(), None)
+            .register_block(block.clone(), None)
             .is_ok(),
         "should register block"
     );
@@ -503,8 +508,9 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
-            .build(&mut rng),
+            .random_transactions(1, &mut rng)
+            .build(&mut rng)
+            .into(),
     );
     let block = test_env.block();
     let block_hash = *block.hash();
@@ -605,7 +611,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
     let peers = test_env.peers();
     let block = test_env.block();
     let block_hash = *block.hash();
-    let era_id = block.header().era_id();
+    let era_id = block.era_id();
 
     // Set up a validator matrix.
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
@@ -619,7 +625,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
         .historical
         .as_mut()
         .expect("should have historical builder")
-        .register_block_header(block.header().clone().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("should register block header");
 
     latch_inner_check(
@@ -730,7 +736,7 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Trying to register a different block should replace the old one
-    let new_block = TestBlockBuilder::new().build(&mut rng);
+    let new_block: Block = TestBlockBuilder::new().build(&mut rng).into();
     assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false));
     assert_eq!(
         block_synchronizer.forward.unwrap().block_hash(),
@@ -1026,7 +1032,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone().take_header().into()),
+            item: Box::new(block.clone_header()),
             peer: peers_asked[0],
         })),
     );
@@ -1085,7 +1091,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1193,7 +1199,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     let peers = test_env.peers();
     let block = test_env.block();
     let expected_block_hash = *block.hash();
-    let era_id = block.header().era_id();
+    let era_id = block.era_id();
     let validator_matrix = test_env.gen_validator_matrix();
     let num_validators = test_env.validator_keys().len() as u8;
     let cfg = Config {
@@ -1211,7 +1217,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1307,7 +1313,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && *id.block_hash() == expected_block_hash && id.era_id() == block.header().era_id()
+            }) if peers.contains(&peer) && *id.block_hash() == expected_block_hash && id.era_id() == block.era_id()
         );
     }
 
@@ -1340,7 +1346,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1406,7 +1412,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1453,7 +1459,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(Block::V2(block.clone())),
+            item: Box::new(block.clone()),
             peer: peers[0],
         })),
     );
@@ -1486,7 +1492,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1499,7 +1505,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1529,8 +1535,9 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
-            .build(&mut rng),
+            .random_transactions(1, &mut rng)
+            .build(&mut rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -1549,7 +1556,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1562,7 +1569,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1608,12 +1615,13 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
 async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let txns = [Transaction::Deploy(Deploy::random(&mut rng))];
+    let txns = [Transaction::random(&mut rng)];
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .transactions(txns.iter())
-            .build(&mut rng),
+            .build(&mut rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -1632,7 +1640,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1645,7 +1653,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1709,14 +1717,14 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
     // Register finality signatures to reach strict finality
     register_multiple_signatures(fwd_builder, block, validators_secret_keys.iter());
 
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1770,7 +1778,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1782,7 +1790,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1841,7 +1849,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1853,7 +1861,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1879,7 +1887,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     let event = Event::MadeFinalizedBlock {
         block_hash: *block.hash(),
         result: Some(ExecutableBlock::from_block_and_transactions(
-            block.clone(),
+            block.clone().try_into().expect("Expected a V2 block."),
             Vec::new(),
         )),
     };
@@ -1935,7 +1943,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1947,7 +1955,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1965,7 +1973,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
 
     // Register finalized block
     fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_transactions(
-        block.clone(),
+        block.clone().try_into().expect("Expected a V2 block."),
         Vec::new(),
     ));
     assert_matches!(
@@ -2010,7 +2018,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -2022,7 +2030,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2034,7 +2042,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
 
     // Register finalized block
     fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_transactions(
-        block.clone(),
+        block.clone().try_into().expect("Expected a V2 block."),
         Vec::new(),
     ));
     fwd_builder.register_block_execution_enqueued();
@@ -2081,7 +2089,7 @@ async fn historical_sync_announces_meta_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     assert!(historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -2094,7 +2102,7 @@ async fn historical_sync_announces_meta_block() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
@@ -2226,7 +2234,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     // Register finality signatures to reach weak finality
@@ -2237,7 +2245,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block.into(), None).is_ok());
+    assert!(fwd_builder.register_block(block.clone(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2326,7 +2334,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2337,7 +2345,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
@@ -2405,12 +2413,13 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
 async fn historical_sync_no_legacy_block() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let txn = Transaction::Deploy(Deploy::random(rng));
+    let txn = Transaction::random(rng);
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .transactions(iter::once(&txn))
-            .build(rng),
+            .build(rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -2430,7 +2439,7 @@ async fn historical_sync_no_legacy_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2441,7 +2450,7 @@ async fn historical_sync_no_legacy_block() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
@@ -2507,7 +2516,7 @@ async fn historical_sync_no_legacy_block() {
                 state_root_hash,
                 responder,
             },
-        )) => responder.respond(Ok(Some(state_root_hash))).await,
+        )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2516,7 +2525,9 @@ async fn historical_sync_no_legacy_block() {
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(Some(Digest::SENTINEL_NONE)),
+            result: ExecutionResultsChecksumResult::Success {
+                checksum: Digest::SENTINEL_NONE,
+            },
         },
     );
     let events = mock_reactor.process_effects(effects).await;
@@ -2630,10 +2641,11 @@ async fn historical_sync_legacy_block_strict_finality() {
     let mock_reactor = MockReactor::new();
     let deploy = Deploy::random(rng);
     let test_env = TestEnv::random(rng).with_block(
-        TestBlockBuilder::new()
+        TestBlockV1Builder::new()
             .era(1)
-            .transactions(iter::once(&Transaction::from(deploy.clone())))
-            .build(rng),
+            .deploys(iter::once(&deploy.clone()))
+            .build(rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -2653,7 +2665,7 @@ async fn historical_sync_legacy_block_strict_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2664,7 +2676,7 @@ async fn historical_sync_legacy_block_strict_finality() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
@@ -2730,7 +2742,7 @@ async fn historical_sync_legacy_block_strict_finality() {
                 state_root_hash,
                 responder,
             },
-        )) => responder.respond(Ok(Some(state_root_hash))).await,
+             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2739,7 +2751,7 @@ async fn historical_sync_legacy_block_strict_finality() {
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(None), // No checksum because we want to test a legacy block
+            result: ExecutionResultsChecksumResult::RegistryNotFound, // test a legacy block
         },
     );
     let events = mock_reactor.process_effects(effects).await;
@@ -2829,10 +2841,11 @@ async fn historical_sync_legacy_block_weak_finality() {
     let mock_reactor = MockReactor::new();
     let deploy = Deploy::random(rng);
     let test_env = TestEnv::random(rng).with_block(
-        TestBlockBuilder::new()
+        TestBlockV1Builder::new()
             .era(1)
-            .transactions(iter::once(&Transaction::from(deploy.clone())))
-            .build(rng),
+            .deploys(iter::once(&deploy.clone()))
+            .build(rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -2852,7 +2865,7 @@ async fn historical_sync_legacy_block_weak_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2863,7 +2876,7 @@ async fn historical_sync_legacy_block_weak_finality() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
@@ -2929,7 +2942,7 @@ async fn historical_sync_legacy_block_weak_finality() {
                 state_root_hash,
                 responder,
             },
-        )) => responder.respond(Ok(Some(state_root_hash))).await,
+             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -2938,7 +2951,7 @@ async fn historical_sync_legacy_block_weak_finality() {
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(None), // No checksum because we want to test a legacy block
+            result: ExecutionResultsChecksumResult::RegistryNotFound, // test a legacy block
         },
     );
     let events = mock_reactor.process_effects(effects).await;
@@ -3041,10 +3054,11 @@ async fn historical_sync_legacy_block_any_finality() {
     let mock_reactor = MockReactor::new();
     let deploy = Deploy::random(rng);
     let test_env = TestEnv::random(rng).with_block(
-        TestBlockBuilder::new()
+        TestBlockV1Builder::new()
             .era(1)
-            .transactions(iter::once(&Transaction::from(deploy.clone())))
-            .build(rng),
+            .deploys(iter::once(&deploy.clone()))
+            .build(rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -3064,7 +3078,7 @@ async fn historical_sync_legacy_block_any_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -3073,7 +3087,7 @@ async fn historical_sync_legacy_block_any_finality() {
         validators_secret_keys.iter().take(1),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
@@ -3139,7 +3153,7 @@ async fn historical_sync_legacy_block_any_finality() {
                 state_root_hash,
                 responder,
             },
-        )) => responder.respond(Ok(Some(state_root_hash))).await,
+             )) => responder.respond(ExecutionResultsChecksumResult::Success {checksum: state_root_hash}).await,
         other => panic!("Event should be of type `ContractRuntimeRequest(ContractRuntimeRequest::GetExecutionResultsChecksum) but it is {:?}", other),
     }
 
@@ -3148,7 +3162,7 @@ async fn historical_sync_legacy_block_any_finality() {
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(None), // No checksum because we want to test a legacy block
+            result: ExecutionResultsChecksumResult::RegistryNotFound, // test a legacy block
         },
     );
     let events = mock_reactor.process_effects(effects).await;
@@ -3249,12 +3263,13 @@ async fn historical_sync_legacy_block_any_finality() {
 async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let txn = Transaction::Deploy(Deploy::random(&mut rng));
+    let txn = Transaction::random(&mut rng);
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .transactions(iter::once(&txn))
-            .build(&mut rng),
+            .build(&mut rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -3331,7 +3346,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().take_header().into()),
+                item: Box::new(block.clone_header()),
                 peer: peers_asked[0],
             })),
         );
@@ -3350,7 +3365,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                     ..
                 }) => {
                     assert_eq!(id.block_hash(), block.hash());
-                    assert_eq!(id.era_id(), block.header().era_id());
+                    assert_eq!(id.era_id(), block.era_id());
                     sigs_requested.push((peer, id.public_key().clone()));
                 }
             );
@@ -3371,7 +3386,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().take_header().into()),
+                item: Box::new(block.clone_header()),
                 peer: peers_asked[1],
             })),
         );
@@ -3397,11 +3412,8 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             .take(weak_finality_threshold(validators_secret_keys.len()))
         {
             // Register a finality signature
-            let signature = FinalitySignature::create(
-                *block.hash(),
-                block.header().era_id(),
-                secret_key.as_ref(),
-            );
+            let signature =
+                FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
             assert!(signature.is_verified().is_ok());
             let effects = block_synchronizer.handle_event(
                 mock_reactor.effect_builder(),
@@ -3455,11 +3467,8 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             .take(2)
         {
             // Register a finality signature
-            let signature = FinalitySignature::create(
-                *block.hash(),
-                block.header().era_id(),
-                secret_key.as_ref(),
-            );
+            let signature =
+                FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
             assert!(signature.is_verified().is_ok());
             let effects = block_synchronizer.handle_event(
                 mock_reactor.effect_builder(),
@@ -3492,7 +3501,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().into()),
+                item: Box::new(block.clone()),
                 peer: peers[0],
             })),
         );
@@ -3525,7 +3534,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().into()),
+                item: Box::new(block.clone()),
                 peer: peers[1],
             })),
         );
@@ -3639,7 +3648,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                     ..
                 }) => {
                     assert_eq!(id.block_hash(), block.hash());
-                    assert_eq!(id.era_id(), block.header().era_id());
+                    assert_eq!(id.era_id(), block.era_id());
                 }
             );
         }
@@ -3671,11 +3680,8 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                 - weak_finality_threshold(validators_secret_keys.len()),
         ) {
             // Register a finality signature
-            let signature = FinalitySignature::create(
-                *block.hash(),
-                block.header().era_id(),
-                secret_key.as_ref(),
-            );
+            let signature =
+                FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
             assert!(signature.is_verified().is_ok());
             let effects = block_synchronizer.handle_event(
                 mock_reactor.effect_builder(),
@@ -3715,15 +3721,33 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
 async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_responses() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let first_txn = Transaction::Deploy(Deploy::random(rng));
-    let second_txn = Transaction::Deploy(Deploy::random(rng));
-    let third_txn = Transaction::Deploy(Deploy::random(rng));
+    let transactions: BTreeMap<_, _> = iter::repeat_with(|| {
+        let txn = Transaction::random(rng);
+        let hash = txn.hash();
+        (hash, txn)
+    })
+    .take(3)
+    .collect();
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .transactions([first_txn.clone(), second_txn.clone(), third_txn.clone()].iter())
-            .build(rng),
+            .transactions(transactions.values())
+            .build(rng)
+            .into(),
     );
+
+    let block = test_env.block();
+    let block_v2: BlockV2 = block.clone().try_into().unwrap();
+    let first_txn = transactions
+        .get(block_v2.all_transactions().next().unwrap())
+        .unwrap();
+    let second_txn = transactions
+        .get(block_v2.all_transactions().nth(1).unwrap())
+        .unwrap();
+    let third_txn = transactions
+        .get(block_v2.all_transactions().nth(2).unwrap())
+        .unwrap();
+
     let peers = test_env.peers();
     let block = test_env.block();
     let validator_matrix = test_env.gen_validator_matrix();
@@ -3741,7 +3765,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -3752,7 +3776,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let _effects = block_synchronizer.handle_event(
@@ -3777,7 +3801,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(Some(Digest::SENTINEL_NONE)),
+            result: ExecutionResultsChecksumResult::Success {
+                checksum: Digest::SENTINEL_NONE,
+            },
         },
     );
 
@@ -3981,14 +4007,15 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
 async fn historical_sync_latch_should_not_decrement_for_old_execution_results() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let first_txn = Transaction::Deploy(Deploy::random(rng));
-    let second_txn = Transaction::Deploy(Deploy::random(rng));
-    let third_txn = Transaction::Deploy(Deploy::random(rng));
+    let first_txn = Transaction::random(rng);
+    let second_txn = Transaction::random(rng);
+    let third_txn = Transaction::random(rng);
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
             .transactions([first_txn, second_txn, third_txn].iter())
-            .build(rng),
+            .build(rng)
+            .into(),
     );
     let peers = test_env.peers();
     let block = test_env.block();
@@ -4007,7 +4034,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -4018,7 +4045,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(historical_builder
-        .register_block(block.into(), None)
+        .register_block(block.clone(), None)
         .is_ok());
 
     let _effects = block_synchronizer.handle_event(
@@ -4061,7 +4088,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         rng,
         Event::GotExecutionResultsChecksum {
             block_hash: *block.hash(),
-            result: Ok(Some(checksum)),
+            result: ExecutionResultsChecksumResult::Success { checksum },
         },
     );
 

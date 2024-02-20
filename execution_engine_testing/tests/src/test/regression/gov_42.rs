@@ -76,7 +76,7 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
     let do_minimum_request = do_minimum_request_builder.build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

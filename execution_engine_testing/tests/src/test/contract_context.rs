@@ -38,14 +38,14 @@ fn should_enforce_intended_execution_contexts() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     builder.exec(exec_request_3).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account
@@ -95,14 +95,14 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     builder.exec(exec_request_3).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account
@@ -130,12 +130,12 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let contract_hash = account
@@ -157,7 +157,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_3).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account

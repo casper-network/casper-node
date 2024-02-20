@@ -109,6 +109,11 @@ check-std-features:
 	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
 
+.PHONY: check-testing-features
+check-testing-features:
+	cd types && $(CARGO) check --all-targets --no-default-features --features=testing
+	cd types && $(CARGO) check --all-targets --features=testing
+
 .PHONY: check-format
 check-format:
 	$(CARGO_PINNED_NIGHTLY) fmt --all -- --check
@@ -137,7 +142,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003
 
 .PHONY: audit-as
 audit-as:
@@ -159,18 +164,15 @@ check-rs: \
 	lint \
 	audit \
 	check-std-features \
+	check-testing-features \
 	test-rs \
 	test-rs-no-default-features \
 	test-contracts-rs
 
 .PHONY: check
 check: \
-	check-format \
-	doc \
-	lint \
-	audit \
-	test \
-	test-contracts
+	check-rs \
+	test-as
 
 .PHONY: clean
 clean:

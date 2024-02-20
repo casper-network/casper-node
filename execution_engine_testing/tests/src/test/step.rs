@@ -15,8 +15,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    AddressableEntityHash, CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -33,15 +33,9 @@ static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
 const ACCOUNT_2_BALANCE: u64 = 200_000_000;
 const ACCOUNT_2_BOND: u64 = 200_000_000;
 
-fn get_named_key(
-    builder: &mut LmdbWasmTestBuilder,
-    entity_hash: AddressableEntityHash,
-    name: &str,
-) -> Key {
+fn get_named_key(builder: &mut LmdbWasmTestBuilder, entity_hash: EntityAddr, name: &str) -> Key {
     *builder
-        .get_addressable_entity(entity_hash)
-        .expect("should have contract")
-        .named_keys()
+        .get_named_keys(entity_hash)
         .get(name)
         .expect("should have bid purses")
 }
@@ -72,7 +66,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         tmp
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
     builder
 }
 
@@ -91,8 +85,10 @@ fn should_step() {
 
     let auction_hash = builder.get_auction_contract_hash();
 
-    let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
 
     let bids_before_slashing = builder.get_bids();
     let account_1_bid = bids_before_slashing
@@ -115,8 +111,10 @@ fn should_step() {
     );
 
     // seigniorage snapshot should have changed after auction
-    let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
     assert!(
         !before_auction_seigniorage
             .keys()
@@ -135,9 +133,13 @@ fn should_adjust_total_supply() {
     let mint_hash = builder.get_mint_contract_hash();
 
     // should check total supply before step
-    let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY)
-        .into_uref()
-        .expect("should be uref");
+    let total_supply_key = get_named_key(
+        &mut builder,
+        EntityAddr::System(mint_hash.value()),
+        TOTAL_SUPPLY_KEY,
+    )
+    .into_uref()
+    .expect("should be uref");
 
     let starting_total_supply = CLValue::try_from(
         builder

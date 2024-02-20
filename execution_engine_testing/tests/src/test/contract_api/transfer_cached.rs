@@ -1,4 +1,6 @@
 use once_cell::sync::Lazy;
+use rand::Rng;
+use tempfile::TempDir;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -9,10 +11,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, RuntimeArgs, SecretKey, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
-use rand::Rng;
-use tempfile::TempDir;
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -28,7 +28,6 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
-const TRANSFER_COST: u64 = 100_000_000;
 const ID_NONE: Option<u64> = None;
 
 #[ignore]
@@ -37,7 +36,7 @@ fn should_transfer_to_account_with_correct_balances() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 
@@ -73,8 +72,8 @@ fn should_transfer_to_account_with_correct_balances() {
         .expect("should get account 1");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
-    let default_expected_balance =
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (U512::one() + TRANSFER_COST);
+    let default_expected_balance = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)
+        - (U512::one() + DEFAULT_WASMLESS_TRANSFER_COST);
     assert_eq!(
         default_account_balance, default_expected_balance,
         "default account balance should reflect the transfer",
@@ -94,7 +93,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 
@@ -106,7 +105,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
-           ARG_AMOUNT => *TRANSFER_AMOUNT + TRANSFER_COST,
+           ARG_AMOUNT => *TRANSFER_AMOUNT + DEFAULT_WASMLESS_TRANSFER_COST,
            ARG_ID => ID_NONE,
         },
     ));
@@ -165,8 +164,9 @@ fn should_transfer_from_default_and_then_to_another_account() {
         .expect("should get account 2");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
-    let default_expected_balance = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - (MAX_PAYMENT_AMOUNT + TRANSFER_COST + TRANSFER_COST);
+    let double_cost = DEFAULT_WASMLESS_TRANSFER_COST + DEFAULT_WASMLESS_TRANSFER_COST;
+    let default_expected_balance =
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (MAX_PAYMENT_AMOUNT + (double_cost as u64));
     assert_eq!(
         default_account_balance,
         default_expected_balance,

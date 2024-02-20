@@ -10,7 +10,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes},
     contract_messages::{MessagePayload, MessageTopicOperation},
     package::EntityVersion,
-    system::CallStackElement,
+    system::Caller,
     AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Key, PackageHash, Phase,
     RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
@@ -385,7 +385,7 @@ pub(crate) fn read_host_buffer(size: usize) -> Result<Vec<u8>, ApiError> {
 }
 
 /// Returns the call stack.
-pub fn get_call_stack() -> Vec<CallStackElement> {
+pub fn get_call_stack() -> Vec<Caller> {
     let (call_stack_len, result_size) = {
         let mut call_stack_len: usize = 0;
         let mut result_size: usize = 0;

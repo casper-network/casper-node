@@ -16,7 +16,6 @@ use core::convert::TryInto;
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::PackageKindTag,
     CLType, CLTyped, Key, PackageHash, Parameter, URef,
 };
 
@@ -68,8 +67,5 @@ pub extern "C" fn call() {
         BTreeMap::new(),
     );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(
-        "end of upgrade",
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
-    );
+    runtime::put_key("end of upgrade", Key::contract_entity_key(contract_hash));
 }

@@ -1,14 +1,15 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
+use serde::Serialize;
 
-use casper_execution_engine::engine_state::GetEraValidatorsRequest;
+use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
-    BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
+    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion,
+    PublicKey, Timestamp, U512,
 };
-use serde::Serialize;
 
 use crate::types::ApprovalsHashes;
 
@@ -18,16 +19,6 @@ pub struct ValidatorWeightsByEraIdRequest {
     state_hash: Digest,
     era_id: EraId,
     protocol_version: ProtocolVersion,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TotalSupplyRequest {
-    pub state_hash: Digest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RoundSeigniorageRateRequest {
-    pub state_hash: Digest,
 }
 
 impl ValidatorWeightsByEraIdRequest {
@@ -56,54 +47,9 @@ impl ValidatorWeightsByEraIdRequest {
     }
 }
 
-impl From<ValidatorWeightsByEraIdRequest> for GetEraValidatorsRequest {
+impl From<ValidatorWeightsByEraIdRequest> for EraValidatorsRequest {
     fn from(input: ValidatorWeightsByEraIdRequest) -> Self {
-        GetEraValidatorsRequest::new(input.state_hash, input.protocol_version)
-    }
-}
-
-impl TotalSupplyRequest {
-    pub fn new(state_hash: Digest) -> Self {
-        TotalSupplyRequest { state_hash }
-    }
-}
-
-impl RoundSeigniorageRateRequest {
-    pub fn new(state_hash: Digest) -> Self {
-        RoundSeigniorageRateRequest { state_hash }
-    }
-}
-
-/// Request for era validators.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EraValidatorsRequest {
-    state_hash: Digest,
-    protocol_version: ProtocolVersion,
-}
-
-impl EraValidatorsRequest {
-    /// Constructs a new EraValidatorsRequest.
-    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
-        EraValidatorsRequest {
-            state_hash,
-            protocol_version,
-        }
-    }
-
-    /// Get the state hash.
-    pub fn state_hash(&self) -> Digest {
-        self.state_hash
-    }
-
-    /// Get the protocol version.
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
-    }
-}
-
-impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
-    fn from(input: EraValidatorsRequest) -> Self {
-        GetEraValidatorsRequest::new(input.state_hash, input.protocol_version)
+        EraValidatorsRequest::new(input.state_hash, input.protocol_version)
     }
 }
 
@@ -154,4 +100,77 @@ pub struct BlockAndExecutionResults {
     /// The [`Effects`] and the upcoming validator sets determined by the `step`
     pub(crate) maybe_step_effects_and_upcoming_era_validators:
         Option<StepEffectsAndUpcomingEraValidators>,
+}
+
+#[derive(DataSize, Debug, Clone, Serialize)]
+/// Wrapper for speculative execution prestate.
+pub struct SpeculativeExecutionState {
+    /// State root on top of which to execute deploy.
+    pub state_root_hash: Digest,
+    /// Block time.
+    pub block_time: Timestamp,
+    /// Protocol version used when creating the original block.
+    pub protocol_version: ProtocolVersion,
+}
+
+/// State to use to construct the next block in the blockchain. Includes the state root hash for the
+/// execution engine as well as certain values the next header will be based on.
+#[derive(DataSize, Default, Debug, Clone, Serialize)]
+pub struct ExecutionPreState {
+    /// The height of the next `Block` to be constructed. Note that this must match the height of
+    /// the `FinalizedBlock` used to generate the block.
+    next_block_height: u64,
+    /// The state root to use when executing deploys.
+    pre_state_root_hash: Digest,
+    /// The parent hash of the next `Block`.
+    parent_hash: BlockHash,
+    /// The accumulated seed for the pseudo-random number generator to be incorporated into the
+    /// next `Block`, where additional entropy will be introduced.
+    parent_seed: Digest,
+}
+
+impl ExecutionPreState {
+    pub(crate) fn new(
+        next_block_height: u64,
+        pre_state_root_hash: Digest,
+        parent_hash: BlockHash,
+        parent_seed: Digest,
+    ) -> Self {
+        ExecutionPreState {
+            next_block_height,
+            pre_state_root_hash,
+            parent_hash,
+            parent_seed,
+        }
+    }
+
+    /// Creates instance of `ExecutionPreState` from given block header nad Merkle tree hash
+    /// activation point.
+    pub fn from_block_header(block_header: &BlockHeaderV2) -> Self {
+        ExecutionPreState {
+            pre_state_root_hash: *block_header.state_root_hash(),
+            next_block_height: block_header.height() + 1,
+            parent_hash: block_header.block_hash(),
+            parent_seed: *block_header.accumulated_seed(),
+        }
+    }
+
+    // The height of the next `Block` to be constructed. Note that this must match the height of
+    /// the `FinalizedBlock` used to generate the block.
+    pub fn next_block_height(&self) -> u64 {
+        self.next_block_height
+    }
+    /// The state root to use when executing deploys.
+    pub fn pre_state_root_hash(&self) -> Digest {
+        self.pre_state_root_hash
+    }
+    /// The parent hash of the next `Block`.
+    pub fn parent_hash(&self) -> BlockHash {
+        self.parent_hash
+    }
+    /// The accumulated seed for the pseudo-random number generator to be incorporated into the
+    /// next `Block`, where additional entropy will be introduced.
+    pub fn parent_seed(&self) -> Digest {
+        self.parent_seed
+    }
 }

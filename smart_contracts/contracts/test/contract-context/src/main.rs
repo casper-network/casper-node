@@ -42,7 +42,7 @@ pub extern "C" fn contract_code_test() {
 pub extern "C" fn session_code_caller_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have contract package key")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .unwrap_or_revert();
 
     runtime::call_versioned_contract::<()>(
@@ -63,7 +63,7 @@ pub extern "C" fn add_new_key() {
 pub extern "C" fn add_new_key_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have package hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .unwrap_or_revert()
         .into();
 

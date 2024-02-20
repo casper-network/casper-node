@@ -43,7 +43,7 @@ fn should_fail_when_bonding_amount_is_zero_ee_597_regression() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&run_genesis_request)
+        .run_genesis(run_genesis_request)
         .exec(exec_request)
         .commit();
 

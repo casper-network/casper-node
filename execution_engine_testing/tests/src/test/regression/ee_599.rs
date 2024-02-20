@@ -36,7 +36,7 @@ fn setup() -> LmdbWasmTestBuilder {
     };
 
     let mut ctx = LmdbWasmTestBuilder::default();
-    ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+    ctx.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()
@@ -57,7 +57,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let transfer_funds = default_account
         .named_keys()
@@ -75,7 +75,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call",
-            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_hash_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_from_purse_to_purse_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -114,7 +114,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -135,7 +135,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call".to_string(),
-            "contract_key" => transfer_funds.into_entity_addr().expect("should get key"),
+            "contract_key" => transfer_funds.into_entity_hash_addr().expect("should get key"),
             "sub_contract_method_fwd" => "transfer_from_purse_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -182,7 +182,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -203,7 +203,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call",
-            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_hash_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -247,11 +247,11 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
     let mut builder = setup();
 
     let victim_account = builder
-        .get_entity_by_account_hash(VICTIM_ADDR)
+        .get_entity_with_named_keys_by_account_hash(VICTIM_ADDR)
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let transfer_funds = default_account
@@ -263,7 +263,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call".to_string(),
-            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_hash_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()

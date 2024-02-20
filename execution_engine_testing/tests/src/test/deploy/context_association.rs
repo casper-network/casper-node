@@ -30,13 +30,13 @@ fn should_put_system_contract_hashes_to_account_context() {
     };
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(request)
         .expect_success()
         .commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("account should exist");
 
     let named_keys = account.named_keys();
@@ -52,7 +52,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(MINT)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .expect("should be a hash"),
         builder.get_mint_contract_hash().value(),
         "mint_contract_hash should match"
@@ -61,7 +61,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(HANDLE_PAYMENT)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .expect("should be a hash"),
         builder.get_handle_payment_contract_hash().value(),
         "handle_payment_contract_hash should match"
@@ -70,7 +70,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .expect("should be a hash"),
         builder.get_auction_contract_hash().value(),
         "auction_contract_hash should match"

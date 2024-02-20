@@ -78,10 +78,11 @@ pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
+pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, AddressableEntityHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter,
+    AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -94,22 +95,22 @@ pub use block::{
     FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
+pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
-    GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
-    HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
-    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
-    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
+    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
+    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
+    MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
+    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -122,14 +123,19 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_FEE_HANDLING, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_REFUND_HANDLING,
     DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
+};
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;
@@ -145,9 +151,8 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    ByteCodeAddr, DictionaryAddr, EntityAddr, FromStrError as KeyFromStrError, HashAddr, Key,
-    KeyTag, PackageAddr, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, PackageAddr,
+    BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
 #[doc(inline)]

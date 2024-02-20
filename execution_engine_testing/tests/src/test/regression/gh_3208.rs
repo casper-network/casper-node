@@ -8,16 +8,18 @@ use casper_engine_test_support::{
     DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::{
-    engine_state::{self, genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest},
+    engine_state::{self, EngineConfigBuilder},
     execution,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
     system::{
         auction::{self, BidAddr, DelegationRate},
         standard_payment,
     },
-    ApiError, GenesisAccount, GenesisValidator, Key, Motes, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, StoredValue,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -98,7 +100,7 @@ fn should_initialize_default_vesting_schedule() {
         utils::create_run_genesis_request(ACCOUNTS_WITH_GENESIS_VALIDATORS.clone());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request);
 
     let bid_addr = BidAddr::from(*DEFAULT_PROPOSER_ADDR);
     let stored_value_before = builder
@@ -161,10 +163,10 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        ExecConfigBuilder::new().with_accounts(accounts).build()
+        GenesisConfigBuilder::new().with_accounts(accounts).build()
     };
 
-    let genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
@@ -176,7 +178,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         .build();
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -285,13 +287,13 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        ExecConfigBuilder::new()
+        GenesisConfigBuilder::new()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(locked_funds_period_millis)
             .build()
     };
 
-    let genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
@@ -303,7 +305,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         .build();
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

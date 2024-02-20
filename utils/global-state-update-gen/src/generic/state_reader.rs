@@ -73,7 +73,7 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the mint contract.
         let mint_contract_hash = self.get_system_mint_hash();
 
-        if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
+        if let Some(entity) = self.get_entity_with_named_keys_by_entity_hash(mint_contract_hash) {
             entity
                 .named_keys()
                 .get(TOTAL_SUPPLY_KEY)
@@ -96,7 +96,8 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the auction contract.
         let auction_contract_hash = self.get_system_auction_hash();
 
-        if let Some(entity) = self.get_addressable_entity(auction_contract_hash) {
+        if let Some(entity) = self.get_entity_with_named_keys_by_entity_hash(auction_contract_hash)
+        {
             entity
                 .named_keys()
                 .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)

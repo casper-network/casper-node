@@ -13,12 +13,18 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    sync::Arc,
+};
 
 use datasize::DataSize;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
-use casper_types::{Chainspec, DeployApprovalsHash, Timestamp, Transaction, TransactionId};
+use casper_types::{
+    Chainspec, DeployApprovalsHash, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionId,
+};
 
 use crate::{
     components::{
@@ -27,10 +33,15 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::FatalAnnouncement,
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
-    types::{DeployHashWithApprovals, DeployOrTransferHash, NodeId, TransactionHashWithApprovals},
+    fatal,
+    types::{
+        BlockWithMetadata, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
+        TransactionHashWithApprovals, ValidatorMatrix,
+    },
     NodeRng,
 };
 pub use config::Config;
@@ -90,18 +101,28 @@ pub(crate) struct BlockValidator {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
+    #[data_size(skip)]
+    validator_matrix: ValidatorMatrix,
     config: Config,
     /// State of validation of a specific block.
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
+    /// Requests awaiting storing of a block, keyed by the height of the block being awaited.
+    requests_on_hold: BTreeMap<u64, Vec<BlockValidationRequest>>,
 }
 
 impl BlockValidator {
     /// Creates a new block validator instance.
-    pub(crate) fn new(chainspec: Arc<Chainspec>, config: Config) -> Self {
+    pub(crate) fn new(
+        chainspec: Arc<Chainspec>,
+        validator_matrix: ValidatorMatrix,
+        config: Config,
+    ) -> Self {
         BlockValidator {
             chainspec,
+            validator_matrix,
             config,
             validation_states: HashMap::new(),
+            requests_on_hold: BTreeMap::new(),
         }
     }
 
@@ -113,13 +134,17 @@ impl BlockValidator {
         request: BlockValidationRequest,
     ) -> MaybeHandled
     where
-        REv: From<Event> + From<FetcherRequest<Transaction>> + Send,
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
     {
         if let Some(state) = self.validation_states.get_mut(&request.block) {
             let BlockValidationRequest {
                 block,
                 sender,
                 responder,
+                ..
             } = request;
             debug!(%sender, %block, "already validating proposed block");
             match state.add_responder(responder) {
@@ -138,7 +163,13 @@ impl BlockValidator {
                 MaybeStartFetching::Start {
                     holder,
                     missing_deploys,
-                } => fetch_deploys(effect_builder, holder, missing_deploys),
+                    missing_signatures,
+                } => fetch_deploys_and_signatures(
+                    effect_builder,
+                    holder,
+                    missing_deploys,
+                    missing_signatures,
+                ),
                 MaybeStartFetching::Ongoing => {
                     debug!("ongoing fetches while validating proposed block - noop");
                     Effects::new()
@@ -163,24 +194,281 @@ impl BlockValidator {
     fn handle_new_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
+        request: BlockValidationRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<StorageRequest>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        debug!(sender = %request.sender, block = %request.block, "validating new proposed block");
+        debug_assert!(!self.validation_states.contains_key(&request.block));
+
+        if request.block.value().rewarded_signatures().has_some() {
+            // The block contains cited signatures - we have to read the relevant blocks and find
+            // out who the validators are in order to decode the signature IDs
+            let signature_rewards_max_delay =
+                self.chainspec.core_config.signature_rewards_max_delay;
+            let minimum_block_height = request
+                .proposed_block_height
+                .saturating_sub(signature_rewards_max_delay);
+
+            debug!(
+                proposed_block=?request.block,
+                %minimum_block_height,
+                proposed_block_height=%request.proposed_block_height,
+                "block cites signatures, validation required - requesting past blocks from storage"
+            );
+
+            effect_builder
+                .collect_past_blocks_with_metadata(
+                    minimum_block_height..request.proposed_block_height,
+                    false,
+                )
+                .event(
+                    move |past_blocks_with_metadata| Event::GotPastBlocksWithMetadata {
+                        past_blocks_with_metadata,
+                        request,
+                    },
+                )
+        } else {
+            self.handle_new_request_with_signatures(effect_builder, request, HashSet::new())
+        }
+    }
+
+    /// This function pairs the `SingleBlockRewardedSignatures` entries from `rewarded_signatures`
+    /// with the relevant past blocks and their metadata. If a block for which some signatures are
+    /// cited is missing, or if some signatures are double-cited, it will return `None`.
+    fn relevant_blocks_and_cited_signatures<'b, 'c>(
+        past_blocks_with_metadata: &'b [Option<BlockWithMetadata>],
+        proposed_block_height: u64,
+        rewarded_signatures: &'c RewardedSignatures,
+    ) -> Result<Vec<(&'b BlockWithMetadata, &'c SingleBlockRewardedSignatures)>, Option<u64>> {
+        let mut result = Vec::new();
+        // Check whether we know all the blocks for which the proposed block cites some signatures,
+        // and if no signatures are doubly cited.
+        for ((past_block_height, signatures), maybe_block) in rewarded_signatures
+            .iter_with_height(proposed_block_height)
+            .zip(past_blocks_with_metadata.iter().rev())
+        {
+            match maybe_block {
+                None if signatures.has_some() => {
+                    trace!(%past_block_height, "maybe_block = None if signatures.has_some() - returning");
+
+                    return Err(Some(past_block_height));
+                }
+                None => {
+                    // we have no block, but there are also no signatures cited for this block, so
+                    // we can continue
+                    trace!(%past_block_height, "maybe_block = None");
+                }
+                Some(block) => {
+                    let padded_signatures = block.block.rewarded_signatures().clone().left_padded(
+                        proposed_block_height.saturating_sub(past_block_height) as usize,
+                    );
+                    trace!(
+                        ?padded_signatures,
+                        ?rewarded_signatures,
+                        intersection = ?rewarded_signatures.intersection(&padded_signatures),
+                        "maybe_block is Some"
+                    );
+                    if rewarded_signatures
+                        .intersection(&padded_signatures)
+                        .has_some()
+                    {
+                        // block cited a signature that has been cited before - it is invalid!
+                        debug!(
+                            %past_block_height,
+                            "maybe_block is Some, nonzero intersection with previous"
+                        );
+                        return Err(None);
+                    }
+                    // everything is OK - save the block in the result
+                    result.push((block, signatures));
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    fn era_ids_vec(past_blocks_with_metadata: &[Option<BlockWithMetadata>]) -> Vec<Option<EraId>> {
+        // This will create a vector of era ids for the past blocks corresponding to cited
+        // signatures. The index of the entry in the vector will be the number of blocks in the
+        // past relative to the current block, minus 1 (ie., 0 is the previous block, 1 is the one
+        // before that, etc.) - these indices will correspond directly to the indices in
+        // RewardedSignatures.
+        past_blocks_with_metadata
+            .iter()
+            .rev()
+            .map(|maybe_metadata| {
+                maybe_metadata
+                    .as_ref()
+                    .map(|metadata| metadata.block.era_id())
+            })
+            .collect()
+    }
+
+    fn get_relevant_validators(
+        &mut self,
+        past_blocks_with_metadata: &[Option<BlockWithMetadata>],
+    ) -> HashMap<EraId, BTreeSet<PublicKey>> {
+        let era_ids_vec = Self::era_ids_vec(past_blocks_with_metadata);
+        // get the set of unique era ids that are present in the cited blocks
+        let era_ids: HashSet<_> = era_ids_vec.iter().flatten().copied().collect();
+        let validator_matrix = &self.validator_matrix;
+
+        era_ids
+            .into_iter()
+            .filter_map(move |era_id| {
+                validator_matrix
+                    .validator_weights(era_id)
+                    .map(|weights| (era_id, weights.into_validator_public_keys().collect()))
+            })
+            .collect()
+    }
+
+    fn handle_got_past_blocks_with_metadata<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
+        request: BlockValidationRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        let rewarded_signatures = request.block.value().rewarded_signatures();
+
+        match Self::relevant_blocks_and_cited_signatures(
+            &past_blocks_with_metadata,
+            request.proposed_block_height,
+            rewarded_signatures,
+        ) {
+            Ok(blocks_and_signatures) => {
+                let validators = self.get_relevant_validators(&past_blocks_with_metadata);
+
+                // This will be a set of signature IDs of the signatures included in the block, but
+                // not found in metadata in storage.
+                let mut missing_sigs = HashSet::new();
+
+                for (block_with_metadata, single_block_rewarded_sigs) in blocks_and_signatures {
+                    let era_id = block_with_metadata.block.era_id();
+                    let Some(all_validators) = validators.get(&era_id) else {
+                        return fatal!(effect_builder, "couldn't get validators for {}", era_id).ignore();
+                    };
+                    let public_keys = single_block_rewarded_sigs
+                        .clone()
+                        .to_validator_set(all_validators.iter().cloned());
+                    let block_hash = *block_with_metadata.block.hash();
+                    missing_sigs.extend(
+                        public_keys
+                            .into_iter()
+                            .filter(move |public_key| {
+                                !block_with_metadata
+                                    .block_signatures
+                                    .has_finality_signature(public_key)
+                            })
+                            .map(move |public_key| {
+                                FinalitySignatureId::new(block_hash, era_id, public_key)
+                            }),
+                    );
+                }
+
+                trace!(
+                    ?missing_sigs,
+                    "handle_got_past_blocks_with_metadata missing_sigs"
+                );
+
+                self.handle_new_request_with_signatures(effect_builder, request, missing_sigs)
+            }
+            Err(Some(missing_block_height)) => {
+                // We are missing some blocks necessary for unpacking signatures from storage - put
+                // the request on hold for now.
+                self.requests_on_hold
+                    .entry(missing_block_height)
+                    .or_default()
+                    .push(request);
+                Effects::new()
+            }
+            Err(None) => {
+                // Rewarded signatures pre-validation failed
+                respond(false, Some(request.responder))
+            }
+        }
+    }
+
+    fn handle_block_stored<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        stored_block_height: u64,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<StorageRequest>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        let mut pending_requests = vec![];
+
+        while self
+            .requests_on_hold
+            .first_key_value()
+            .map_or(false, |(height, _)| *height <= stored_block_height)
+        {
+            // unwrap is safe - we'd break the loop if there were no elements
+            pending_requests.extend(self.requests_on_hold.pop_first().unwrap().1);
+        }
+
+        pending_requests
+            .into_iter()
+            .flat_map(|request| self.handle_new_request(effect_builder, request))
+            .collect()
+    }
+
+    fn handle_new_request_with_signatures<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
         BlockValidationRequest {
             block,
             sender,
             responder,
+            ..
         }: BlockValidationRequest,
+        missing_signatures: HashSet<FinalitySignatureId>,
     ) -> Effects<Event>
     where
-        REv: From<Event> + From<FetcherRequest<Transaction>> + Send,
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + From<FatalAnnouncement>
+            + Send,
     {
-        debug!(%sender, %block, "validating new proposed block");
-        debug_assert!(!self.validation_states.contains_key(&block));
-        let (mut state, maybe_responder) =
-            BlockValidationState::new(&block, sender, responder, self.chainspec.as_ref());
+        let (mut state, maybe_responder) = BlockValidationState::new(
+            &block,
+            missing_signatures,
+            sender,
+            responder,
+            self.chainspec.as_ref(),
+        );
         let effects = match state.start_fetching() {
             MaybeStartFetching::Start {
                 holder,
                 missing_deploys,
-            } => fetch_deploys(effect_builder, holder, missing_deploys),
+                missing_signatures,
+            } => fetch_deploys_and_signatures(
+                effect_builder,
+                holder,
+                missing_deploys,
+                missing_signatures,
+            ),
             MaybeStartFetching::ValidationSucceeded => {
                 debug!("no deploys - block validation complete");
                 debug_assert!(maybe_responder.is_some());
@@ -240,7 +528,10 @@ impl BlockValidator {
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
     where
-        REv: From<Event> + From<FetcherRequest<Transaction>> + Send,
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
     {
         match &result {
             Ok(FetchedData::FromPeer { peer, .. }) => {
@@ -311,17 +602,19 @@ impl BlockValidator {
                                 MaybeStartFetching::Start {
                                     holder,
                                     missing_deploys,
+                                    missing_signatures,
                                 } => {
                                     debug!(
                                         %holder,
                                         missing_deploys_len = missing_deploys.len(),
                                         "fetching missing deploys from different peer"
                                     );
-                                    effects.extend(fetch_deploys(
+                                    effects.extend(fetch_deploys_and_signatures(
                                         effect_builder,
                                         holder,
                                         missing_deploys,
-                                    ))
+                                        missing_signatures,
+                                    ));
                                 }
                                 MaybeStartFetching::Unable => {
                                     debug!(
@@ -350,6 +643,97 @@ impl BlockValidator {
             }
         }
     }
+
+    fn handle_finality_signature_fetched<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        finality_signature_id: FinalitySignatureId,
+        result: FetchResult<FinalitySignature>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event>
+            + From<FetcherRequest<Transaction>>
+            + From<FetcherRequest<FinalitySignature>>
+            + Send,
+    {
+        match &result {
+            Ok(FetchedData::FromPeer { peer, .. }) => {
+                debug!(%finality_signature_id, %peer, "fetched finality signature from peer")
+            }
+            Ok(FetchedData::FromStorage { .. }) => {
+                debug!(%finality_signature_id, "fetched finality signature locally")
+            }
+            Err(error) => {
+                warn!(%finality_signature_id, %error, "could not fetch finality signature")
+            }
+        }
+        match result {
+            Ok(FetchedData::FromStorage { .. }) | Ok(FetchedData::FromPeer { .. }) => {
+                let mut effects = Effects::new();
+                for state in self.validation_states.values_mut() {
+                    let responders = state.try_add_signature(&finality_signature_id);
+                    if !responders.is_empty() {
+                        let is_valid = matches!(state, BlockValidationState::Valid(_));
+                        effects.extend(respond(is_valid, responders));
+                    }
+                }
+                effects
+            }
+            Err(error) => {
+                match error {
+                    fetcher::Error::Absent { peer, .. }
+                    | fetcher::Error::Rejected { peer, .. }
+                    | fetcher::Error::TimedOut { peer, .. } => {
+                        // Soft failure - just mark the holder as failed and see if we can start
+                        // fetching using a different holder.
+                        let mut effects = Effects::new();
+                        self.validation_states.values_mut().for_each(|state| {
+                            state.try_mark_holder_failed(&peer);
+                            match state.start_fetching() {
+                                MaybeStartFetching::Start {
+                                    holder,
+                                    missing_deploys,
+                                    missing_signatures,
+                                } => {
+                                    debug!(
+                                        %holder,
+                                        missing_deploys_len = missing_deploys.len(),
+                                        "fetching missing deploys and signatures from different \
+                                        peer"
+                                    );
+                                    effects.extend(fetch_deploys_and_signatures(
+                                        effect_builder,
+                                        holder,
+                                        missing_deploys,
+                                        missing_signatures,
+                                    ));
+                                }
+                                MaybeStartFetching::Unable => {
+                                    debug!(
+                                        "exhausted peers while validating proposed block - \
+                                        responding `false`"
+                                    );
+                                    effects.extend(respond(false, state.take_responders()));
+                                }
+                                MaybeStartFetching::Ongoing
+                                | MaybeStartFetching::ValidationSucceeded
+                                | MaybeStartFetching::ValidationFailed => {}
+                            }
+                        });
+                        effects
+                    }
+                    fetcher::Error::CouldNotConstructGetRequest { .. }
+                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
+                        // Hard failure - change state to Invalid.
+                        let responders = self.validation_states.values_mut().flat_map(|state| {
+                            state.try_mark_invalid_signature(&finality_signature_id)
+                        });
+                        respond(false, responders)
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl<REv> Component<REv> for BlockValidator
@@ -357,7 +741,9 @@ where
     REv: From<Event>
         + From<BlockValidationRequest>
         + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>
+        + From<FatalAnnouncement>
         + Send,
 {
     type Event = Event;
@@ -378,9 +764,28 @@ where
                     }
                 }
             }
+            Event::GotPastBlocksWithMetadata {
+                past_blocks_with_metadata,
+                request,
+            } => self.handle_got_past_blocks_with_metadata(
+                effect_builder,
+                past_blocks_with_metadata,
+                request,
+            ),
+            Event::BlockStored(stored_block_height) => {
+                self.handle_block_stored(effect_builder, stored_block_height)
+            }
             Event::TransactionFetched { dt_hash, result } => {
                 self.handle_transaction_fetched(effect_builder, dt_hash, result)
             }
+            Event::FinalitySignatureFetched {
+                finality_signature_id,
+                result,
+            } => self.handle_finality_signature_fetched(
+                effect_builder,
+                *finality_signature_id,
+                result,
+            ),
         }
     }
 
@@ -389,15 +794,19 @@ where
     }
 }
 
-fn fetch_deploys<REv>(
+fn fetch_deploys_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
     missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+    missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
-    REv: From<Event> + From<FetcherRequest<Transaction>> + Send,
+    REv: From<Event>
+        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
+        + Send,
 {
-    missing_deploys
+    let mut effects: Effects<Event> = missing_deploys
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
             let txn_id = TransactionId::Deploy {
@@ -408,7 +817,26 @@ where
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
                 .event(move |result| Event::TransactionFetched { dt_hash, result })
         })
-        .collect()
+        .collect();
+
+    effects.extend(
+        missing_signatures
+            .into_iter()
+            .flat_map(|finality_signature_id| {
+                effect_builder
+                    .fetch::<FinalitySignature>(
+                        Box::new(finality_signature_id.clone()),
+                        holder,
+                        Box::new(EmptyValidationMetadata),
+                    )
+                    .event(move |result| Event::FinalitySignatureFetched {
+                        finality_signature_id: Box::new(finality_signature_id),
+                        result,
+                    })
+            }),
+    );
+
+    effects
 }
 
 fn respond(

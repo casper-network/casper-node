@@ -118,9 +118,6 @@ pub enum StepError {
     /// Invalid state root hash.
     #[error("Root not found: {0:?}")]
     RootNotFound(Digest),
-    /// Error creating a tracking copy instance.
-    #[error("Tracking copy error: {0}")]
-    TrackingCopyError(Error),
     #[error("Get contract error: {0}")]
     /// Error getting a system contract.
     GetContractError(Error),

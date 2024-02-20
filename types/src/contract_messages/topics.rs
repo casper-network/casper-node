@@ -10,6 +10,7 @@ use core::fmt::{Debug, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -113,6 +114,7 @@ impl Debug for TopicNameHash {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<TopicNameHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TopicNameHash {
         TopicNameHash(rng.gen())
