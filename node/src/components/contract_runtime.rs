@@ -42,9 +42,7 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{
-    Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig, Transaction,
-};
+use casper_types::{ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig, Transaction};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -76,6 +74,7 @@ pub(crate) use types::{
     StepEffectsAndUpcomingEraValidators,
 };
 use utils::{exec_or_requeue, run_intensive_task};
+use crate::contract_runtime::utils::EraPrice;
 
 const COMPONENT_NAME: &str = "contract_runtime";
 
@@ -96,7 +95,7 @@ pub(crate) struct ContractRuntime {
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
-    current_gas_price: u8,
+    current_gas_price: EraPrice,
 }
 
 impl Debug for ContractRuntime {
@@ -118,7 +117,14 @@ impl ContractRuntime {
         let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
             .map_err(ConfigError::GlobalState)?;
 
-        let current_gas_price = chainspec.vacancy_config.min_gas_price;
+        let current_gas_price = match chainspec.protocol_config.activation_point {
+            ActivationPoint::EraId(era_id) => {
+                EraPrice::new(era_id, chainspec.vacancy_config.min_gas_price)
+            }
+            ActivationPoint::Genesis(_) => {
+                EraPrice::new(EraId::new(1), chainspec.vacancy_config.min_gas_price)
+            }
+        };
 
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
@@ -520,7 +526,7 @@ impl ContractRuntime {
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
-                        let current_gas_price = self.current_gas_price;
+                        let current_gas_price = self.current_gas_price.gas_price();
                         effects.extend(
                             exec_or_requeue(
                                 engine_state,
@@ -588,10 +594,10 @@ impl ContractRuntime {
                 }
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => {
-                responder.respond(Some(self.current_gas_price)).ignore()
+                responder.respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id)).ignore()
             }
-            ContractRuntimeRequest::UpdateRuntimePrice(new_gas_price) => {
-                self.current_gas_price = new_gas_price;
+            ContractRuntimeRequest::UpdateRuntimePrice(era_id, new_gas_price) => {
+                self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()
             }
         }
@@ -677,10 +683,6 @@ impl ContractRuntime {
             ret
         };
         Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
-    }
-
-    fn handle_gas_price_update(&mut self, gas_price: u8) {
-        self.current_gas_price = gas_price
     }
 
     /// Returns the engine state, for testing only.

@@ -974,7 +974,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Results
         responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
     },
-    UpdateRuntimePrice(u8),
+    UpdateRuntimePrice(EraId, u8),
     GetEraGasPrice {
         era_id: EraId,
         responder: Responder<Option<u8>>,
@@ -1060,7 +1060,7 @@ impl Display for ContractRuntimeRequest {
                     execution_prestate.state_root_hash
                 )
             }
-            ContractRuntimeRequest::UpdateRuntimePrice(era_gas_price) => {
+            ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
                 write!(formatter, "updating price to {}", era_gas_price)
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {

@@ -48,6 +48,7 @@ pub(crate) use event::Event;
 
 use crate::{effect::requests::ContractRuntimeRequest, types::TransactionHashWithApprovals};
 use metrics::Metrics;
+use crate::effect::Responder;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
 
@@ -212,6 +213,30 @@ impl TransactionBuffer {
             .event(move |maybe_transaction| {
                 Event::StoredTransaction(transaction_id, maybe_transaction.map(Box::new))
             })
+    }
+
+    fn handle_get_appendable_block<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        timestamp: Timestamp,
+        era_id: EraId,
+        responder: Responder<AppendableBlock>,
+    ) -> Effects<Event>
+    where REv: From<ContractRuntimeRequest> + Send
+
+    {
+        if self.prices.get(&era_id).is_none() {
+            return effect_builder
+                .get_current_gas_price(era_id)
+                .event(move |maybe_gas_price| Event::GetGasPriceResult(
+                    maybe_gas_price,
+                    era_id,
+                    timestamp,
+                    responder
+                ))
+        }
+
+        responder.respond(self.appendable_block(timestamp, era_id)).ignore()
     }
 
     /// Update buffer considering new stored transaction.
@@ -688,7 +713,8 @@ where
                     | Event::VersionedBlock(_)
                     | Event::BlockFinalized(_)
                     | Event::Expire
-                    | Event::UpdateEraGasPrice { .. } => {
+                    | Event::UpdateEraGasPrice { .. }
+                    | Event::GetGasPriceResult(_, _, _, _) => {
                         warn!(
                             ?event,
                             name = <Self as Component<MainEvent>>::name(self),
@@ -725,9 +751,21 @@ where
                     //     }
                     // }
 
-                    responder
-                        .respond(self.appendable_block(timestamp, era_id))
-                        .ignore()
+                    // responder
+                    //     .respond(self.appendable_block(timestamp, era_id))
+                    //     .ignore()
+                    self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
+                }
+                Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
+                    match maybe_gas_price {
+                        None => responder.respond(AppendableBlock::new(self.transaction_config, timestamp)).ignore(),
+                        Some(gas_price) => {
+                            self.prices.insert(era_id, gas_price);
+                            responder
+                                .respond(self.appendable_block(timestamp, era_id))
+                                .ignore()
+                        }
+                    }
                 }
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
