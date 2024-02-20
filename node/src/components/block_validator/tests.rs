@@ -108,7 +108,7 @@ impl MockReactor {
                     validation_metadata: _,
                     responder,
                 }) => {
-                    if let Some(signature) = context.get_signature(&*id) {
+                    if let Some(signature) = context.get_signature(&id) {
                         let response = FetchedData::FromPeer {
                             item: Box::new(signature),
                             peer,
@@ -343,7 +343,7 @@ impl ValidationContext {
                     .get(validator)
                     .expect("should have validator");
                 let signature =
-                    FinalitySignature::create(*block.hash(), block.era_id(), &*&secret_key);
+                    FinalitySignature::create(*block.hash(), block.era_id(), secret_key);
                 self.signatures
                     .entry(height)
                     .or_default()
@@ -367,7 +367,7 @@ impl ValidationContext {
                     .get(validator)
                     .expect("should have validator");
                 let signature =
-                    FinalitySignature::create(*block.hash(), block.era_id(), &*&secret_key);
+                    FinalitySignature::create(*block.hash(), block.era_id(), secret_key);
                 self.fetchable_signatures
                     .insert(*signature.fetch_id(), signature);
             }
@@ -456,10 +456,7 @@ impl ValidationContext {
     fn get_block_with_metadata(&self, block_height: u64) -> Option<BlockWithMetadata> {
         self.past_blocks.get(&block_height).map(|block| {
             let empty_hashmap = HashMap::new();
-            let signatures = self
-                .signatures
-                .get(&block_height)
-                .unwrap_or_else(|| &empty_hashmap);
+            let signatures = self.signatures.get(&block_height).unwrap_or(&empty_hashmap);
             let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
             for signature in signatures.values() {
                 block_signatures.insert_signature(signature.clone());
@@ -496,10 +493,10 @@ impl ValidationContext {
             .unwrap_or_default();
         new_proposed_block_with_cited_signatures(
             timestamp,
-            self.transfers_to_include.iter().cloned().collect(),
+            self.transfers_to_include.to_vec(),
             vec![],
             vec![],
-            self.deploys_to_include.iter().cloned().collect(),
+            self.deploys_to_include.to_vec(),
             rewarded_signatures,
         )
     }
@@ -572,7 +569,7 @@ impl ValidationContext {
 
         // If there are no effects - some blocks have been missing from storage. Announce the
         // finalization of the blocks we have in the context.
-        if effects.len() == 0 {
+        if effects.is_empty() {
             for block_height in self.get_delayed_blocks() {
                 effects.extend(block_validator.handle_event(
                     effect_builder,
@@ -583,7 +580,7 @@ impl ValidationContext {
         }
 
         // If there are still no effects, something went wrong.
-        assert!(effects.len() > 0);
+        assert!(!effects.is_empty());
 
         // If there were no signatures in the block, the validity of the block should be determined
         // at this point. In such a case, return the result.
@@ -621,7 +618,7 @@ impl ValidationContext {
         }
 
         // If there are no effects at this point, something went wrong.
-        assert!(effects.len() > 0);
+        assert!(!effects.is_empty());
 
         // If no blocks were delayed, we just returned all the fetched items, so now the validity
         // should have been resolved. Return the result if it is so.
