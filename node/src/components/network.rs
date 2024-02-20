@@ -14,11 +14,7 @@
 //! # Connection
 //!
 //! Every node has an ID and a public listening address. The objective of each node is to constantly
-//! maintain an outgoing connection to each other node (and thus have an incoming connection from
-//! these nodes as well).
-//!
-//! Any incoming connection is, after a handshake process, strictly read from, while any outgoing
-//! connection is strictly used for sending messages, also after a handshake.
+//! maintain a connection to each other node, see the [`conman`] module for details.
 //!
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
@@ -120,9 +116,13 @@ use crate::{
 
 use super::ValidatorBoundComponent;
 
+/// The name of this component.
 const COMPONENT_NAME: &str = "network";
 
+/// How often to attempt to drop metrics, so that they can be re-registered.
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+
+/// Delays in between dropping metrics.
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(DataSize)]
@@ -204,12 +204,6 @@ where
             None => None,
         };
 
-        let rpc_builder = transport::create_rpc_builder(
-            chain_info.networking_config,
-            cfg.send_buffer_size,
-            cfg.ack_timeout,
-        );
-
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
             our_identity,
@@ -217,7 +211,6 @@ where
             node_key_pair.map(NodeKeyPair::new),
             chain_info,
             &net_metrics,
-            rpc_builder,
         ));
 
         let component = Network {

@@ -120,18 +120,8 @@ where
     node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
     public_addr: Option<SocketAddr>,
-    /// Timeout for initial TCP and TLS negotiation connection.
-    tcp_timeout: TimeDiff,
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
-    /// The protocol version at which (or under) tarpitting is enabled.
-    tarpit_version_threshold: Option<ProtocolVersion>,
-    /// If tarpitting is enabled, duration for which connections should be kept open.
-    tarpit_duration: TimeDiff,
-    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    tarpit_chance: f32,
-    /// Builder for new node-to-node RPC instances.
-    pub(super) rpc_builder: juliet::rpc::RpcBuilder<{ Channel::COUNT }>,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -142,7 +132,6 @@ impl<REv> NetworkContext<REv> {
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
-        rpc_builder: juliet::rpc::RpcBuilder<{ Channel::COUNT }>,
     ) -> Self {
         let Identity {
             secret_key,
@@ -166,12 +155,7 @@ impl<REv> NetworkContext<REv> {
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
             node_key_pair,
-            tcp_timeout: cfg.handshake_timeout, // TODO: Maybe there is merit in separating these.
             handshake_timeout: cfg.handshake_timeout,
-            tarpit_version_threshold: cfg.tarpit_version_threshold,
-            tarpit_duration: cfg.tarpit_duration,
-            tarpit_chance: cfg.tarpit_chance,
-            rpc_builder,
         }
     }
 
@@ -201,18 +185,6 @@ impl<REv> NetworkContext<REv> {
 
     pub(crate) fn node_key_pair(&self) -> Option<&NodeKeyPair> {
         self.node_key_pair.as_ref()
-    }
-
-    pub(crate) fn tarpit_chance(&self) -> f32 {
-        self.tarpit_chance
-    }
-
-    pub(crate) fn tarpit_duration(&self) -> TimeDiff {
-        self.tarpit_duration
-    }
-
-    pub(crate) fn tarpit_version_threshold(&self) -> Option<ProtocolVersion> {
-        self.tarpit_version_threshold
     }
 }
 

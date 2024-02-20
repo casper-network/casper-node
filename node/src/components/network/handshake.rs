@@ -193,21 +193,6 @@ where
         // Since we are not using SemVer for versioning, we cannot make any assumptions about
         // compatibility, so we allow only exact version matches.
         if protocol_version != context.chain_info().protocol_version {
-            if let Some(threshold) = context.tarpit_version_threshold() {
-                if protocol_version <= threshold {
-                    let mut rng = crate::new_rng();
-
-                    if rng.gen_bool(context.tarpit_chance() as f64) {
-                        // If tarpitting is enabled, we hold open the connection for a specific
-                        // amount of time, to reduce load on other nodes and keep them from
-                        // reconnecting.
-                        info!(duration=?context.tarpit_duration(), "randomly tarpitting node");
-                        tokio::time::sleep(Duration::from(context.tarpit_duration())).await;
-                    } else {
-                        debug!(p = context.tarpit_chance(), "randomly not tarpitting node");
-                    }
-                }
-            }
             return Err(ConnectionError::IncompatibleVersion(protocol_version));
         }
 
