@@ -114,7 +114,7 @@ struct ConManContext {
 ///
 /// Tracks outgoing and incoming connections.
 #[derive(Debug, Default)]
-struct ConManState {
+pub(crate) struct ConManState {
     /// A set of outgoing address for which a handler is currently running.
     address_book: HashSet<SocketAddr>,
     /// Mapping of [`SocketAddr`]s to an instant in the future until which they must not be dialed.
@@ -128,13 +128,35 @@ struct ConManState {
     banlist: HashMap<NodeId, Sentence>,
 }
 
+impl ConManState {
+    /// Returns a reference to the address book of this [`ConManState`].
+    pub(crate) fn address_book(&self) -> &HashSet<SocketAddr> {
+        &self.address_book
+    }
+
+    /// Returns a reference to the do not call of this [`ConManState`].
+    pub(crate) fn do_not_call(&self) -> &HashMap<SocketAddr, Instant> {
+        &self.do_not_call
+    }
+
+    /// Returns a reference to the routing table of this [`ConManState`].
+    pub(crate) fn routing_table(&self) -> &HashMap<NodeId, Route> {
+        &self.routing_table
+    }
+
+    /// Returns a reference to the banlist of this [`ConManState`].
+    pub(crate) fn banlist(&self) -> &HashMap<NodeId, Sentence> {
+        &self.banlist
+    }
+}
+
 /// Record of punishment for a peers malicious behavior.
 #[derive(Debug)]
 struct Sentence {
     /// Time until the ban is lifted.
-    until: Instant,
+    pub(crate) until: Instant,
     /// Justification for the ban.
-    justification: BlocklistJustification,
+    pub(crate) justification: BlocklistJustification,
 }
 
 /// Data related to an established connection.
@@ -360,6 +382,18 @@ impl ConMan {
             .keys()
             .cloned()
             .collect()
+    }
+
+    /// Returns a read lock onto the state of this connection manager.
+    ///
+    /// ## Warning
+    ///
+    /// Holding the lock for more than a few microseconds is highly discouraged, as it is a
+    /// non-async read lock that will potentially block a large number of threads (not tasks!) of
+    /// the tokio runtime. You have been warned!
+    #[inline]
+    pub(crate) fn read_state(&self) -> std::sync::RwLockReadGuard<'_, ConManState> {
+        self.ctx.state.read().expect("lock poisoned")
     }
 }
 
