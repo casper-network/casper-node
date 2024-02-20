@@ -3,13 +3,26 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
+use std::pin::Pin;
+
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
+use openssl::ssl::Ssl;
 use strum::EnumCount;
+use tokio::net::TcpStream;
+use tokio_openssl::SslStream;
 
-use crate::types::chainspec::JulietConfig;
+use crate::{
+    tls,
+    types::{chainspec::JulietConfig, NodeId},
+};
 
-use super::{Channel, PerChannel};
+use super::{
+    conman::{ProtocolHandler, ProtocolHandshakeOutcome},
+    error::ConnectionError,
+    tasks::TlsConfiguration,
+    Channel, PerChannel, Transport,
+};
 
 /// Creats a new RPC builder with the currently fixed Juliet configuration.
 ///
@@ -79,4 +92,75 @@ impl Drop for Ticket {
             incoming_request.respond(None);
         }
     }
+}
+
+pub(super) struct ComponentProtocolHandler {
+    tls_configuration: TlsConfiguration,
+}
+
+impl ComponentProtocolHandler {
+    pub(super) fn new() -> Self {
+        todo!()
+    }
+}
+
+#[async_trait::async_trait]
+impl ProtocolHandler for ComponentProtocolHandler {
+    #[inline(always)]
+    async fn setup_incoming(
+        &self,
+        stream: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        let (node_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
+
+        todo!()
+    }
+
+    #[inline(always)]
+    async fn setup_outgoing(
+        &self,
+        stream: TcpStream,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        todo!()
+    }
+
+    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
+        todo!()
+    }
+}
+
+/// Server-side TLS setup.
+///
+/// This function groups the TLS setup into a convenient function, enabling the `?` operator.
+pub(super) async fn server_setup_tls(
+    context: &TlsConfiguration,
+    stream: TcpStream,
+) -> Result<(NodeId, Transport), ConnectionError> {
+    let mut tls_stream = tls::create_tls_acceptor(
+        context.our_cert.as_x509().as_ref(),
+        context.secret_key.as_ref(),
+        context.keylog.clone(),
+    )
+    .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
+
+    SslStream::accept(Pin::new(&mut tls_stream))
+        .await
+        .map_err(ConnectionError::TlsHandshake)?;
+
+    // We can now verify the certificate.
+    let peer_cert = tls_stream
+        .ssl()
+        .peer_certificate()
+        .ok_or(ConnectionError::NoPeerCertificate)?;
+
+    let validated_peer_cert = context
+        .validate_peer_cert(peer_cert)
+        .map_err(ConnectionError::PeerCertificateInvalid)?;
+
+    Ok((
+        NodeId::from(validated_peer_cert.public_key_fingerprint()),
+        tls_stream,
+    ))
 }

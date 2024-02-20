@@ -165,6 +165,7 @@ pub(crate) struct Sentence {
 #[derive(Debug)]
 pub(crate) struct Route {
     /// Node ID of the peer.
+    // TODO: Consider removing this, as it is already represented in the key.
     pub(crate) peer: NodeId,
     /// The established [`juliet`] RPC client that is used to send requests to the peer.
     pub(crate) client: RpcClient,

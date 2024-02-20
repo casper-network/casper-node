@@ -81,6 +81,7 @@ use self::{
     message::NodeKeyPair,
     metrics::Metrics,
     tasks::NetworkContext,
+    transport::ComponentProtocolHandler,
 };
 pub(crate) use self::{
     config::Config,
@@ -282,7 +283,7 @@ where
         );
 
         // Start connection manager.
-        let protocol_handler = ComponentProtocolHandler;
+        let protocol_handler = ComponentProtocolHandler::new();
 
         let rpc_builder = transport::create_rpc_builder(
             self.context.chain_info.networking_config,
@@ -1087,40 +1088,6 @@ fn process_request_guard(channel: Channel, guard: RequestGuard) {
             // No ACK received yet, forget, so we don't cancel.
             guard.forget();
         }
-    }
-}
-
-struct ComponentProtocolHandler;
-
-impl ComponentProtocolHandler {
-    async fn setup_connection(
-        &self,
-        stream: TcpStream,
-    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        todo!()
-    }
-}
-
-#[async_trait::async_trait]
-impl ProtocolHandler for ComponentProtocolHandler {
-    #[inline(always)]
-    async fn setup_incoming(
-        &self,
-        stream: TcpStream,
-    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        self.setup_connection(stream).await
-    }
-
-    #[inline(always)]
-    async fn setup_outgoing(
-        &self,
-        stream: TcpStream,
-    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        self.setup_connection(stream).await
-    }
-
-    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
-        todo!()
     }
 }
 

@@ -15,6 +15,7 @@ use futures::{
     pin_mut,
 };
 
+use juliet::rpc::IncomingRequest;
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
@@ -34,6 +35,7 @@ use casper_types::{ProtocolVersion, TimeDiff};
 
 use super::{
     chain_info::ChainInfo,
+    conman::{ProtocolHandler, ProtocolHandshakeOutcome},
     connection_id::ConnectionId,
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     message::NodeKeyPair,
@@ -207,40 +209,4 @@ impl TlsConfiguration {
             None => tls::validate_self_signed_cert(peer_cert),
         }
     }
-}
-
-/// Server-side TLS setup.
-///
-/// This function groups the TLS setup into a convenient function, enabling the `?` operator.
-pub(super) async fn server_setup_tls(
-    context: &TlsConfiguration,
-    stream: TcpStream,
-) -> Result<(NodeId, Transport), ConnectionError> {
-    let mut tls_stream = tls::create_tls_acceptor(
-        context.our_cert.as_x509().as_ref(),
-        context.secret_key.as_ref(),
-        context.keylog.clone(),
-    )
-    .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
-    .and_then(|ssl| SslStream::new(ssl, stream))
-    .map_err(ConnectionError::TlsInitialization)?;
-
-    SslStream::accept(Pin::new(&mut tls_stream))
-        .await
-        .map_err(ConnectionError::TlsHandshake)?;
-
-    // We can now verify the certificate.
-    let peer_cert = tls_stream
-        .ssl()
-        .peer_certificate()
-        .ok_or(ConnectionError::NoPeerCertificate)?;
-
-    let validated_peer_cert = context
-        .validate_peer_cert(peer_cert)
-        .map_err(ConnectionError::PeerCertificateInvalid)?;
-
-    Ok((
-        NodeId::from(validated_peer_cert.public_key_fingerprint()),
-        tls_stream,
-    ))
 }
