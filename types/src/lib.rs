@@ -110,7 +110,7 @@ pub use chainspec::{
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
     MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling,
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, VacancyConfig
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

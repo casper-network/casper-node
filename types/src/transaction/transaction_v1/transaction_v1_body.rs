@@ -179,6 +179,44 @@ impl TransactionV1Body {
         }
     }
 
+    pub fn is_transfer(&self) -> bool {
+        if let TransactionTarget::Native = self.target {
+            if let TransactionEntryPoint::Transfer = self.entry_point {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_staking(&self) -> bool {
+        if let TransactionTarget::Native = self.target {
+            return match self.entry_point {
+                TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+                TransactionEntryPoint::AddBid
+                | TransactionEntryPoint::WithdrawBid
+                | TransactionEntryPoint::Delegate
+                | TransactionEntryPoint::Undelegate
+                | TransactionEntryPoint::Redelegate => true,
+            };
+        }
+        false
+    }
+
+    pub fn is_install_upgrade(&self) -> bool {
+        if let TransactionTarget::Session { kind, .. } = self.target {
+            return match kind {
+                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => true,
+                TransactionSessionKind::Isolated | TransactionSessionKind::Standard => false,
+            };
+        }
+
+        false
+    }
+
+    pub fn is_standard(&self) -> bool {
+        !self.is_staking() && !self.is_transfer() && !self.is_install_upgrade()
+    }
+
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(feature = "testing", test))]
     pub fn random_of_category(rng: &mut TestRng, category: &TransactionV1Category) -> Self {

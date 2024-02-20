@@ -1060,8 +1060,7 @@ impl Display for ContractRuntimeRequest {
                     execution_prestate.state_root_hash
                 )
             }
-            ContractRuntimeRequest::UpdateRuntimePrice(era_gas_price
-            ) => {
+            ContractRuntimeRequest::UpdateRuntimePrice(era_gas_price) => {
                 write!(formatter, "updating price to {}", era_gas_price)
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {

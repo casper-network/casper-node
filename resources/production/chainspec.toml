@@ -146,10 +146,6 @@ block_gas_limit = 4_000_000_000_000
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
 max_timestamp_leeway = '5 seconds'
-min = 1
-max = 3
-go_down = 50
-go_up = 90
 
 [transactions.v1]
 # The maximum length in bytes of runtime args per V1 transaction.
@@ -373,3 +369,9 @@ finalize_payment = 10_000
 
 [system_costs.standard_payment_costs]
 pay = 10_000
+
+[vacancy_config]
+upper_threshold = 90
+lower_threshold = 50
+max_gas_price = 3
+min_gas_price = 1

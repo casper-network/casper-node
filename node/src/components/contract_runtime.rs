@@ -118,7 +118,7 @@ impl ContractRuntime {
         let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
             .map_err(ConfigError::GlobalState)?;
 
-        let current_gas_price = chainspec.transaction_config.min;
+        let current_gas_price = chainspec.vacancy_config.min_gas_price;
 
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
@@ -593,7 +593,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::UpdateRuntimePrice(new_gas_price) => {
                 self.current_gas_price = new_gas_price;
                 Effects::new()
-            },
+            }
         }
     }
 

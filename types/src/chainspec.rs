@@ -14,6 +14,7 @@ mod protocol_config;
 mod refund_handling;
 mod transaction_config;
 mod upgrade_config;
+mod vacancy_config;
 mod vm_config;
 
 use std::{fmt::Debug, sync::Arc};
@@ -75,6 +76,7 @@ pub use vm_config::{
     DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
+pub use vacancy_config::VacancyConfig;
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -109,6 +111,9 @@ pub struct Chainspec {
     /// System costs config.
     #[serde(rename = "system_costs")]
     pub system_costs_config: SystemConfig,
+
+    #[serde(rename = "vacancy_config")]
+    pub vacancy_config: VacancyConfig,
 }
 
 impl Chainspec {
@@ -190,6 +195,7 @@ impl Chainspec {
         let transaction_config = TransactionConfig::random(rng);
         let wasm_config = rng.gen();
         let system_costs_config = rng.gen();
+        let vacancy_config = VacancyConfig::random(rng);
 
         Chainspec {
             protocol_config,
@@ -199,6 +205,7 @@ impl Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
+            vacancy_config
         }
     }
 }
@@ -211,7 +218,8 @@ impl ToBytes for Chainspec {
         self.highway_config.write_bytes(writer)?;
         self.transaction_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
-        self.system_costs_config.write_bytes(writer)
+        self.system_costs_config.write_bytes(writer)?;
+        self.vacancy_config.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -228,6 +236,7 @@ impl ToBytes for Chainspec {
             + self.transaction_config.serialized_length()
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
+            + self.vacancy_config.serialized_length()
     }
 }
 
@@ -240,6 +249,7 @@ impl FromBytes for Chainspec {
         let (transaction_config, remainder) = TransactionConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
+        let (vacancy_config, remainder) = VacancyConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,
@@ -248,6 +258,7 @@ impl FromBytes for Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
+            vacancy_config
         };
         Ok((chainspec, remainder))
     }

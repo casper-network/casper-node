@@ -201,14 +201,15 @@ impl TestFixture {
         chainspec.core_config.minimum_block_time = spec_override.minimum_block_time;
         chainspec.core_config.minimum_era_height = spec_override.minimum_era_height;
         chainspec.core_config.unbonding_delay = spec_override.unbonding_delay;
-        chainspec.transaction_config.min = spec_override.min;
-        chainspec.transaction_config.max = spec_override.max;
-        chainspec.transaction_config.go_up = spec_override.go_up;
-        chainspec.transaction_config.go_down = spec_override.go_down;
+        chainspec.vacancy_config.min_gas_price = spec_override.min;
+        chainspec.vacancy_config.max_gas_price = spec_override.max;
+        chainspec.vacancy_config.upper_threshold = spec_override.go_up;
+        chainspec.vacancy_config.lower_threshold = spec_override.go_down;
         chainspec.transaction_config.block_max_standard_count = spec_override.max_standard_count;
         chainspec.transaction_config.block_max_staking_count = spec_override.max_staking_count;
         chainspec.transaction_config.block_max_transfer_count = spec_override.max_transfer_count;
-        chainspec.transaction_config.block_max_install_upgrade_count = spec_override.max_install_count;
+        chainspec.transaction_config.block_max_install_upgrade_count =
+            spec_override.max_install_count;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
 
@@ -1739,7 +1740,6 @@ async fn rewards_are_calculated() {
     }
 }
 
-
 #[tokio::test]
 async fn block_vacancy() {
     let alice_stake = 200_000_000_000_u64;
@@ -1771,7 +1771,6 @@ async fn block_vacancy() {
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-
     // Have Alice delegate to Bob.
     let alice_delegation_amount =
         U512::from(fixture.chainspec.core_config.minimum_delegation_amount);
@@ -1796,9 +1795,4 @@ async fn block_vacancy() {
 
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
-
-
-
-
-
 }

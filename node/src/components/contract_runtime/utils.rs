@@ -85,10 +85,10 @@ pub(super) async fn exec_or_requeue<REv>(
     let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
     let block_max_transfer_count = chainspec.transaction_config.block_max_transfer_count;
     let block_max_staking_count = chainspec.transaction_config.block_max_staking_count;
-    let go_up = chainspec.transaction_config.go_up;
-    let go_down = chainspec.transaction_config.go_down;
-    let max = chainspec.transaction_config.max;
-    let min = chainspec.transaction_config.min;
+    let go_up = chainspec.vacancy_config.upper_threshold;
+    let go_down = chainspec.vacancy_config.lower_threshold;
+    let max = chainspec.vacancy_config.max_gas_price;
+    let min = chainspec.vacancy_config.min_gas_price;
     let is_era_end = executable_block.era_report.is_some();
     if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
