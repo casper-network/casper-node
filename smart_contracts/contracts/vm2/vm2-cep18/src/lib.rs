@@ -5,15 +5,13 @@ pub mod security_badge;
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector};
 use casper_sdk::{log, Contract};
-use contract::{CEP18_new, CEP18};
+use contract::{CEP18Ref, CEP18};
 
 #[casper(export)]
 pub fn call() {
-    let result = CEP18::create(CEP18_new {
-        token_name: "my token name".to_string(),
-    })
-    .unwrap();
-    log!("CEP18 succeeded: {:?}", result);
+    let constructor = CEP18Ref::new("my token name".to_string());
+    let result = CEP18::create(constructor);
+    log!("CEP18 succeeded");
 }
 
 #[cfg(test)]

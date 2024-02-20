@@ -2,7 +2,7 @@ extern crate proc_macro;
 
 use blake2_rfc::blake2b;
 use casper_sdk::Selector;
-use darling::{FromAttributes, FromDeriveInput, FromMeta};
+use darling::{usage::UsesLifetimes, FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro::{Literal, TokenStream, TokenTree};
 use proc_macro2::Span;
 use quote::{format_ident, quote};
@@ -62,14 +62,17 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         }
     }
 
+    let ref_name = format_ident!("{}Ref", name);
     let f = quote! {
 
         impl casper_sdk::Contract for #name {
+            type Ref = #ref_name;
+
             fn name() -> &'static str {
                 stringify!(#name)
             }
 
-            fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+            fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
                     #(#dynamic_manifest,)*
                     #name::MANIFEST.as_slice(),
@@ -85,10 +88,11 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
 
                 let input_data = call_data.input_data();
 
-                casper_sdk::host::casper_create(None, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))
+                let create_result = casper_sdk::host::casper_create(None, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address))
             }
 
-            fn default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+            fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
                     #(#dynamic_manifest,)*
                     #name::MANIFEST.as_slice(),
@@ -101,11 +105,34 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                     entry_points: entry_points_allocated.as_ptr(),
                     entry_points_size: entry_points_allocated.len(),
                 };
-                casper_sdk::host::casper_create(None, &manifest, None, None)
+                let create_result = casper_sdk::host::casper_create(None, &manifest, None, None)?;
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address))
             }
         }
     };
     f.into()
+}
+
+fn generate_call_data_return(output: &syn::ReturnType) -> proc_macro2::TokenStream {
+    match output {
+        syn::ReturnType::Default => {
+            quote! { () }
+        }
+        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+            Type::Never(_) => {
+                quote! { () }
+            }
+            Type::Reference(reference) => {
+                // ty.uses_lifetimes(options, lifetimes)
+                let mut new_ref = reference.clone();
+                new_ref.lifetime = Some(syn::Lifetime::new("'a", Span::call_site()));
+                quote! { <<#new_ref as core::ops::Deref>::Target as ToOwned>::Owned }
+            }
+            _ => {
+                quote! { #ty }
+            }
+        },
+    }
 }
 
 #[proc_macro_attribute]
@@ -169,6 +196,10 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                 },
                             };
+
+                            let call_data_return_lifetime =
+                                generate_call_data_return(&func.sig.output);
+                            // let call_data
 
                             let func_name = func.sig.ident.clone();
                             let name_str = func_name.to_string();
@@ -277,16 +308,24 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             };
 
                             extra_code.push(quote! {
-                                #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-                                pub struct #ident {
-                                    #(pub #arg_names: #arg_types,)*
-                                }
+                                pub fn #func_name<'a>(#(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                                    #[derive(BorshSerialize)]
+                                    struct #ident {
+                                        #(pub #arg_names: #arg_types,)*
+                                    }
 
-                                impl casper_sdk::ToCallData for #ident {
-                                    const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                    impl casper_sdk::ToCallData for #ident {
+                                        const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                        type Return<'a> = #call_data_return_lifetime;
 
-                                    fn input_data(&self) -> Option<Vec<u8>> {
-                                        #input_data_content
+                                        fn input_data(&self) -> Option<Vec<u8>> {
+                                            #input_data_content
+                                        }
+                                    }
+
+
+                                    #ident {
+                                        #(#arg_names,)*
                                     }
                                 }
                             });
@@ -326,6 +365,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 #(#schema_entry_points,)*
                             ]
                         }
+
+                        #(#extra_code)*
                     }
 
                         impl casper_sdk::schema::CasperSchema for #ext_struct_name {
@@ -355,8 +396,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     #item_trait
 
                     #extension_struct
-
-                    #(#extra_code)*
                 }
                 .into();
             }
@@ -502,6 +541,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                 } else {
                                     quote! {}
+                                };
+
+                                let call_data_return_lifetime = if method_attribute.constructor {
+                                    quote! {
+                                        #struct_name
+                                    }
+                                } else {
+                                    generate_call_data_return(&func.sig.output)
                                 };
 
                                 let handle_ret = match func.sig.output {
@@ -655,17 +702,32 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             }
                                         };
 
+                                        let self_ty = if method_attribute.constructor {
+                                            None
+                                        } else {
+                                            Some(quote! {
+                                                &self,
+                                            })
+                                        };
+
                                         extra_code.push(quote! {
-                                            #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-                                            pub struct #ident {
-                                                #(pub #arg_names: #arg_types,)*
-                                            }
+                                            pub fn #name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                                                #[derive(BorshSerialize, PartialEq, Debug)]
+                                                struct #ident {
+                                                    #(#arg_names: #arg_types,)*
+                                                }
 
-                                            impl casper_sdk::ToCallData for #ident {
-                                                const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                                impl casper_sdk::ToCallData for #ident {
+                                                    const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                                    type Return<'a> = #call_data_return_lifetime;
 
-                                                fn input_data(&self) -> Option<Vec<u8>> {
-                                                    #input_data_content
+                                                    fn input_data(&self) -> Option<Vec<u8>> {
+                                                        #input_data_content
+                                                    }
+                                                }
+
+                                                #ident {
+                                                    #(#arg_names,)*
                                                 }
                                             }
                                         });
@@ -823,12 +885,24 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }),
                     };
 
+                    let ext_struct = format_ident!("{st_name}Ref");
+
                     let res = quote! {
                         #entry_points
 
                         #handle_manifest
 
-                        #(#extra_code)*
+                        pub struct #ext_struct;
+
+                        impl #ext_struct {
+                            #(#extra_code)*
+                        }
+
+                        impl casper_sdk::ContractRef for #ext_struct {
+                            fn new() -> Self {
+                                Self
+                            }
+                        }
                     };
 
                     return res.into();

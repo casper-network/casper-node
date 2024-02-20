@@ -6,6 +6,7 @@ use crate::{host, storage::Keyspace};
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
+#[derive(Clone)]
 pub struct Set<T, L = Identity>
 where
     T: BorshSerialize,

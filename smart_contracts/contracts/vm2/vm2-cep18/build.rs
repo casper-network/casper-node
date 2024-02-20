@@ -11,10 +11,10 @@ fn main() {
         println!("cargo:rustc-link-arg=--export-table");
     }
 
-    let mut codegen = Codegen::from_str(SCHEMA).unwrap();
-    let source = codegen.gen();
+    // let mut codegen = Codegen::from_str(SCHEMA).unwrap();
+    // let source = codegen.gen();
 
-    let target_dir = env::var_os("OUT_DIR").unwrap();
-    let target_path = Path::new(&target_dir).join("cep18_schema.rs");
-    fs::write(&target_path, source).unwrap();
+    // let target_dir = env::var_os("OUT_DIR").unwrap();
+    // let target_path = Path::new(&target_dir).join("cep18_schema.rs");
+    // fs::write(&target_path, source).unwrap();
 }

@@ -3,6 +3,7 @@ pub mod native;
 
 use std::{
     ffi::c_void,
+    fmt,
     marker::PhantomData,
     mem::{self, MaybeUninit},
     num::NonZeroU32,
@@ -277,7 +278,7 @@ use crate::{
     reserve_vec_space,
     storage::Keyspace,
     types::{Address, CallError, Entry, ResultCode},
-    Contract, Selector, ToCallData,
+    Contract, ContractRef, Selector, ToCallData,
 };
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
@@ -299,7 +300,8 @@ pub fn read_state<T: Default + BorshDeserialize + Contract>() -> Result<T, Error
 }
 
 pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error> {
-    casper_write(Keyspace::State, 0, &borsh::to_vec(state).unwrap())?;
+    let new_state = borsh::to_vec(state).unwrap();
+    casper_write(Keyspace::State, 0, &new_state)?;
     Ok(())
 }
 
@@ -332,18 +334,21 @@ pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
 }
 
 #[derive(Debug)]
-pub struct CallResult<T: BorshDeserialize> {
+pub struct CallResult<T: ToCallData> {
     pub data: Option<Vec<u8>>,
     pub result: ResultCode,
     pub marker: PhantomData<T>,
 }
 
-impl<Ret: BorshDeserialize> CallResult<Ret> {
-    pub fn into_return_value(self) -> Ret {
+impl<T: ToCallData> CallResult<T> {
+    pub fn into_return_value<'a>(self) -> <T::Return<'a> as ToOwned>::Owned
+    where
+        <T::Return<'a> as ToOwned>::Owned: BorshDeserialize,
+        <T as ToCallData>::Return<'a>: Clone,
+    {
         match self.result {
             ResultCode::Success | ResultCode::CalleeReverted => {
-                dbg!(&self.data);
-                borsh::from_slice::<Ret>(&self.data.unwrap()).unwrap()
+                borsh::from_slice::<<T::Return<'a> as ToOwned>::Owned>(&self.data.unwrap()).unwrap()
             }
             ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
             ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
@@ -355,17 +360,16 @@ impl<Ret: BorshDeserialize> CallResult<Ret> {
     }
 }
 
-pub fn call<CallData: ToCallData, Ret: BorshDeserialize>(
+pub fn call<T: ToCallData>(
     contract_address: &Address,
     value: u64,
-    call_data: CallData,
-) -> Result<CallResult<Ret>, CallError> {
+    call_data: T,
+) -> Result<CallResult<T>, CallError> {
     let input_data = call_data.input_data().unwrap_or_default();
 
-    let (maybe_data, result_code) =
-        casper_call(contract_address, value, CallData::SELECTOR, &input_data);
+    let (maybe_data, result_code) = casper_call(contract_address, value, T::SELECTOR, &input_data);
     match result_code {
-        ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult {
+        ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult::<T> {
             data: maybe_data,
             result: result_code,
             marker: PhantomData,

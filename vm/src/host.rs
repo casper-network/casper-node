@@ -178,6 +178,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
 
     // For calling a constructor
     let constructor_selector = NonZeroU32::new(selector);
+    dbg!(&constructor_selector);
 
     // Pass input data when calling a constructor. It's optional, as constructors aren't required
     let input_data: Option<Bytes> = if input_ptr == 0 {
@@ -361,8 +362,13 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     } else {
         None
     };
+    // dbg!(&initial_statE);
 
     if let Some(state) = initial_state {
+        eprintln!(
+            "Write initial state {}bytes under {contract_address:?}",
+            state.len()
+        );
         caller
             .context()
             .storage

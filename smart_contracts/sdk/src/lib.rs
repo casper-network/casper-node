@@ -11,12 +11,12 @@ pub mod schema;
 pub mod storage;
 pub mod types;
 
-use std::{io, ptr::NonNull};
+use std::{fmt, io, marker::PhantomData, ptr::NonNull};
 
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
 use sys::CreateResult;
-use types::CallError;
+use types::{Address, CallError};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Selector(u32);
@@ -59,8 +59,14 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
     }
 }
 
+pub trait ContractRef {
+    fn new() -> Self;
+}
+
 pub trait ToCallData {
     const SELECTOR: Selector;
+    type Return<'a>;
+
     fn input_data(&self) -> Option<Vec<u8>>;
 }
 
@@ -68,9 +74,11 @@ pub trait ToCallData {
 ///
 /// This proc macro handles generation of a manifest.
 pub trait Contract {
+    type Ref: ContractRef;
+
     fn name() -> &'static str;
-    fn create<T: ToCallData>(call_data: T) -> Result<CreateResult, CallError>;
-    fn default_create() -> Result<CreateResult, CallError>;
+    fn create<T: ToCallData>(call_data: T) -> Result<ContractHandle<Self::Ref>, CallError>;
+    fn default_create() -> Result<ContractHandle<Self::Ref>, CallError>;
 }
 
 #[derive(Debug)]
@@ -141,5 +149,105 @@ where
             );
             unreachable!("Support for unwrap_or_revert")
         })
+    }
+}
+
+pub struct ContractHandle<T: ContractRef> {
+    address: Address,
+    marker: PhantomData<T>,
+}
+
+impl<T: ContractRef> ContractHandle<T> {
+    pub fn new(address: Address) -> Self {
+        ContractHandle {
+            address,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn build_call(&self) -> CallBuilder<T> {
+        CallBuilder {
+            address: self.address,
+            marker: PhantomData,
+            value: None,
+        }
+    }
+
+    /// A shorthand form to call contracts with default settings.
+    #[inline]
+    pub fn call<'a, CallData: ToCallData>(
+        &self,
+        func: impl FnOnce(&mut T) -> CallData,
+    ) -> Result<CallData::Return<'a>, CallError>
+    where
+        CallData::Return<'a>: BorshDeserialize + Clone,
+    {
+        self.build_call().call(func)
+    }
+}
+
+pub struct CallBuilder<T: ContractRef> {
+    address: Address,
+    value: Option<u64>,
+    marker: PhantomData<T>,
+}
+
+impl<T: ContractRef> CallBuilder<T> {
+    pub fn new(address: Address) -> Self {
+        CallBuilder {
+            address,
+            value: None,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn with_value(mut self, value: u64) -> Self {
+        self.value = Some(value);
+        self
+    }
+
+    pub fn call<'a, CallData: ToCallData>(
+        &self,
+        func: impl FnOnce(&mut T) -> CallData,
+    ) -> Result<CallData::Return<'a>, CallError>
+    where
+        CallData::Return<'a>: BorshDeserialize + Clone,
+    {
+        let mut inst = T::new();
+        let call_data = func(&mut inst);
+        let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
+        Ok(call_result.into_return_value())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct MyContract;
+
+    #[derive(BorshSerialize)]
+    struct DoSomethingArg {
+        foo: u64,
+    }
+
+    impl ToCallData for DoSomethingArg {
+        const SELECTOR: Selector = Selector(1);
+        type Return<'a> = ();
+        fn input_data(&self) -> Option<Vec<u8>> {
+            Some(borsh::to_vec(self).expect("Serialization should work"))
+        }
+    }
+
+    impl MyContract {
+        fn do_something(&mut self, foo: u64) -> impl ToCallData {
+            DoSomethingArg { foo }
+        }
+    }
+
+    #[test]
+    fn test_call_builder() {
+        // let contract = MyContract;
+        // let do_something = CallBuilder::<MyContract>::new([0;
+        // 32]).with_value(5).call(|my_contract| my_contract.do_something(43));
     }
 }

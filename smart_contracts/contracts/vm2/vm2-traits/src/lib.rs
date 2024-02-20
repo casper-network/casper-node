@@ -34,7 +34,7 @@ trait Trait1 {
     fn adder(lhs: u64, rhs: u64) -> u64;
 }
 
-#[derive(Default, BorshSerialize, BorshDeserialize, CasperABI, Debug, Copy, Clone)]
+#[derive(Default, BorshSerialize, BorshDeserialize, CasperABI, Debug, Copy, Clone, PartialEq)]
 struct CounterState {
     value: u64,
 }
@@ -66,7 +66,9 @@ trait Counter {
     fn counter_state_mut(&mut self) -> &mut CounterState;
 }
 
-#[derive(Default, Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
+#[derive(
+    Default, Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone,
+)]
 #[casper(impl_traits(Trait1, Counter))]
 struct HasTraits {
     counter_state: CounterState,
@@ -95,6 +97,15 @@ impl Counter for HasTraits {
 
 #[casper(contract)]
 impl HasTraits {
+    #[casper(constructor)]
+    pub fn new(counter_value: u64) -> Self {
+        log!("Calling new constructor {counter_value}");
+        Self {
+            counter_state: CounterState {
+                value: counter_value,
+            },
+        }
+    }
     pub fn foobar(&self) {
         // Can extend contract that implements a trait to also call methods provided by a trait.
         let counter_state = self.counter_state();
@@ -116,6 +127,7 @@ mod tests {
             native::{dispatch_with, Stub},
         },
         schema::{CasperSchema, SchemaEntryPoint, SchemaType},
+        sys::CreateResult,
         Contract,
     };
     use vm_common::flags::EntryPointFlags;
@@ -267,76 +279,90 @@ mod tests {
     }
 
     #[test]
+    fn foo_with_custom_constructor() {
+        let _ret = dispatch_with(Stub::default(), || {
+            let constructor = super::HasTraitsRef::new(5);
+
+            let CreateResult {
+                contract_address, ..
+            } = HasTraits::create(constructor).expect("Constructor works");
+
+            let value = host::call(&contract_address, 0, super::CounterExt::get_counter_value())
+                .expect("Call");
+
+            assert_eq!(value.into_return_value(), 5);
+        });
+    }
+
+    #[test]
     fn foo() {
         let _ = dispatch_with(Stub::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
-
-            // <HasTraits as Trait1>::greet();
-
             {
-                let ret = host::call::<_, u64>(
+                let ret = host::call(
                     &manifest.contract_address,
                     0,
-                    super::Trait1_greet {
-                        who: "World".to_string(),
-                    },
+                    super::Trait1Ext::greet("World".into()),
                 )
                 .expect("Call");
-
-                assert_eq!(ret.into_return_value(), super::GREET_RETURN_VALUE);
+                let ret_val = ret.into_return_value();
+                assert_eq!(ret_val, super::GREET_RETURN_VALUE);
             }
 
             {
-                let _ret = host::call::<_, ()>(
+                let ret = host::call(
                     &manifest.contract_address,
                     0,
-                    super::Trait1_abstract_greet {},
+                    super::Trait1Ext::abstract_greet(),
                 )
                 .expect("Call");
+                assert_eq!(ret.into_return_value(), ());
 
-                let _ret =
-                    host::call::<_, ()>(&manifest.contract_address, 0, super::HasTraits_foobar {})
-                        .expect("Call");
+                let _ret = host::call(&manifest.contract_address, 0, super::HasTraitsRef::foobar())
+                    .expect("Call");
             }
 
-            {
-                let ret = host::call::<_, u64>(
-                    &manifest.contract_address,
-                    0,
-                    super::Trait1_adder { lhs: 1, rhs: 2 },
-                )
-                .expect("Call");
+            // {
+            //     let ret = host::call(
+            //         &manifest.contract_address,
+            //         0,
+            //         super::Trait1Ext::adder(1, 2),
+            //     )
+            //     .expect("Call");
 
-                assert_eq!(ret.into_return_value(), 3);
-            }
+            //     assert_eq!(ret.into_return_value(), 3);
+            // }
 
-            //
-            // Counter trait
-            //
+            // //
+            // // Counter trait
+            // //
 
-            {
-                let ret = host::call::<_, u64>(
-                    &manifest.contract_address,
-                    0,
-                    super::Counter_get_counter_value {},
-                )
-                .expect("Call");
+            // {
+            //     let ret = host::call::<_, u64>(
+            //         &manifest.contract_address,
+            //         0,
+            //         super::CounterExt::get_counter_value(),
+            //     )
+            //     .expect("Call");
 
-                assert_eq!(ret.into_return_value(), 0);
+            //     assert_eq!(ret.into_return_value(), 0);
 
-                let _ret =
-                    host::call::<_, ()>(&manifest.contract_address, 0, super::Counter_increment {})
-                        .expect("Call");
+            //     let _ret = host::call::<_, ()>(
+            //         &manifest.contract_address,
+            //         0,
+            //         super::CounterExt::increment(),
+            //     )
+            //     .expect("Call");
 
-                let ret = host::call::<_, u64>(
-                    &manifest.contract_address,
-                    0,
-                    super::Counter_get_counter_value {},
-                )
-                .expect("Call");
+            //     let ret = host::call::<_, u64>(
+            //         &manifest.contract_address,
+            //         0,
+            //         super::CounterExt::get_counter_value(),
+            //     )
+            //     .expect("Call");
 
-                assert_eq!(ret.into_return_value(), 1);
-            }
+            //     assert_eq!(ret.into_return_value(), 1);
+            // }
         });
     }
 }

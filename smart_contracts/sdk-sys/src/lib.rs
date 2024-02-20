@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn all_host_functions() {
-        let host_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
+        rahost_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
         assert!(host_functions.contains(&"casper_call"));
     }
 }

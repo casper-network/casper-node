@@ -13,8 +13,9 @@ use std::string::String;
 
 use crate::{error, security_badge};
 
-#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
+#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
 pub struct CEP18 {
+    marker: u64,
     name: String,
     symbol: String,
     decimals: u8,
@@ -28,6 +29,7 @@ pub struct CEP18 {
 impl Default for CEP18 {
     fn default() -> Self {
         Self {
+            marker: u64::MAX,
             name: "Default name".to_string(),
             symbol: "Default symbol".to_string(),
             decimals: 0,
@@ -246,6 +248,7 @@ mod tests {
     use casper_sdk::{
         host::{self, native::Stub},
         types::Address,
+        ContractHandle, ContractRef,
     };
 
     const ALICE: Address = [1; 32];
@@ -258,7 +261,10 @@ mod tests {
         let result = host::native::dispatch_with(stub, || {
             let mut contract = CEP18::new("Foo Token".to_string());
 
-            contract.sec_check(&[SecurityBadge::Admin]).unwrap();
+            assert_eq!(
+                contract.sec_check(&[SecurityBadge::Admin]).unwrap_err(),
+                Cep18Error::InsufficientRights
+            );
 
             assert_eq!(contract.name(), "Foo Token");
             assert_eq!(contract.balance_of(ALICE), 0);
@@ -275,6 +281,62 @@ mod tests {
                 contract.transfer(ALICE, 1),
                 Err(Cep18Error::InsufficientBalance)
             );
+        });
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn e2e() {
+        let stub = Stub::new(Default::default(), [42; 32]);
+
+        let result = host::native::dispatch_with(stub.clone(), move || {
+            let constructor = CEP18Ref::new("Foo Token".to_string());
+
+            let cep18_handle = CEP18::create(constructor).expect("Should create");
+
+            let builder = cep18_handle.build_call();
+            builder.call(|cep18| cep18.name()).expect("Should call");
+
+            let name1: String = cep18_handle
+                .call(|cep18| cep18.name())
+                .expect("Should call");
+
+            let name2: String = cep18_handle
+                .call(|cep18| cep18.name())
+                .expect("Should call");
+
+            assert_eq!(name1, name2);
+            assert_eq!(name2, "Foo Token");
+            let symbol: String = cep18_handle
+                .call(|cep18| cep18.symbol())
+                .expect("Should call");
+            assert_eq!(symbol, "Default symbol");
+
+            let alice_balance: u64 = cep18_handle
+                .call(|cep18| cep18.balance_of(ALICE))
+                .expect("Should call");
+            assert_eq!(alice_balance, 0);
+
+            let bob_balance: u64 = cep18_handle
+                .call(|cep18| cep18.balance_of(BOB))
+                .expect("Should call");
+            assert_eq!(bob_balance, 0);
+
+            let mint_result = cep18_handle
+                .call(|cep18| cep18.mint(ALICE, 1000))
+                .expect("Mint succeed");
+
+            let alice_balance_after: u64 = cep18_handle
+                .call(|cep18| cep18.balance_of(ALICE))
+                .expect("Should call");
+            assert_eq!(alice_balance_after, 1000);
+
+            // // [42; 32] -> ALICE - not much balance
+            // assert_eq!(contract.balance_of(host::get_caller()), 0);
+            // assert_eq!(
+            //     contract.transfer(ALICE, 1),
+            //     Err(Cep18Error::InsufficientBalance)
+            // );
         });
         assert_eq!(result, Ok(()));
     }

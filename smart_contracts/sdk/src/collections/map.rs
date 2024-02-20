@@ -9,7 +9,7 @@ use const_fnv1a_hash::fnv1a_hash_str_64;
 
 use std::marker::PhantomData;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Map<K, V> {
     pub(crate) name: String,
     pub(crate) _marker: PhantomData<(K, V)>,

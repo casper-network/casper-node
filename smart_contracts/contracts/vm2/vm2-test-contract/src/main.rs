@@ -106,16 +106,14 @@ mod exports {
         // host::casper_print(&format!("{:?}", mem::size_of::<
         let entry_point_1 = EntryPoint {
             selector: MANGLED_ENTRY_POINT_1.get(),
-            params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
-            params_size: params.len(),
+
             fptr: mangled_entry_point_wrapper_1,
             flags: EntryPointFlags::empty().bits(),
         };
 
         let entry_point_2 = EntryPoint {
             selector: MANGLED_ENTRY_POINT_2.get(),
-            params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
-            params_size: params.len(),
+
             fptr: mangled_entry_point_wrapper_2,
             flags: EntryPointFlags::empty().bits(),
         };

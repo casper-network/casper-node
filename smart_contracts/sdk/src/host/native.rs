@@ -116,7 +116,7 @@ impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
 
 #[derive(Default, Clone, Debug)]
 pub struct Stub {
-    db: Arc<RwLock<Container>>,
+    pub db: Arc<RwLock<Container>>,
     manifests: Arc<RwLock<BTreeMap<Address, NativeManifest>>>,
     // input_data: Arc<RwLock<Option<Bytes>>>,
     input_data: Option<Bytes>,
@@ -144,11 +144,17 @@ impl Stub {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<i32, NativeTrap> {
-        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
+        let prefixed = {
+            let mut data = self.caller.to_vec();
+            let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
+            data.extend(key_bytes);
+            Bytes::from(data)
+        };
 
         let mut db = self.db.read().unwrap();
+
         let value = match db.get(&key_space) {
-            Some(values) => values.get(key_bytes).cloned(),
+            Some(values) => values.get(&prefixed).cloned(),
             None => return Ok(1),
         };
         match value {
@@ -156,6 +162,16 @@ impl Stub {
                 let ptr = NonNull::new(alloc(tagged_value.value.len(), alloc_ctx as _));
 
                 if let Some(ptr) = ptr {
+                    unsafe {
+                        (*info).data = ptr.as_ptr();
+                    }
+                    unsafe {
+                        (*info).size = tagged_value.value.len();
+                    }
+                    unsafe {
+                        (*info).tag = tagged_value.tag;
+                    }
+
                     unsafe {
                         ptr::copy_nonoverlapping(
                             tagged_value.value.as_ptr(),
@@ -182,13 +198,18 @@ impl Stub {
     ) -> Result<i32, NativeTrap> {
         assert!(!key_ptr.is_null());
         assert!(!value_ptr.is_null());
-        let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
-
+        // let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
+        let prefixed = {
+            let mut data = self.caller.to_vec();
+            let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) }.to_owned();
+            data.extend(key_bytes);
+            Bytes::from(data)
+        };
         let value_bytes = unsafe { slice::from_raw_parts(value_ptr, value_size) };
 
         let mut db = self.db.write().unwrap();
         db.entry(key_space).or_default().insert(
-            Bytes::copy_from_slice(key_bytes),
+            prefixed,
             TaggedValue {
                 tag: value_tag,
                 value: Bytes::copy_from_slice(value_bytes),
@@ -369,28 +390,15 @@ impl Stub {
 
         let mut new_stub = with_stub(|stub| stub.clone());
         new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
+        new_stub.caller = address.try_into().expect("Size to match");
 
-        match dispatch_with(new_stub, || {
+        let ret = dispatch_with(new_stub, || {
             (entry_point.fptr)();
-        }) {
+        });
+        // dbg!(&ret);
+        match ret {
             Ok(()) => Ok(0),
-            Err(NativeTrap::Return(flags, bytes)) => {
-                if !flags.contains(ReturnFlags::REVERT) {
-                    // TODO: This is currently really bad simplification and only means that when a
-                    // casper_return is called it will not update the state, but all other
-                    // casper_write calls succeeded and are observable.
-
-                    let mut db = self.db.write().unwrap();
-                    let values = db.entry(0).or_default();
-                    values.insert(
-                        Bytes::copy_from_slice(address),
-                        TaggedValue {
-                            tag: 0,
-                            value: bytes.clone(),
-                        },
-                    );
-                }
-
+            Err(NativeTrap::Return(_flags, bytes)) => {
                 let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx as _));
                 if let Some(output_ptr) = ptr {
                     unsafe {

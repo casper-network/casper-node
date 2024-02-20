@@ -48,7 +48,7 @@ impl Default for Harness {
 }
 pub type Result2 = Result<(), CustomError>;
 
-#[casper(entry_points)]
+#[casper(contract)]
 impl Harness {
     #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
@@ -146,32 +146,6 @@ impl Harness {
     }
 }
 
-struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
-    address: Address,
-    selector: Selector,
-    _marker: PhantomData<fn(Args) -> Ret>,
-}
-
-impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
-    const fn new(address: Address, selector: Selector) -> Self {
-        Self {
-            address,
-            selector,
-            _marker: PhantomData,
-        }
-    }
-    fn call(&self, args: Args) -> CallResult<Ret> {
-        let args_data = borsh::to_vec(&args).unwrap();
-        let (maybe_output_data, result_code) =
-            host::casper_call(&self.address, 0, self.selector, &args_data);
-        CallResult::<Ret> {
-            data: maybe_output_data,
-            result: result_code,
-            marker: PhantomData,
-        }
-    }
-}
-
 #[casper(export)]
 pub fn call() {
     log!("calling create");
@@ -181,7 +155,7 @@ pub fn call() {
 
     // Constructor without args
 
-    match Harness::create(Harness_initialize {}) {
+    match Harness::create(HarnessRef::initialize()) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -193,11 +167,10 @@ pub fn call() {
             log!("version: {:?}", version);
 
             // Verify that the address captured inside constructor is not the same as caller.
-            const SELECTOR: Selector = selector!("get_address_inside_constructor");
-            let get_address_inside_constructor: TypedCall<(), Address> =
-                TypedCall::new(contract_address, SELECTOR);
-            let result = get_address_inside_constructor.call(()).into_return_value();
-            assert_ne!(result, session_caller);
+            let get_address_inside_constructor = HarnessRef::get_address_inside_constructor();
+            let result = host::call(&contract_address, 0, get_address_inside_constructor)
+                .expect("Call succeed");
+            assert_ne!(result.into_return_value(), session_caller);
 
             const GET_GREETING: Selector = selector!("get_greeting");
             const SET_GREETING: Selector = selector!("set_greeting");
