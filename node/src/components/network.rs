@@ -659,17 +659,29 @@ where
         todo!()
     }
 
-    pub(crate) fn fully_connected_peers_random(
-        &self,
-        rng: &mut NodeRng,
-        count: usize,
-    ) -> Vec<NodeId> {
-        todo!()
-        // self.connection_symmetries
-        //     .iter()
-        //     .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-        //     .map(|(node_id, _)| *node_id)
-        //     .choose_multiple(rng, count)
+    /// Get a randomly sampled subset of connected peers
+    pub(crate) fn connected_peers_random(&self, rng: &mut NodeRng, count: usize) -> Vec<NodeId> {
+        let Some(ref conman) = self.conman else {
+            // If we are not initialized, return an empty set.
+            return Vec::new();
+        };
+
+        // Note: This is not ideal, since it os O(n) (n = number of peers), whereas for a slice it
+        //       would be O(k) (k = number of items). If this proves to be a bottleneck, add an
+        //       unstable `Vec` (allows O(1) random removal) to `ConMan` that stores a list of
+        //       currently connected nodes.
+
+        let mut subset = conman
+            .read_state()
+            .routing_table()
+            .values()
+            .map(|route| route.peer)
+            .choose_multiple(rng, count);
+
+        // Documentation says result must be shuffled to be truly random.
+        subset.shuffle(rng);
+
+        subset
     }
 
     /// Returns whether or not the threshold has been crossed for the component to consider itself
@@ -852,7 +864,7 @@ where
                         responder.respond(self.peers()).ignore()
                     }
                     NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
-                        .respond(self.fully_connected_peers_random(rng, count))
+                        .respond(self.connected_peers_random(rng, count))
                         .ignore(),
                     NetworkInfoRequest::Insight { responder } => responder
                         .respond(NetworkInsights::collect_from_component(self))
