@@ -672,13 +672,16 @@ where
         //     .choose_multiple(rng, count)
     }
 
-    pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
-        todo!()
-        // self.connection_symmetries
-        //     .iter()
-        //     .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-        //     .count()
-        //     >= self.cfg.min_peers_for_initialization as usize
+    /// Returns whether or not the threshold has been crossed for the component to consider itself
+    /// sufficiently connected.
+    pub(crate) fn has_sufficient_connected_peers(&self) -> bool {
+        let Some(ref conman) = self.conman else {
+            // If we are not initialized, we do not have any fully connected peers.
+            return false;
+        };
+
+        let connection_count = conman.read_state().routing_table().len();
+        connection_count >= self.cfg.min_peers_for_initialization as usize
     }
 
     #[cfg(test)]
