@@ -111,7 +111,7 @@ impl ToBytes for MintCosts {
 impl FromBytes for MintCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let (mint, rem) = FromBytes::from_bytes(bytes)?;
-        let (reduce_total_supply, rem) = FromBytes::from_bytes(rem)?;
+        let (reduce_total_supply, _) = FromBytes::from_bytes(rem)?;
         let (burn, rem) = FromBytes::from_bytes(bytes)?;
         let (create, rem) = FromBytes::from_bytes(rem)?;
         let (balance, rem) = FromBytes::from_bytes(rem)?;

@@ -1,30 +1,20 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     LmdbWasmTestBuilder,
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
-    transfer,
+    ExecuteRequestBuilder,  DEFAULT_ACCOUNT_ADDR,
     auction
 };
-use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef, CLValue,
+use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef,
     system::mint::TOTAL_SUPPLY_KEY,
 };
 use tempfile::TempDir;
-use casper_types::bytesrepr::ToBytes;
 
 const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
 const CONTRACT_BURN: &str = "burn.wasm";
-// const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 
 const ARG_AMOUNT: &str = "amount";
-const ARG_ID: &str = "id";
-const ARG_ACCOUNTS: &str = "accounts";
 const ARG_SEED_AMOUNT: &str = "seed_amount";
 const ARG_TOTAL_PURSES: &str = "total_purses";
-const ARG_TARGET: &str = "target";
-const ARG_TARGET_PURSE: &str = "target_purse";
 
 const ARG_PURSES: &str = "purses";
 
@@ -134,7 +124,6 @@ fn should_fail_when_burning_with_no_access() {
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
     let purse_amount = U512::from(5000000000u64);
     let total_purses = 2u64;
-    let source = DEFAULT_ACCOUNT_ADDR.clone();
 
     let delegator_keys = auction::generate_public_keys(1);
     let validator_keys = auction::generate_public_keys(1);
