@@ -4,8 +4,8 @@ use crate::{
     contracts::Parameters,
     system::mint::{
         ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_PURSES, ARG_SOURCE, ARG_TARGET, ARG_TO, METHOD_BALANCE,
-        METHOD_CREATE, METHOD_MINT, METHOD_MINT_INTO_EXISTING_PURSE, METHOD_READ_BASE_ROUND_REWARD,
-        METHOD_BURN, METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
+        METHOD_BURN, METHOD_CREATE, METHOD_MINT, METHOD_MINT_INTO_EXISTING_PURSE,
+        METHOD_READ_BASE_ROUND_REWARD, METHOD_REDUCE_TOTAL_SUPPLY, METHOD_TRANSFER,
     },
     CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
@@ -40,7 +40,10 @@ pub fn mint_entry_points() -> EntryPoints {
 
     let entry_point = EntryPoint::new(
         METHOD_BURN,
-        vec![Parameter::new(ARG_PURSES, CLType::List(Box::new(CLType::URef)))],
+        vec![Parameter::new(
+            ARG_PURSES,
+            CLType::List(Box::new(CLType::URef)),
+        )],
         CLType::Result {
             ok: Box::new(CLType::Unit),
             err: Box::new(CLType::U8),

@@ -1,10 +1,9 @@
 use casper_engine_test_support::{
-    LmdbWasmTestBuilder,
-    ExecuteRequestBuilder,  DEFAULT_ACCOUNT_ADDR,
-    auction
+    auction, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef,
-    system::mint::TOTAL_SUPPLY_KEY,
+use casper_types::{
+    account::AccountHash, runtime_args, system::mint::TOTAL_SUPPLY_KEY, Key, RuntimeArgs, URef,
+    U512,
 };
 use tempfile::TempDir;
 
@@ -114,7 +113,10 @@ fn should_burn_tokens_from_provided_purse() {
 
     let total_supply_difference = total_supply_before_burning - total_supply_after_burning;
 
-    assert_eq!(total_supply_difference, U512::from(total_purses) * purse_amount);
+    assert_eq!(
+        total_supply_difference,
+        U512::from(total_purses) * purse_amount
+    );
 }
 
 #[ignore]
@@ -137,7 +139,6 @@ fn should_fail_when_burning_with_no_access() {
             .collect::<Vec<_>>(),
         U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
     );
-
 
     let pk_bytes = [0; 32];
     let pk = AccountHash::new(pk_bytes);

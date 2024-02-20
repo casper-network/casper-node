@@ -5,12 +5,10 @@ use num_rational::Ratio;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::{
-        auction::{
-            Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
-            UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
-            ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
-        },
+    system::auction::{
+        Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
+        UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
+        ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };

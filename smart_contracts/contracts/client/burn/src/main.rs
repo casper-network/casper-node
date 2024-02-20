@@ -19,6 +19,6 @@ fn burn(urefs: Vec<URef>) {
 // Accepts a public key. Issues an activate-bid bid to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
-    let urefs:Vec<URef> = runtime::get_named_arg(mint::ARG_PURSES);
+    let urefs: Vec<URef> = runtime::get_named_arg(mint::ARG_PURSES);
     burn(urefs);
 }
