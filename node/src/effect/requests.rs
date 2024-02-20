@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
+    net::SocketAddr,
     sync::Arc,
 };
 
@@ -197,7 +198,7 @@ pub(crate) enum NetworkInfoRequest {
     Peers {
         /// Responder to be called with all connected peers.
         /// Responds with a map from [NodeId]s to a socket address, represented as a string.
-        responder: Responder<BTreeMap<NodeId, String>>,
+        responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
@@ -740,7 +741,7 @@ pub(crate) enum RpcRequest {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<BTreeMap<NodeId, String>>,
+        responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {

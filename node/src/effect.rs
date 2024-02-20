@@ -102,6 +102,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
+    net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -796,7 +797,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets a map of the current network peers to their socket addresses.
-    pub(crate) async fn network_peers(self) -> BTreeMap<NodeId, String>
+    pub(crate) async fn network_peers(self) -> BTreeMap<NodeId, SocketAddr>
     where
         REv: From<NetworkInfoRequest>,
     {

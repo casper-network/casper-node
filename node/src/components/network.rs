@@ -40,15 +40,13 @@ mod tests;
 mod transport;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt::{self, Debug, Formatter},
     fs::OpenOptions,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    str::FromStr,
+    sync::{atomic::AtomicBool, Arc, Weak},
     time::{Duration, Instant},
 };
 
@@ -78,7 +76,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    conman::{ConMan, ConManState, ConManStateReadLock, ProtocolHandler, ProtocolHandshakeOutcome},
+    conman::{ConMan, ConManState, ProtocolHandler, ProtocolHandshakeOutcome},
     error::ConnectionError,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -651,35 +649,22 @@ where
         })
     }
 
-    /// Emits an announcement that a connection has been completed.
-    fn connection_completed(&self, peer_id: NodeId) {
-        trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
-        self.net_metrics.peers.set(self.peers().len() as i64);
-    }
-
     /// Returns the set of connected nodes.
-    pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
-        // let mut ret = BTreeMap::new();
-        // for node_id in self.outgoing_manager.connected_peers() {
-        //     if let Some(connection) = self.outgoing_manager.get_route(node_id) {
-        //         ret.insert(node_id, connection.peer_addr.to_string());
-        //     } else {
-        //         // This should never happen unless the state of `OutgoingManager` is corrupt.
-        //         warn!(%node_id, "route disappeared unexpectedly")
-        //     }
-        // }
+    pub(crate) fn peers(&self) -> BTreeMap<NodeId, SocketAddr> {
+        // TODO: Restore insight into remote address, needs supporting feature from `juliet`.
+        //       Alternatively we can only list the IP address for outgoing peers.
 
-        // for (node_id, sym) in &self.connection_symmetries {
-        //     if let Some(addrs) = sym.incoming_addrs() {
-        //         for addr in addrs {
-        //             ret.entry(*node_id).or_insert_with(|| addr.to_string());
-        //         }
-        //     }
-        // }
+        let Some(ref conman) = self.conman else {
+            // Not initialized means no peers.
+            return Default::default();
+        };
 
-        // ret
-
-        todo!()
+        conman
+            .read_state()
+            .routing_table()
+            .values()
+            .map(|route| (route.peer, SocketAddr::from_str("0.0.0.0:0").unwrap()))
+            .collect()
     }
 
     /// Get a randomly sampled subset of connected peers
