@@ -655,9 +655,6 @@ where
 
     /// Returns the set of connected nodes.
     pub(crate) fn peers(&self) -> BTreeMap<NodeId, SocketAddr> {
-        // TODO: Restore insight into remote address, needs supporting feature from `juliet`.
-        //       Alternatively we can only list the IP address for outgoing peers.
-
         let Some(ref conman) = self.conman else {
             // Not initialized means no peers.
             return Default::default();
@@ -667,7 +664,7 @@ where
             .read_state()
             .routing_table()
             .values()
-            .map(|route| (route.peer, SocketAddr::from_str("0.0.0.0:0").unwrap()))
+            .map(|route| (route.peer, route.remote_addr))
             .collect()
     }
 
