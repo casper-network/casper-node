@@ -49,13 +49,13 @@ impl ChainInfo {
     }
 
     /// Create a handshake based on chain identification data.
-    pub(super) fn create_handshake<P>(
+    pub(super) fn create_handshake(
         &self,
         public_addr: SocketAddr,
         consensus_keys: Option<&NodeKeyPair>,
         connection_id: ConnectionId,
-    ) -> Message<P> {
-        Message::Handshake {
+    ) -> Message<()> {
+        Message::<()>::Handshake {
             network_name: self.network_name.clone(),
             public_addr,
             protocol_version: self.protocol_version,

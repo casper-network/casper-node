@@ -104,17 +104,14 @@ where
 }
 
 /// Negotiates a handshake between two peers.
-pub(super) async fn negotiate_handshake<P>(
+pub(super) async fn negotiate_handshake(
     context: &NetworkContext,
     transport: Transport,
     connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
+) -> Result<HandshakeOutcome, ConnectionError> {
     tokio::time::timeout(
         context.handshake_timeout.into(),
-        do_negotiate_handshake::<P>(context, transport, connection_id),
+        do_negotiate_handshake(context, transport, connection_id),
     )
     .await
     .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
@@ -123,16 +120,13 @@ where
 /// Performs a handshake.
 ///
 /// This function is cancellation safe.
-async fn do_negotiate_handshake<P>(
+async fn do_negotiate_handshake(
     context: &NetworkContext,
     transport: Transport,
     connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
+) -> Result<HandshakeOutcome, ConnectionError> {
     // Manually encode a handshake.
-    let handshake_message = context.chain_info().create_handshake::<P>(
+    let handshake_message = context.chain_info().create_handshake(
         context
             .public_addr()
             .expect("did not expect public listening address to be missing"),
@@ -168,10 +162,10 @@ where
         .map_err(ConnectionError::HandshakeSenderCrashed)?
         .map_err(ConnectionError::HandshakeSend)?;
 
-    let remote_message: Message<P> =
+    let remote_message: Message<()> =
         deserialize(&remote_message_raw).map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
 
-    if let Message::Handshake {
+    if let Message::<()>::Handshake {
         network_name,
         public_addr,
         protocol_version,
