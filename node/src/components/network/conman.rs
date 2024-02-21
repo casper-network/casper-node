@@ -723,6 +723,8 @@ impl OutgoingHandler {
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
                     // This is "our bad", but the peer has been informed of our address now.
+                    // TODO: When an incoming connection is made (from the peer), consider clearing
+                    //       this faster.
                     debug!("should be incoming connection");
                     break Instant::now() + ctx.cfg.permanent_error_backoff;
                 }
