@@ -168,7 +168,7 @@ pub enum ConnectionError {
     DidNotSendHandshake,
     /// Handshake did not complete in time.
     #[error("could not complete handshake in time")]
-    HandshakeTimeout,
+    SetupTimeout,
     /// Failed to encode our handshake.
     #[error("could not encode our handshake")]
     CouldNotEncodeOurHandshake(

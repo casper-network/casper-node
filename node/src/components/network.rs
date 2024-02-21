@@ -527,7 +527,7 @@ where
             | ConnectionError::HandshakeSend(_)
             | ConnectionError::HandshakeRecv(_)
             | ConnectionError::IncompatibleVersion(_)
-            | ConnectionError::HandshakeTimeout => None,
+            | ConnectionError::SetupTimeout => None,
 
             // These errors are potential bugs on our side.
             ConnectionError::HandshakeSenderCrashed(_)

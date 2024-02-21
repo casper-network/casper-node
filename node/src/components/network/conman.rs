@@ -36,7 +36,7 @@ use tracing::{
 
 use crate::{
     types::NodeId,
-    utils::{display_error, rate_limited::rate_limited, DropSwitch, ObservableFuse},
+    utils::{display_error, rate_limited::rate_limited, DropSwitch, FlattenResult, ObservableFuse},
 };
 
 use super::{
@@ -74,6 +74,8 @@ pub(crate) struct ConMan {
 struct Config {
     /// The timeout for one TCP to be connection to be established, from a single `connect` call.
     tcp_connect_timeout: Duration,
+    /// Maximum time allowed for TLS setup and handshaking to proceed.
+    setup_timeout: Duration,
     /// How often to reattempt a connection.
     ///
     /// At one second, 8 attempts means that the last attempt will be delayed for 128 seconds.
@@ -191,7 +193,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     /// Sets up an incoming connection.
     ///
     /// Given a TCP stream of an incoming connection, should setup any higher level transport and
-    /// perform a handshake. Needs to time out or finish eventually.
+    /// perform a handshake.
     async fn setup_incoming(
         &self,
         stream: TcpStream,
@@ -200,7 +202,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     /// Sets up an outgoing connection.
     ///
     /// Given a TCP stream of an outgoing connection, should setup any higher level transport and
-    /// perform a handshake. Needs to time out or finish eventually.
+    /// perform a handshake.
     async fn setup_outgoing(
         &self,
         stream: TcpStream,
@@ -492,14 +494,17 @@ async fn handle_incoming(
     let ProtocolHandshakeOutcome {
         peer_id,
         handshake_outcome,
-    } = match ctx
-        .protocol_handler
-        .setup_incoming(stream)
-        .await
-        .map(move |outcome| {
-            outcome.record_on(Span::current());
-            outcome
-        }) {
+    } = match tokio::time::timeout(
+        ctx.cfg.setup_timeout,
+        ctx.protocol_handler.setup_incoming(stream),
+    )
+    .await
+    .map_err(|_elapsed| ConnectionError::SetupTimeout)
+    .flatten_result()
+    .map(move |outcome| {
+        outcome.record_on(Span::current());
+        outcome
+    }) {
         Ok(outcome) => outcome,
         Err(error) => {
             debug!(%error, "failed to complete handshake on incoming");
@@ -769,16 +774,19 @@ impl OutgoingHandler {
         let ProtocolHandshakeOutcome {
             peer_id,
             handshake_outcome,
-        } = self
-            .ctx
-            .protocol_handler
-            .setup_outgoing(stream)
-            .await
-            .map_err(OutgoingError::FailedToCompleteHandshake)
-            .map(move |outcome| {
-                outcome.record_on(Span::current());
-                outcome
-            })?;
+        } = tokio::time::timeout(
+            self.ctx.cfg.setup_timeout,
+            self.ctx.protocol_handler.setup_outgoing(stream),
+        )
+        .await
+        .map_err(|_elapsed| {
+            OutgoingError::FailedToCompleteHandshake(ConnectionError::SetupTimeout)
+        })?
+        .map_err(OutgoingError::FailedToCompleteHandshake)
+        .map(move |outcome| {
+            outcome.record_on(Span::current());
+            outcome
+        })?;
 
         if peer_id == self.ctx.our_id {
             return Err(OutgoingError::LoopbackEncountered);
@@ -937,6 +945,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             tcp_connect_timeout: Duration::from_secs(10),
+            setup_timeout: Duration::from_secs(10),
             tcp_connect_attempts: NonZeroUsize::new(8).unwrap(),
             tcp_connect_base_backoff: Duration::from_secs(1),
             significant_error_backoff: Duration::from_secs(60),

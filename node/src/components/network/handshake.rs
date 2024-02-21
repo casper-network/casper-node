@@ -121,29 +121,10 @@ pub(crate) struct HandshakeConfiguration {
 }
 
 impl HandshakeConfiguration {
-    /// Negotiates a handshake between two peers.
-    ///
-    /// Includes a timeout.
-    ///
-    /// ## Cancellation safety
-    ///
-    /// This function is cancellation safe.
-    pub(crate) async fn negotiate_handshake(
-        &self,
-        transport: Transport,
-    ) -> Result<HandshakeOutcome, ConnectionError> {
-        tokio::time::timeout(
-            self.handshake_timeout,
-            self.do_negotiate_handshake(transport),
-        )
-        .await
-        .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
-    }
-
     /// Performs a handshake.
     ///
     /// This function is cancellation safe.
-    async fn do_negotiate_handshake(
+    pub(crate) async fn negotiate_handshake(
         &self,
         transport: Transport,
     ) -> Result<HandshakeOutcome, ConnectionError> {
