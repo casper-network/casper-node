@@ -123,6 +123,7 @@ impl Drop for Ticket {
 pub(super) struct TransportHandler {
     tls_configuration: TlsConfiguration,
     handshake_configuration: HandshakeConfiguration,
+    incoming_request_handler: Box<dyn Fn(NodeId, IncomingRequest) + Send + Sync>,
 }
 
 impl TransportHandler {
@@ -170,8 +171,9 @@ impl ProtocolHandler for TransportHandler {
         self.finish_setting_up(peer_id, transport).await
     }
 
+    #[inline(always)]
     fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
-        todo!()
+        (self.incoming_request_handler)(peer, request)
     }
 }
 
