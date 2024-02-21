@@ -124,8 +124,12 @@ impl HandshakeConfiguration {
     /// Negotiates a handshake between two peers.
     ///
     /// Includes a timeout.
+    ///
+    /// ## Cancellation safety
+    ///
+    /// This function is cancellation safe.
     pub(crate) async fn negotiate_handshake(
-        self,
+        &self,
         transport: Transport,
     ) -> Result<HandshakeOutcome, ConnectionError> {
         tokio::time::timeout(
@@ -140,7 +144,7 @@ impl HandshakeConfiguration {
     ///
     /// This function is cancellation safe.
     async fn do_negotiate_handshake(
-        self,
+        &self,
         transport: Transport,
     ) -> Result<HandshakeOutcome, ConnectionError> {
         let connection_id = ConnectionId::from_connection(transport.ssl());
@@ -155,18 +159,19 @@ impl HandshakeConfiguration {
         let serialized_handshake_message =
             serialize(&handshake_message).map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
 
-        // To ensure we are not dead-locking, we split the transport here and send the handshake in a
-        // background task before awaiting one ourselves. This ensures we can make progress regardless
-        // of the size of the outgoing handshake.
+        // To ensure we are not dead-locking, we split the transport here and send the handshake in
+        // a background task before awaiting one ourselves. This ensures we can make progress
+        // regardless of the size of the outgoing handshake.
         let (mut read_half, mut write_half) = tokio::io::split(transport);
 
+        // TODO: This need not be spawned, but could be a local futures unordered.
         let handshake_send = tokio::spawn(async move {
             write_length_prefixed_frame(&mut write_half, &serialized_handshake_message).await?;
             Ok::<_, RawFrameIoError>(write_half)
         });
 
-        // The remote's message should be a handshake, but can technically be any message. We receive,
-        // deserialize and check it.
+        // The remote's message should be a handshake, but can technically be any message. We
+        // receive, deserialize and check it.
         let remote_message_raw = read_length_prefixed_frame(
             self.chain_info.maximum_handshake_message_size,
             &mut read_half,
@@ -198,9 +203,10 @@ impl HandshakeConfiguration {
                 return Err(ConnectionError::WrongNetwork(network_name));
             }
 
-            // If there is a version mismatch, we treat it as a connection error. We do not ban peers
-            // for this error, but instead rely on exponential backoff, as bans would result in issues
-            // during upgrades where nodes may have a legitimate reason for differing versions.
+            // If there is a version mismatch, we treat it as a connection error. We do not ban
+            // peers for this error, but instead rely on exponential backoff, as bans would result
+            // in issues during upgrades where nodes may have a legitimate reason for differing
+            // versions.
             //
             // Since we are not using SemVer for versioning, we cannot make any assumptions about
             // compatibility, so we allow only exact version matches.

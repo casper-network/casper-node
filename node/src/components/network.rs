@@ -81,7 +81,7 @@ use self::{
     message::NodeKeyPair,
     metrics::Metrics,
     tasks::NetworkContext,
-    transport::ComponentProtocolHandler,
+    transport::TransportHandler,
 };
 pub(crate) use self::{
     config::Config,
@@ -286,7 +286,7 @@ where
         );
 
         // Start connection manager.
-        let protocol_handler = ComponentProtocolHandler::new();
+        let protocol_handler = TransportHandler::new();
 
         let rpc_builder = transport::create_rpc_builder(
             self.context.chain_info.networking_config,

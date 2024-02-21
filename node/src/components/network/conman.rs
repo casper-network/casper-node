@@ -191,7 +191,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     /// Sets up an incoming connection.
     ///
     /// Given a TCP stream of an incoming connection, should setup any higher level transport and
-    /// perform a handshake.
+    /// perform a handshake. Needs to time out or finish eventually.
     async fn setup_incoming(
         &self,
         stream: TcpStream,
@@ -200,7 +200,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     /// Sets up an outgoing connection.
     ///
     /// Given a TCP stream of an outgoing connection, should setup any higher level transport and
-    /// perform a handshake.
+    /// perform a handshake. Needs to time out or finish eventually.
     async fn setup_outgoing(
         &self,
         stream: TcpStream,
@@ -213,9 +213,9 @@ pub(crate) trait ProtocolHandler: Send + Sync {
 /// The outcome of a handshake performed by the [`ProtocolHandler`].
 pub(crate) struct ProtocolHandshakeOutcome {
     /// Peer's `NodeId`.
-    peer_id: NodeId,
+    pub(crate) peer_id: NodeId,
     /// The actual handshake outcome.
-    handshake_outcome: HandshakeOutcome,
+    pub(crate) handshake_outcome: HandshakeOutcome,
 }
 
 impl ProtocolHandshakeOutcome {

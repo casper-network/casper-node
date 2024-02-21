@@ -3,7 +3,7 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::pin::Pin;
+use std::{net::SocketAddr, pin::Pin};
 
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
@@ -97,27 +97,44 @@ impl Drop for Ticket {
     }
 }
 
-pub(super) struct ComponentProtocolHandler {
+pub(super) struct TransportHandler {
     tls_configuration: TlsConfiguration,
     handshake_configuration: HandshakeConfiguration,
 }
 
-impl ComponentProtocolHandler {
+impl TransportHandler {
     pub(super) fn new() -> Self {
         todo!()
+    }
+
+    /// Finish the transport setup after the TLS connection has been negotiated.
+    async fn finish_setting_up(
+        &self,
+        peer_id: NodeId,
+        transport: Transport,
+    ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
+        let handshake_outcome = self
+            .handshake_configuration
+            .negotiate_handshake(transport)
+            .await?;
+
+        Ok(ProtocolHandshakeOutcome {
+            peer_id,
+            handshake_outcome,
+        })
     }
 }
 
 #[async_trait::async_trait]
-impl ProtocolHandler for ComponentProtocolHandler {
+impl ProtocolHandler for TransportHandler {
     #[inline(always)]
     async fn setup_incoming(
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        let (their_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
+        let (peer_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
 
-        todo!()
+        self.finish_setting_up(peer_id, transport).await
     }
 
     #[inline(always)]
@@ -125,7 +142,9 @@ impl ProtocolHandler for ComponentProtocolHandler {
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        todo!()
+        let (peer_id, transport) = tls_connect(&self.tls_configuration, stream).await?;
+
+        self.finish_setting_up(peer_id, transport).await
     }
 
     fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
@@ -167,4 +186,48 @@ pub(super) async fn server_setup_tls(
         NodeId::from(validated_peer_cert.public_key_fingerprint()),
         tls_stream,
     ))
+}
+
+/// Low-level TLS connection function.
+///
+/// Performs the actual TCP+TLS connection setup.
+async fn tls_connect(
+    context: &TlsConfiguration,
+    stream: TcpStream,
+) -> Result<(NodeId, Transport), ConnectionError> {
+    // TODO: Timeout eventually if the connection gets stuck?
+
+    stream
+        .set_nodelay(true)
+        .map_err(ConnectionError::TcpNoDelay)?;
+
+    let mut transport = tls::create_tls_connector(
+        context.our_cert.as_x509(),
+        &context.secret_key,
+        context.keylog.clone(),
+    )
+    .and_then(|connector| connector.configure())
+    .and_then(|mut config| {
+        config.set_verify_hostname(false);
+        config.into_ssl("this-will-not-be-checked.example.com")
+    })
+    .and_then(|ssl| SslStream::new(ssl, stream))
+    .map_err(ConnectionError::TlsInitialization)?;
+
+    SslStream::connect(Pin::new(&mut transport))
+        .await
+        .map_err(ConnectionError::TlsHandshake)?;
+
+    let peer_cert = transport
+        .ssl()
+        .peer_certificate()
+        .ok_or(ConnectionError::NoPeerCertificate)?;
+
+    let validated_peer_cert = context
+        .validate_peer_cert(peer_cert)
+        .map_err(ConnectionError::PeerCertificateInvalid)?;
+
+    let peer_id = NodeId::from(validated_peer_cert.public_key_fingerprint());
+
+    Ok((peer_id, transport))
 }

@@ -38,7 +38,7 @@ fn default_protocol_version() -> ProtocolVersion {
 #[strum_discriminants(derive(strum::EnumIter))]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
-    // TODO: Remove
+    // TODO: Remove.
     Handshake {
         /// Network we are connected to.
         network_name: String,

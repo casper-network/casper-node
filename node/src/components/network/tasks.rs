@@ -53,52 +53,6 @@ use crate::{
     utils::{display_error, LockedLineWriter, ObservableFuse, Peel},
 };
 
-/// Low-level TLS connection function.
-///
-/// Performs the actual TCP+TLS connection setup.
-async fn tls_connect(
-    context: &TlsConfiguration,
-    peer_addr: SocketAddr,
-) -> Result<(NodeId, Transport), ConnectionError> {
-    let stream = TcpStream::connect(peer_addr)
-        .await
-        .map_err(ConnectionError::TcpConnection)?;
-
-    stream
-        .set_nodelay(true)
-        .map_err(ConnectionError::TcpNoDelay)?;
-
-    let mut transport = tls::create_tls_connector(
-        context.our_cert.as_x509(),
-        &context.secret_key,
-        context.keylog.clone(),
-    )
-    .and_then(|connector| connector.configure())
-    .and_then(|mut config| {
-        config.set_verify_hostname(false);
-        config.into_ssl("this-will-not-be-checked.example.com")
-    })
-    .and_then(|ssl| SslStream::new(ssl, stream))
-    .map_err(ConnectionError::TlsInitialization)?;
-
-    SslStream::connect(Pin::new(&mut transport))
-        .await
-        .map_err(ConnectionError::TlsHandshake)?;
-
-    let peer_cert = transport
-        .ssl()
-        .peer_certificate()
-        .ok_or(ConnectionError::NoPeerCertificate)?;
-
-    let validated_peer_cert = context
-        .validate_peer_cert(peer_cert)
-        .map_err(ConnectionError::PeerCertificateInvalid)?;
-
-    let peer_id = NodeId::from(validated_peer_cert.public_key_fingerprint());
-
-    Ok((peer_id, transport))
-}
-
 /// A context holding all relevant information for networking communication shared across tasks.
 pub(crate) struct NetworkContext {
     /// TLS parameters.
