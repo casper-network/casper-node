@@ -428,7 +428,7 @@ impl ConManContext {
         }
 
         // Our initial check whether or not we can connect was succesful, spawn a handler.
-        let span = error_span!("outgoing", %peer_addr, peer_id=Empty, consensus_key=Empty);
+        let span = error_span!("outgoing", %peer_addr);
         trace!(%peer_addr, "learned about address");
 
         shutdown.spawn(OutgoingHandler::run(self, peer_addr).instrument(span));
@@ -664,7 +664,7 @@ impl OutgoingHandler {
         // and repeat the loop, connecting again, or `break` with a do-not-call timer.
         let do_not_call_until = loop {
             // We need a subspan to avoid duplicate registrations of peer data on retries.
-            let sub_span = error_span!("connect-and-serve");
+            let sub_span = error_span!("connect-and-serve", peer_id = Empty, consensus_key = Empty);
             match outgoing_handler
                 .connect_and_serve()
                 .instrument(sub_span)
