@@ -342,9 +342,11 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
         "starting the rewards calculation"
     );
 
-    if current_era_id.is_genesis() {
-        // Special case: genesis block does not yield any reward, because there is no block
-        // producer, and no previous blocks whose signatures are to be rewarded:
+    if current_era_id.is_genesis()
+        || current_era_id == chainspec.protocol_config.activation_point.era_id()
+    {
+        // Special case: genesis block and immediate switch blocks do not yield any reward, because
+        // there is no block producer, and no signatures from previous blocks to be rewarded:
         Ok(chainspec
             .network_config
             .accounts_config
