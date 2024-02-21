@@ -104,8 +104,8 @@ where
 }
 
 /// Negotiates a handshake between two peers.
-pub(super) async fn negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
+pub(super) async fn negotiate_handshake<P>(
+    context: &NetworkContext,
     transport: Transport,
     connection_id: ConnectionId,
 ) -> Result<HandshakeOutcome, ConnectionError>
@@ -114,7 +114,7 @@ where
 {
     tokio::time::timeout(
         context.handshake_timeout.into(),
-        do_negotiate_handshake::<P, REv>(context, transport, connection_id),
+        do_negotiate_handshake::<P>(context, transport, connection_id),
     )
     .await
     .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
@@ -123,8 +123,8 @@ where
 /// Performs a handshake.
 ///
 /// This function is cancellation safe.
-async fn do_negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
+async fn do_negotiate_handshake<P>(
+    context: &NetworkContext,
     transport: Transport,
     connection_id: ConnectionId,
 ) -> Result<HandshakeOutcome, ConnectionError>

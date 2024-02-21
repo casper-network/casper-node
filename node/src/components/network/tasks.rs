@@ -102,13 +102,7 @@ async fn tls_connect(
 }
 
 /// A context holding all relevant information for networking communication shared across tasks.
-pub(crate) struct NetworkContext<REv>
-where
-    REv: 'static,
-{
-    /// The handle to the reactor's event queue, used by incoming message handlers to put events
-    /// onto the queue.
-    event_queue: Option<EventQueueHandle<REv>>,
+pub(crate) struct NetworkContext {
     /// TLS parameters.
     pub(super) tls_configuration: TlsConfiguration,
     /// Our own [`NodeId`].
@@ -126,7 +120,7 @@ where
     pub(super) handshake_timeout: TimeDiff,
 }
 
-impl<REv> NetworkContext<REv> {
+impl NetworkContext {
     pub(super) fn new(
         cfg: Config,
         our_identity: Identity,
@@ -152,7 +146,6 @@ impl<REv> NetworkContext<REv> {
         NetworkContext {
             our_id,
             public_addr: None,
-            event_queue: None,
             tls_configuration,
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
@@ -161,13 +154,8 @@ impl<REv> NetworkContext<REv> {
         }
     }
 
-    pub(super) fn initialize(
-        &mut self,
-        our_public_addr: SocketAddr,
-        event_queue: EventQueueHandle<REv>,
-    ) {
+    pub(super) fn initialize(&mut self, our_public_addr: SocketAddr) {
         self.public_addr = Some(our_public_addr);
-        self.event_queue = Some(event_queue);
     }
 
     /// Our own [`NodeId`].

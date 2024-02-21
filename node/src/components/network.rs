@@ -133,7 +133,7 @@ where
     /// Initial configuration values.
     cfg: Config,
     /// Read-only networking information shared across tasks.
-    context: Arc<NetworkContext<REv>>,
+    context: Arc<NetworkContext>,
     /// The set of known addresses that are eternally kept.
     known_addresses: HashSet<SocketAddr>,
     /// A reference to the global validator matrix.
@@ -164,6 +164,8 @@ where
 
     /// Marker for what kind of payload this small network instance supports.
     _payload: PhantomData<P>,
+
+    _reactor_event: PhantomData<REv>,
 }
 
 impl<REv, P> Network<REv, P>
@@ -228,6 +230,7 @@ where
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
 
             _payload: PhantomData,
+            _reactor_event: PhantomData,
         };
 
         Ok(component)
@@ -271,7 +274,7 @@ where
 
         Arc::get_mut(&mut self.context)
             .expect("should be no other pointers")
-            .initialize(public_addr, effect_builder.into_inner());
+            .initialize(public_addr);
 
         let mut effects = Effects::new();
 
