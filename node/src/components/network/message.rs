@@ -92,6 +92,15 @@ pub(crate) struct NodeKeyPair {
     public_key: PublicKey,
 }
 
+impl Debug for NodeKeyPair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeKeyPair")
+            .field("secret_key", &"..")
+            .field("public_key", &self.public_key)
+            .finish()
+    }
+}
+
 impl NodeKeyPair {
     /// Creates a new key pair for consensus signing.
     pub(super) fn new(key_pair: (Arc<SecretKey>, PublicKey)) -> Self {

@@ -44,9 +44,7 @@ use super::{
 
 use crate::{
     components::network::{
-        deserialize_network_message,
-        handshake::{negotiate_handshake, HandshakeOutcome},
-        Config, Ticket,
+        deserialize_network_message, handshake::HandshakeOutcome, Config, Ticket,
     },
     effect::{announcements::PeerBehaviorAnnouncement, requests::NetworkRequest},
     reactor::{EventQueueHandle, QueueKind},
