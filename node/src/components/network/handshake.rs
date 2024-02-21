@@ -110,8 +110,6 @@ where
 /// Data necessary to perform a handshake.
 #[derive(Debug)]
 pub(crate) struct HandshakeConfiguration {
-    /// Our node ID.
-    our_id: NodeId,
     /// Chain info extract from chainspec.
     chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
@@ -129,13 +127,10 @@ impl HandshakeConfiguration {
     pub(crate) async fn negotiate_handshake(
         self,
         transport: Transport,
-        their_id: NodeId,
     ) -> Result<HandshakeOutcome, ConnectionError> {
-        let connection_id = ConnectionId::from_connection(transport.ssl(), self.our_id, their_id);
-
         tokio::time::timeout(
             self.handshake_timeout,
-            self.do_negotiate_handshake(transport, connection_id),
+            self.do_negotiate_handshake(transport),
         )
         .await
         .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
@@ -147,8 +142,9 @@ impl HandshakeConfiguration {
     async fn do_negotiate_handshake(
         self,
         transport: Transport,
-        connection_id: ConnectionId,
     ) -> Result<HandshakeOutcome, ConnectionError> {
+        let connection_id = ConnectionId::from_connection(transport.ssl());
+
         // Manually encode a handshake.
         let handshake_message = self.chain_info.create_handshake(
             self.public_addr,
