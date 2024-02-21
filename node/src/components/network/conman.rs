@@ -173,6 +173,11 @@ pub(crate) struct Route {
     pub(crate) peer: NodeId,
     /// The established [`juliet`] RPC client that is used to send requests to the peer.
     pub(crate) client: RpcClient,
+    /// The remote address of the peer.
+    ///
+    /// For outgoing connections, this will be the peer address we connected to, for incoming ones
+    /// it is the usually randomly selected outgoing address of the peer.
+    pub(crate) remote_addr: SocketAddr,
 }
 
 /// An active route that is registered in a routing table.
@@ -491,6 +496,15 @@ async fn handle_incoming(
     //       interested in errors, so they are rate limited warnings.
     debug!("handling new connection attempt");
 
+    // Determine the peer address to store on route.
+    let Ok(remote_addr) = stream.peer_addr() else {
+        rate_limited!(INCOMING_PEER_ADDR_FAIL, |dropped| warn!(
+            dropped,
+            "failed to retrieve peer address from incoming stream"
+        ));
+        return;
+    };
+
     let ProtocolHandshakeOutcome {
         peer_id,
         handshake_outcome,
@@ -566,7 +580,7 @@ async fn handle_incoming(
             return;
         }
 
-        ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client)
+        ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client, remote_addr)
     };
 
     info!("now connected via incoming connection");
@@ -811,7 +825,13 @@ impl OutgoingHandler {
             }
             guard.unban(&peer_id);
 
-            ActiveRoute::new(&mut *guard, self.ctx.clone(), peer_id, rpc_client)
+            ActiveRoute::new(
+                &mut *guard,
+                self.ctx.clone(),
+                peer_id,
+                rpc_client,
+                self.peer_addr,
+            )
         };
 
         let serve_start = Instant::now();
@@ -840,10 +860,12 @@ impl ActiveRoute {
         ctx: Arc<ConManContext>,
         peer_id: NodeId,
         rpc_client: RpcClient,
+        remote_addr: SocketAddr,
     ) -> Self {
         let route = Route {
             peer: peer_id,
             client: rpc_client,
+            remote_addr,
         };
 
         if state.routing_table.insert(peer_id, route).is_some() {
