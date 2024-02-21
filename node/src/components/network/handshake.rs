@@ -15,6 +15,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::{debug, info};
 
+use crate::types::NodeId;
+
 use super::{
     chain_info::ChainInfo,
     connection_id::ConnectionId,
@@ -25,13 +27,13 @@ use super::{
 };
 
 /// The outcome of the handshake process.
-pub(super) struct HandshakeOutcome {
+pub(crate) struct HandshakeOutcome {
     /// A framed transport for peer.
-    pub(super) transport: Transport,
+    pub(crate) transport: Transport,
     /// Public address advertised by the peer.
-    pub(super) public_addr: SocketAddr,
+    pub(crate) public_addr: SocketAddr,
     /// The public key the peer is validating with, if any.
-    pub(super) peer_consensus_public_key: Option<Box<PublicKey>>,
+    pub(crate) peer_consensus_public_key: Option<Box<PublicKey>>,
 }
 
 /// Reads a 32 byte big endian integer prefix, followed by an actual raw message.
@@ -107,7 +109,9 @@ where
 
 /// Data necessary to perform a handshake.
 #[derive(Debug)]
-struct HandshakeConfiguration {
+pub(crate) struct HandshakeConfiguration {
+    /// Our node ID.
+    our_id: NodeId,
     /// Chain info extract from chainspec.
     chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
@@ -122,11 +126,13 @@ impl HandshakeConfiguration {
     /// Negotiates a handshake between two peers.
     ///
     /// Includes a timeout.
-    pub(super) async fn negotiate_handshake(
+    pub(crate) async fn negotiate_handshake(
         self,
         transport: Transport,
-        connection_id: ConnectionId,
+        their_id: NodeId,
     ) -> Result<HandshakeOutcome, ConnectionError> {
+        let connection_id = ConnectionId::from_connection(transport.ssl(), self.our_id, their_id);
+
         tokio::time::timeout(
             self.handshake_timeout,
             self.do_negotiate_handshake(transport, connection_id),

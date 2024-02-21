@@ -13,13 +13,16 @@ use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
 
 use crate::{
+    components::network::handshake,
     tls,
     types::{chainspec::JulietConfig, NodeId},
 };
 
 use super::{
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
+    connection_id::ConnectionId,
     error::ConnectionError,
+    handshake::HandshakeConfiguration,
     tasks::TlsConfiguration,
     Channel, PerChannel, Transport,
 };
@@ -96,6 +99,7 @@ impl Drop for Ticket {
 
 pub(super) struct ComponentProtocolHandler {
     tls_configuration: TlsConfiguration,
+    handshake_configuration: HandshakeConfiguration,
 }
 
 impl ComponentProtocolHandler {
@@ -111,7 +115,7 @@ impl ProtocolHandler for ComponentProtocolHandler {
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        let (node_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
+        let (their_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
 
         todo!()
     }

@@ -21,7 +21,7 @@ use crate::{types::NodeId, utils};
 /// The ID is guaranteed to be the same on both ends of the connection, but not guaranteed to be
 /// unique or sufficiently random. Do not use it for any cryptographic/security related purposes.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(super) struct ConnectionId([u8; Digest::LENGTH]);
+pub(crate) struct ConnectionId([u8; Digest::LENGTH]);
 
 // Invariant assumed by `ConnectionId`, `Digest` must be <= than `KeyFingerprint`.
 const_assert!(KeyFingerprint::LENGTH >= Digest::LENGTH);
@@ -31,7 +31,7 @@ const_assert!(Digest::LENGTH >= 12);
 /// Random data derived from TLS connections.
 #[derive(Copy, Clone, Debug)]
 pub(super) struct TlsRandomData {
-    /// Random data extract from the client of the connection.
+    /// Random data extracted from the client of the connection.
     combined_random: [u8; 12],
 }
 
