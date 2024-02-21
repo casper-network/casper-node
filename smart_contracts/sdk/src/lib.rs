@@ -15,6 +15,7 @@ use std::{fmt, io, marker::PhantomData, ptr::NonNull};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
+use host::CallResult;
 use sys::CreateResult;
 use types::{Address, CallError};
 
@@ -152,22 +153,25 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct ContractHandle<T: ContractRef> {
-    address: Address,
+    contract_address: Address,
+    package_address: Address,
     marker: PhantomData<T>,
 }
 
 impl<T: ContractRef> ContractHandle<T> {
-    pub fn new(address: Address) -> Self {
+    pub fn new(contract_address: Address, package_address: Address) -> Self {
         ContractHandle {
-            address,
+            contract_address,
+            package_address,
             marker: PhantomData,
         }
     }
 
     pub fn build_call(&self) -> CallBuilder<T> {
         CallBuilder {
-            address: self.address,
+            address: self.contract_address,
             marker: PhantomData,
             value: None,
         }
@@ -183,6 +187,23 @@ impl<T: ContractRef> ContractHandle<T> {
         CallData::Return<'a>: BorshDeserialize + Clone,
     {
         self.build_call().call(func)
+    }
+
+    /// A shorthand form to call contracts with default settings.
+    #[inline]
+    pub fn try_call<'a, CallData: ToCallData>(
+        &self,
+        func: impl FnOnce(&mut T) -> CallData,
+    ) -> Result<CallResult<CallData>, CallError> {
+        self.build_call().try_call(func)
+    }
+
+    pub fn contract_address(&self) -> Address {
+        self.contract_address
+    }
+
+    pub fn package_address(&self) -> Address {
+        self.package_address
     }
 }
 
@@ -204,6 +225,15 @@ impl<T: ContractRef> CallBuilder<T> {
     pub fn with_value(mut self, value: u64) -> Self {
         self.value = Some(value);
         self
+    }
+
+    pub fn try_call<'a, CallData: ToCallData>(
+        &self,
+        func: impl FnOnce(&mut T) -> CallData,
+    ) -> Result<CallResult<CallData>, CallError> {
+        let mut inst = T::new();
+        let call_data = func(&mut inst);
+        host::call(&self.address, self.value.unwrap_or(0), call_data)
     }
 
     pub fn call<'a, CallData: ToCallData>(

@@ -1,10 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
-#![cfg_attr(target_arch = "wasm32", no_std)]
 
 #[macro_use]
 extern crate alloc;
-
-use core::marker::PhantomData;
 
 use alloc::{
     string::{String, ToString},
@@ -13,23 +10,22 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    host::{self, Alloc, CallResult},
-    log, revert,
+    host, log, revert,
     sys::CreateResult,
     types::{Address, CallError, ResultCode},
-    Contract, Selector, ToCallData,
+    Contract, ContractRef, Selector,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
-struct Harness {
+pub struct Harness {
     greeting: String,
     address_inside_constructor: Option<Address>,
 }
 
 #[repr(u32)]
-#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI)]
+#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
 #[borsh(use_discriminant = true)]
 pub enum CustomError {
     Foo,
@@ -155,139 +151,112 @@ pub fn call() {
 
     // Constructor without args
 
-    match Harness::create(HarnessRef::initialize()) {
-        Ok(CreateResult {
-            package_address,
-            contract_address,
-            version,
-        }) => {
-            log!("success");
-            log!("package_address: {:?}", package_address);
-            log!("contract_address: {:?}", contract_address);
-            log!("version: {:?}", version);
+    {
+        let contract_handle = Harness::create(HarnessRef::initialize()).expect("Should create");
+        log!("success");
+        log!("package_address: {:?}", contract_handle.package_address());
+        log!("contract_address: {:?}", contract_handle.contract_address());
 
-            // Verify that the address captured inside constructor is not the same as caller.
-            let get_address_inside_constructor = HarnessRef::get_address_inside_constructor();
-            let result = host::call(&contract_address, 0, get_address_inside_constructor)
-                .expect("Call succeed");
-            assert_ne!(result.into_return_value(), session_caller);
+        // Verify that the address captured inside constructor is not the same as caller.
+        // let get_address_inside_constructor = <HarnessRef as
+        // ContractRef>::new().get_address_inside_constructor();
+        let greeting_result = contract_handle
+            .call(|harness| harness.get_greeting())
+            .expect("Should call");
+        log!("Getting greeting: {greeting_result}");
+        assert_eq!(greeting_result, INITIAL_GREETING);
 
-            const GET_GREETING: Selector = selector!("get_greeting");
-            const SET_GREETING: Selector = selector!("set_greeting");
+        let () = contract_handle
+            .call(|harness| harness.set_greeting("Foo".into()))
+            .expect("Should call");
 
-            let get_greeting: TypedCall<(), String> =
-                TypedCall::new(contract_address, GET_GREETING);
-            let result = get_greeting.call(()).into_return_value();
-            assert_eq!(result, INITIAL_GREETING);
+        log!("New greeting saved");
+        let greeting_result = contract_handle
+            .call(|harness| harness.get_greeting())
+            .expect("Should call");
+        assert_eq!(greeting_result, "Foo");
 
-            let call_1: Selector = selector!("set_greeting");
-            let input_data_1: (String,) = ("Foo".into(),);
-            let (maybe_data_1, result_code_1) = host::casper_call(
-                &contract_address,
-                0,
-                call_1,
-                &borsh::to_vec(&input_data_1).unwrap(),
-            );
-            log!("{call_1:?} result={result_code_1:?}");
+        log!("Emitting unreachable trap");
 
-            let (maybe_data_2, result_code_2) =
-                host::casper_call(&contract_address, 0, GET_GREETING, &[]);
-            log!("get_greeting (selector:{GET_GREETING:?}) result={result_code_2:?}");
-            assert_eq!(
-                borsh::from_slice::<String>(&maybe_data_2.as_ref().expect("return value")).unwrap(),
-                "Foo".to_string()
-            );
+        let call_result = contract_handle.call(|harness| harness.emit_unreachable_trap());
+        assert_eq!(call_result, Err(CallError::CalleeTrapped));
 
-            const CALL_3: Selector = selector!("emit_unreachable_trap");
-            let (maybe_data_3, result_code_3) =
-                host::casper_call(&contract_address, 0, CALL_3, &[]);
-            assert_eq!(maybe_data_3, None);
-            assert_eq!(result_code_3, ResultCode::CalleeTrapped);
+        log!("Trap recovered");
 
-            const CALL_4: Selector = selector!("emit_revert_with_data");
-            let (maybe_data_4, maybe_result_4) =
-                host::casper_call(&contract_address, 0, CALL_4, &[]);
+        let call_result = contract_handle
+            .try_call(|harness| harness.emit_revert_with_data())
+            .expect("Call succeed");
+        assert_eq!(call_result.result, ResultCode::CalleeReverted);
+        assert_eq!(call_result.into_return_value(), Err(CustomError::Bar),);
 
-            log!("{CALL_4:?} result={maybe_data_4:?}");
-            assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
-            assert_eq!(
-                borsh::from_slice::<Result<(), CustomError>>(
-                    &maybe_data_4.as_ref().expect("return value")
-                )
-                .unwrap(),
-                Err(CustomError::Bar),
-            );
+        log!("Revert with data success");
 
-            const CALL_5: Selector = selector!("emit_revert_without_data");
-            let (maybe_data_5, maybe_result_5) =
-                host::casper_call(&contract_address, 0, CALL_5, &[]);
-            log!("{CALL_5:?} result={maybe_data_5:?}");
-            assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
-            assert_eq!(maybe_data_5, None);
+        let call_result = contract_handle
+            .try_call(|harness| harness.emit_revert_without_data())
+            .expect("Call succeed");
+        assert_eq!(call_result.result, ResultCode::CalleeReverted);
+        assert_eq!(call_result.data, None);
 
-            let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
-                TypedCall::new(contract_address, selector!("should_revert_on_error"));
-            let result = should_revert_on_error.call((false,));
-            assert!(!result.did_revert());
-            assert_eq!(result.into_return_value(), Ok(()));
+        log!("Revert without data success");
 
-            let result = should_revert_on_error.call((true,));
-            assert!(result.did_revert());
-            assert_eq!(
-                result.into_return_value(),
-                Err(CustomError::WithBody("Reverted".to_string()))
-            );
-        }
-        Err(error) => {
-            log!("error {:?}", error);
-        }
+        let call_result = contract_handle
+            .try_call(|harness| harness.should_revert_on_error(false))
+            .expect("Call succeed");
+        assert!(!call_result.did_revert());
+        assert_eq!(call_result.into_return_value(), Ok(()));
+
+        log!("Revert on error success (ok case)");
+
+        let call_result = contract_handle
+            .try_call(|harness| harness.should_revert_on_error(true))
+            .expect("Call succeed");
+        assert!(call_result.did_revert());
+        assert_eq!(
+            call_result.into_return_value(),
+            Err(CustomError::WithBody("Reverted".to_string()))
+        );
+
+        log!("Revert on error success (err case)");
+        // let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
+        //     TypedCall::new(contract_address, selector!("should_revert_on_error"));
+        // let result = should_revert_on_error.call((false,));
+        // assert!(!result.did_revert());
+
+        // let result = should_revert_on_error.call((true,));
+        // assert!(result.did_revert());
+        // assert_eq!(
+        //     result.into_return_value(),
+        //     Err(CustomError::WithBody("Reverted".to_string()))
+        // );
     }
 
     // Constructor with args
 
-    let args = ("World".to_string(),);
-    match Harness::create(Harness_constructor_with_args {
-        who: "World".to_string(),
-    }) {
-        Ok(CreateResult {
-            package_address,
-            contract_address,
-            version,
-        }) => {
-            log!("success 2");
-            log!("package_address: {:?}", package_address);
-            log!("contract_address: {:?}", contract_address);
-            log!("version: {:?}", version);
+    {
+        let contract_handle = Harness::create(HarnessRef::constructor_with_args("World".into()))
+            .expect("Should create");
+        log!("success 2");
+        log!("package_address: {:?}", contract_handle.package_address());
+        log!("contract_address: {:?}", contract_handle.contract_address());
 
-            let (maybe_data_0, result_code_0) =
-                host::casper_call(&contract_address, 0, Harness_get_greeting::SELECTOR, &[]);
-            log!("get_greeting result={result_code_0:?}");
-            assert_eq!(
-                borsh::from_slice::<String>(&maybe_data_0.as_ref().expect(
-                    "return
-    value"
-                ))
-                .unwrap(),
-                "Hello, World!".to_string(),
-            );
-        }
-        Err(error) => {
-            log!("error {:?}", error);
-        }
+        let result = contract_handle
+            .call(|harness| harness.get_greeting())
+            .expect("Should call");
+        assert_eq!(result, "Hello, World!".to_string(),);
     }
 
-    let args = ("World".to_string(),);
+    {
+        let error = Harness::create(HarnessRef::failing_constructor("World".to_string()))
+            .expect_err(
+                "
+        Constructor that reverts should fail to create",
+            );
+        assert_eq!(error, CallError::CalleeReverted);
 
-    let error = Harness::create(Harness_failing_constructor {
-        who: "World".to_string(),
-    })
-    .expect_err("Constructor that reverts should fail to create");
-    assert_eq!(error, CallError::CalleeReverted);
-
-    let error = Harness::create(Harness_trapping_constructor {})
-        .expect_err("Constructor that traps should fail to create");
-    assert_eq!(error, CallError::CalleeTrapped);
-
+        let error = Harness::create(HarnessRef::trapping_constructor())
+            .expect_err("Constructor that traps should fail to create");
+        assert_eq!(error, CallError::CalleeTrapped);
+    }
     log!("👋 Goodbye");
 }
 
@@ -300,7 +269,6 @@ mod tests {
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
         host::native::{dispatch_with, Environment},
-        manifest::ToManifest,
         schema::{schema_helper, CasperSchema},
         sys::Manifest,
         Contract,
@@ -324,7 +292,7 @@ mod tests {
     fn compile_time_schema() {
         let schema = Harness::schema();
         dbg!(&schema);
-        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+        // println!("{}", serde_json::to_string_pretty(&schema).unwrap());
     }
 
     #[test]

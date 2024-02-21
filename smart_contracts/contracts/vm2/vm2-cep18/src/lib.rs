@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate alloc;
+
 pub mod contract;
 pub mod error;
 pub mod security_badge;
@@ -9,6 +12,7 @@ use contract::{CEP18Ref, CEP18};
 
 #[casper(export)]
 pub fn call() {
+    log!("Hello");
     let constructor = CEP18Ref::new("my token name".to_string());
     let result = CEP18::create(constructor);
     log!("CEP18 succeeded");

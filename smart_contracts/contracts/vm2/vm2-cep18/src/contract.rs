@@ -354,6 +354,7 @@ mod tests {
             assert_eq!(host::get_caller(), DEFAULT_ADDRESS);
 
             let alice_env = current_environment().with_caller(ALICE);
+
             host::native::dispatch_with(alice_env, || {
                 assert_eq!(host::get_caller(), ALICE);
                 assert_eq!(

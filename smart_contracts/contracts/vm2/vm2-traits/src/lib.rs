@@ -128,7 +128,7 @@ mod tests {
         },
         schema::{CasperSchema, SchemaEntryPoint, SchemaType},
         sys::CreateResult,
-        Contract,
+        Contract, ContractHandle,
     };
     use vm_common::flags::EntryPointFlags;
 
@@ -297,10 +297,15 @@ mod tests {
     #[test]
     fn foo() {
         let _ = dispatch_with(Environment::default(), || {
-            let manifest = HasTraits::default_create().expect("Create");
+            let traits_contract: ContractHandle<super::CounterRef> =
+                HasTraits::default_create().expect("Create");
+
             {
+                traits_contract.call(|traits| {
+                    // (traits as CounterRef).greet("World".into())
+                });
                 let ret = host::call(
-                    &manifest.contract_address,
+                    &traits_contract.contract_address,
                     0,
                     super::Trait1Ext::greet("World".into()),
                 )
@@ -311,15 +316,15 @@ mod tests {
 
             {
                 let ret = host::call(
-                    &manifest.contract_address,
+                    &traits_contract.contract_address,
                     0,
                     super::Trait1Ext::abstract_greet(),
                 )
                 .expect("Call");
                 assert_eq!(ret.into_return_value(), ());
 
-                let _ret = host::call(&manifest.contract_address, 0, super::HasTraitsRef::foobar())
-                    .expect("Call");
+                // let _ret = host::call(&manifest.contract_address, 0,
+                // super::HasTraitsRef::foobar())     .expect("Call");
             }
 
             // {

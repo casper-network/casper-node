@@ -17,12 +17,7 @@ unsafe impl TriviallyTransmutable for ReadInfo {}
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) struct EntryPoint {
     pub(crate) selector: u32,
-
-    pub(crate) params_ptr: u32, // pointer of pointers (preferred 'static lifetime)
-    pub(crate) params_size: u32,
-
     pub(crate) fptr: u32, // extern "C" fn(A1) -> (),
-
     pub(crate) flags: u32,
 }
 
@@ -36,15 +31,6 @@ pub(crate) struct Manifest {
 }
 
 unsafe impl TriviallyTransmutable for Manifest {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct Param {
-    pub(crate) name_ptr: u32,
-    pub(crate) name_len: u32,
-}
-
-unsafe impl TriviallyTransmutable for Param {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]

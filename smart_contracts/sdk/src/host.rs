@@ -348,7 +348,8 @@ impl<T: ToCallData> CallResult<T> {
     {
         match self.result {
             ResultCode::Success | ResultCode::CalleeReverted => {
-                borsh::from_slice::<<T::Return<'a> as ToOwned>::Owned>(&self.data.unwrap()).unwrap()
+                let data = self.data.unwrap_or_default();
+                borsh::from_slice::<<T::Return<'a> as ToOwned>::Owned>(&data).unwrap()
             }
             ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
             ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),

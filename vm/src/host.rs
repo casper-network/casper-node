@@ -9,7 +9,7 @@ use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
-    host::abi::{CreateResult, EntryPoint, Manifest, Param},
+    host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{self, Contract, Storage},
     ConfigBuilder, VMError, VMResult, VM,
 };
@@ -47,7 +47,7 @@ pub(crate) fn casper_write<S: Storage>(
     value_tag: u64,
     value_ptr: u32,
     value_size: u32,
-) -> i32 {
+) -> VMResult<i32> {
     let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let mut prefixed = caller.context().address.to_vec();
@@ -56,12 +56,18 @@ pub(crate) fn casper_write<S: Storage>(
     let value = caller.memory_read(value_ptr, value_size.try_into().unwrap())?;
 
     // Write data to key value storage
+
+    // TODO: Storage errors should panic the node. I.e. if there is not enough storage, then the
+    // node should crash and the deploy will be re-executed once the node administrator adds more
+    // disk space. Otherwise, we may risk having non-deterministic outcome as one validator may
+    // have healthy storage when others have not.
     caller
         .context()
         .storage
-        .write(key_space, &prefixed, value_tag, &value)?;
+        .write(key_space, &prefixed, value_tag, &value)
+        .expect("Write to succeed");
 
-    0
+    Ok(0)
 }
 
 pub(crate) fn casper_print<S: Storage>(
@@ -178,7 +184,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
 
     // For calling a constructor
     let constructor_selector = NonZeroU32::new(selector);
-    dbg!(&constructor_selector);
 
     // Pass input data when calling a constructor. It's optional, as constructors aren't required
     let input_data: Option<Bytes> = if input_ptr == 0 {
@@ -209,42 +214,14 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
             Err(error) => todo!("handle error {:?}", error),
         };
 
+    dbg!(&entry_points);
+
     let entrypoints = {
         let mut vec = Vec::new();
 
         for entry_point in entry_points {
-            let params_bytes = caller.memory_read(
-                entry_point.params_ptr,
-                (entry_point.params_size as usize) * mem::size_of::<Param>(),
-            )?;
-
-            let mut params_vec = Vec::new();
-
-            let params =
-                match safe_transmute::transmute_many::<Param, SingleManyGuard>(&params_bytes) {
-                    Ok(params) => params,
-                    Err(safe_transmute::Error::Unaligned(unaligned_error))
-                        if unaligned_error.source.is_empty() =>
-                    {
-                        &[]
-                    }
-                    Err(error) => {
-                        todo!(
-                            "unable to transmute {:?} params_bytes={:?}",
-                            error,
-                            params_bytes
-                        )
-                    }
-                };
-
-            for param in params {
-                let name = caller.memory_read(param.name_ptr, param.name_len as usize)?;
-                params_vec.push(storage::Param { name: name.into() });
-            }
-
             vec.push(storage::EntryPoint {
                 selector: entry_point.selector,
-                params: params_vec,
                 function_index: entry_point.fptr,
                 flags: EntryPointFlags::from_bits_truncate(entry_point.flags),
             })
@@ -266,8 +243,10 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         .unwrap();
 
     let initial_state = if let Some(constructor_selector) = constructor_selector {
+        dbg!(&entrypoints);
+
         // Find all entrypoints with a flag set to CONSTRUCTOR
-        let mut constructors = entrypoints
+        let mut constructors: Vec<_> = entrypoints
             .iter()
             .filter_map(|entrypoint| {
                 if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
@@ -276,13 +255,14 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                     None
                 }
             })
-            .filter(|entry_point| entry_point.selector == constructor_selector.get());
+            .filter(|entry_point| entry_point.selector == constructor_selector.get())
+            .collect();
 
         // TODO: Should we validate amount of constructors or just rely on the fact that the proc
         // macro will statically check it, and the document the behavior that only first
         // constructor will be called
 
-        match constructors.next() {
+        match constructors.first() {
             Some(first_constructor) => {
                 let mut vm = VM::new();
                 let storage = caller.context().storage.clone();
@@ -356,7 +336,11 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 }
             }
             None => {
-                todo!("Constructor not found; raise error")
+                todo!(
+                    "Constructor with selector {:?} not found; available constructors {:?}",
+                    constructor_selector,
+                    constructors
+                )
             }
         }
     } else {

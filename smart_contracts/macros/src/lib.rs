@@ -81,6 +81,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
 
                 // TODO: Pass multiple manifests by ptr to avoid allocation
                 let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
+                log!("entry_points_allocated {}: {:?}", entry_points_allocated.len(),  entry_points_allocated);
                 let manifest = casper_sdk::sys::Manifest {
                     entry_points: entry_points_allocated.as_ptr(),
                     entry_points_size: entry_points_allocated.len(),
@@ -89,7 +90,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 let input_data = call_data.input_data();
 
                 let create_result = casper_sdk::host::casper_create(None, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
-                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address))
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address, create_result.package_address))
             }
 
             fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
@@ -106,7 +107,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                     entry_points_size: entry_points_allocated.len(),
                 };
                 let create_result = casper_sdk::host::casper_create(None, &manifest, None, None)?;
-                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address))
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address, create_result.package_address))
             }
         }
     };
@@ -126,7 +127,7 @@ fn generate_call_data_return(output: &syn::ReturnType) -> proc_macro2::TokenStre
                 // ty.uses_lifetimes(options, lifetimes)
                 let mut new_ref = reference.clone();
                 new_ref.lifetime = Some(syn::Lifetime::new("'a", Span::call_site()));
-                quote! { <<#new_ref as core::ops::Deref>::Target as ToOwned>::Owned }
+                quote! { <<#new_ref as core::ops::Deref>::Target as alloc::borrow::ToOwned>::Owned }
             }
             _ => {
                 quote! { #ty }
@@ -892,6 +893,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         #handle_manifest
 
+                        #[derive(Debug)]
                         pub struct #ext_struct;
 
                         impl #ext_struct {

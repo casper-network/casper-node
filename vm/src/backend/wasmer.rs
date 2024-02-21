@@ -309,7 +309,7 @@ where
             &mut store,
             wasmer_types::MemoryType {
                 minimum: wasmer_types::Pages(17),
-                maximum: Some(wasmer_types::Pages(17 * 4)),
+                maximum: None, //Some(wasmer_types::Pages(17 * 4)),
                 shared: false,
             },
         )
@@ -331,8 +331,7 @@ where
                      key_size: u32,
                      value_tag: u64,
                      value_ptr: u32,
-                     value_size: u32|
-                     -> i32 {
+                     value_size: u32| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_write(
                             wasmer_caller,
@@ -379,10 +378,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
-                     message_ptr: u32,
-                     message_size: u32|
-                     -> i32 {
+                    |env: FunctionEnvMut<WasmerEnv<S>>, message_ptr: u32, message_size: u32| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_print(wasmer_caller, message_ptr, message_size)
                     },

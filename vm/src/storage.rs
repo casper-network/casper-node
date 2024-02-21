@@ -25,14 +25,8 @@ pub enum CallOutcome {
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct Param {
-    pub(crate) name: Bytes,
-}
-
-#[derive(Default, Debug, Clone)]
 pub(crate) struct EntryPoint {
     pub(crate) selector: u32,
-    pub(crate) params: Vec<Param>,
     pub(crate) function_index: u32,
     pub(crate) flags: EntryPointFlags,
 }
