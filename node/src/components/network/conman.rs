@@ -86,8 +86,10 @@ struct Config {
     /// How long to back off from reconnecting to an address if the error is likely not going to
     /// change for a long time.
     permanent_error_backoff: Duration,
-    /// How long to wait before attempting to reconnect when an outgoing connection is lost.
-    reconnect_delay: Duration,
+    /// How long to wait before reconnecting when a succesful outgoing connection is lost.
+    successful_reconnect_delay: Duration,
+    /// The minimum time a connection must have successfully served data to not be seen as flaky.
+    flaky_connection_threshold: Duration,
     /// Number of incoming connections before refusing to accept any new ones.
     max_incoming_connections: usize,
     /// Number of outgoing connections before stopping to connect to learned addresses.
@@ -668,15 +670,26 @@ impl OutgoingHandler {
                 .instrument(sub_span)
                 .await
             {
-                Ok(()) => {
-                    // Regular connection closure, i.e. without error.
-                    // TODO: Currently, peers that have banned us will end up here. They need a
-                    //       longer reconnection delay.
-                    rate_limited!(LOST_CONNECTION, |dropped| info!(
-                        dropped,
-                        "lost connection, will reconnect"
-                    ));
-                    tokio::time::sleep(ctx.cfg.reconnect_delay).await;
+                Ok(duration) => {
+                    // Regular connection closure, i.e. without an error reported.
+
+                    // Judge how long the connection was active.
+                    let delay = if duration > ctx.cfg.flaky_connection_threshold {
+                        rate_limited!(LOST_CONNECTION, |dropped| info!(
+                            dropped,
+                            "lost connection, will reconnect"
+                        ));
+                        ctx.cfg.successful_reconnect_delay
+                    } else {
+                        rate_limited!(LOST_FLAKY_CONNECTION, |dropped| info!(
+                            dropped,
+                            "lost connection, but its flaky, will reconnect later"
+                        ));
+                        ctx.cfg.significant_error_backoff
+                    };
+
+                    tokio::time::sleep(delay).await;
+
                     // After this, the loop will repeat, triggering a reconnect.
                 }
                 Err(OutgoingError::EncounteredBannedPeer(until)) => {
@@ -735,14 +748,14 @@ impl OutgoingHandler {
     /// Performs one iteration of a connection cycle.
     ///
     /// Will attempet several times to TCP connect, then handshake and establish a connection. If
-    /// the connection is closed without errors, returns `Ok(())`, otherwise a more specific `Err`
-    /// is returned.
+    /// the connection is closed without errors, returns the duration of the connection, otherwise a
+    /// more specific `Err` is returned.
     ///
     /// ## Cancellation safety
     ///
     /// This function is cancellation safe, it willl at worst result in an abrupt termination of the
     /// connection (which peers must be able to handle).
-    async fn connect_and_serve(&mut self) -> Result<(), OutgoingError> {
+    async fn connect_and_serve(&mut self) -> Result<Duration, OutgoingError> {
         let stream = retry_with_exponential_backoff(
             self.ctx.cfg.tcp_connect_attempts,
             self.ctx.cfg.tcp_connect_base_backoff,
@@ -791,10 +804,12 @@ impl OutgoingHandler {
             ActiveRoute::new(&mut *guard, self.ctx.clone(), peer_id, rpc_client)
         };
 
+        let serve_start = Instant::now();
         active_route
             .serve(rpc_server)
             .await
-            .map_err(OutgoingError::RpcServerError)
+            .map_err(OutgoingError::RpcServerError)?;
+        Ok(Instant::now().duration_since(serve_start))
     }
 }
 
@@ -924,7 +939,8 @@ impl Default for Config {
             tcp_connect_base_backoff: Duration::from_secs(1),
             significant_error_backoff: Duration::from_secs(60),
             permanent_error_backoff: Duration::from_secs(60 * 60),
-            reconnect_delay: Duration::from_secs(5),
+            flaky_connection_threshold: Duration::from_secs(60),
+            successful_reconnect_delay: Duration::from_secs(1),
             max_incoming_connections: 10_000,
             max_outgoing_connections: 10_000,
         }
