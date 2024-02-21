@@ -187,6 +187,14 @@ impl TransactionBuffer {
             );
         }
 
+        if let Some(era_id) = self.prices.keys().max() {
+            let updated = self.prices.clone().into_iter().filter(|(price_era_id, _)| {
+                price_era_id.successor() >= *era_id
+            }).collect();
+
+            self.prices = updated;
+        }
+
         let mut effects = effect_builder
             .announce_expired_transactions(freed.keys().cloned().collect())
             .ignore();

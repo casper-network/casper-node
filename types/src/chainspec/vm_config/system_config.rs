@@ -11,6 +11,13 @@ use crate::{
 /// Default gas cost for a wasmless transfer.
 pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
 
+/// Default gas cost for an install/upgrader.
+pub const DEFAULT_INSTALL_UPGRADE_COST: u64 = 500_000_000_000;
+
+/// Default gas cost for a standard transaction.
+pub const DEFAULT_STANDARD_TRANSACTION_COST: u64 = 50_000_000_000;
+
+
 /// Definition of costs in the system.
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
@@ -33,6 +40,12 @@ pub struct SystemConfig {
 
     /// Configuration of standard payment costs.
     standard_payment_costs: StandardPaymentCosts,
+
+    /// Install/Upgrade cost expressed in gas.
+    install_upgrade_cost: u64,
+
+    /// Cost of a standard deploy/transaction expressed in gas.
+    standard_cost: u64,
 }
 
 impl SystemConfig {
@@ -43,6 +56,8 @@ impl SystemConfig {
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
         standard_payment_costs: StandardPaymentCosts,
+        install_upgrade_cost: u64,
+        standard_cost: u64,
     ) -> Self {
         Self {
             wasmless_transfer_cost,
@@ -50,6 +65,8 @@ impl SystemConfig {
             mint_costs,
             handle_payment_costs,
             standard_payment_costs,
+            install_upgrade_cost,
+            standard_cost,
         }
     }
 
@@ -77,6 +94,17 @@ impl SystemConfig {
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
     }
+
+    /// Returns the cost of an installer/upgrader.
+    pub fn install_upgrade_cost(&self) -> u64 {
+        self.install_upgrade_cost
+    }
+
+    /// Returns the cost of a standard deploy transaction.
+    pub fn standard_transaction_cost(&self) -> u64 {
+        self.standard_cost
+    }
+
 }
 
 impl Default for SystemConfig {
@@ -87,6 +115,8 @@ impl Default for SystemConfig {
             mint_costs: MintCosts::default(),
             handle_payment_costs: HandlePaymentCosts::default(),
             standard_payment_costs: StandardPaymentCosts::default(),
+            install_upgrade_cost: DEFAULT_INSTALL_UPGRADE_COST,
+            standard_cost: DEFAULT_STANDARD_TRANSACTION_COST,
         }
     }
 }
@@ -99,6 +129,8 @@ impl Distribution<SystemConfig> for Standard {
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),
             standard_payment_costs: rng.gen(),
+            install_upgrade_cost: rng.gen(),
+            standard_cost: rng.gen(),
         }
     }
 }
@@ -112,12 +144,16 @@ impl ToBytes for SystemConfig {
         ret.append(&mut self.mint_costs.to_bytes()?);
         ret.append(&mut self.handle_payment_costs.to_bytes()?);
         ret.append(&mut self.standard_payment_costs.to_bytes()?);
+        ret.append(&mut self.install_upgrade_cost.to_bytes()?);
+        ret.append(&mut self.standard_cost.to_bytes()?);
 
         Ok(ret)
     }
 
     fn serialized_length(&self) -> usize {
         self.wasmless_transfer_cost.serialized_length()
+            + self.install_upgrade_cost.serialized_length()
+            + self.standard_cost.serialized_length()
             + self.auction_costs.serialized_length()
             + self.mint_costs.serialized_length()
             + self.handle_payment_costs.serialized_length()
@@ -132,6 +168,8 @@ impl FromBytes for SystemConfig {
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
         let (handle_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         let (standard_payment_costs, rem) = FromBytes::from_bytes(rem)?;
+        let (install_upgrade_cost, rem) = FromBytes::from_bytes(rem)?;
+        let (standard_cost, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             SystemConfig::new(
                 wasmless_transfer_cost,
@@ -139,6 +177,8 @@ impl FromBytes for SystemConfig {
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
+                install_upgrade_cost,
+                standard_cost,
             ),
             rem,
         ))
@@ -166,6 +206,8 @@ pub mod gens {
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
+            install_upgrade_cost in num::u64::ANY,
+            standard_cost in num::u64::ANY,
         ) -> SystemConfig {
             SystemConfig {
                 wasmless_transfer_cost,
@@ -173,6 +215,8 @@ pub mod gens {
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
+                install_upgrade_cost,
+                standard_cost,
             }
         }
     }

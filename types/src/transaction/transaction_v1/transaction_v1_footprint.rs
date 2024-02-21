@@ -18,7 +18,7 @@ use super::transaction_v1_category::TransactionV1Category;
 pub struct TransactionV1Footprint {
     /// The header of the `Transaction`.
     pub header: TransactionV1Header,
-    /// The estimated gas consumption of the `Deploy`.
+    /// The estimated gas consumption of the `Transaction`.
     pub gas_estimate: Gas,
     /// The bytesrepr serialized length of the `Transaction`.
     pub size_estimate: usize,

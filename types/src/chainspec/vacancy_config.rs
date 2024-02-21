@@ -16,20 +16,6 @@ pub struct VacancyConfig {
 }
 
 impl VacancyConfig {
-    pub(crate) fn new(
-        upper_threshold: u64,
-        lower_threshold: u64,
-        max_gas_price: u8,
-        min_gas_price: u8,
-    ) -> Self {
-        Self {
-            upper_threshold,
-            lower_threshold,
-            max_gas_price,
-            min_gas_price,
-        }
-    }
-
 
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {

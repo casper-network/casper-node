@@ -9,19 +9,10 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{
-    runtime_args,
-    system::{
-        auction::{self, DelegationRate},
-        handle_payment, mint, AUCTION,
-    },
-    AuctionCosts, BrTableCost, ControlFlowCosts, EraId, Gas, GenesisAccount, GenesisValidator,
-    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
-    MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
-    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST,
-    DEFAULT_WASM_MAX_MEMORY, U512,
-};
+use casper_types::{runtime_args, system::{
+    auction::{self, DelegationRate},
+    handle_payment, mint, AUCTION,
+}, AuctionCosts, BrTableCost, ControlFlowCosts, EraId, Gas, GenesisAccount, GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512, DEFAULT_INSTALL_UPGRADE_COST, DEFAULT_STANDARD_TRANSACTION_COST};
 
 use crate::wasm_utils;
 
@@ -187,6 +178,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()
@@ -478,6 +471,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()
@@ -951,6 +946,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()

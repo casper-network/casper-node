@@ -75,6 +75,7 @@ pub use vm_config::{
     DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
     DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_INSTALL_UPGRADE_COST, DEFAULT_STANDARD_TRANSACTION_COST,
 };
 pub use vacancy_config::VacancyConfig;
 
@@ -112,6 +113,7 @@ pub struct Chainspec {
     #[serde(rename = "system_costs")]
     pub system_costs_config: SystemConfig,
 
+    /// Vacancy behavior config
     #[serde(rename = "vacancy_config")]
     pub vacancy_config: VacancyConfig,
 }

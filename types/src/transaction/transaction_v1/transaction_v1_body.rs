@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "std", test))]
 use tracing::debug;
 
-use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
+use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget, TransactionSessionKind};
 #[cfg(doc)]
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
@@ -24,7 +24,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind, TransactionV1Category,
+    TransactionV1Category,
 };
 
 /// The body of a [`TransactionV1`].

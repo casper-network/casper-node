@@ -1766,7 +1766,7 @@ async fn block_vacancy() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
-    let charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
+    let _charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
 
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
