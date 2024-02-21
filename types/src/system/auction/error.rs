@@ -127,7 +127,7 @@ pub enum Error {
     /// assert_eq!(17, Error::InvalidPublicKey as u8);
     /// ```
     InvalidPublicKey = 17,
-    /// Validator is not not bonded.
+    /// Validator is not bonded.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(18, Error::BondNotFound as u8);
@@ -339,6 +339,12 @@ pub enum Error {
     /// assert_eq!(51, Error::MissingPurse as u8);
     /// ```
     MissingPurse = 51,
+    /// Failed to transfer validator bid to new public key.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(52, Error::TransferValidatorBid as u8);
+    /// ```
+    TransferValidatorBid = 52,
 }
 
 impl Display for Error {
@@ -396,6 +402,7 @@ impl Display for Error {
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::MissingPurse => formatter.write_str("Missing purse"),
+            Error::TransferValidatorBid => formatter.write_str("Validator bid transfer error"),
         }
     }
 }
@@ -479,6 +486,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
+            d if d == Error::TransferValidatorBid as u8 => Ok(Error::TransferValidatorBid),
             _ => Err(TryFromU8ForError(())),
         }
     }

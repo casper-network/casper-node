@@ -712,4 +712,37 @@ pub trait Auction:
             Err(Error::ValidatorNotFound)
         }
     }
+
+    /// Transfers a `ValidatorBid` and all related delegators from one validator public key to another.
+    ///
+    /// This method can only be called by the existing validator.
+    ///
+    /// The arguments are the existing validator's key and the new validator's key.
+    fn transfer_validator(
+        &mut self,
+        validator_public_key: PublicKey,
+        new_validator_public_key: PublicKey,
+    ) -> Result<(), Error> {
+        let validator_account_hash =
+            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+
+        // check that the caller is the existing validator
+        if !self.is_allowed_session_caller(&validator_account_hash) {
+            return Err(Error::InvalidContext);
+        }
+
+        // verify that a bid for existing validator exists
+        let validator_addr = BidAddr::from(validator_public_key.clone());
+        let validator_bid = read_validator_bid(self, &validator_addr.into())?;
+
+        // verify that a bid for new validator does not exist yet
+        let new_validator_addr = BidAddr::from(new_validator_public_key.clone());
+        if self.read_bid(&new_validator_addr.into())?.is_some() {
+            return Err(Error::TransferValidatorBid);
+        }
+
+        todo!();
+
+        Ok(())
+    }
 }

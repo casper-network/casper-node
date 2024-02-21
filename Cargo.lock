@@ -6134,6 +6134,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "transfer_validator"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
