@@ -39,6 +39,7 @@ use super::{
     connection_id::ConnectionId,
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     message::NodeKeyPair,
+    transport::TlsConfiguration,
     Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
 };
 
@@ -127,26 +128,5 @@ impl NetworkContext {
 
     pub(crate) fn node_key_pair(&self) -> Option<&NodeKeyPair> {
         self.node_key_pair.as_ref()
-    }
-}
-
-/// TLS configuration data required to setup a connection.
-pub(super) struct TlsConfiguration {
-    /// TLS certificate authority associated with this node's identity.
-    pub(super) network_ca: Option<Arc<X509>>,
-    /// TLS certificate associated with this node's identity.
-    pub(super) our_cert: Arc<TlsCert>,
-    /// Secret key associated with `our_cert`.
-    pub(super) secret_key: Arc<PKey<Private>>,
-    /// Logfile to log TLS keys to. If given, automatically enables logging.
-    pub(super) keylog: Option<LockedLineWriter>,
-}
-
-impl TlsConfiguration {
-    pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.network_ca {
-            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
-            None => tls::validate_self_signed_cert(peer_cert),
-        }
     }
 }

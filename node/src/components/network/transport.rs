@@ -3,29 +3,52 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{net::SocketAddr, pin::Pin};
+use std::{pin::Pin, sync::Arc};
 
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
-use openssl::ssl::Ssl;
+use openssl::{
+    pkey::{PKey, Private},
+    ssl::Ssl,
+    x509::X509,
+};
 use strum::EnumCount;
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
 
 use crate::{
-    components::network::handshake,
-    tls,
+    tls::{self, TlsCert, ValidationError},
     types::{chainspec::JulietConfig, NodeId},
+    utils::LockedLineWriter,
 };
 
 use super::{
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
-    connection_id::ConnectionId,
     error::ConnectionError,
     handshake::HandshakeConfiguration,
-    tasks::TlsConfiguration,
     Channel, PerChannel, Transport,
 };
+
+/// TLS configuration data required to setup a connection.
+pub(super) struct TlsConfiguration {
+    /// TLS certificate authority associated with this node's identity.
+    pub(super) network_ca: Option<Arc<X509>>,
+    /// TLS certificate associated with this node's identity.
+    pub(super) our_cert: Arc<TlsCert>,
+    /// Secret key associated with `our_cert`.
+    pub(super) secret_key: Arc<PKey<Private>>,
+    /// Logfile to log TLS keys to. If given, automatically enables logging.
+    pub(super) keylog: Option<LockedLineWriter>,
+}
+
+impl TlsConfiguration {
+    fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
+        match &self.network_ca {
+            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
+            None => tls::validate_self_signed_cert(peer_cert),
+        }
+    }
+}
 
 /// Creats a new RPC builder with the currently fixed Juliet configuration.
 ///
