@@ -321,11 +321,10 @@ mod tests {
     fn finality_signature() {
         let rng = &mut TestRng::new();
         let block = TestBlockBuilder::new().build(rng);
-        // Signature should be over both block hash and era id.
+        // Signature should be over block hash, block height, era id and chain name hash.
         let secret_key = SecretKey::random(rng);
-        let public_key = PublicKey::from(&secret_key);
         let era_id = EraId::from(1);
-        let chain_name_hash = ChainNameDigest::random(rng);
+        let chain_name_hash = ChainNameDigest::from_chain_name("example");
         let finality_signature = FinalitySignatureV2::create(
             *block.hash(),
             block.height(),
@@ -334,18 +333,26 @@ mod tests {
             &secret_key,
         );
         finality_signature.is_verified().unwrap();
-        let signature = finality_signature.signature;
-        // Verify that signature includes era id.
+        // Verify that changing era causes verification to fail.
         let invalid_finality_signature = FinalitySignatureV2 {
-            block_hash: *block.hash(),
-            block_height: block.height(),
             era_id: EraId::from(2),
-            chain_name_hash,
-            signature,
-            public_key,
             is_verified: OnceCell::new(),
+            ..finality_signature.clone()
         };
-        // Test should fail b/c `signature` is over `era_id=1` and here we're using `era_id=2`.
+        assert!(invalid_finality_signature.is_verified().is_err());
+        // Verify that changing block height causes verification to fail.
+        let invalid_finality_signature = FinalitySignatureV2 {
+            block_height: block.height() + 1,
+            is_verified: OnceCell::new(),
+            ..finality_signature.clone()
+        };
+        assert!(invalid_finality_signature.is_verified().is_err());
+        // Verify that changing chain name hash causes verification to fail.
+        let invalid_finality_signature = FinalitySignatureV2 {
+            chain_name_hash: ChainNameDigest::from_chain_name("different"),
+            is_verified: OnceCell::new(),
+            ..finality_signature
+        };
         assert!(invalid_finality_signature.is_verified().is_err());
     }
 }
