@@ -1,7 +1,7 @@
 use std::{io, net::SocketAddr};
 
 use datasize::DataSize;
-use juliet::rpc::{IncomingRequest, RpcServerError};
+use juliet::rpc::RpcServerError;
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -9,12 +9,11 @@ use thiserror::Error;
 use casper_hashing::Digest;
 use casper_types::{crypto, ProtocolVersion};
 
+use super::Channel;
 use crate::{
     tls::{LoadCertError, ValidationError},
     utils::ResolveAddressError,
 };
-
-use super::Channel;
 
 /// Error type returned by the `Network` component.
 #[derive(Debug, Error, Serialize)]
@@ -40,13 +39,6 @@ pub enum Error {
     /// Failed to set listener to non-blocking.
     #[error("failed to set listener to non-blocking")]
     ListenerSetNonBlocking(
-        #[serde(skip_serializing)]
-        #[source]
-        io::Error,
-    ),
-    /// Failed to convert std TCP listener to tokio TCP listener.
-    #[error("failed to convert listener to tokio")]
-    ListenerConversion(
         #[serde(skip_serializing)]
         #[source]
         io::Error,
@@ -245,13 +237,4 @@ pub enum MessageReceiverError {
         /// The channel on which the message should have been sent.
         expected: Channel,
     },
-}
-
-/// Error produced by sending messages.
-#[derive(Debug, Error)]
-pub enum MessageSenderError {
-    #[error("received a request on a send-only channel: {0}")]
-    UnexpectedIncomingRequest(IncomingRequest),
-    #[error(transparent)]
-    JulietRpcServerError(#[from] RpcServerError),
 }

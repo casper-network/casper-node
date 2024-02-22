@@ -6,21 +6,16 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    time::SystemTime,
 };
 
 use casper_types::{EraId, PublicKey};
 use serde::Serialize;
 
-use crate::{
-    types::NodeId,
-    utils::{opt_display::OptDisplay, DisplayIter, TimeAnchor},
-};
+use crate::{types::NodeId, utils::opt_display::OptDisplay};
 
-use super::{error::ConnectionError, Network, Payload};
+use super::{Network, Payload};
 
 /// A collection of insights into the active networking component.
 #[derive(Debug, Serialize)]
@@ -43,8 +38,6 @@ impl NetworkInsights {
     where
         P: Payload,
     {
-        let anchor = TimeAnchor::now();
-
         NetworkInsights {
             our_id: net.context.our_id(),
             network_ca: net.context.identity.network_ca.is_some(),

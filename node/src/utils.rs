@@ -27,7 +27,7 @@ use std::{
     ops::{Add, BitXorAssign, Div},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -35,7 +35,6 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -402,37 +401,6 @@ impl LockedLineWriter {
     }
 }
 
-/// An anchor for converting an `Instant` into a wall-clock (`SystemTime`) time.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct TimeAnchor {
-    /// The reference instant used for conversion.
-    now: Instant,
-    /// The reference wall-clock timestamp used for conversion.
-    wall_clock_now: SystemTime,
-}
-
-impl TimeAnchor {
-    /// Creates a new time anchor.
-    ///
-    /// Will take a sample of the monotonic clock and the current time and store it in the anchor.
-    pub(crate) fn now() -> Self {
-        TimeAnchor {
-            now: Instant::now(),
-            wall_clock_now: SystemTime::now(),
-        }
-    }
-
-    /// Converts a point in time from the monotonic clock to wall clock time, using this anchor.
-    #[inline]
-    pub(crate) fn convert(&self, then: Instant) -> SystemTime {
-        if then > self.now {
-            self.wall_clock_now + then.duration_since(self.now)
-        } else {
-            self.wall_clock_now - self.now.duration_since(then)
-        }
-    }
-}
-
 /// Discard secondary data from a value.
 pub(crate) trait Peel {
     /// What is left after discarding the wrapping.
@@ -456,8 +424,6 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
-
-    use prometheus::IntGauge;
 
     use crate::utils::resolve_address;
 

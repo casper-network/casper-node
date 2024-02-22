@@ -5,10 +5,8 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use casper_types::TimeDiff;
-
 use super::{chain_info::ChainInfo, message::NodeKeyPair, Identity, Metrics};
-use crate::{components::network::Config, types::NodeId, utils::LockedLineWriter};
+use crate::{types::NodeId, utils::LockedLineWriter};
 
 /// A context holding all relevant information for networking communication shared across tasks.
 pub(crate) struct NetworkContext {
@@ -25,15 +23,12 @@ pub(crate) struct NetworkContext {
     pub(super) node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
     pub(super) public_addr: Option<SocketAddr>,
-    /// Timeout for handshake completion.
-    pub(super) handshake_timeout: TimeDiff,
     /// Store key log for OpenSSL.
     pub(super) keylog: Option<LockedLineWriter>,
 }
 
 impl NetworkContext {
     pub(super) fn new(
-        cfg: Config,
         our_identity: Identity,
         keylog: Option<LockedLineWriter>,
         node_key_pair: Option<NodeKeyPair>,
@@ -49,7 +44,6 @@ impl NetworkContext {
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
             node_key_pair,
-            handshake_timeout: cfg.handshake_timeout,
             keylog,
         }
     }

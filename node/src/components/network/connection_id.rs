@@ -13,7 +13,6 @@ use casper_hashing::Digest;
 use casper_types::testing::TestRng;
 
 use super::tls::KeyFingerprint;
-use crate::utils;
 
 /// An ID identifying a connection.
 ///

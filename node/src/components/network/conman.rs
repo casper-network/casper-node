@@ -135,24 +135,9 @@ pub(crate) struct ConManState {
 }
 
 impl ConManState {
-    /// Returns a reference to the address book of this [`ConManState`].
-    pub(crate) fn address_book(&self) -> &HashSet<SocketAddr> {
-        &self.address_book
-    }
-
-    /// Returns a reference to the do not call of this [`ConManState`].
-    pub(crate) fn do_not_call(&self) -> &HashMap<SocketAddr, Instant> {
-        &self.do_not_call
-    }
-
     /// Returns a reference to the routing table of this [`ConManState`].
     pub(crate) fn routing_table(&self) -> &HashMap<NodeId, Route> {
         &self.routing_table
-    }
-
-    /// Returns a reference to the banlist of this [`ConManState`].
-    pub(crate) fn banlist(&self) -> &HashMap<NodeId, Sentence> {
-        &self.banlist
     }
 }
 

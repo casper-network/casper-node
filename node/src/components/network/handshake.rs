@@ -6,24 +6,21 @@
 //! This module contains an implementation for a minimal framing format based on 32-bit fixed size
 //! big endian length prefixes.
 
-use std::{net::SocketAddr, time::Duration};
+use std::net::SocketAddr;
 
 use casper_types::PublicKey;
-use rand::Rng;
+
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{debug, info};
-
-use crate::types::NodeId;
+use tracing::debug;
 
 use super::{
     chain_info::ChainInfo,
     connection_id::ConnectionId,
     error::{ConnectionError, RawFrameIoError},
     message::NodeKeyPair,
-    tasks::NetworkContext,
-    Message, Payload, Transport,
+    Message, Transport,
 };
 
 /// The outcome of the handshake process.
@@ -116,8 +113,6 @@ pub(crate) struct HandshakeConfiguration {
     node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
     public_addr: SocketAddr,
-    /// Timeout for handshake completion.
-    handshake_timeout: Duration,
 }
 
 impl HandshakeConfiguration {
@@ -126,13 +121,11 @@ impl HandshakeConfiguration {
         chain_info: ChainInfo,
         node_key_pair: Option<NodeKeyPair>,
         public_addr: SocketAddr,
-        handshake_timeout: Duration,
     ) -> Self {
         Self {
             chain_info,
             node_key_pair,
             public_addr,
-            handshake_timeout,
         }
     }
 

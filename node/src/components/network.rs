@@ -69,10 +69,8 @@ use tracing::{debug, error, info, warn, Span};
 use casper_types::{EraId, PublicKey, SecretKey};
 
 use self::{
-    blocklist::BlocklistJustification,
     chain_info::ChainInfo,
     conman::{ConMan, ConManState},
-    error::ConnectionError,
     handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -196,7 +194,6 @@ where
         };
 
         let context = Arc::new(NetworkContext::new(
-            cfg.clone(),
             our_identity,
             keylog,
             node_key_pair,
@@ -295,8 +292,7 @@ where
             self.context.chain_info.clone(),
             self.context.node_key_pair.clone(),
             public_addr,
-            Duration::from_secs(10),
-        ); // TODO: Make configurable.
+        );
 
         let protocol_handler = TransportHandler::new(
             effect_builder.into_inner(),
@@ -334,7 +330,7 @@ where
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
-    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, era_id: EraId) {
+    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, _era_id: EraId) {
         let Some(ref conman) = self.conman else {
             error!(
                 "cannot broadcast message to validators on non-initialized networking component"
@@ -519,54 +515,6 @@ where
         }
     }
 
-    /// Determines whether an outgoing peer should be blocked based on the connection error.
-    fn is_blockable_offense_for_outgoing(
-        &self,
-        error: &ConnectionError,
-    ) -> Option<BlocklistJustification> {
-        match error {
-            // Potentially transient failures.
-            //
-            // Note that incompatible versions need to be considered transient, since they occur
-            // during regular upgrades.
-            ConnectionError::TlsInitialization(_)
-            | ConnectionError::TcpConnection(_)
-            | ConnectionError::TcpConnectionTimeout
-            | ConnectionError::TcpNoDelay(_)
-            | ConnectionError::TlsHandshake(_)
-            | ConnectionError::HandshakeSend(_)
-            | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_)
-            | ConnectionError::SetupTimeout => None,
-
-            // These errors are potential bugs on our side.
-            ConnectionError::HandshakeSenderCrashed(_)
-            | ConnectionError::CouldNotEncodeOurHandshake(_) => None,
-
-            // These could be candidates for blocking, but for now we decided not to.
-            ConnectionError::NoPeerCertificate
-            | ConnectionError::PeerCertificateInvalid(_)
-            | ConnectionError::DidNotSendHandshake
-            | ConnectionError::InvalidRemoteHandshakeMessage(_)
-            | ConnectionError::InvalidConsensusCertificate(_) => None,
-
-            // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(peer_network_name) => {
-                Some(BlocklistJustification::WrongNetwork {
-                    peer_network_name: peer_network_name.clone(),
-                })
-            }
-            ConnectionError::WrongChainspecHash(peer_chainspec_hash) => {
-                Some(BlocklistJustification::WrongChainspecHash {
-                    peer_chainspec_hash: *peer_chainspec_hash,
-                })
-            }
-            ConnectionError::MissingChainspecHash => {
-                Some(BlocklistJustification::MissingChainspecHash)
-            }
-        }
-    }
-
     fn handle_network_request(
         &self,
         request: NetworkRequest<P>,
@@ -726,7 +674,7 @@ impl<P> Finalize for Network<P>
 where
     P: Payload,
 {
-    fn finalize(mut self) -> BoxFuture<'static, ()> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
         async move {
             self.shutdown_fuse.inner().set();
 
