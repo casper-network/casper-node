@@ -96,6 +96,7 @@ impl Display for NodeId {
 }
 
 impl From<KeyFingerprint> for NodeId {
+    #[inline(always)]
     fn from(id: KeyFingerprint) -> Self {
         NodeId(id)
     }

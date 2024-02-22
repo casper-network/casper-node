@@ -31,18 +31,28 @@ pub(crate) enum Error {
 /// An ephemeral [PKey<Private>] and [TlsCert] that identifies this node
 #[derive(DataSize, Debug, Clone)]
 pub(crate) struct Identity {
-    pub(super) secret_key: Arc<PKey<Private>>,
-    pub(super) tls_certificate: Arc<TlsCert>,
+    /// TLS certificate authority associated with this identity.
     pub(super) network_ca: Option<Arc<X509>>,
+    /// TLS certificate associated with this identity.
+    pub(super) tls_certificate: Arc<TlsCert>,
+    /// Secret key associated with `tls_certificate`.
+    pub(super) secret_key: Arc<PKey<Private>>,
 }
 
 impl Identity {
+    #[inline(always)]
     fn new(secret_key: PKey<Private>, tls_certificate: TlsCert, network_ca: Option<X509>) -> Self {
         Self {
             secret_key: Arc::new(secret_key),
             tls_certificate: Arc::new(tls_certificate),
             network_ca: network_ca.map(Arc::new),
         }
+    }
+
+    /// Returns the [`NodeId`] associated with this identity.
+    #[inline(always)]
+    pub(crate) fn node_id(&self) -> NodeId {
+        NodeId::from(self.tls_certificate.public_key_fingerprint())
     }
 
     pub(crate) fn from_config(config: WithDir<Config>) -> Result<Self, Error> {
@@ -76,6 +86,13 @@ impl Identity {
             tls::generate_node_cert().map_err(Error::CouldNotGenerateTlsCertificate)?;
         let tls_certificate = tls::validate_self_signed_cert(not_yet_validated_x509_cert)?;
         Ok(Identity::new(secret_key, tls_certificate, None))
+    }
+
+    pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
+        match &self.network_ca {
+            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
+            None => tls::validate_self_signed_cert(peer_cert),
+        }
     }
 }
 

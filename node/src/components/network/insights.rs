@@ -47,7 +47,7 @@ impl NetworkInsights {
 
         NetworkInsights {
             our_id: net.context.our_id(),
-            network_ca: net.context.tls_configuration.network_ca.is_some(),
+            network_ca: net.context.identity.network_ca.is_some(),
             public_addr: net.context.public_addr(),
             node_key_pair: net
                 .context

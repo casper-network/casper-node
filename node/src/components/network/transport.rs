@@ -26,29 +26,8 @@ use super::{
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
     error::ConnectionError,
     handshake::HandshakeConfiguration,
-    Channel, PerChannel, Transport,
+    Channel, Identity, PerChannel, Transport,
 };
-
-/// TLS configuration data required to setup a connection.
-pub(super) struct TlsConfiguration {
-    /// TLS certificate authority associated with this node's identity.
-    pub(super) network_ca: Option<Arc<X509>>,
-    /// TLS certificate associated with this node's identity.
-    pub(super) our_cert: Arc<TlsCert>,
-    /// Secret key associated with `our_cert`.
-    pub(super) secret_key: Arc<PKey<Private>>,
-    /// Logfile to log TLS keys to. If given, automatically enables logging.
-    pub(super) keylog: Option<LockedLineWriter>,
-}
-
-impl TlsConfiguration {
-    fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.network_ca {
-            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
-            None => tls::validate_self_signed_cert(peer_cert),
-        }
-    }
-}
 
 /// Creats a new RPC builder with the currently fixed Juliet configuration.
 ///
@@ -121,9 +100,10 @@ impl Drop for Ticket {
 }
 
 pub(super) struct TransportHandler {
-    tls_configuration: TlsConfiguration,
+    identity: Identity,
     handshake_configuration: HandshakeConfiguration,
     incoming_request_handler: Box<dyn Fn(NodeId, IncomingRequest) + Send + Sync>,
+    keylog: Option<LockedLineWriter>,
 }
 
 impl TransportHandler {
@@ -156,7 +136,8 @@ impl ProtocolHandler for TransportHandler {
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        let (peer_id, transport) = server_setup_tls(&self.tls_configuration, stream).await?;
+        let (peer_id, transport) =
+            server_setup_tls(&self.identity, stream, self.keylog.clone()).await?;
 
         self.finish_setting_up(peer_id, transport).await
     }
@@ -166,7 +147,7 @@ impl ProtocolHandler for TransportHandler {
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError> {
-        let (peer_id, transport) = tls_connect(&self.tls_configuration, stream).await?;
+        let (peer_id, transport) = tls_connect(&self.identity, stream, self.keylog.clone()).await?;
 
         self.finish_setting_up(peer_id, transport).await
     }
@@ -181,13 +162,14 @@ impl ProtocolHandler for TransportHandler {
 ///
 /// This function groups the TLS setup into a convenient function, enabling the `?` operator.
 pub(super) async fn server_setup_tls(
-    context: &TlsConfiguration,
+    identity: &Identity,
     stream: TcpStream,
+    keylog: Option<LockedLineWriter>,
 ) -> Result<(NodeId, Transport), ConnectionError> {
     let mut tls_stream = tls::create_tls_acceptor(
-        context.our_cert.as_x509().as_ref(),
-        context.secret_key.as_ref(),
-        context.keylog.clone(),
+        identity.tls_certificate.as_x509().as_ref(),
+        identity.secret_key.as_ref(),
+        keylog,
     )
     .and_then(|ssl_acceptor| Ssl::new(ssl_acceptor.context()))
     .and_then(|ssl| SslStream::new(ssl, stream))
@@ -203,7 +185,7 @@ pub(super) async fn server_setup_tls(
         .peer_certificate()
         .ok_or(ConnectionError::NoPeerCertificate)?;
 
-    let validated_peer_cert = context
+    let validated_peer_cert = identity
         .validate_peer_cert(peer_cert)
         .map_err(ConnectionError::PeerCertificateInvalid)?;
 
@@ -217,8 +199,9 @@ pub(super) async fn server_setup_tls(
 ///
 /// Performs the actual TCP+TLS connection setup.
 async fn tls_connect(
-    context: &TlsConfiguration,
+    identity: &Identity,
     stream: TcpStream,
+    keylog: Option<LockedLineWriter>,
 ) -> Result<(NodeId, Transport), ConnectionError> {
     // TODO: Timeout eventually if the connection gets stuck?
 
@@ -227,9 +210,9 @@ async fn tls_connect(
         .map_err(ConnectionError::TcpNoDelay)?;
 
     let mut transport = tls::create_tls_connector(
-        context.our_cert.as_x509(),
-        &context.secret_key,
-        context.keylog.clone(),
+        identity.tls_certificate.as_x509(),
+        &identity.secret_key,
+        keylog,
     )
     .and_then(|connector| connector.configure())
     .and_then(|mut config| {
@@ -248,7 +231,7 @@ async fn tls_connect(
         .peer_certificate()
         .ok_or(ConnectionError::NoPeerCertificate)?;
 
-    let validated_peer_cert = context
+    let validated_peer_cert = identity
         .validate_peer_cert(peer_cert)
         .map_err(ConnectionError::PeerCertificateInvalid)?;
 

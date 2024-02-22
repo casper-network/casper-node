@@ -39,7 +39,6 @@ use super::{
     connection_id::ConnectionId,
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     message::NodeKeyPair,
-    transport::TlsConfiguration,
     Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
 };
 
@@ -57,7 +56,7 @@ use crate::{
 /// A context holding all relevant information for networking communication shared across tasks.
 pub(crate) struct NetworkContext {
     /// TLS parameters.
-    pub(super) tls_configuration: TlsConfiguration,
+    pub(super) identity: Identity,
     /// Our own [`NodeId`].
     pub(super) our_id: NodeId,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
@@ -82,24 +81,12 @@ impl NetworkContext {
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
     ) -> Self {
-        let Identity {
-            secret_key,
-            tls_certificate,
-            network_ca,
-        } = our_identity;
-        let our_id = NodeId::from(tls_certificate.public_key_fingerprint());
-
-        let tls_configuration = TlsConfiguration {
-            network_ca,
-            our_cert: tls_certificate,
-            secret_key,
-            keylog,
-        };
+        let our_id = our_identity.node_id();
 
         NetworkContext {
             our_id,
             public_addr: None,
-            tls_configuration,
+            identity: our_identity,
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
             node_key_pair,
