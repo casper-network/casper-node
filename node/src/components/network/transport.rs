@@ -107,8 +107,18 @@ pub(super) struct TransportHandler {
 }
 
 impl TransportHandler {
-    pub(super) fn new() -> Self {
-        todo!()
+    pub(super) fn new(
+        identity: Identity,
+        handshake_configuration: HandshakeConfiguration,
+        incoming_request_handler: Box<dyn Fn(NodeId, IncomingRequest) + Send + Sync>,
+        keylog: Option<LockedLineWriter>,
+    ) -> Self {
+        Self {
+            identity,
+            handshake_configuration,
+            incoming_request_handler,
+            keylog,
+        }
     }
 
     /// Finish the transport setup after the TLS connection has been negotiated.

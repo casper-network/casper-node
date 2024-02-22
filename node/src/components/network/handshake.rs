@@ -121,6 +121,21 @@ pub(crate) struct HandshakeConfiguration {
 }
 
 impl HandshakeConfiguration {
+    /// Creates a new handshake configuration.
+    pub(crate) fn new(
+        chain_info: ChainInfo,
+        node_key_pair: Option<NodeKeyPair>,
+        public_addr: SocketAddr,
+        handshake_timeout: Duration,
+    ) -> Self {
+        Self {
+            chain_info,
+            node_key_pair,
+            public_addr,
+            handshake_timeout,
+        }
+    }
+
     /// Performs a handshake.
     ///
     /// This function is cancellation safe.

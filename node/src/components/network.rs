@@ -78,6 +78,7 @@ use self::{
     chain_info::ChainInfo,
     conman::{ConMan, ConManState, ProtocolHandler, ProtocolHandshakeOutcome},
     error::ConnectionError,
+    handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
     tasks::NetworkContext,
@@ -191,6 +192,8 @@ where
     ) -> Result<Network<REv, P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
+        let node_key_pair = node_key_pair.map(NodeKeyPair::new);
+
         let chain_info = chain_info_source.into();
 
         let keylog = match cfg.keylog_path {
@@ -211,7 +214,7 @@ where
             cfg.clone(),
             our_identity,
             keylog,
-            node_key_pair.map(NodeKeyPair::new),
+            node_key_pair,
             chain_info,
             &net_metrics,
         ));
@@ -286,8 +289,6 @@ where
         );
 
         // Start connection manager.
-        let protocol_handler = TransportHandler::new();
-
         let rpc_builder = transport::create_rpc_builder(
             self.context.chain_info.networking_config,
             self.cfg.send_buffer_size,
@@ -295,6 +296,27 @@ where
         );
 
         // Setup connection manager, then learn all known addresses.
+
+        let handshake_configuration = HandshakeConfiguration::new(
+            self.context.chain_info.clone(),
+            self.context.node_key_pair.clone(),
+            public_addr,
+            Duration::from_secs(10),
+        ); // TODO: Make configurable.
+
+        let scheduler = effect_builder.into_inner();
+        let incoming_request_handler = Box::new(move |peer_id, incoming_request| {
+            drop(scheduler);
+            // TODO: Handle the incoming request.
+        });
+
+        let protocol_handler = TransportHandler::new(
+            self.context.identity.clone(),
+            handshake_configuration,
+            incoming_request_handler,
+            self.context.keylog.clone(),
+        );
+
         let conman = ConMan::new(
             tokio::net::TcpListener::from_std(listener).expect("not in tokio runtime"),
             public_addr,

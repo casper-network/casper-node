@@ -19,7 +19,7 @@ use crate::types::{chainspec::JulietConfig, Chainspec};
 /// Data retained from the chainspec by the networking component.
 ///
 /// Typically this information is used for creating handshakes.
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainInfo {
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.

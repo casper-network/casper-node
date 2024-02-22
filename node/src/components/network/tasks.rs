@@ -65,11 +65,13 @@ pub(crate) struct NetworkContext {
     /// Chain info extract from chainspec.
     pub(super) chain_info: ChainInfo,
     /// Optional set of signing keys, to identify as a node during handshake.
-    node_key_pair: Option<NodeKeyPair>,
+    pub(super) node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
-    public_addr: Option<SocketAddr>,
+    pub(super) public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
+    /// Store key log for OpenSSL.
+    pub(super) keylog: Option<LockedLineWriter>,
 }
 
 impl NetworkContext {
@@ -91,6 +93,7 @@ impl NetworkContext {
             chain_info,
             node_key_pair,
             handshake_timeout: cfg.handshake_timeout,
+            keylog,
         }
     }
 

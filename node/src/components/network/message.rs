@@ -87,6 +87,7 @@ impl<P: Payload> Message<P> {
 }
 
 /// A pair of secret keys used by consensus.
+#[derive(Clone)]
 pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
