@@ -147,7 +147,7 @@ impl TestEnv {
         // Set up a validator matrix for the era in which our test block was created
         let mut validator_matrix = ValidatorMatrix::new(
             Ratio::new(1, 3),
-            ChainNameDigest::new(Digest::hash(b"casper-example")),
+            ChainNameDigest::from_chain_name("casper-example"),
             None,
             EraId::from(0),
             self.validator_keys[0].clone(),

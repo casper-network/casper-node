@@ -9,6 +9,8 @@ use core::{
 use datasize::DataSize;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -16,8 +18,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{crypto, BlockHash, ChainNameDigest, EraId, PublicKey, SecretKey, Signature};
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
 
 /// A validator's signature of a block, confirming it is finalized.
 ///

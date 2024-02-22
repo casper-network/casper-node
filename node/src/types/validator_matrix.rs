@@ -81,8 +81,6 @@ impl ValidatorMatrix {
     /// Creates a new validator matrix with just a single validator.
     #[cfg(test)]
     pub(crate) fn new_with_validator(secret_signing_key: Arc<SecretKey>) -> Self {
-        use casper_types::Digest;
-
         let public_signing_key = PublicKey::from(&*secret_signing_key);
         let finality_threshold_fraction = Ratio::new(1, 3);
         let era_id = EraId::new(0);
@@ -93,7 +91,7 @@ impl ValidatorMatrix {
         );
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
-            chainspec_name_hash: ChainNameDigest::new(Digest::hash(b"casper-example")),
+            chainspec_name_hash: ChainNameDigest::from_chain_name("casper-example"),
             chainspec_validators: None,
             chainspec_activation_era: EraId::from(0),
             finality_threshold_fraction,

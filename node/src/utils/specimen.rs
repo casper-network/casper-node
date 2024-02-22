@@ -779,8 +779,9 @@ impl LargestSpecimen for BlockHash {
 }
 
 impl LargestSpecimen for ChainNameDigest {
-    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        ChainNameDigest::new(LargestSpecimen::largest_specimen(estimator, cache))
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
+        // ChainNameDigest is fixed size by definition, so any value will do.
+        ChainNameDigest::from_chain_name("")
     }
 }
 

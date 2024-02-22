@@ -114,7 +114,7 @@ pub struct Chainspec {
 impl Chainspec {
     /// Returns the hash of the chainspec's name.
     pub fn name_hash(&self) -> ChainNameDigest {
-        ChainNameDigest::new(Digest::hash(self.network_config.name.as_bytes()))
+        ChainNameDigest::from_chain_name(&self.network_config.name)
     }
 
     /// Serializes `self` and hashes the resulting bytes.

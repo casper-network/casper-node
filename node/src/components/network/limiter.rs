@@ -293,7 +293,7 @@ struct ConsumerId {
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use casper_types::{ChainNameDigest, Digest, EraId, SecretKey};
+    use casper_types::{ChainNameDigest, EraId, SecretKey};
     use num_rational::Ratio;
     use prometheus::Counter;
     use tokio::time::Instant;
@@ -460,7 +460,7 @@ mod tests {
             wait_metric.clone(),
             ValidatorMatrix::new(
                 Ratio::new(1, 3),
-                ChainNameDigest::new(Digest::hash(b"casper-example")),
+                ChainNameDigest::from_chain_name("casper-example"),
                 None,
                 EraId::from(0),
                 Arc::new(secret_key),

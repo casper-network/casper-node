@@ -15,9 +15,13 @@ use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     crypto, BlockHash, ChainNameDigest, EraId, FinalitySignature, PublicKey, Signature,
@@ -228,6 +232,16 @@ impl BlockSignatures {
             .expect("should have at least one signature");
         *last_proof.into_mut() = Signature::System;
     }
+
+    /// Returns a random `BlockSignatures`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen() {
+            BlockSignatures::V1(BlockSignaturesV1::random(rng))
+        } else {
+            BlockSignatures::V2(BlockSignaturesV2::random(rng))
+        }
+    }
 }
 
 impl Display for BlockSignatures {
@@ -393,3 +407,15 @@ impl Display for BlockSignaturesMergeError {
 
 #[cfg(feature = "std")]
 impl StdError for BlockSignaturesMergeError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let hash = BlockSignatures::random(rng);
+        bytesrepr::test_serialization_roundtrip(&hash);
+    }
+}

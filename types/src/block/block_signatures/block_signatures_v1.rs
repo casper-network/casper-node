@@ -3,10 +3,14 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
 use super::BlockHash;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, EraId, FinalitySignatureV1, PublicKey, Signature,
@@ -114,6 +118,26 @@ impl BlockSignaturesV1 {
         }
         Ok(())
     }
+
+    /// Returns a random `BlockSignaturesV1`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let block_hash = BlockHash::random(rng);
+        let era_id = EraId::random(rng);
+        let proofs = (0..rng.gen_range(0..10))
+            .map(|_| {
+                let public_key = PublicKey::random(rng);
+                let bytes = std::array::from_fn(|_| rng.gen());
+                let signature = Signature::ed25519(bytes).unwrap();
+                (public_key, signature)
+            })
+            .collect();
+        Self {
+            block_hash,
+            era_id,
+            proofs,
+        }
+    }
 }
 
 impl Display for BlockSignaturesV1 {
@@ -161,5 +185,17 @@ impl FromBytes for BlockSignaturesV1 {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let hash = BlockSignaturesV1::random(rng);
+        bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

@@ -34,9 +34,9 @@ impl ChainNameDigest {
     /// The number of bytes in a `ChainNameDigest` digest.
     pub const LENGTH: usize = Digest::LENGTH;
 
-    /// Constructs a new `ChainNameDigest`.
-    pub const fn new(hash: Digest) -> Self {
-        ChainNameDigest(hash)
+    /// Constructs a new `ChainNameDigest` from the given chain name.
+    pub fn from_chain_name(name: &str) -> Self {
+        ChainNameDigest(Digest::hash(name.as_bytes()))
     }
 
     /// Returns the wrapped inner digest.
@@ -44,11 +44,11 @@ impl ChainNameDigest {
         &self.0
     }
 
-    /// Returns a new `ChainNameDigest` directly initialized with the provided bytes; no hashing is
-    /// done.
+    /// Returns a new `ChainNameDigest` directly initialized with the provided `Digest`;
+    /// no hashing is done.
     #[cfg(any(feature = "testing", test))]
-    pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
-        ChainNameDigest(Digest::from_raw(raw_digest))
+    pub const fn from_digest(digest: Digest) -> Self {
+        ChainNameDigest(digest)
     }
 
     /// Returns a random `ChainNameDigest`.

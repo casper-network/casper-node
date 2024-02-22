@@ -477,7 +477,7 @@ impl Storage {
             recent_era_count,
             max_ttl,
             metrics,
-            chain_name_hash: ChainNameDigest::new(Digest::hash(network_name.as_bytes())),
+            chain_name_hash: ChainNameDigest::from_chain_name(network_name),
         };
 
         if force_resync {
@@ -1309,10 +1309,9 @@ impl Storage {
                 block_signatures
                     .insert_signature(signature.public_key().clone(), *signature.signature());
             }
-            (_, signature) => {
-                return Err(FatalStorageError::VariantMismatch(VariantMismatch(
-                    Box::new(*signature.block_hash()),
-                )));
+            (block_signatures, signature) => {
+                let mismatch = VariantMismatch(Box::new((block_signatures.clone(), signature)));
+                return Err(FatalStorageError::from(mismatch));
             }
         }
         let outcome = self.block_metadata_dbs.put(
