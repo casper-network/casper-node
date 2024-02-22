@@ -127,7 +127,7 @@ where
     /// The network address the component is listening on.
     ///
     /// Will be initialized late.
-    public_address: Option<SocketAddr>,
+    public_addr: Option<SocketAddr>,
     /// Chain information used by networking.
     ///
     /// Only available during initialization.
@@ -182,7 +182,7 @@ where
         Ok(Network {
             config,
             known_addresses: Default::default(),
-            public_address: None,
+            public_addr: None,
             chain_info: chain_info_source.into(),
             node_key_pair: node_key_pair,
             identity,
@@ -825,7 +825,7 @@ where
                         .ignore(),
                 },
                 Event::GossipOurAddress => {
-                    let Some(public_address) = self.public_address else {
+                    let Some(public_address) = self.public_addr else {
                         // Cannot gossip, component is not initialized yet.
                         return Effects::new();
                     };

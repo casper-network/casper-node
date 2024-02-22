@@ -27,7 +27,7 @@ pub(crate) struct NetworkInsights {
     /// The public address of the node.
     public_addr: Option<SocketAddr>,
     /// The fingerprint of a consensus key installed.
-    node_key_pair: Option<PublicKey>,
+    consensus_public_key: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
 }
@@ -38,17 +38,13 @@ impl NetworkInsights {
     where
         P: Payload,
     {
-        todo!()
-        // NetworkInsights {
-        //     our_id: net.context.our_id(),
-        //     network_ca: net.context.identity.network_ca.is_some(),
-        //     public_addr: net.context.public_addr(),
-        //     node_key_pair: net
-        //         .context
-        //         .node_key_pair()
-        //         .map(|kp| kp.public_key().clone()),
-        //     net_active_era: net.active_era,
-        // }
+        NetworkInsights {
+            our_id: net.our_id,
+            network_ca: net.identity.network_ca.is_some(),
+            public_addr: net.public_addr,
+            consensus_public_key: net.node_key_pair.as_ref().map(|kp| kp.public_key().clone()),
+            net_active_era: net.active_era,
+        }
     }
 }
 
