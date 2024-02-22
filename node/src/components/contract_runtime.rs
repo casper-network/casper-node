@@ -42,10 +42,14 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig, Transaction};
+use casper_types::{
+    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
+    Transaction,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
+    contract_runtime::utils::EraPrice,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -74,7 +78,6 @@ pub(crate) use types::{
     StepEffectsAndUpcomingEraValidators,
 };
 use utils::{exec_or_requeue, run_intensive_task};
-use crate::contract_runtime::utils::EraPrice;
 
 const COMPONENT_NAME: &str = "contract_runtime";
 
@@ -593,9 +596,9 @@ impl ContractRuntime {
                     unreachable!()
                 }
             }
-            ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => {
-                responder.respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id)).ignore()
-            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder
+                .respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id))
+                .ignore(),
             ContractRuntimeRequest::UpdateRuntimePrice(era_id, new_gas_price) => {
                 self.current_gas_price = EraPrice::new(era_id, new_gas_price);
                 Effects::new()

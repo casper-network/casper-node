@@ -742,7 +742,7 @@ fn make_engine_config(
         *old_system_config.handle_payment_costs(),
         *old_system_config.standard_payment_costs(),
         old_system_config.install_upgrade_cost(),
-        old_system_config.standard_transaction_cost()
+        old_system_config.standard_transaction_cost(),
     );
     EngineConfigBuilder::default()
         .with_wasm_config(new_wasm_config)

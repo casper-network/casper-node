@@ -54,6 +54,7 @@ pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Confi
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
 pub use upgrade_config::ProtocolUpgradeConfig;
+pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
@@ -71,13 +72,12 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
-    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_COST,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STANDARD_TRANSACTION_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
     DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
-    DEFAULT_INSTALL_UPGRADE_COST, DEFAULT_STANDARD_TRANSACTION_COST,
 };
-pub use vacancy_config::VacancyConfig;
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -207,7 +207,7 @@ impl Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
-            vacancy_config
+            vacancy_config,
         }
     }
 }
@@ -260,7 +260,7 @@ impl FromBytes for Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
-            vacancy_config
+            vacancy_config,
         };
         Ok((chainspec, remainder))
     }

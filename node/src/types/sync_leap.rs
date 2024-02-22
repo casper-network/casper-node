@@ -2233,7 +2233,8 @@ mod tests {
                     Vec::from(rnd.equivocators()),
                     Vec::from(rnd.inactive_validators()),
                     validators,
-                    rnd.rewards().clone(),gas_price,
+                    rnd.rewards().clone(),
+                    gas_price,
                 )
             });
             let next_block_era_id = if is_successor_of_switch_block {
@@ -2278,7 +2279,7 @@ mod tests {
                 install_upgrade_hashes,
                 standard_hashes,
                 Default::default(),
-                gas_price
+                gas_price,
             );
 
             self.block = next.clone();

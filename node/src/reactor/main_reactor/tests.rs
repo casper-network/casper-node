@@ -621,21 +621,15 @@ impl TestFixture {
     }
 
     #[track_caller]
-    fn check_price_for_era(
-        &self,
-        era_id: EraId,
-        expected_price: u8
-    ) {
-        let (_, runner) = self.network
+    fn check_price_for_era(&self, era_id: EraId, expected_price: u8) {
+        let (_, runner) = self
+            .network
             .nodes()
             .iter()
             .next()
             .expect("must have runner");
 
-        let prices = runner
-            .main_reactor()
-            .transaction_buffer
-            .prices();
+        let prices = runner.main_reactor().transaction_buffer.prices();
 
         assert!(prices.contains_key(&era_id));
 
@@ -1817,12 +1811,11 @@ async fn block_vacancy() {
 
     fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
 
-    let highest_block = fixture
-        .highest_complete_block();
+    let highest_block = fixture.highest_complete_block();
 
-    let actual_gas_price = highest_block.maybe_current_gas_price().expect(
-        "must have actual gas price"
-    );
+    let actual_gas_price = highest_block
+        .maybe_current_gas_price()
+        .expect("must have actual gas price");
     let expected_gas_price: u8 = 2;
     assert_eq!(actual_gas_price, expected_gas_price);
 

@@ -18,7 +18,11 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{Block, BlockV2, Digest, DisplayIter, EraId, PricingMode, SystemConfig, Timestamp, Transaction, TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash, TransactionId, TransactionV1Category};
+use casper_types::{
+    Block, BlockV2, Digest, DisplayIter, EraId, PricingMode, SystemConfig, Timestamp, Transaction,
+    TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash, TransactionId,
+    TransactionV1Category,
+};
 
 use crate::{
     components::{
@@ -42,9 +46,11 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
-use crate::{effect::requests::ContractRuntimeRequest, types::TransactionHashWithApprovals};
+use crate::{
+    effect::{requests::ContractRuntimeRequest, Responder},
+    types::TransactionHashWithApprovals,
+};
 use metrics::Metrics;
-use crate::effect::Responder;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
 
@@ -187,9 +193,12 @@ impl TransactionBuffer {
         }
 
         if let Some(era_id) = self.prices.keys().max() {
-            let updated = self.prices.clone().into_iter().filter(|(price_era_id, _)| {
-                price_era_id.successor() >= *era_id
-            }).collect();
+            let updated = self
+                .prices
+                .clone()
+                .into_iter()
+                .filter(|(price_era_id, _)| price_era_id.successor() >= *era_id)
+                .collect();
 
             self.prices = updated;
         }
@@ -229,22 +238,21 @@ impl TransactionBuffer {
         era_id: EraId,
         responder: Responder<AppendableBlock>,
     ) -> Effects<Event>
-    where REv: From<ContractRuntimeRequest> + Send
-
+    where
+        REv: From<ContractRuntimeRequest> + Send,
     {
         if self.prices.get(&era_id).is_none() {
             info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
                 .get_current_gas_price(era_id)
-                .event(move |maybe_gas_price| Event::GetGasPriceResult(
-                    maybe_gas_price,
-                    era_id,
-                    timestamp,
-                    responder
-                ))
+                .event(move |maybe_gas_price| {
+                    Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder)
+                });
         }
 
-        responder.respond(self.appendable_block(timestamp, era_id)).ignore()
+        responder
+            .respond(self.appendable_block(timestamp, era_id))
+            .ignore()
     }
 
     /// Update buffer considering new stored transaction.
@@ -756,7 +764,9 @@ where
                 }
                 Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
                     match maybe_gas_price {
-                        None => responder.respond(AppendableBlock::new(self.transaction_config, timestamp)).ignore(),
+                        None => responder
+                            .respond(AppendableBlock::new(self.transaction_config, timestamp))
+                            .ignore(),
                         Some(gas_price) => {
                             self.prices.insert(era_id, gas_price);
                             responder

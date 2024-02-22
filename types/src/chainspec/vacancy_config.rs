@@ -1,10 +1,12 @@
+use crate::{
+    bytesrepr,
+    bytesrepr::{Error, FromBytes, ToBytes},
+    testing::TestRng,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use crate::bytesrepr;
-use crate::bytesrepr::{Error, FromBytes, ToBytes};
-use crate::testing::TestRng;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -16,7 +18,6 @@ pub struct VacancyConfig {
 }
 
 impl VacancyConfig {
-
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
@@ -28,7 +29,7 @@ impl VacancyConfig {
     }
 }
 
-impl ToBytes for VacancyConfig{
+impl ToBytes for VacancyConfig {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         self.upper_threshold.write_bytes(writer)?;
         self.lower_threshold.write_bytes(writer)?;
@@ -42,9 +43,9 @@ impl ToBytes for VacancyConfig{
     }
     fn serialized_length(&self) -> usize {
         self.upper_threshold.serialized_length()
-        + self.lower_threshold.serialized_length()
-        + self.max_gas_price.serialized_length()
-        + self.min_gas_price.serialized_length()
+            + self.lower_threshold.serialized_length()
+            + self.max_gas_price.serialized_length()
+            + self.min_gas_price.serialized_length()
     }
 }
 
@@ -54,12 +55,14 @@ impl FromBytes for VacancyConfig {
         let (lower_threshold, remainder) = u64::from_bytes(remainder)?;
         let (max_gas_price, remainder) = u8::from_bytes(remainder)?;
         let (min_gas_price, remainder) = u8::from_bytes(remainder)?;
-        Ok((Self {
-            upper_threshold,
-            lower_threshold,
-            max_gas_price,
-            min_gas_price,
-        }, remainder))
+        Ok((
+            Self {
+                upper_threshold,
+                lower_threshold,
+                max_gas_price,
+                min_gas_price,
+            },
+            remainder,
+        ))
     }
 }
-

@@ -10,11 +10,9 @@ use casper_types::{Block, BlockV2, EraId, Timestamp, Transaction, TransactionId}
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
-    effect::requests::TransactionBufferRequest,
-    types::FinalizedBlock,
+    effect::{requests::TransactionBufferRequest, Responder},
+    types::{appendable_block::AppendableBlock, FinalizedBlock},
 };
-use crate::effect::Responder;
-use crate::types::appendable_block::AppendableBlock;
 
 #[derive(Debug, From, DataSize)]
 pub(crate) enum Event {
@@ -29,7 +27,7 @@ pub(crate) enum Event {
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
     UpdateEraGasPrice(EraId, u8),
-    GetGasPriceResult(Option<u8>, EraId, Timestamp, Responder<AppendableBlock>)
+    GetGasPriceResult(Option<u8>, EraId, Timestamp, Responder<AppendableBlock>),
 }
 
 impl Display for Event {
@@ -79,10 +77,7 @@ impl Display for Event {
                 )
             }
             Event::GetGasPriceResult(_, era_id, _, _) => {
-                write!(
-                    formatter,
-                    "retrieving gas price for era {}", era_id
-                )
+                write!(formatter, "retrieving gas price for era {}", era_id)
             }
         }
     }

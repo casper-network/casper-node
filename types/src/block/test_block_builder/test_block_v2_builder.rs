@@ -226,7 +226,7 @@ impl TestBlockV2Builder {
             install_upgrade_hashes,
             standard_hashes,
             rewarded_signatures,
-            current_gas_price
+            current_gas_price,
         )
     }
 

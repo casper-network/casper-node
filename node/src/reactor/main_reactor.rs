@@ -63,7 +63,7 @@ use crate::{
             TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ContractRuntimeRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -85,7 +85,6 @@ pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
 pub(crate) use reactor_state::ReactorState;
-use crate::effect::requests::ContractRuntimeRequest;
 
 /// Main node reactor.
 ///
@@ -878,7 +877,9 @@ impl reactor::Reactor for MainReactor {
                     "New era gas price {} for era {}",
                     next_era_gas_price, era_id
                 );
-                let event = MainEvent::ContractRuntimeRequest(ContractRuntimeRequest::UpdateRuntimePrice(era_id, next_era_gas_price));
+                let event = MainEvent::ContractRuntimeRequest(
+                    ContractRuntimeRequest::UpdateRuntimePrice(era_id, next_era_gas_price),
+                );
                 let mut effects = self.dispatch_event(effect_builder, rng, event);
                 let reactor_event = MainEvent::TransactionBuffer(
                     transaction_buffer::Event::UpdateEraGasPrice(era_id, next_era_gas_price),

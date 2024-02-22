@@ -626,7 +626,7 @@ mod tests {
     use futures::channel::oneshot;
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, SystemConfig};
+    use casper_types::{testing::TestRng, ChainspecRawBytes, SystemConfig, TimeDiff, Transaction};
 
     use super::{super::tests::*, *};
     use crate::{types::TransactionHashWithApprovals, utils::Loadable};
