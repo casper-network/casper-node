@@ -194,7 +194,7 @@ fn register_transaction_and_check_size() {
         let mut transaction_buffer = TransactionBuffer::new(
             TransactionConfig::default(),
             Config::default(),
-            &Registry::new(),
+            SystemConfig::default() ,&Registry::new()
         )
         .unwrap();
 
@@ -240,6 +240,7 @@ fn register_block_with_valid_transactions() {
         let mut transaction_buffer = TransactionBuffer::new(
             TransactionConfig::default(),
             Config::default(),
+            SystemConfig::default(),
             &Registry::new(),
         )
         .unwrap();
@@ -270,7 +271,7 @@ fn register_finalized_block_with_valid_transactions() {
         let mut transaction_buffer = TransactionBuffer::new(
             TransactionConfig::default(),
             Config::default(),
-            &Registry::new(),
+            SystemConfig::default() ,&Registry::new()
         )
         .unwrap();
 
@@ -292,7 +293,7 @@ fn get_proposable_transactions() {
         let mut transaction_buffer = TransactionBuffer::new(
             TransactionConfig::default(),
             Config::default(),
-            &Registry::new(),
+            SystemConfig::default() ,&Registry::new()
         )
         .unwrap();
 
@@ -373,7 +374,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
         TransactionCategory::Transfer,
     ] {
         let mut transaction_buffer =
-            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
+            TransactionBuffer::new(transaction_config, Config::default(), SystemConfig::default() ,&Registry::new())
                 .unwrap();
         transaction_buffer.prices.insert(EraId::new(1), 1u8);
         get_appendable_block(
@@ -398,7 +399,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     };
 
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(transaction_config, Config::default(), SystemConfig::default() ,&Registry::new()).unwrap();
 
     transaction_buffer.prices.insert(EraId::new(1), 1u8);
 
@@ -431,7 +432,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         TransactionCategory::StandardLegacy,
     ] {
         let mut transaction_buffer =
-            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
+            TransactionBuffer::new(transaction_config, Config::default(), SystemConfig::default() ,&Registry::new())
                 .unwrap();
 
         transaction_buffer.prices.insert(EraId::new(1), 1u8);
@@ -456,7 +457,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         ..Default::default()
     };
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(transaction_config, Config::default(),SystemConfig::default() ,&Registry::new()).unwrap();
 
     transaction_buffer.prices.insert(EraId::new(1), 1u8);
     get_appendable_block(
@@ -478,6 +479,7 @@ fn register_transactions_and_blocks() {
     let mut transaction_buffer = TransactionBuffer::new(
         TransactionConfig::default(),
         Config::default(),
+        SystemConfig::default(),
         &Registry::new(),
     )
     .unwrap();
@@ -641,6 +643,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
         let mut transaction_buffer = TransactionBuffer::new(
             TransactionConfig::default(),
             Config::default(),
+            SystemConfig::default(),
             &Registry::new(),
         )
         .unwrap();
@@ -718,6 +721,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let mut transaction_buffer = TransactionBuffer::new(
         TransactionConfig::default(),
         Config::default(),
+        SystemConfig::default(),
         &Registry::new(),
     )
     .unwrap();

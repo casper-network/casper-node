@@ -532,7 +532,8 @@ impl BlockValidator {
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
                     return respond(false, responders);
                 }
-                let transaction_footprint = match item.footprint() {
+                let system_costs = self.chainspec.system_costs_config;
+                let transaction_footprint = match item.footprint(system_costs) {
                     Ok(footprint) => footprint,
                     Err(error) => {
                         warn!(

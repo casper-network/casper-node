@@ -1178,6 +1178,7 @@ impl reactor::Reactor for MainReactor {
         let transaction_buffer = TransactionBuffer::new(
             chainspec.transaction_config,
             config.transaction_buffer,
+            chainspec.system_costs_config,
             registry,
         )?;
 

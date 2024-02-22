@@ -165,11 +165,11 @@ pub(super) async fn exec_or_requeue<REv>(
                     current_gas_price
                 };
                 info!("Calculated new gas price");
-                new_gas_price
+                Some(new_gas_price)
             }
         }
     } else {
-        current_gas_price
+        None
     };
 
     let BlockAndExecutionResults {
@@ -188,6 +188,7 @@ pub(super) async fn exec_or_requeue<REv>(
             activation_point.era_id(),
             key_block_height_for_activation_point,
             prune_batch_size,
+            current_gas_price,
             maybe_next_era_gas_price,
         )
     })
@@ -304,9 +305,9 @@ pub(super) async fn exec_or_requeue<REv>(
     // If the child is already finalized, start execution.
     let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
 
-    if is_era_end {
+    if let Some(next_era_gas_price) = maybe_next_era_gas_price {
         effect_builder
-            .announce_new_era_gas_price(current_era_id.successor(), maybe_next_era_gas_price)
+            .announce_new_era_gas_price(current_era_id.successor(), next_era_gas_price)
             .await;
     }
 

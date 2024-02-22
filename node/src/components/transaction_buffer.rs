@@ -18,11 +18,7 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{
-    Block, BlockV2, Digest, DisplayIter, EraId, PricingMode, Timestamp, Transaction,
-    TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash, TransactionId,
-    TransactionV1Category,
-};
+use casper_types::{Block, BlockV2, Digest, DisplayIter, EraId, PricingMode, SystemConfig, Timestamp, Transaction, TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash, TransactionId, TransactionV1Category};
 
 use crate::{
     components::{
@@ -74,6 +70,7 @@ pub(crate) struct TransactionBuffer {
     // Transaction hashes that should not be proposed, ever.
     dead: HashSet<TransactionHash>,
     prices: BTreeMap<EraId, u8>,
+    system_config: SystemConfig,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -83,6 +80,7 @@ impl TransactionBuffer {
     pub(crate) fn new(
         transaction_config: TransactionConfig,
         cfg: Config,
+        system_config: SystemConfig,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(TransactionBuffer {
@@ -93,6 +91,7 @@ impl TransactionBuffer {
             hold: BTreeMap::new(),
             dead: HashSet::new(),
             prices: BTreeMap::new(),
+            system_config,
             metrics: Metrics::new(registry)?,
         })
     }
@@ -266,7 +265,8 @@ impl TransactionBuffer {
             info!(%transaction_hash, "TransactionBuffer: attempt to register already held transaction");
             return;
         }
-        let footprint = match transaction.footprint() {
+        let system_costs = self.system_config;
+        let footprint = match transaction.footprint(system_costs) {
             Ok(footprint) => footprint,
             Err(err) => {
                 error!(%transaction_hash, %err, "TransactionBuffer: transaction footprint exceeds tolerances");

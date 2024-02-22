@@ -1766,7 +1766,6 @@ async fn block_vacancy() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
-    let _charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
 
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
@@ -1793,6 +1792,14 @@ async fn block_vacancy() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
-    // Wait for all nodes to complete
-    fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
+    fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
+
+    let highest_block = fixture
+        .highest_complete_block();
+
+    let acutal_gas_price = highest_block.maybe_current_gas_price().expect(
+        "must have actual gas price"
+    );
+    let expected_gas_price: u8 = 2;
+    assert_eq!(acutal_gas_price, expected_gas_price);
 }

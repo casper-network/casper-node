@@ -98,12 +98,19 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
     current_gas_price: u8,
+    next_era_gas_price: Option<u8>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
         });
+    }
+
+    if executable_block.era_report.is_some() && next_era_gas_price.is_none() {
+        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {
+            era_id: executable_block.era_id
+        })
     }
 
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
@@ -335,7 +342,12 @@ pub fn execute_finalized_block(
                     .get(&next_era_id)
                     .cloned()
                 {
-                    Some(validators) => Some((validators, current_gas_price)),
+                    Some(validators) => {
+                        match next_era_gas_price {
+                            Some(gas_price) =>  Some((validators, gas_price)),
+                            None => None,
+                        }
+                    },
                     None => None,
                 }
             }
@@ -383,6 +395,7 @@ pub fn execute_finalized_block(
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
+        current_gas_price
     ));
 
     let approvals_hashes = txn_ids.into_iter().map(|id| id.approvals_hash()).collect();

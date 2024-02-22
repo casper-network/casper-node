@@ -39,11 +39,7 @@ use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
-use crate::{
-    account::AccountHash,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, Timestamp,
-};
+use crate::{account::AccountHash, bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, Digest, SecretKey, SystemConfig, Timestamp};
 #[cfg(feature = "json-schema")]
 use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
@@ -193,10 +189,10 @@ impl Transaction {
     }
 
     /// Returns the `TransactionFootprint`.
-    pub fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
+    pub fn footprint(&self, system_costs: SystemConfig) -> Result<TransactionFootprint, TransactionError> {
         Ok(match self {
             Transaction::Deploy(deploy) => deploy.footprint()?.into(),
-            Transaction::V1(v1) => v1.footprint()?.into(),
+            Transaction::V1(v1) => v1.footprint(system_costs)?.into(),
         })
     }
 

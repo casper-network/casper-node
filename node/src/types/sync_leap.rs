@@ -2225,14 +2225,15 @@ mod tests {
                 );
             }
 
+            let gas_price: u8 = 1u8;
+
             let era_end = maybe_validators.map(|validators| {
                 let rnd = EraEndV2::random(self.rng);
                 EraEndV2::new(
                     Vec::from(rnd.equivocators()),
                     Vec::from(rnd.inactive_validators()),
                     validators,
-                    rnd.rewards().clone(),
-                    1u8,
+                    rnd.rewards().clone(),gas_price,
                 )
             });
             let next_block_era_id = if is_successor_of_switch_block {
@@ -2277,6 +2278,7 @@ mod tests {
                 install_upgrade_hashes,
                 standard_hashes,
                 Default::default(),
+                gas_price
             );
 
             self.block = next.clone();

@@ -360,6 +360,13 @@ impl Block {
         }
     }
 
+    pub fn maybe_current_gas_price(&self) -> Option<u8> {
+        match self {
+            Block::V1(_) => None,
+            Block::V2(v2) => Some(v2.header().current_gas_price())
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]

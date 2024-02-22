@@ -271,6 +271,8 @@ max_message_size = 1_024
 
 [system_costs]
 wasmless_transfer_cost = 100_000_000
+install_upgrade_cost = 500_000_000_000
+standard_cost = 50_000_000_000
 
 [system_costs.auction_costs]
 get_era_validators = 10_000

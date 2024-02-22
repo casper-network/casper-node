@@ -626,7 +626,7 @@ mod tests {
     use futures::channel::oneshot;
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction};
+    use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, SystemConfig};
 
     use super::{super::tests::*, *};
     use crate::{types::TransactionHashWithApprovals, utils::Loadable};
@@ -717,6 +717,7 @@ mod tests {
         }
 
         fn footprints(&self) -> Vec<(DeployOrTransactionHash, TransactionFootprint)> {
+            let system_costs = self.chainspec.system_costs_config;
             self.deploys
                 .iter()
                 .map(|deploy| {
@@ -726,7 +727,7 @@ mod tests {
                         }
                         Transaction::V1(v1) => (*v1.hash()).into(),
                     };
-                    (dt_hash, deploy.footprint().unwrap())
+                    (dt_hash, deploy.footprint(system_costs).unwrap())
                 })
                 .chain(self.transfers.iter().map(|transfer| {
                     let dt_hash = match transfer {
@@ -735,7 +736,7 @@ mod tests {
                         }
                         Transaction::V1(v1) => (*v1.hash()).into(),
                     };
-                    (dt_hash, transfer.footprint().unwrap())
+                    (dt_hash, transfer.footprint(system_costs).unwrap())
                 }))
                 .collect()
         }
@@ -1150,7 +1151,7 @@ mod tests {
         // returned.
         let dt_hash =
             DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(invalid_deploy_hash));
-        let footprint = invalid_deploy.footprint().unwrap();
+        let footprint = invalid_deploy.footprint(SystemConfig::default()).unwrap();
         let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));
