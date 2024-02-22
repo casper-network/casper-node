@@ -33,7 +33,6 @@ mod insights;
 mod message;
 mod metrics;
 mod per_channel;
-mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
