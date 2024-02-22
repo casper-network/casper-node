@@ -197,6 +197,7 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
     max_delegators_per_validator: Option<u32>,
     minimum_delegation_amount: u64,
+    maximum_delegation_amount: u64,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller.into());
@@ -221,12 +222,14 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
                     unbonding_purse,
                     max_delegators_per_validator,
                     minimum_delegation_amount,
+                    maximum_delegation_amount,
                 )? {
                     UnbondRedelegationOutcome::SuccessfullyRedelegated => {
                         // noop; on successful redelegation, no actual unbond occurs
                     }
                     uro @ UnbondRedelegationOutcome::NonexistantRedelegationTarget
                     | uro @ UnbondRedelegationOutcome::DelegationAmountBelowCap
+                    | uro @ UnbondRedelegationOutcome::DelegationAmountAboveCap
                     | uro @ UnbondRedelegationOutcome::RedelegationTargetHasNoVacancy
                     | uro @ UnbondRedelegationOutcome::RedelegationTargetIsUnstaked
                     | uro @ UnbondRedelegationOutcome::Withdrawal => {
@@ -417,6 +420,7 @@ enum UnbondRedelegationOutcome {
     RedelegationTargetHasNoVacancy,
     RedelegationTargetIsUnstaked,
     DelegationAmountBelowCap,
+    DelegationAmountAboveCap,
 }
 
 fn handle_redelegation<P>(
@@ -424,6 +428,7 @@ fn handle_redelegation<P>(
     unbonding_purse: &UnbondingPurse,
     max_delegators_per_validator: Option<u32>,
     minimum_delegation_amount: u64,
+    maximum_delegation_amount: u64,
 ) -> Result<UnbondRedelegationOutcome, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -441,6 +446,7 @@ where
         *unbonding_purse.amount(),
         max_delegators_per_validator,
         minimum_delegation_amount,
+        maximum_delegation_amount,
     ) {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
         Err(ApiError::AuctionError(err)) if err == Error::BondTooSmall as u8 => {
@@ -448,6 +454,9 @@ where
         }
         Err(ApiError::AuctionError(err)) if err == Error::DelegationAmountTooSmall as u8 => {
             Ok(UnbondRedelegationOutcome::DelegationAmountBelowCap)
+        }
+        Err(ApiError::AuctionError(err)) if err == Error::DelegationAmountTooLarge as u8 => {
+            Ok(UnbondRedelegationOutcome::DelegationAmountAboveCap)
         }
         Err(ApiError::AuctionError(err)) if err == Error::ValidatorNotFound as u8 => {
             Ok(UnbondRedelegationOutcome::NonexistantRedelegationTarget)
@@ -470,6 +479,7 @@ pub fn handle_delegation<P>(
     amount: U512,
     max_delegators_per_validator: Option<u32>,
     minimum_delegation_amount: u64,
+    maximum_delegation_amount: u64,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -481,10 +491,16 @@ where
     if amount < U512::from(minimum_delegation_amount) {
         return Err(Error::DelegationAmountTooSmall.into());
     }
+    if amount > U512::from(maximum_delegation_amount) {
+        return Err(Error::DelegationAmountTooLarge.into());
+    }
 
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
-    let _ = read_validator_bid(provider, &validator_bid_addr.into())?;
+    let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+    if !validator_bid.amount_is_valid(amount) {
+        return Err(Error::DelegationAmountTooSmall.into());
+    }
 
     // is there already a record for this delegator?
     let delegator_bid_key =

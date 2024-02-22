@@ -42,7 +42,7 @@ pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 #[cfg(any(feature = "testing", test))]
-pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
+pub use genesis_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;

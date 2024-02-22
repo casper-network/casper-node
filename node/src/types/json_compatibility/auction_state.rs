@@ -43,6 +43,8 @@ static BIDS: Lazy<ValidatorBids> = Lazy::new(|| {
         staked_amount,
         DelegationRate::zero(),
         release_era,
+        0,
+        u64::MAX,
     );
     let mut bids = BTreeMap::new();
     bids.insert(validator_public_key, Box::new(validator_bid));
@@ -61,6 +63,8 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         URef::new([250; 32], AccessRights::READ_ADD_WRITE),
         U512::from(20),
         DelegationRate::zero(),
+        0,
+        u64::MAX,
     );
     bids.push(BidKind::Validator(Box::new(validator_bid)));
 
@@ -144,6 +148,8 @@ impl AuctionState {
                         *bid.bonding_purse(),
                         *bid.staked_amount(),
                         *bid.delegation_rate(),
+                        0,
+                        u64::MAX,
                     );
                     staking.insert(public_key, (validator_bid, bid.delegators().clone()));
                 }

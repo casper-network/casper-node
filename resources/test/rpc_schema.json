@@ -4455,6 +4455,8 @@
           "bonding_purse",
           "delegation_rate",
           "inactive",
+          "maximum_delegation_amount",
+          "minimum_delegation_amount",
           "staked_amount",
           "validator_public_key"
         ],
@@ -4503,6 +4505,18 @@
           "inactive": {
             "description": "`true` if validator has been \"evicted\"",
             "type": "boolean"
+          },
+          "minimum_delegation_amount": {
+            "description": "Minimum allowed delegation amount in motes",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "maximum_delegation_amount": {
+            "description": "Maximum allowed delegation amount in motes",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
           }
         },
         "additionalProperties": false

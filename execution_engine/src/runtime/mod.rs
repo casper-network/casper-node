@@ -841,8 +841,24 @@ where
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
+                let minimum_delegation_amount: Option<u64> =
+                    Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
+                let minimum_delegation_amount = minimum_delegation_amount
+                    .unwrap_or(self.context.engine_config().minimum_delegation_amount());
+
+                let maximum_delegation_amount: Option<u64> =
+                    Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)?;
+                let maximum_delegation_amount = maximum_delegation_amount
+                    .unwrap_or(self.context.engine_config().maximum_delegation_amount());
+
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(
+                        account_hash,
+                        delegation_rate,
+                        amount,
+                        minimum_delegation_amount,
+                        maximum_delegation_amount,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -881,6 +897,7 @@ where
                         amount,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
+                        maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 
@@ -922,6 +939,7 @@ where
                         amount,
                         new_validator,
                         minimum_delegation_amount,
+                        maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 
@@ -949,6 +967,7 @@ where
                         evicted_validators,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
+                        maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 
