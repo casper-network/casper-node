@@ -3,15 +3,11 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{marker::PhantomData, pin::Pin, sync::Arc};
+use std::{marker::PhantomData, pin::Pin};
 
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
-use openssl::{
-    pkey::{PKey, Private},
-    ssl::Ssl,
-    x509::X509,
-};
+use openssl::ssl::Ssl;
 use strum::EnumCount;
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
@@ -20,7 +16,7 @@ use tracing::{trace, Span};
 use crate::{
     components::network::{deserialize_network_message, Message},
     reactor::{EventQueueHandle, QueueKind},
-    tls::{self, TlsCert, ValidationError},
+    tls,
     types::{chainspec::JulietConfig, NodeId},
     utils::LockedLineWriter,
 };

@@ -44,7 +44,6 @@ use std::{
     fs::OpenOptions,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    str::FromStr,
     sync::{atomic::AtomicBool, Arc, Weak},
     time::{Duration, Instant},
 };
@@ -55,7 +54,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 
-use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RequestGuard};
+use juliet::rpc::{JulietRpcClient, RequestGuard};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -63,20 +62,17 @@ use rand::{
 };
 use serde::Serialize;
 use strum::EnumCount;
-use tokio::{
-    io::{ReadHalf, WriteHalf},
-    net::TcpStream,
-};
+use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
-use tracing::{debug, error, info, trace, warn, Span};
+use tracing::{debug, error, info, warn, Span};
 
 use casper_types::{EraId, PublicKey, SecretKey};
 
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    conman::{ConMan, ConManState, ProtocolHandler, ProtocolHandshakeOutcome},
-    error::{ConnectionError, MessageReceiverError},
+    conman::{ConMan, ConManState},
+    error::ConnectionError,
     handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -103,7 +99,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
+    reactor::{Finalize, ReactorEvent},
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{
@@ -1016,13 +1012,6 @@ where
 
 /// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
-
-/// Transport-level RPC server.
-type RpcServer = JulietRpcServer<
-    { Channel::COUNT },
-    ReadHalf<SslStream<TcpStream>>,
-    WriteHalf<SslStream<TcpStream>>,
->;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {

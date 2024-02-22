@@ -20,7 +20,7 @@ use crate::{
     utils::{opt_display::OptDisplay, DisplayIter, TimeAnchor},
 };
 
-use super::{error::ConnectionError, symmetry::ConnectionSymmetry, Network, Payload};
+use super::{error::ConnectionError, Network, Payload};
 
 /// A collection of insights into the active networking component.
 #[derive(Debug, Serialize)]

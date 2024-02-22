@@ -1,7 +1,6 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
-    net::SocketAddr,
 };
 
 use derive_more::From;
@@ -9,12 +8,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
 
-use casper_types::PublicKey;
-
-use super::{
-    error::{ConnectionError, MessageReceiverError, MessageSenderError},
-    GossipedAddress, Message, NodeId, Ticket, Transport,
-};
+use super::{GossipedAddress, Message, NodeId, Ticket};
 use crate::{
     effect::{
         announcements::PeerBehaviorAnnouncement,

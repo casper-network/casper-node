@@ -1,57 +1,14 @@
 //! Tasks run by the component.
 
 use std::{
-    fmt::Display,
     net::SocketAddr,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::{Arc, Weak},
 };
 
-use futures::{
-    future::{self, Either},
-    pin_mut,
-};
+use casper_types::TimeDiff;
 
-use juliet::rpc::IncomingRequest;
-use openssl::{
-    pkey::{PKey, Private},
-    ssl::Ssl,
-    x509::X509,
-};
-use serde::de::DeserializeOwned;
-use strum::EnumCount;
-use tokio::net::TcpStream;
-use tokio_openssl::SslStream;
-use tracing::{
-    debug, error_span,
-    field::{self, Empty},
-    info, trace, warn, Instrument, Span,
-};
-
-use casper_types::{ProtocolVersion, TimeDiff};
-
-use super::{
-    chain_info::ChainInfo,
-    conman::{ProtocolHandler, ProtocolHandshakeOutcome},
-    connection_id::ConnectionId,
-    error::{ConnectionError, MessageReceiverError, MessageSenderError},
-    message::NodeKeyPair,
-    Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
-};
-
-use crate::{
-    components::network::{
-        deserialize_network_message, handshake::HandshakeOutcome, Config, Ticket,
-    },
-    effect::{announcements::PeerBehaviorAnnouncement, requests::NetworkRequest},
-    reactor::{EventQueueHandle, QueueKind},
-    tls::{self, TlsCert, ValidationError},
-    types::NodeId,
-    utils::{display_error, LockedLineWriter, ObservableFuse, Peel},
-};
+use super::{chain_info::ChainInfo, message::NodeKeyPair, Identity, Metrics};
+use crate::{components::network::Config, types::NodeId, utils::LockedLineWriter};
 
 /// A context holding all relevant information for networking communication shared across tasks.
 pub(crate) struct NetworkContext {
@@ -109,11 +66,6 @@ impl NetworkContext {
     /// Our own public listening address.
     pub(super) fn public_addr(&self) -> Option<SocketAddr> {
         self.public_addr
-    }
-
-    /// Chain info extract from chainspec.
-    pub(super) fn chain_info(&self) -> &ChainInfo {
-        &self.chain_info
     }
 
     pub(crate) fn node_key_pair(&self) -> Option<&NodeKeyPair> {
