@@ -38,16 +38,17 @@ impl NetworkInsights {
     where
         P: Payload,
     {
-        NetworkInsights {
-            our_id: net.context.our_id(),
-            network_ca: net.context.identity.network_ca.is_some(),
-            public_addr: net.context.public_addr(),
-            node_key_pair: net
-                .context
-                .node_key_pair()
-                .map(|kp| kp.public_key().clone()),
-            net_active_era: net.active_era,
-        }
+        todo!()
+        // NetworkInsights {
+        //     our_id: net.context.our_id(),
+        //     network_ca: net.context.identity.network_ca.is_some(),
+        //     public_addr: net.context.public_addr(),
+        //     node_key_pair: net
+        //         .context
+        //         .node_key_pair()
+        //         .map(|kp| kp.public_key().clone()),
+        //     net_active_era: net.active_era,
+        // }
     }
 }
 

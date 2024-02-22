@@ -33,18 +33,18 @@ mod insights;
 mod message;
 mod metrics;
 mod per_channel;
-pub(crate) mod tasks;
+
 #[cfg(test)]
 mod tests;
 mod transport;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    fmt::{self, Debug, Formatter},
+    collections::{BTreeMap, HashSet},
+    fmt::Debug,
     fs::OpenOptions,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::{atomic::AtomicBool, Arc, Weak},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -74,7 +74,6 @@ use self::{
     handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
-    tasks::NetworkContext,
     transport::TransportHandler,
 };
 pub(crate) use self::{
@@ -118,43 +117,45 @@ const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 /// Delays in between dropping metrics.
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-#[derive(DataSize)]
+#[derive(DataSize, Debug)]
 pub(crate) struct Network<P>
 where
     P: Payload,
 {
     /// Initial configuration values.
-    cfg: Config,
-    /// Read-only networking information shared across tasks.
-    context: Arc<NetworkContext>,
+    config: Config,
+    /// The network address the component is listening on.
+    ///
+    /// Will be initialized late.
+    public_address: Option<SocketAddr>,
+    /// Chain information used by networking.
+    ///
+    /// Only available during initialization.
+    chain_info: ChainInfo,
+    /// Consensus keys, used for handshaking.
+    ///
+    /// Only available during initialization.
+    node_key_pair: Option<NodeKeyPair>,
+    /// Node's network identify.
+    identity: Identity,
+    /// Our node identity. Derived from `identity`, cached here.
+    our_id: NodeId,
     /// The set of known addresses that are eternally kept.
     known_addresses: HashSet<SocketAddr>,
     /// A reference to the global validator matrix.
     validator_matrix: ValidatorMatrix,
-
     /// Connection manager for incoming and outgoing connections.
     #[data_size(skip)] // Skipped, to reduce lock contention.
     conman: Option<ConMan>,
-
-    /// Incoming validator map.
-    ///
-    /// Tracks which incoming connections are from validators. The atomic bool is shared with the
-    /// receiver tasks to determine queue position.
-    incoming_validator_status: HashMap<PublicKey, Weak<AtomicBool>>,
-
     /// Fuse signaling a shutdown of the small network.
     shutdown_fuse: DropSwitch<ObservableFuse>,
-
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<Metrics>,
-
     /// The era that is considered the active era by the network component.
     active_era: EraId,
-
     /// The state of this component.
     state: ComponentState,
-
     /// Marker for what kind of payload this small network instance supports.
     _payload: PhantomData<P>,
 }
@@ -166,8 +167,8 @@ where
     /// Creates a new network component instance.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
-        cfg: Config,
-        our_identity: Identity,
+        config: Config,
+        identity: Identity,
         node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
@@ -176,38 +177,18 @@ where
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let node_key_pair = node_key_pair.map(NodeKeyPair::new);
+        let our_id = identity.node_id();
 
-        let chain_info = chain_info_source.into();
-
-        let keylog = match cfg.keylog_path {
-            Some(ref path) => {
-                let keylog = OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .write(true)
-                    .open(path)
-                    .map_err(Error::CannotAppendToKeylog)?;
-                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
-                Some(LockedLineWriter::new(keylog))
-            }
-            None => None,
-        };
-
-        let context = Arc::new(NetworkContext::new(
-            our_identity,
-            keylog,
-            node_key_pair,
-            chain_info,
-            &net_metrics,
-        ));
-
-        let component = Network {
-            cfg,
-            context,
+        Ok(Network {
+            config,
             known_addresses: Default::default(),
+            public_address: None,
+            chain_info: chain_info_source.into(),
+            node_key_pair: node_key_pair,
+            identity,
+            our_id,
             validator_matrix,
             conman: None,
-            incoming_validator_status: Default::default(),
             net_metrics,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
@@ -215,9 +196,7 @@ where
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
 
             _payload: PhantomData,
-        };
-
-        Ok(component)
+        })
     }
 
     /// Initializes the networking component.
@@ -237,7 +216,7 @@ where
     {
         // Start by resolving all known addresses.
         let known_addresses =
-            resolve_addresses(self.cfg.known_addresses.iter().map(String::as_str));
+            resolve_addresses(self.config.known_addresses.iter().map(String::as_str));
 
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
@@ -247,11 +226,11 @@ where
         self.known_addresses = known_addresses;
 
         let mut public_addr =
-            utils::resolve_address(&self.cfg.public_address).map_err(Error::ResolveAddr)?;
+            utils::resolve_address(&self.config.public_address).map_err(Error::ResolveAddr)?;
 
         // We can now create a listener.
         let bind_address =
-            utils::resolve_address(&self.cfg.bind_address).map_err(Error::ResolveAddr)?;
+            utils::resolve_address(&self.config.bind_address).map_err(Error::ResolveAddr)?;
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         // We must set non-blocking to `true` or else the tokio task hangs forever.
@@ -266,45 +245,54 @@ where
             public_addr.set_port(local_addr.port());
         }
 
-        Arc::get_mut(&mut self.context)
-            .expect("should be no other pointers")
-            .initialize(public_addr);
-
         let mut effects = Effects::new();
 
         // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
-                .set_timeout(self.cfg.initial_gossip_delay.into())
+                .set_timeout(self.config.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
 
+        let keylog = match self.config.keylog_path {
+            Some(ref path) => {
+                let keylog = OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .write(true)
+                    .open(path)
+                    .map_err(Error::CannotAppendToKeylog)?;
+                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
+                Some(LockedLineWriter::new(keylog))
+            }
+            None => None,
+        };
+
         // Start connection manager.
         let rpc_builder = transport::create_rpc_builder(
-            self.context.chain_info.networking_config,
-            self.cfg.send_buffer_size,
-            self.cfg.ack_timeout,
+            self.chain_info.networking_config.clone(),
+            self.config.send_buffer_size,
+            self.config.ack_timeout,
         );
 
         // Setup connection manager, then learn all known addresses.
-
         let handshake_configuration = HandshakeConfiguration::new(
-            self.context.chain_info.clone(),
-            self.context.node_key_pair.clone(),
+            self.chain_info.clone(),
+            self.node_key_pair.clone(),
             public_addr,
         );
 
         let protocol_handler = TransportHandler::new(
             effect_builder.into_inner(),
-            self.context.identity.clone(),
+            self.identity.clone(),
             handshake_configuration,
-            self.context.keylog.clone(),
+            keylog,
         );
 
         let conman = ConMan::new(
             tokio::net::TcpListener::from_std(listener).expect("not in tokio runtime"),
             public_addr,
-            self.context.our_id,
+            self.our_id,
             Box::new(protocol_handler),
             rpc_builder,
         );
@@ -491,10 +479,10 @@ where
                         // We had to drop the message, since we hit the buffer limit.
                         match deserialize_network_message::<P>(&payload) {
                             Ok(reconstructed_message) => {
-                                debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                                debug!(our_id=%self.our_id, %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
                             }
                             Err(err) => {
-                                error!(our_id=%self.context.our_id(),
+                                error!(our_id=%self.our_id,
                                        %dest,
                                        reconstruction_error=%err,
                                        ?payload,
@@ -660,13 +648,13 @@ where
         };
 
         let connection_count = conman.read_state().routing_table().len();
-        connection_count >= self.cfg.min_peers_for_initialization as usize
+        connection_count >= self.config.min_peers_for_initialization as usize
     }
 
     #[cfg(test)]
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {
-        self.context.our_id()
+        self.our_id
     }
 }
 
@@ -837,18 +825,18 @@ where
                         .ignore(),
                 },
                 Event::GossipOurAddress => {
-                    let our_address = GossipedAddress::new(
-                        self.context
-                            .public_addr()
-                            .expect("component not initialized properly"),
-                    );
+                    let Some(public_address) = self.public_address else {
+                        // Cannot gossip, component is not initialized yet.
+                        return Effects::new();
+                    };
+                    let our_address = GossipedAddress::new(public_address);
 
                     let mut effects = effect_builder
                         .begin_gossip(our_address, Source::Ourself, our_address.gossip_target())
                         .ignore();
                     effects.extend(
                         effect_builder
-                            .set_timeout(self.cfg.gossip_interval.into())
+                            .set_timeout(self.config.gossip_interval.into())
                             .event(|_| Event::GossipOurAddress),
                     );
 
@@ -875,7 +863,7 @@ where
                             let now = Instant::now();
                             let until = now
                                 + Duration::from_millis(
-                                    self.cfg.blocklist_retain_duration.millis(),
+                                    self.config.blocklist_retain_duration.millis(),
                                 );
 
                             conman.ban_peer(*offender, *justification, until);
@@ -940,19 +928,20 @@ where
         // If we receive an updated set of validators, recalculate validator status for every
         // existing connection.
 
-        let active_validators = self.validator_matrix.active_or_upcoming_validators();
+        let _active_validators = self.validator_matrix.active_or_upcoming_validators();
 
         // Update the validator status for every connection.
-        for (public_key, status) in self.incoming_validator_status.iter_mut() {
-            // If there is only a `Weak` ref, we lost the connection to the validator, but the
-            // disconnection has not reached us yet.
-            if let Some(arc) = status.upgrade() {
-                arc.store(
-                    active_validators.contains(public_key),
-                    std::sync::atomic::Ordering::Relaxed,
-                )
-            }
-        }
+        // for (public_key, status) in self.incoming_validator_status.iter_mut() {
+        //     // If there is only a `Weak` ref, we lost the connection to the validator, but the
+        //     // disconnection has not reached us yet.
+        //     if let Some(arc) = status.upgrade() {
+        //         arc.store(
+        //             active_validators.contains(public_key),
+        //             std::sync::atomic::Ordering::Relaxed,
+        //         )
+        //     }
+        // }
+        // TODO: Restore functionality.
 
         Effects::default()
     }
@@ -1004,21 +993,6 @@ where
     P: Payload,
 {
     bincode_config().deserialize(bytes)
-}
-
-impl<P> Debug for Network<P>
-where
-    P: Payload,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // We output only the most important fields of the component, as it gets unwieldy quite fast
-        // otherwise.
-        f.debug_struct("Network")
-            .field("our_id", &self.context.our_id())
-            .field("state", &self.state)
-            .field("public_addr", &self.context.public_addr())
-            .finish()
-    }
 }
 
 /// Processes a request guard obtained by making a request to a peer through Juliet RPC.

@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use datasize::DataSize;
 use futures::future::BoxFuture;
 use juliet::ChannelId;
 use serde::{
@@ -87,7 +88,7 @@ impl<P: Payload> Message<P> {
 }
 
 /// A pair of secret keys used by consensus.
-#[derive(Clone)]
+#[derive(Clone, DataSize)]
 pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
