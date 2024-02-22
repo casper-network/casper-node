@@ -435,11 +435,18 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(AUCTION).copied() {
-                Some(auction_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, auction_hash),
-                    vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
-                ),
+                Some(auction_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(auction_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, auction_hash)
+                    };
+                    QueryRequest::new(
+                        state_hash,
+                        key,
+                        vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+                    )
+                }
                 None => return EraValidatorsResult::AuctionNotFound,
             },
             Err(err) => return EraValidatorsResult::Failure(err),
@@ -645,11 +652,14 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
-                Some(mint_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
-                    vec![TOTAL_SUPPLY_KEY.to_string()],
-                ),
+                Some(mint_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(mint_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                    };
+                    QueryRequest::new(state_hash, key, vec![TOTAL_SUPPLY_KEY.to_string()])
+                }
                 None => {
                     error!("unexpected query failure; mint not found");
                     return TotalSupplyResult::MintNotFound;
@@ -697,11 +707,18 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
-                Some(mint_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
-                    vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
-                ),
+                Some(mint_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(mint_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                    };
+                    QueryRequest::new(
+                        state_hash,
+                        key,
+                        vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
+                    )
+                }
                 None => {
                     error!("unexpected query failure; mint not found");
                     return RoundSeigniorageRateResult::MintNotFound;
