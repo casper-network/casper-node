@@ -3,7 +3,7 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{pin::Pin, sync::Arc};
+use std::{marker::PhantomData, pin::Pin, sync::Arc};
 
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
@@ -15,8 +15,11 @@ use openssl::{
 use strum::EnumCount;
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
+use tracing::{trace, Span};
 
 use crate::{
+    components::network::{deserialize_network_message, Message},
+    reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::{chainspec::JulietConfig, NodeId},
     utils::LockedLineWriter,
@@ -24,9 +27,9 @@ use crate::{
 
 use super::{
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
-    error::ConnectionError,
+    error::{ConnectionError, MessageReceiverError},
     handshake::HandshakeConfiguration,
-    Channel, Identity, PerChannel, Transport,
+    Channel, Event, FromIncoming, Identity, Payload, PerChannel, Transport,
 };
 
 /// Creats a new RPC builder with the currently fixed Juliet configuration.
@@ -99,25 +102,30 @@ impl Drop for Ticket {
     }
 }
 
-pub(super) struct TransportHandler {
+pub(super) struct TransportHandler<REv: 'static, P> {
+    event_queue: EventQueueHandle<REv>,
     identity: Identity,
     handshake_configuration: HandshakeConfiguration,
-    incoming_request_handler: Box<dyn Fn(NodeId, IncomingRequest) + Send + Sync>,
     keylog: Option<LockedLineWriter>,
+    _payload: PhantomData<P>,
 }
 
-impl TransportHandler {
+impl<REv, P> TransportHandler<REv, P>
+where
+    REv: 'static,
+{
     pub(super) fn new(
+        event_queue: EventQueueHandle<REv>,
         identity: Identity,
         handshake_configuration: HandshakeConfiguration,
-        incoming_request_handler: Box<dyn Fn(NodeId, IncomingRequest) + Send + Sync>,
         keylog: Option<LockedLineWriter>,
     ) -> Self {
         Self {
+            event_queue,
             identity,
             handshake_configuration,
-            incoming_request_handler,
             keylog,
+            _payload: PhantomData,
         }
     }
 
@@ -140,7 +148,11 @@ impl TransportHandler {
 }
 
 #[async_trait::async_trait]
-impl ProtocolHandler for TransportHandler {
+impl<REv, P> ProtocolHandler for TransportHandler<REv, P>
+where
+    REv: From<Event<P>> + FromIncoming<P> + Send + 'static,
+    P: Payload,
+{
     #[inline(always)]
     async fn setup_incoming(
         &self,
@@ -163,8 +175,72 @@ impl ProtocolHandler for TransportHandler {
     }
 
     #[inline(always)]
-    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest) {
-        (self.incoming_request_handler)(peer, request)
+    async fn handle_incoming_request(
+        &self,
+        peer: NodeId,
+        request: IncomingRequest,
+    ) -> Result<(), String> {
+        self.do_handle_incoming_request(peer, request)
+            .await
+            .map_err(|err| err.to_string())
+    }
+}
+
+impl<REv, P> TransportHandler<REv, P>
+where
+    REv: From<Event<P>> + FromIncoming<P> + Send + 'static,
+    P: Payload,
+{
+    async fn do_handle_incoming_request(
+        &self,
+        peer: NodeId,
+        request: IncomingRequest,
+    ) -> Result<(), MessageReceiverError> {
+        let channel = Channel::from_repr(request.channel().get())
+            .ok_or_else(|| MessageReceiverError::InvalidChannel(request.channel().get()))?;
+        let payload = request
+            .payload()
+            .as_ref()
+            .ok_or_else(|| MessageReceiverError::EmptyRequest)?;
+
+        let msg: Message<P> = deserialize_network_message(payload)
+            .map_err(MessageReceiverError::DeserializationError)?;
+
+        trace!(%msg, %channel, "message received");
+
+        // Ensure the peer did not try to sneak in a message on a different channel.
+        let msg_channel = msg.get_channel();
+        if msg_channel != channel {
+            return Err(MessageReceiverError::WrongChannel {
+                got: msg_channel,
+                expected: channel,
+            });
+        }
+
+        // TODO: Restore priorization based on validator status.
+        let validator_status = false;
+        let queue_kind = if validator_status {
+            QueueKind::MessageValidator
+        } else if msg.is_low_priority() {
+            QueueKind::MessageLowPriority
+        } else {
+            QueueKind::MessageIncoming
+        };
+
+        let span: Span = todo!();
+        self.event_queue
+            .schedule::<Event<P>>(
+                Event::IncomingMessage {
+                    peer_id: Box::new(peer),
+                    msg: Box::new(msg),
+                    span: span.clone(),
+                    ticket: Ticket::from_rpc_request(request),
+                },
+                queue_kind,
+            )
+            .await;
+
+        Ok(())
     }
 }
 

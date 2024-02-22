@@ -77,7 +77,7 @@ use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
     conman::{ConMan, ConManState, ProtocolHandler, ProtocolHandshakeOutcome},
-    error::ConnectionError,
+    error::{ConnectionError, MessageReceiverError},
     handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
@@ -104,7 +104,7 @@ use crate::{
         requests::{BeginGossipRequest, NetworkInfoRequest, NetworkRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, GossipTarget,
     },
-    reactor::{Finalize, ReactorEvent},
+    reactor::{EventQueueHandle, Finalize, QueueKind, ReactorEvent},
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{
@@ -303,16 +303,10 @@ where
             Duration::from_secs(10),
         ); // TODO: Make configurable.
 
-        let scheduler = effect_builder.into_inner();
-        let incoming_request_handler = Box::new(move |peer_id, incoming_request| {
-            drop(scheduler);
-            // TODO: Handle the incoming request.
-        });
-
         let protocol_handler = TransportHandler::new(
+            effect_builder.into_inner(),
             self.context.identity.clone(),
             handshake_configuration,
-            incoming_request_handler,
             self.context.keylog.clone(),
         );
 

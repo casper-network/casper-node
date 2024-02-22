@@ -214,7 +214,11 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
 
     /// Process one incoming request.
-    fn handle_incoming_request(&self, peer: NodeId, request: IncomingRequest);
+    async fn handle_incoming_request(
+        &self,
+        peer: NodeId,
+        request: IncomingRequest,
+    ) -> Result<(), String>;
 }
 
 /// The outcome of a handshake performed by the [`ProtocolHandler`].
@@ -879,9 +883,22 @@ impl ActiveRoute {
     async fn serve(self, mut rpc_server: RpcServer) -> Result<(), RpcServerError> {
         while let Some(request) = rpc_server.next_request().await? {
             trace!(%request, "received incoming request");
-            self.ctx
+            if let Err(err) = self
+                .ctx
                 .protocol_handler
-                .handle_incoming_request(self.peer_id, request);
+                .handle_incoming_request(self.peer_id, request)
+                .await
+            {
+                // The handler return an error, exit and close connection.
+                rate_limited!(
+                    INCOMING_REQUEST_HANDLING_FAILED,
+                    |dropped| warn!(%err, dropped, "error handling incoming request")
+                );
+
+                // TODO: Send a proper juliet error instead.
+                // TODO: Consider communicating this error upwards for better timeouts.
+                break;
+            }
         }
 
         // Regular connection closing.
