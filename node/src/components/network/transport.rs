@@ -227,13 +227,12 @@ where
             QueueKind::MessageIncoming
         };
 
-        let span: Span = todo!();
         self.event_queue
             .schedule::<Event<P>>(
                 Event::IncomingMessage {
                     peer_id: Box::new(peer),
                     msg: Box::new(msg),
-                    span: span.clone(),
+                    span: Span::current(),
                     ticket: Ticket::from_rpc_request(request),
                 },
                 queue_kind,
