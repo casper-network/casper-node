@@ -825,22 +825,32 @@ where
                         .ignore(),
                 },
                 Event::GossipOurAddress => {
-                    let Some(public_address) = self.public_addr else {
-                        // Cannot gossip, component is not initialized yet.
-                        return Effects::new();
-                    };
-                    let our_address = GossipedAddress::new(public_address);
-
                     let mut effects = effect_builder
-                        .begin_gossip(our_address, Source::Ourself, our_address.gossip_target())
-                        .ignore();
-                    effects.extend(
-                        effect_builder
-                            .set_timeout(self.config.gossip_interval.into())
-                            .event(|_| Event::GossipOurAddress),
-                    );
+                        .set_timeout(self.config.gossip_interval.into())
+                        .event(|_| Event::GossipOurAddress);
+
+                    if let Some(public_address) = self.public_addr {
+                        let our_address = GossipedAddress::new(public_address);
+                        debug!( %our_address, "gossiping our addresses" );
+                        effects.extend(
+                            effect_builder
+                                .begin_gossip(
+                                    our_address,
+                                    Source::Ourself,
+                                    our_address.gossip_target(),
+                                )
+                                .ignore(),
+                        );
+                    } else {
+                        // Cannot gossip, component is not initialized yet and thus has no address.
+                        error!("cannot gossip, component not initialized");
+                    };
 
                     // We also ensure we know our known addresses still.
+                    debug!(
+                        address_count = self.known_addresses.len(),
+                        "learning known addresses"
+                    );
                     self.learn_known_addresses();
 
                     effects
