@@ -196,8 +196,6 @@ where
 pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
     max_delegators_per_validator: Option<u32>,
-    minimum_delegation_amount: u64,
-    maximum_delegation_amount: u64,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller.into());
@@ -217,13 +215,8 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
-                match handle_redelegation(
-                    provider,
-                    unbonding_purse,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                    maximum_delegation_amount,
-                )? {
+                match handle_redelegation(provider, unbonding_purse, max_delegators_per_validator)?
+                {
                     UnbondRedelegationOutcome::SuccessfullyRedelegated => {
                         // noop; on successful redelegation, no actual unbond occurs
                     }
@@ -427,8 +420,6 @@ fn handle_redelegation<P>(
     provider: &mut P,
     unbonding_purse: &UnbondingPurse,
     max_delegators_per_validator: Option<u32>,
-    minimum_delegation_amount: u64,
-    maximum_delegation_amount: u64,
 ) -> Result<UnbondRedelegationOutcome, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -445,8 +436,6 @@ where
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
-        minimum_delegation_amount,
-        maximum_delegation_amount,
     ) {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
         Err(ApiError::AuctionError(err)) if err == Error::BondTooSmall as u8 => {
@@ -478,8 +467,6 @@ pub fn handle_delegation<P>(
     source: URef,
     amount: U512,
     max_delegators_per_validator: Option<u32>,
-    minimum_delegation_amount: u64,
-    maximum_delegation_amount: u64,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -488,18 +475,14 @@ where
         return Err(Error::BondTooSmall.into());
     }
 
-    if amount < U512::from(minimum_delegation_amount) {
-        return Err(Error::DelegationAmountTooSmall.into());
-    }
-    if amount > U512::from(maximum_delegation_amount) {
-        return Err(Error::DelegationAmountTooLarge.into());
-    }
-
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
     let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
-    if !validator_bid.amount_is_valid(amount) {
+    if amount < U512::from(validator_bid.minimum_delegation_amount()) {
         return Err(Error::DelegationAmountTooSmall.into());
+    }
+    if amount > U512::from(validator_bid.maximum_delegation_amount()) {
+        return Err(Error::DelegationAmountTooLarge.into());
     }
 
     // is there already a record for this delegator?

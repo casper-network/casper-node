@@ -102,9 +102,8 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            // FIXME: shouldn't be zero
             minimum_delegation_amount: 0,
-            maximum_delegation_amount: 0,
+            maximum_delegation_amount: u64::MAX,
         }
     }
 
@@ -240,10 +239,14 @@ impl ValidatorBid {
         true
     }
 
-    /// Check is `amount` is within delegation amount bounds.
-    pub fn amount_is_valid(&self, amount: U512) -> bool {
-        U512::from(self.maximum_delegation_amount) >= amount
-            && amount >= U512::from(self.minimum_delegation_amount)
+    /// Returns allowed delegation amount in motes.
+    pub fn minimum_delegation_amount(&self) -> u64 {
+        self.minimum_delegation_amount
+    }
+
+    /// Returns allowed delegation amount in motes.
+    pub fn maximum_delegation_amount(&self) -> u64 {
+        self.maximum_delegation_amount
     }
 }
 

@@ -885,20 +885,9 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
-                let maximum_delegation_amount =
-                    self.context.engine_config().maximum_delegation_amount();
 
                 let result = runtime
-                    .delegate(
-                        delegator,
-                        validator,
-                        amount,
-                        max_delegators_per_validator,
-                        minimum_delegation_amount,
-                        maximum_delegation_amount,
-                    )
+                    .delegate(delegator, validator, amount, max_delegators_per_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -927,20 +916,8 @@ where
                 let new_validator =
                     Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
-                let maximum_delegation_amount =
-                    self.context.engine_config().maximum_delegation_amount();
-
                 let result = runtime
-                    .redelegate(
-                        delegator,
-                        validator,
-                        amount,
-                        new_validator,
-                        minimum_delegation_amount,
-                        maximum_delegation_amount,
-                    )
+                    .redelegate(delegator, validator, amount, new_validator)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -956,18 +933,12 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-                let minimum_delegation_amount =
-                    self.context.engine_config().minimum_delegation_amount();
-                let maximum_delegation_amount =
-                    self.context.engine_config().maximum_delegation_amount();
 
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
-                        minimum_delegation_amount,
-                        maximum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 

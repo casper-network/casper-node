@@ -26,7 +26,7 @@ pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for maximum delegation amount in motes.
-pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 25_000 * 1_000_000_000;
+pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
 /// 91 days / 7 days in a week = 13 weeks
