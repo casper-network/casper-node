@@ -244,6 +244,7 @@ where
         if public_addr.port() == 0 {
             public_addr.set_port(local_addr.port());
         }
+        self.public_addr = Some(public_addr);
 
         let mut effects = Effects::new();
 
@@ -842,8 +843,9 @@ where
                                 .ignore(),
                         );
                     } else {
-                        // Cannot gossip, component is not initialized yet and thus has no address.
-                        error!("cannot gossip, component not initialized");
+                        // The address should have been set before we first trigger the gossiping,
+                        // thus we should never end up here.
+                        error!("cannot gossip our address, it is missing");
                     };
 
                     // We also ensure we know our known addresses still.
