@@ -93,7 +93,7 @@ impl ValidatorBid {
     pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
         let vesting_schedule = None;
         let inactive = true;
-        let staked_amount = 0.into();
+        let staked_amount = U512::zero();
         let delegation_rate = Default::default();
         Self {
             validator_public_key,
