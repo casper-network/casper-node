@@ -26,9 +26,7 @@ use casper_types::{
         NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
-    },
+    contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
     execution::Effects,
     handle_stored_dictionary_value,
     system::auction::EraInfo,
@@ -773,7 +771,8 @@ where
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::NamedKey(_) => true,
+            | Key::NamedKey(_)
+            | Key::BlockMessageCount(_) => true,
         }
     }
 
@@ -809,7 +808,8 @@ where
             | Key::BidAddr(_)
             | Key::Package(_)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::BlockMessageCount(_) => false,
         }
     }
 
@@ -842,7 +842,8 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::BlockMessageCount(_) => false,
         }
     }
 
@@ -945,16 +946,23 @@ where
     pub(crate) fn metered_emit_message(
         &mut self,
         topic_key: Key,
-        topic_value: MessageTopicSummary,
-        message_key: Key,
-        message_value: MessageChecksum,
+        block_time: BlockTime,
+        block_message_count: u64,
+        topic_message_count: u32,
         message: Message,
     ) -> Result<(), Error> {
-        let topic_value = StoredValue::MessageTopic(topic_value);
-        let message_value = StoredValue::Message(message_value);
+        let topic_value =
+            StoredValue::MessageTopic(MessageTopicSummary::new(topic_message_count, block_time));
+        let message_key = message.message_key();
+        let message_value = StoredValue::Message(message.checksum().map_err(Error::BytesRepr)?);
+
+        let block_message_count_key = Key::BlockMessageCount(block_time);
+        let block_message_count_value = StoredValue::CLValue(CLValue::from_t(block_message_count)?);
 
         // Charge for amount as measured by serialized length
-        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        let bytes_count = topic_value.serialized_length()
+            + message_value.serialized_length()
+            + block_message_count_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
         self.tracking_copy.borrow_mut().emit_message(
@@ -962,6 +970,8 @@ where
             topic_value,
             message_key,
             message_value,
+            block_message_count_key,
+            block_message_count_value,
             message,
         );
         Ok(())
