@@ -713,8 +713,10 @@ pub trait Auction:
         }
     }
 
-    /// Transfers a `ValidatorBid` and all related delegators from one validator public key to another.
+    /// Updates a `ValidatorBid` and all related delegator bids to use a new validator public key.
     ///
+    /// This in effect "transfers" a validator along with its stake and all delegators
+    /// from one public key to another.
     /// This method can only be called by the existing validator.
     ///
     /// The arguments are the existing validator's key and the new validator's key.
@@ -732,16 +734,47 @@ pub trait Auction:
         }
 
         // verify that a bid for existing validator exists
-        let validator_addr = BidAddr::from(validator_public_key.clone());
-        let validator_bid = read_validator_bid(self, &validator_addr.into())?;
+        let validator_bid_addr = BidAddr::from(validator_public_key.clone());
+        let mut validator_bid = read_validator_bid(self, &validator_bid_addr.into())?;
 
         // verify that a bid for new validator does not exist yet
-        let new_validator_addr = BidAddr::from(new_validator_public_key.clone());
-        if self.read_bid(&new_validator_addr.into())?.is_some() {
+        let new_validator_bid_addr = BidAddr::from(new_validator_public_key.clone());
+        if self.read_bid(&new_validator_bid_addr.into())?.is_some() {
             return Err(Error::TransferValidatorBid);
         }
 
-        todo!();
+        debug!("transferring validator bid from {validator_bid_addr} to {new_validator_bid_addr}");
+
+        validator_bid.with_validator_public_key(new_validator_public_key.clone());
+        self.write_bid(
+            new_validator_bid_addr.into(),
+            BidKind::Validator(validator_bid),
+        )?;
+
+        debug!("pruning validator bid {}", validator_bid_addr);
+        self.prune_bid(validator_bid_addr);
+
+        debug!("transferring delegator bids from validator {validator_bid_addr} to {new_validator_bid_addr}");
+        let delegators = read_delegator_bids(self, &validator_public_key)?;
+        for mut delegator in delegators {
+            let delegator_public_key = delegator.delegator_public_key().clone();
+            let delegator_bid_addr =
+                BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key));
+
+            delegator.with_validator_public_key(new_validator_public_key.clone());
+            let new_delegator_bid_addr = BidAddr::new_from_public_keys(
+                &new_validator_public_key,
+                Some(&delegator_public_key),
+            );
+
+            self.write_bid(
+                new_delegator_bid_addr.into(),
+                BidKind::Delegator(Box::from(delegator)),
+            )?;
+
+            debug!("pruning delegator bid {}", delegator_bid_addr);
+            self.prune_bid(delegator_bid_addr);
+        }
 
         Ok(())
     }
