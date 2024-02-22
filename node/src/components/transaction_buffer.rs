@@ -233,6 +233,7 @@ impl TransactionBuffer {
 
     {
         if self.prices.get(&era_id).is_none() {
+            info!("Empty prices field, requesting gas price from contract runtime");
             return effect_builder
                 .get_current_gas_price(era_id)
                 .event(move |maybe_gas_price| Event::GetGasPriceResult(
@@ -637,6 +638,11 @@ impl TransactionBuffer {
             .total_transactions
             .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
     }
+
+    #[cfg(test)]
+    pub fn prices(&self) -> BTreeMap<EraId, u8> {
+        self.prices.clone()
+    }
 }
 
 impl<REv> InitializedComponent<REv> for TransactionBuffer
@@ -746,22 +752,6 @@ where
                     era_id,
                     responder,
                 }) => {
-                    // if self.prices.get(&era_id).is_none() {
-                    //     {
-                    //         return effect_builder
-                    //             .get_current_gas_price(era_id)
-                    //             .event(move |_|
-                    // Event::Request(TransactionBufferRequest::GetAppendableBlock {
-                    //                 timestamp,
-                    //                 era_id,
-                    //                 responder
-                    //             }));
-                    //     }
-                    // }
-
-                    // responder
-                    //     .respond(self.appendable_block(timestamp, era_id))
-                    //     .ignore()
                     self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
                 }
                 Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
