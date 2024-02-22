@@ -4471,7 +4471,7 @@ fn should_transfer_validator_bid() {
             ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
         },
     )
-        .build();
+    .build();
 
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4481,7 +4481,7 @@ fn should_transfer_validator_bid() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-        .build();
+    .build();
 
     let validator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4491,7 +4491,7 @@ fn should_transfer_validator_bid() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-        .build();
+    .build();
 
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4501,7 +4501,7 @@ fn should_transfer_validator_bid() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-        .build();
+    .build();
 
     let delegator_2_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4511,7 +4511,7 @@ fn should_transfer_validator_bid() {
             ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
         },
     )
-        .build();
+    .build();
 
     let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
@@ -4522,7 +4522,7 @@ fn should_transfer_validator_bid() {
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
         },
     )
-        .build();
+    .build();
 
     let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -4533,7 +4533,7 @@ fn should_transfer_validator_bid() {
             ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
         },
     )
-        .build();
+    .build();
 
     let delegator_2_validator_1_delegate_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_2_ADDR,
@@ -4544,7 +4544,7 @@ fn should_transfer_validator_bid() {
             ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
         },
     )
-        .build();
+    .build();
 
     let post_genesis_requests = vec![
         system_fund_request,
@@ -4569,7 +4569,9 @@ fn should_transfer_validator_bid() {
 
     let bids = builder.get_bids();
     assert_eq!(bids.len(), 3);
-    assert!(bids.validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone()).is_none());
+    assert!(bids
+        .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
+        .is_none());
 
     let validator_1_transfer_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
@@ -4579,21 +4581,29 @@ fn should_transfer_validator_bid() {
             ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
         },
     )
-        .build();
+    .build();
 
-    builder.exec(validator_1_transfer_request).commit().expect_success();
+    builder
+        .exec(validator_1_transfer_request)
+        .commit()
+        .expect_success();
 
     let bids = builder.get_bids();
     assert_eq!(bids.len(), 3);
-    let validator_bid = bids.validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone()).unwrap();
+    let validator_bid = bids
+        .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
+        .unwrap();
     assert_eq!(
         builder.get_purse_balance(*validator_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert!(bids.validator_bid(&NON_FOUNDER_VALIDATOR_1_PK.clone()).is_none());
+    assert!(bids
+        .validator_bid(&NON_FOUNDER_VALIDATOR_1_PK.clone())
+        .is_none());
 
     assert!(bids
-        .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK).is_none());
+        .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK)
+        .is_none());
     let delegators = bids
         .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_2_PK)
         .expect("should have delegators");

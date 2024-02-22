@@ -4,24 +4,26 @@
 extern crate alloc;
 
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::auction, PublicKey, U512};
-
-const ARG_VALIDATOR: &str = "validator";
-const ARG_NEW_VALIDATOR: &str = "new_validator";
+use casper_types::{
+    runtime_args,
+    system::auction::{ARG_NEW_VALIDATOR, ARG_VALIDATOR, METHOD_TRANSFER_VALIDATOR},
+    PublicKey,
+};
 
 fn transfer_validator(validator: PublicKey, new_validator: PublicKey) {
     let contract_hash = system::get_auction();
     let args = runtime_args! {
-        auction::ARG_VALIDATOR => validator,
-        auction::ARG_NEW_VALIDATOR => new_validator
+        ARG_VALIDATOR => validator,
+        ARG_NEW_VALIDATOR => new_validator
     };
-    runtime::call_contract::<()>(contract_hash, auction::METHOD_TRANSFER_VALIDATOR, args);
+    runtime::call_contract::<()>(contract_hash, METHOD_TRANSFER_VALIDATOR, args);
 }
 
 // Transfer validator.
 //
-// Accepts current validator's public key and new validator's public key
-// where the existing `ValidatorBid` and all related delegators should be transferred.
+// Accepts current validator's public key and new validator's public key.
+// Updates existing validator bid and all related delegator bids with
+// the new validator's public key.
 #[no_mangle]
 pub extern "C" fn call() {
     let validator = runtime::get_named_arg(ARG_VALIDATOR);
