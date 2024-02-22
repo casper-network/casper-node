@@ -5,6 +5,7 @@ use core::{
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -205,6 +206,7 @@ impl AsRef<[u8]> for AccountHash {
 #[derive(Debug)]
 pub struct TryFromSliceForAccountHashError(());
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<AccountHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountHash {
         AccountHash::new(rng.gen())

@@ -6,6 +6,7 @@ use casper_execution_engine::{
     engine_state::{self, Error},
     execution,
 };
+use casper_storage::{system::transfer::TransferError, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::AccountHash, addressable_entity::Weight, runtime_args, system::mint, U512,
 };
@@ -87,7 +88,13 @@ fn should_raise_auth_failure_with_invalid_key() {
     );
     let message = format!("{}", deploy_result.as_error().unwrap());
 
-    assert_eq!(message, format!("{}", engine_state::Error::Authorization))
+    assert_eq!(
+        message,
+        format!(
+            "{}",
+            engine_state::Error::TrackingCopy(TrackingCopyError::Authorization)
+        )
+    )
 }
 
 #[ignore]
@@ -133,7 +140,13 @@ fn should_raise_auth_failure_with_invalid_keys() {
     assert!(deploy_result.has_precondition_failure());
     let message = format!("{}", deploy_result.as_error().unwrap());
 
-    assert_eq!(message, format!("{}", engine_state::Error::Authorization))
+    assert_eq!(
+        message,
+        format!(
+            "{}",
+            engine_state::Error::TrackingCopy(TrackingCopyError::Authorization)
+        )
+    )
 }
 
 #[ignore]
@@ -461,7 +474,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     let message = format!("{}", deploy_result.as_error().unwrap());
     assert!(message.contains(&format!(
         "{}",
-        execution::Error::DeploymentAuthorizationFailure
+        TrackingCopyError::DeploymentAuthorizationFailure
     )))
 }
 
@@ -543,7 +556,9 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     let error = response.as_error().expect("should have error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::DeploymentAuthorizationFailure)
+        Error::Transfer(TransferError::TrackingCopy(
+            TrackingCopyError::DeploymentAuthorizationFailure
+        ))
     ));
 
     // KEY_1 (w: 2) KEY_2 (w: 2) DEFAULT_ACCOUNT_ADDR (w: 1) each passes threshold of 5

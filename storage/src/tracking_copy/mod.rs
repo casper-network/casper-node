@@ -4,6 +4,7 @@
 mod byte_size;
 mod error;
 mod ext;
+mod ext_entity;
 pub(self) mod meter;
 #[cfg(test)]
 mod tests;
@@ -30,7 +31,9 @@ use casper_types::{
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
-pub use self::{error::Error as TrackingCopyError, ext::TrackingCopyExt};
+pub use self::{
+    error::Error as TrackingCopyError, ext::TrackingCopyExt, ext_entity::TrackingCopyEntityExt,
+};
 
 /// Result of a query on a `TrackingCopy`.
 #[derive(Debug)]

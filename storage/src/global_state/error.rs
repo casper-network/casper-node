@@ -2,7 +2,7 @@ use std::sync;
 
 use thiserror::Error;
 
-use casper_types::{bytesrepr, Digest};
+use casper_types::{bytesrepr, Digest, Key};
 
 use crate::global_state::{state::CommitError, trie::TrieRaw};
 
@@ -33,6 +33,10 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Digest, TrieRaw, Vec<Digest>),
+
+    /// Failed to prune listed keys.
+    #[error("Pruning attempt failed.")]
+    FailedToPrune(Vec<Key>),
 }
 
 impl From<bytesrepr::Error> for Error {

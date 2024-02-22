@@ -10,33 +10,24 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped,
 };
 
-/// Tag representing variants of CallStackElement for purposes of serialization.
+/// Tag representing variants of CallerTag for purposes of serialization.
 #[derive(FromPrimitive, ToPrimitive)]
 #[repr(u8)]
-pub enum CallStackElementTag {
+pub enum CallerTag {
     /// Session tag.
     Session = 0,
     /// StoredContract tag.
     StoredContract,
 }
 
-/// Represents the origin of a sub-call.
+/// Identity of a calling entity.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CallStackElement {
+pub enum Caller {
     /// Session
     Session {
         /// The account hash of the caller
         account_hash: AccountHash,
     },
-    // /// Effectively an EntryPointType::Session - stored access to a session.
-    // StoredSession {
-    //     /// The account hash of the caller
-    //     account_hash: AccountHash,
-    //     /// The package hash
-    //     package_hash: PackageHash,
-    //     /// The contract hash
-    //     contract_hash: AddressableEntityHash,
-    // },
     /// AddressableEntity
     AddressableEntity {
         /// The package hash
@@ -46,54 +37,40 @@ pub enum CallStackElement {
     },
 }
 
-impl CallStackElement {
-    /// Creates a [`CallStackElement::Session`]. This represents a call into session code, and
+impl Caller {
+    /// Creates a [`Caller::Session`]. This represents a call into session code, and
     /// should only ever happen once in a call stack.
     pub fn session(account_hash: AccountHash) -> Self {
-        CallStackElement::Session { account_hash }
+        Caller::Session { account_hash }
     }
 
-    /// Creates a [`'CallStackElement::StoredContract`]. This represents a call into a contract with
+    /// Creates a [`'Caller::StoredContract`]. This represents a call into a contract with
     /// `EntryPointType::Contract`.
     pub fn stored_contract(
         package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
     ) -> Self {
-        CallStackElement::AddressableEntity {
+        Caller::AddressableEntity {
             package_hash,
             entity_hash: contract_hash,
         }
     }
 
-    // /// Creates a [`'CallStackElement::StoredSession`]. This represents a call into a contract
-    // with /// `EntryPointType::Session`.
-    // pub fn stored_session(
-    //     account_hash: AccountHash,
-    //     package_hash: PackageHash,
-    //     contract_hash: AddressableEntityHash,
-    // ) -> Self {
-    //     CallStackElement::StoredSession {
-    //         account_hash,
-    //         package_hash,
-    //         contract_hash,
-    //     }
-    // }
-
     /// Gets the tag from self.
-    pub fn tag(&self) -> CallStackElementTag {
+    pub fn tag(&self) -> CallerTag {
         match self {
-            CallStackElement::Session { .. } => CallStackElementTag::Session,
+            Caller::Session { .. } => CallerTag::Session,
 
-            CallStackElement::AddressableEntity { .. } => CallStackElementTag::StoredContract,
+            Caller::AddressableEntity { .. } => CallerTag::StoredContract,
         }
     }
 
     /// Gets the [`AddressableEntityHash`] for both stored session and stored contract variants.
     pub fn contract_hash(&self) -> Option<&AddressableEntityHash> {
         match self {
-            CallStackElement::Session { .. } => None,
+            Caller::Session { .. } => None,
 
-            CallStackElement::AddressableEntity {
+            Caller::AddressableEntity {
                 entity_hash: contract_hash,
                 ..
             } => Some(contract_hash),
@@ -101,16 +78,14 @@ impl CallStackElement {
     }
 }
 
-impl ToBytes for CallStackElement {
+impl ToBytes for Caller {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         result.push(self.tag() as u8);
         match self {
-            CallStackElement::Session { account_hash } => {
-                result.append(&mut account_hash.to_bytes()?)
-            }
+            Caller::Session { account_hash } => result.append(&mut account_hash.to_bytes()?),
 
-            CallStackElement::AddressableEntity {
+            Caller::AddressableEntity {
                 package_hash,
                 entity_hash: contract_hash,
             } => {
@@ -124,8 +99,8 @@ impl ToBytes for CallStackElement {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                CallStackElement::Session { account_hash } => account_hash.serialized_length(),
-                CallStackElement::AddressableEntity {
+                Caller::Session { account_hash } => account_hash.serialized_length(),
+                Caller::AddressableEntity {
                     package_hash,
                     entity_hash: contract_hash,
                 } => package_hash.serialized_length() + contract_hash.serialized_length(),
@@ -133,20 +108,20 @@ impl ToBytes for CallStackElement {
     }
 }
 
-impl FromBytes for CallStackElement {
+impl FromBytes for Caller {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let tag = CallStackElementTag::from_u8(tag).ok_or(bytesrepr::Error::Formatting)?;
+        let tag = CallerTag::from_u8(tag).ok_or(bytesrepr::Error::Formatting)?;
         match tag {
-            CallStackElementTag::Session => {
+            CallerTag::Session => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                Ok((CallStackElement::Session { account_hash }, remainder))
+                Ok((Caller::Session { account_hash }, remainder))
             }
-            CallStackElementTag::StoredContract => {
+            CallerTag::StoredContract => {
                 let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
                 let (contract_hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
                 Ok((
-                    CallStackElement::AddressableEntity {
+                    Caller::AddressableEntity {
                         package_hash,
                         entity_hash: contract_hash,
                     },
@@ -157,7 +132,7 @@ impl FromBytes for CallStackElement {
     }
 }
 
-impl CLTyped for CallStackElement {
+impl CLTyped for Caller {
     fn cl_type() -> CLType {
         CLType::Any
     }
