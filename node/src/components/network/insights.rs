@@ -39,7 +39,7 @@ pub(crate) struct NetworkInsights {
 
 impl NetworkInsights {
     /// Collect networking insights from a given networking component.
-    pub(super) fn collect_from_component<REv, P>(net: &Network<REv, P>) -> Self
+    pub(super) fn collect_from_component<P>(net: &Network<P>) -> Self
     where
         P: Payload,
     {

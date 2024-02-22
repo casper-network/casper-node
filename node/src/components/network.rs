@@ -126,9 +126,8 @@ const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
 #[derive(DataSize)]
-pub(crate) struct Network<REv, P>
+pub(crate) struct Network<P>
 where
-    REv: 'static,
     P: Payload,
 {
     /// Initial configuration values.
@@ -165,20 +164,11 @@ where
 
     /// Marker for what kind of payload this small network instance supports.
     _payload: PhantomData<P>,
-
-    _reactor_event: PhantomData<REv>,
 }
 
-impl<REv, P> Network<REv, P>
+impl<P> Network<P>
 where
     P: Payload,
-    REv: ReactorEvent
-        + From<Event<P>>
-        + FromIncoming<P>
-        + From<StorageRequest>
-        + From<NetworkRequest<P>>
-        + From<PeerBehaviorAnnouncement>
-        + From<BeginGossipRequest<GossipedAddress>>,
 {
     /// Creates a new network component instance.
     #[allow(clippy::type_complexity)]
@@ -189,7 +179,7 @@ where
         registry: &Registry,
         chain_info_source: C,
         validator_matrix: ValidatorMatrix,
-    ) -> Result<Network<REv, P>, Error> {
+    ) -> Result<Network<P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
         let node_key_pair = node_key_pair.map(NodeKeyPair::new);
@@ -233,17 +223,26 @@ where
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
 
             _payload: PhantomData,
-            _reactor_event: PhantomData,
         };
 
         Ok(component)
     }
 
     /// Initializes the networking component.
-    fn initialize(
+    fn initialize<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-    ) -> Result<Effects<Event<P>>, Error> {
+    ) -> Result<Effects<Event<P>>, Error>
+    where
+        REv: ReactorEvent
+            + From<Event<P>>
+            + From<BeginGossipRequest<GossipedAddress>>
+            + FromIncoming<P>
+            + From<StorageRequest>
+            + From<NetworkRequest<P>>
+            + From<PeerBehaviorAnnouncement>,
+        P: Payload,
+    {
         // Start by resolving all known addresses.
         let known_addresses =
             resolve_addresses(self.cfg.known_addresses.iter().map(String::as_str));
@@ -649,7 +648,7 @@ where
     }
 
     /// Handles a received message.
-    fn handle_incoming_message(
+    fn handle_incoming_message<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
@@ -658,7 +657,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: FromIncoming<P> + From<NetworkRequest<P>> + From<PeerBehaviorAnnouncement>,
+        REv: FromIncoming<P> + From<NetworkRequest<P>> + From<PeerBehaviorAnnouncement> + Send,
     {
         // Note: For non-payload channels, we drop the `Ticket` implicitly at end of scope.
         span.in_scope(|| match msg {
@@ -734,9 +733,8 @@ where
     }
 }
 
-impl<REv, P> Finalize for Network<REv, P>
+impl<P> Finalize for Network<P>
 where
-    REv: Send + 'static,
     P: Payload,
 {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
@@ -809,7 +807,7 @@ where
     }
 }
 
-impl<REv, P> Component<REv> for Network<REv, P>
+impl<REv, P> Component<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -960,7 +958,7 @@ where
     }
 }
 
-impl<REv, P> InitializedComponent<REv> for Network<REv, P>
+impl<REv, P> InitializedComponent<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -986,7 +984,7 @@ where
     }
 }
 
-impl<REv, P> ValidatorBoundComponent<REv> for Network<REv, P>
+impl<REv, P> ValidatorBoundComponent<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1078,7 +1076,7 @@ where
     bincode_config().deserialize(bytes)
 }
 
-impl<R, P> Debug for Network<R, P>
+impl<P> Debug for Network<P>
 where
     P: Payload,
 {
