@@ -15,19 +15,18 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "std", test))]
 use tracing::debug;
 
-use super::super::{
-    RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionSessionKind,
-    TransactionTarget,
-};
+use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
 #[cfg(doc)]
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
-use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionV1Category,
+    TransactionV1Category, TransactionSessionKind
+};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
 };
 
 /// The body of a [`TransactionV1`].
@@ -180,44 +179,6 @@ impl TransactionV1Body {
                 }
             },
         }
-    }
-
-    pub fn is_transfer(&self) -> bool {
-        if let TransactionTarget::Native = self.target {
-            if let TransactionEntryPoint::Transfer = self.entry_point {
-                return true;
-            }
-        }
-        false
-    }
-
-    pub fn is_staking(&self) -> bool {
-        if let TransactionTarget::Native = self.target {
-            return match self.entry_point {
-                TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
-                TransactionEntryPoint::AddBid
-                | TransactionEntryPoint::WithdrawBid
-                | TransactionEntryPoint::Delegate
-                | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => true,
-            };
-        }
-        false
-    }
-
-    pub fn is_install_upgrade(&self) -> bool {
-        if let TransactionTarget::Session { kind, .. } = self.target {
-            return match kind {
-                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => true,
-                TransactionSessionKind::Isolated | TransactionSessionKind::Standard => false,
-            };
-        }
-
-        false
-    }
-
-    pub fn is_standard(&self) -> bool {
-        !self.is_staking() && !self.is_transfer() && !self.is_install_upgrade()
     }
 
     /// Returns a random `TransactionV1Body`.

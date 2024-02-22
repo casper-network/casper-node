@@ -8,16 +8,22 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+/// The configuration to determine gas price based on block vacancy.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct VacancyConfig {
+    /// The upper threshold to determine an increment in gas price
     pub upper_threshold: u64,
+    /// The lower threshold to determine a decrement in gas price
     pub lower_threshold: u64,
+    /// The upper limit of the gas price.
     pub max_gas_price: u8,
+    /// The lower limit of the gas price.
     pub min_gas_price: u8,
 }
 
 impl VacancyConfig {
+    /// Returns a random [`VacancyConfig`]
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {

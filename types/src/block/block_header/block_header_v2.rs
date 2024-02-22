@@ -281,6 +281,7 @@ impl PartialEq for BlockHeaderV2 {
             era_id,
             height,
             protocol_version,
+            current_gas_price,
         } = self;
         *parent_hash == other.parent_hash
             && *state_root_hash == other.state_root_hash

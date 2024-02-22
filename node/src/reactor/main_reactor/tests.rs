@@ -1783,6 +1783,7 @@ async fn block_vacancy() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
+    let charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
 
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
@@ -1809,6 +1810,27 @@ async fn block_vacancy() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
+    fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
+
+    // Create & sign transaction to undelegate Alice from Bob and delegate to Charlie.
+    let mut deploy = Deploy::redelegate(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(AUCTION),
+        bob_public_key.clone(),
+        alice_public_key.clone(),
+        charlie_public_key.clone(),
+        alice_delegation_amount,
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+
+    deploy.sign(&alice_secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+
     fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
 
     let highest_block = fixture.highest_complete_block();
@@ -1823,4 +1845,14 @@ async fn block_vacancy() {
 
     let expected_gas_price_for_era_three = 1;
     fixture.check_price_for_era(ERA_THREE, expected_gas_price_for_era_three);
+
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let era_four = EraId::new(4);
+
+    fixture.run_until_consensus_in_era(era_four, ONE_MIN).await;
+
+    fixture.check_price_for_era(era_four, 2u8);
 }

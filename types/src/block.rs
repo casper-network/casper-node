@@ -360,6 +360,7 @@ impl Block {
         }
     }
 
+    /// Return the gas price for V2 block header.
     pub fn maybe_current_gas_price(&self) -> Option<u8> {
         match self {
             Block::V1(_) => None,

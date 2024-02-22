@@ -263,7 +263,7 @@ where
     ///
     /// This process applies changes to the global state.
     ///
-    /// Returns [`UpgradeSuccess`].
+    /// Returns [`ProtocolUpgradeResult`].
     pub fn commit_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
         self.state.protocol_upgrade(request)
     }
