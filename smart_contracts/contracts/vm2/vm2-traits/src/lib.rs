@@ -115,9 +115,9 @@ impl HasTraits {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CounterState, HasTraits, Trait1};
+    use crate::{CounterRef, CounterState, HasTraits, Trait1, GREET_RETURN_VALUE};
 
-    use super::Trait1Ext;
+    use super::Trait1Ref;
     use alloc::collections::BTreeSet;
     use casper_macros::selector;
     use casper_sdk::{
@@ -126,9 +126,10 @@ mod tests {
             self,
             native::{dispatch_with, Environment},
         },
+        log,
         schema::{CasperSchema, SchemaEntryPoint, SchemaType},
         sys::CreateResult,
-        Contract, ContractHandle,
+        Contract, ContractHandle, ContractRef,
     };
     use vm_common::flags::EntryPointFlags;
 
@@ -136,12 +137,12 @@ mod tests {
     #[test]
     fn cant_call_private1() {
         let _ = dispatch_with(Environment::default(), || {
-            let manifest = HasTraits::default_create().expect("Create");
+            let has_traits_handle = HasTraits::default_create().expect("Create");
 
             // TODO: native impl currently is panicking, fix error handling in it
             {
                 let _ret = host::casper_call(
-                    &manifest.contract_address,
+                    &has_traits_handle.contract_address(),
                     0,
                     selector!("counter_state"),
                     &[],
@@ -154,12 +155,12 @@ mod tests {
     #[test]
     fn cant_call_private2() {
         let _ = dispatch_with(Environment::default(), || {
-            let manifest = HasTraits::default_create().expect("Create");
+            let has_traits_handle = HasTraits::default_create().expect("Create");
 
             // TODO: native impl currently is panicking, fix error handling in it
             {
                 let _ret = host::casper_call(
-                    &manifest.contract_address,
+                    &has_traits_handle.contract_address(),
                     0,
                     selector!("counter_state_mut"),
                     &[],
@@ -180,7 +181,7 @@ mod tests {
     fn trait_has_schema() {
         // We can't attach methods to trait itself, but we can generate an "${TRAIT}Ext" struct and
         // attach extra information to it. let schema = Trait1::schema();
-        let counter_schema = super::CounterExt::schema();
+        let counter_schema = super::CounterRef::schema();
 
         assert_eq!(counter_schema.type_, SchemaType::Interface);
 
@@ -283,91 +284,89 @@ mod tests {
         let _ret = dispatch_with(Environment::default(), || {
             let constructor = super::HasTraitsRef::new(5);
 
-            let CreateResult {
-                contract_address, ..
-            } = HasTraits::create(constructor).expect("Constructor works");
+            let has_traits_handle = HasTraits::create(constructor).expect("Constructor works");
 
-            let value = host::call(&contract_address, 0, super::CounterExt::get_counter_value())
-                .expect("Call");
+            let value = host::call(
+                &has_traits_handle.contract_address(),
+                0,
+                super::CounterRef::new().get_counter_value(),
+            )
+            .expect("Call");
 
             assert_eq!(value.into_return_value(), 5);
         });
+        log!("OK");
     }
 
     #[test]
     fn foo() {
         let _ = dispatch_with(Environment::default(), || {
-            let traits_contract: ContractHandle<super::CounterRef> =
-                HasTraits::default_create().expect("Create");
+            let contract_handle = HasTraits::default_create().expect("Create");
+            let trait1_handle =
+                ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
+            let counter_handle =
+                ContractHandle::<CounterRef>::from_address(contract_handle.contract_address());
 
             {
-                traits_contract.call(|traits| {
-                    // (traits as CounterRef).greet("World".into())
-                });
-                let ret = host::call(
-                    &traits_contract.contract_address,
-                    0,
-                    super::Trait1Ext::greet("World".into()),
-                )
-                .expect("Call");
-                let ret_val = ret.into_return_value();
-                assert_eq!(ret_val, super::GREET_RETURN_VALUE);
+                let greet_result: u64 = contract_handle
+                    .build_call()
+                    .cast::<Trait1Ref>()
+                    .call(|trait1ref| trait1ref.greet("World".into()))
+                    .expect("Call as Trait1Ref");
+                assert_eq!(greet_result, GREET_RETURN_VALUE);
             }
 
             {
-                let ret = host::call(
-                    &traits_contract.contract_address,
-                    0,
-                    super::Trait1Ext::abstract_greet(),
-                )
-                .expect("Call");
-                assert_eq!(ret.into_return_value(), ());
-
-                // let _ret = host::call(&manifest.contract_address, 0,
-                // super::HasTraitsRef::foobar())     .expect("Call");
+                let () = trait1_handle
+                    .call(|trait1ref| trait1ref.abstract_greet())
+                    .expect("Call as Trait1Ref");
             }
 
-            // {
-            //     let ret = host::call(
-            //         &manifest.contract_address,
-            //         0,
-            //         super::Trait1Ext::adder(1, 2),
-            //     )
-            //     .expect("Call");
+            {
+                let result: u64 = contract_handle
+                    .build_call()
+                    .cast::<Trait1Ref>()
+                    .call(|trait1ref| trait1ref.adder(1111, 2222))
+                    .expect("Call as Trait1Ref");
+                assert_eq!(result, 1111 + 2222);
+            }
 
-            //     assert_eq!(ret.into_return_value(), 3);
-            // }
+            //
+            // Counter trait
+            //
 
-            // //
-            // // Counter trait
-            // //
+            {
+                let counter_value = counter_handle
+                    .call(|counter| counter.get_counter_value())
+                    .expect("Call");
+                assert_eq!(counter_value, 0);
 
-            // {
-            //     let ret = host::call::<_, u64>(
-            //         &manifest.contract_address,
-            //         0,
-            //         super::CounterExt::get_counter_value(),
-            //     )
-            //     .expect("Call");
+                // call increase
+                let () = counter_handle
+                    .call(|counter| counter.increment())
+                    .expect("Call");
 
-            //     assert_eq!(ret.into_return_value(), 0);
+                // get value
+                let counter_value = counter_handle
+                    .call(|counter| counter.get_counter_value())
+                    .expect("Call");
 
-            //     let _ret = host::call::<_, ()>(
-            //         &manifest.contract_address,
-            //         0,
-            //         super::CounterExt::increment(),
-            //     )
-            //     .expect("Call");
+                // check that the value increased
+                assert_eq!(counter_value, 1);
 
-            //     let ret = host::call::<_, u64>(
-            //         &manifest.contract_address,
-            //         0,
-            //         super::CounterExt::get_counter_value(),
-            //     )
-            //     .expect("Call");
+                // call decrease
+                let () = counter_handle
+                    .call(|counter| counter.decrement())
+                    .expect("Call");
 
-            //     assert_eq!(ret.into_return_value(), 1);
-            // }
+                // get value and compare the difference
+                let counter_value = counter_handle
+                    .call(|counter| counter.get_counter_value())
+                    .expect("Call");
+                assert_eq!(counter_value, 0);
+            }
         });
+
+        log!("Success");
     }
 }

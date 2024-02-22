@@ -51,7 +51,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let mut dynamic_manifest = Vec::new();
     if let Some(traits) = contract_attributes.impl_traits {
         for path in traits.iter() {
-            let ext_struct = format_ident!("{}Ext", path.require_ident().unwrap());
+            let ext_struct = format_ident!("{}Dispatch", path.require_ident().unwrap());
             dynamic_manifest.push(quote! {
                 {
                     const DISPATCHER: #ext_struct = <#ext_struct>::new::<#name>();
@@ -81,7 +81,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
 
                 // TODO: Pass multiple manifests by ptr to avoid allocation
                 let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
-                log!("entry_points_allocated {}: {:?}", entry_points_allocated.len(),  entry_points_allocated);
+
                 let manifest = casper_sdk::sys::Manifest {
                     entry_points: entry_points_allocated.as_ptr(),
                     entry_points_size: entry_points_allocated.len(),
@@ -90,7 +90,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 let input_data = call_data.input_data();
 
                 let create_result = casper_sdk::host::casper_create(None, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
-                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address, create_result.package_address))
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
 
             fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
@@ -107,7 +107,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                     entry_points_size: entry_points_allocated.len(),
                 };
                 let create_result = casper_sdk::host::casper_create(None, &manifest, None, None)?;
-                Ok(casper_sdk::ContractHandle::<Self::Ref>::new(create_result.contract_address, create_result.package_address))
+                Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
         }
     };
@@ -307,9 +307,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(borsh::to_vec(&self).expect("Serialization to succeed"))
                                 }
                             };
-
+                            let self_ty = if method_attribute.constructor {
+                                None
+                            } else {
+                                Some(quote! {
+                                    &self,
+                                })
+                            };
                             extra_code.push(quote! {
-                                pub fn #func_name<'a>(#(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                                pub fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                     #[derive(BorshSerialize)]
                                     struct #ident {
                                         #(pub #arg_names: #arg_types,)*
@@ -338,16 +344,17 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
 
-                let ext_struct_name = format_ident!("{trait_name}Ext");
+                let dispatch_struct_name = format_ident!("{trait_name}Dispatch");
+                let ref_struct = format_ident!("{trait_name}Ref");
 
                 let manifest_data_len = dispatch_table.len();
 
                 let extension_struct = quote! {
 
                     #[doc(hidden)]
-                    #vis struct #ext_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
+                    #vis struct #dispatch_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
 
-                    impl #ext_struct_name {
+                    impl #dispatch_struct_name {
                         #[doc(hidden)]
                         #vis const fn new<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> Self {
                             // This will create set of extern "C" function pointers that will dispatch to a concerete implementation.
@@ -357,10 +364,18 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             ])
                         }
 
+                    }
+
+                    #vis struct #ref_struct;
+
+                    impl #ref_struct {
+
+                        #[doc(hidden)]
                         fn __casper_populate_definitions(definitions: &mut casper_sdk::abi::Definitions) {
                             #(#populate_definitions)*;
                         }
 
+                        #[doc(hidden)]
                         fn __casper_schema_entry_points() -> Vec<casper_sdk::schema::SchemaEntryPoint> {
                             vec![
                                 #(#schema_entry_points,)*
@@ -368,9 +383,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
 
                         #(#extra_code)*
+
+
                     }
 
-                        impl casper_sdk::schema::CasperSchema for #ext_struct_name {
+                        impl casper_sdk::schema::CasperSchema for #ref_struct {
                             fn schema() -> casper_sdk::schema::Schema {
                                 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -389,6 +406,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     definitions,
                                     entry_points,
                                 }
+                            }
+                        }
+
+                        impl casper_sdk::ContractRef for #ref_struct {
+                            fn new() -> Self {
+                                #ref_struct
                             }
                         }
                 };
@@ -886,7 +909,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }),
                     };
 
-                    let ext_struct = format_ident!("{st_name}Ref");
+                    let ext_struct_name = format_ident!("{st_name}Ref");
 
                     let res = quote! {
                         #entry_points
@@ -894,15 +917,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         #handle_manifest
 
                         #[derive(Debug)]
-                        pub struct #ext_struct;
+                        pub struct #ext_struct_name;
 
-                        impl #ext_struct {
+                        impl #ext_struct_name {
                             #(#extra_code)*
                         }
 
-                        impl casper_sdk::ContractRef for #ext_struct {
+                        impl casper_sdk::ContractRef for #ext_struct_name {
                             fn new() -> Self {
-                                Self
+                                #ext_struct_name
                             }
                         }
                     };
@@ -1117,7 +1140,7 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let mut extra_code = Vec::new();
     if let Some(traits) = contract_attributes.impl_traits {
         for path in traits.iter() {
-            let ext_struct = format_ident!("{}Ext", path.require_ident().unwrap());
+            let ext_struct = format_ident!("{}Ref", path.require_ident().unwrap());
             extra_code.push(quote! {
                 {
                     let entry_points = <#ext_struct>::__casper_schema_entry_points();

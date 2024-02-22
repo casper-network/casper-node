@@ -16,7 +16,6 @@ use std::{fmt, io, marker::PhantomData, ptr::NonNull};
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
 use host::CallResult;
-use sys::CreateResult;
 use types::{Address, CallError};
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -156,15 +155,13 @@ where
 #[derive(Debug)]
 pub struct ContractHandle<T: ContractRef> {
     contract_address: Address,
-    package_address: Address,
     marker: PhantomData<T>,
 }
 
 impl<T: ContractRef> ContractHandle<T> {
-    pub fn new(contract_address: Address, package_address: Address) -> Self {
+    pub const fn from_address(contract_address: Address) -> Self {
         ContractHandle {
             contract_address,
-            package_address,
             marker: PhantomData,
         }
     }
@@ -201,10 +198,6 @@ impl<T: ContractRef> ContractHandle<T> {
     pub fn contract_address(&self) -> Address {
         self.contract_address
     }
-
-    pub fn package_address(&self) -> Address {
-        self.package_address
-    }
 }
 
 pub struct CallBuilder<T: ContractRef> {
@@ -225,6 +218,15 @@ impl<T: ContractRef> CallBuilder<T> {
     pub fn with_value(mut self, value: u64) -> Self {
         self.value = Some(value);
         self
+    }
+
+    /// Casts the call builder to a different contract reference.
+    pub fn cast<U: ContractRef>(self) -> CallBuilder<U> {
+        CallBuilder {
+            address: self.address,
+            value: self.value,
+            marker: PhantomData,
+        }
     }
 
     pub fn try_call<'a, CallData: ToCallData>(
