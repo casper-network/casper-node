@@ -109,7 +109,7 @@ pub fn execute_finalized_block(
 
     if executable_block.era_report.is_some() && next_era_gas_price.is_none() {
         return Err(BlockExecutionError::FailedToGetNewEraGasPrice {
-            era_id: executable_block.era_id,
+            era_id: executable_block.era_id.successor(),
         });
     }
 
@@ -149,6 +149,20 @@ pub fn execute_finalized_block(
     // WARNING: Do not change the order of `transactions` as it will result in a different root
     // hash.
     for txn in executable_block.transactions {
+        /*
+        In the go forward, see deploy and transactions, the new transactions specify
+        the target lane in the block, currently there are 4, staking, transfer, install
+        and everything else. Legacy deploy is either a native transfer which is one of the lanes
+        and everything else is not specified and get the default older behavior. The price
+        for all native transfer is set in chainspec.
+
+        What price does it go in, what slot, what is the multiplier, and thats the price
+        Then we check the balance for the payer, and put a hold for that amount.
+        And if we can't put the hold we can't engage the virtual machine
+        Record the error and move on, and charge the penalty payment if any
+
+        This happens here before any engagement of the virtual machine.
+        */
         let deploy = match txn {
             Transaction::Deploy(deploy) => deploy,
             Transaction::V1(_) => continue,
@@ -342,10 +356,7 @@ pub fn execute_finalized_block(
                     .get(&next_era_id)
                     .cloned()
                 {
-                    Some(validators) => match next_era_gas_price {
-                        Some(gas_price) => Some((validators, gas_price)),
-                        None => None,
-                    },
+                    Some(validators) => next_era_gas_price.map(|gas_price| (validators, gas_price)),
                     None => None,
                 }
             }

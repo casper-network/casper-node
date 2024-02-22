@@ -533,7 +533,12 @@ impl BlockValidator {
                     return respond(false, responders);
                 }
                 let system_costs = self.chainspec.system_costs_config;
-                let transaction_footprint = match item.footprint(system_costs) {
+                let transaction_footprint = match item.footprint(
+                    system_costs.wasmless_transfer_cost(),
+                    system_costs.auction_costs().delegate,
+                    system_costs.install_upgrade_cost(),
+                    system_costs.standard_transaction_cost(),
+                ) {
                     Ok(footprint) => footprint,
                     Err(error) => {
                         warn!(

@@ -42,7 +42,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, SystemConfig, Timestamp,
+    Digest, SecretKey, Timestamp,
 };
 #[cfg(feature = "json-schema")]
 use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
@@ -195,11 +195,21 @@ impl Transaction {
     /// Returns the `TransactionFootprint`.
     pub fn footprint(
         &self,
-        system_costs: SystemConfig,
+        wasmless_transfer_cost: u32,
+        native_staking_cost: u32,
+        install_upgrade_cost: u64,
+        standard_transaction_cost: u64,
     ) -> Result<TransactionFootprint, TransactionError> {
         Ok(match self {
             Transaction::Deploy(deploy) => deploy.footprint()?.into(),
-            Transaction::V1(v1) => v1.footprint(system_costs)?.into(),
+            Transaction::V1(v1) => v1
+                .footprint(
+                    wasmless_transfer_cost,
+                    native_staking_cost,
+                    install_upgrade_cost,
+                    standard_transaction_cost,
+                )?
+                .into(),
         })
     }
 

@@ -275,7 +275,12 @@ impl TransactionBuffer {
             return;
         }
         let system_costs = self.system_config;
-        let footprint = match transaction.footprint(system_costs) {
+        let footprint = match transaction.footprint(
+            system_costs.wasmless_transfer_cost(),
+            system_costs.auction_costs().delegate,
+            system_costs.install_upgrade_cost(),
+            system_costs.standard_transaction_cost(),
+        ) {
             Ok(footprint) => footprint,
             Err(err) => {
                 error!(%transaction_hash, %err, "TransactionBuffer: transaction footprint exceeds tolerances");

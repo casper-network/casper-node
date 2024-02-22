@@ -145,8 +145,6 @@ pub(super) async fn exec_or_requeue<REv>(
                     Ratio::new(numerator, denominator).to_integer()
                 };
 
-                println!("Fooo {era_score}");
-
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
                     if current_gas_price > max {

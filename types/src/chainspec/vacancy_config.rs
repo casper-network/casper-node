@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// The configuration to determine gas price based on block vacancy.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[serde(deny_unknown_fields)]
 pub struct VacancyConfig {
     /// The upper threshold to determine an increment in gas price
     pub upper_threshold: u64,
@@ -70,5 +71,18 @@ impl FromBytes for VacancyConfig {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::VacancyConfig;
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let config = VacancyConfig::random(&mut rng);
+        bytesrepr::test_serialization_roundtrip(&config);
     }
 }

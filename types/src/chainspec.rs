@@ -114,7 +114,7 @@ pub struct Chainspec {
     pub system_costs_config: SystemConfig,
 
     /// Vacancy behavior config
-    #[serde(rename = "vacancy_config")]
+    #[serde(rename = "vacancy")]
     pub vacancy_config: VacancyConfig,
 }
 

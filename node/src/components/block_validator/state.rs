@@ -727,7 +727,17 @@ mod tests {
                         }
                         Transaction::V1(v1) => (*v1.hash()).into(),
                     };
-                    (dt_hash, deploy.footprint(system_costs).unwrap())
+                    (
+                        dt_hash,
+                        deploy
+                            .footprint(
+                                system_costs.wasmless_transfer_cost(),
+                                system_costs.auction_costs().delegate,
+                                system_costs.install_upgrade_cost(),
+                                system_costs.standard_transaction_cost(),
+                            )
+                            .unwrap(),
+                    )
                 })
                 .chain(self.transfers.iter().map(|transfer| {
                     let dt_hash = match transfer {
@@ -736,7 +746,17 @@ mod tests {
                         }
                         Transaction::V1(v1) => (*v1.hash()).into(),
                     };
-                    (dt_hash, transfer.footprint(system_costs).unwrap())
+                    (
+                        dt_hash,
+                        transfer
+                            .footprint(
+                                system_costs.wasmless_transfer_cost(),
+                                system_costs.auction_costs().delegate,
+                                system_costs.install_upgrade_cost(),
+                                system_costs.standard_transaction_cost(),
+                            )
+                            .unwrap(),
+                    )
                 }))
                 .collect()
         }
@@ -1151,7 +1171,15 @@ mod tests {
         // returned.
         let dt_hash =
             DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(invalid_deploy_hash));
-        let footprint = invalid_deploy.footprint(SystemConfig::default()).unwrap();
+        let system_costs = SystemConfig::default();
+        let footprint = invalid_deploy
+            .footprint(
+                system_costs.wasmless_transfer_cost(),
+                system_costs.auction_costs().delegate,
+                system_costs.install_upgrade_cost(),
+                system_costs.standard_transaction_cost(),
+            )
+            .unwrap();
         let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));

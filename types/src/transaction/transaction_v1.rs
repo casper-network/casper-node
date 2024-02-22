@@ -39,7 +39,11 @@ use super::{
 use crate::testing::TestRng;
 #[cfg(any(feature = "std", test))]
 use crate::TransactionConfig;
-use crate::{bytesrepr::{self, FromBytes, ToBytes}, crypto, Digest, DisplayIter, Gas, RuntimeArgs, SecretKey, SystemConfig, TimeDiff, Timestamp, TransactionSessionKind, U512};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    crypto, Digest, DisplayIter, Gas, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionSessionKind, U512,
+};
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
@@ -301,19 +305,22 @@ impl TransactionV1 {
     /// Returns the `TransactionV1Footprint`.
     pub fn footprint(
         &self,
-        system_config: SystemConfig,
+        wasmless_transfer_cost: u32,
+        native_staking_cost: u32,
+        install_upgrade_cost: u64,
+        standard_transaction_cost: u64,
     ) -> Result<TransactionV1Footprint, TransactionV1Error> {
         let header = self.header().clone();
 
         let category = self
             .category()
-            .map_err(|error| TransactionV1Error::CategorizationError(error))?;
+            .map_err(TransactionV1Error::CategorizationError)?;
 
         let gas_estimate = match category {
-            TransactionV1Category::InstallUpgrade => system_config.install_upgrade_cost(),
-            TransactionV1Category::Standard => system_config.standard_transaction_cost(),
-            TransactionV1Category::Staking => system_config.auction_costs().delegate as u64,
-            TransactionV1Category::Transfer => system_config.wasmless_transfer_cost() as u64,
+            TransactionV1Category::InstallUpgrade => install_upgrade_cost,
+            TransactionV1Category::Standard => standard_transaction_cost,
+            TransactionV1Category::Staking => native_staking_cost as u64,
+            TransactionV1Category::Transfer => wasmless_transfer_cost as u64,
         };
 
         let size_estimate = self.serialized_length();

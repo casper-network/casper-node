@@ -20,13 +20,11 @@ use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, Tr
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionV1Category, TransactionSessionKind
-};
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    TransactionSessionKind, TransactionV1Category,
 };
 
 /// The body of a [`TransactionV1`].
