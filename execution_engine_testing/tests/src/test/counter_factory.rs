@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     addressable_entity::{EntityKindTag, DEFAULT_ENTRY_POINT_NAME},
     runtime_args, AddressableEntityHash, ByteCodeAddr, Key, RuntimeArgs, U512,
@@ -39,7 +39,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_1 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(no_such_method_1, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == DEFAULT_ENTRY_POINT_NAME)
+        matches!(no_such_method_1, Error::Exec(ExecError::NoSuchMethod(function_name)) if function_name == DEFAULT_ENTRY_POINT_NAME)
     );
 
     // Can't call abstract entry point "increase" on the factory.
@@ -57,7 +57,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_2 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_2, Error::Exec(execution::Error::TemplateMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
+        matches!(&no_such_method_2, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_2
     );
@@ -77,7 +77,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_3 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_3, Error::Exec(execution::Error::TemplateMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
+        matches!(&no_such_method_3, Error::Exec(ExecError::TemplateMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_3
     );

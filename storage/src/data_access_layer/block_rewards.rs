@@ -1,33 +1,44 @@
+use casper_types::{
+    execution::Effects, system::auction::Error as AuctionError, Digest, ProtocolVersion, PublicKey,
+    U512,
+};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
-use casper_types::{execution::Effects, Digest, ProtocolVersion, PublicKey, U512};
+use crate::{
+    system::{runtime_native::Config, transfer::TransferError},
+    tracking_copy::TrackingCopyError,
+};
 
-use crate::tracking_copy::TrackingCopyError;
-
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockRewardsRequest {
+    config: Config,
     state_hash: Digest,
     protocol_version: ProtocolVersion,
     rewards: BTreeMap<PublicKey, U512>,
-    next_block_height: u64,
-    time: u64,
+    block_time: u64,
 }
 
 impl BlockRewardsRequest {
     pub fn new(
+        config: Config,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
+        block_time: u64,
         rewards: BTreeMap<PublicKey, U512>,
-        next_block_height: u64,
-        time: u64,
     ) -> Self {
         BlockRewardsRequest {
+            config,
             state_hash,
             protocol_version,
             rewards,
-            next_block_height,
-            time,
+            block_time,
         }
+    }
+
+    /// Returns config.
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     /// Returns state_hash.
@@ -45,27 +56,27 @@ impl BlockRewardsRequest {
         &self.rewards
     }
 
-    /// Returns next_block_height.
-    pub fn next_block_height(&self) -> u64 {
-        self.next_block_height
-    }
-
-    /// Returns time.
-    pub fn time(&self) -> u64 {
-        self.time
+    /// Returns block time.
+    pub fn block_time(&self) -> u64 {
+        self.block_time
     }
 }
 
 #[derive(Clone, Error, Debug)]
 pub enum BlockRewardsError {
-    #[error("Undistributed fees")]
-    UndistributedFees,
     #[error("Undistributed rewards")]
     UndistributedRewards,
-    #[error("{0}")]
+    #[error(transparent)]
     TrackingCopy(TrackingCopyError),
+    #[error("Registry entry not found: {0}")]
+    RegistryEntryNotFound(String),
+    #[error(transparent)]
+    Transfer(TransferError),
+    #[error("Auction error: {0}")]
+    Auction(AuctionError),
 }
 
+#[derive(Debug, Clone)]
 pub enum BlockRewardsResult {
     RootNotFound,
     Failure(BlockRewardsError),

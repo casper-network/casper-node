@@ -11,6 +11,7 @@ pub mod balance;
 pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
+mod fee;
 mod flush;
 mod genesis;
 pub mod get_bids;
@@ -31,6 +32,7 @@ pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+pub use fee::{FeeError, FeeRequest, FeeResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
 pub use get_bids::{BidsRequest, BidsResult};

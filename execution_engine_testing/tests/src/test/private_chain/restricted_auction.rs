@@ -25,7 +25,6 @@ fn should_not_distribute_rewards_but_compute_next_set() {
             None,
             *DEFAULT_PROTOCOL_VERSION,
             IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
-            1,
             DEFAULT_BLOCK_TIME,
         );
         let step_request = StepRequestBuilder::new()
@@ -52,7 +51,6 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         None,
         *DEFAULT_PROTOCOL_VERSION,
         IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
-        0,
         DEFAULT_BLOCK_TIME,
     );
 

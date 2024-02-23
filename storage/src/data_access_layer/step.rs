@@ -8,7 +8,11 @@ use thiserror::Error;
 
 use casper_types::{execution::Effects, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
 
-use crate::{global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError};
+use crate::{
+    global_state::error::Error as GlobalStateError,
+    system::runtime_native::{Config, TransferConfig},
+    tracking_copy::TrackingCopyError,
+};
 
 /// The definition of a slash item.
 #[derive(Debug, Clone)]
@@ -60,8 +64,12 @@ impl EvictItem {
 /// Representation of a step request.
 #[derive(Debug)]
 pub struct StepRequest {
+    /// Config
+    config: Config,
+
     /// State root hash.
     state_hash: Digest,
+
     /// Protocol version for this request.
     protocol_version: ProtocolVersion,
     /// List of validators to be slashed.
@@ -78,6 +86,7 @@ pub struct StepRequest {
     /// Intended use is to always specify the current era id + 1 which will return computed era at
     /// the end of this step request.
     next_era_id: EraId,
+
     /// Timestamp in milliseconds representing end of the current era.
     era_end_timestamp_millis: u64,
 }
@@ -86,6 +95,7 @@ impl StepRequest {
     /// Creates new step request.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        config: Config,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         slash_items: Vec<SlashItem>,
@@ -94,6 +104,7 @@ impl StepRequest {
         era_end_timestamp_millis: u64,
     ) -> Self {
         Self {
+            config,
             state_hash,
             protocol_version,
             slash_items,
@@ -101,6 +112,14 @@ impl StepRequest {
             next_era_id,
             era_end_timestamp_millis,
         }
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn transfer_config(&self) -> TransferConfig {
+        self.config.transfer_config().clone()
     }
 
     /// Returns list of slashed validators.
@@ -153,6 +172,12 @@ pub enum StepError {
     /// Tracking copy error.
     #[error("{0}")]
     TrackingCopy(TrackingCopyError),
+    /// Failed to find auction contract.
+    #[error("Auction not found")]
+    AuctionNotFound,
+    /// Failed to find mint contract.
+    #[error("Mint not found")]
+    MintNotFound,
 }
 
 impl From<TrackingCopyError> for StepError {

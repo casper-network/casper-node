@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{self, EngineConfigBuilder},
-    execution,
+    execution::ExecError,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
@@ -246,7 +246,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
+        matches!(error, engine_state::Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
         "vesting schedule is not yet initialized"
     );
 

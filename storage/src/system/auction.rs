@@ -1,3 +1,4 @@
+mod auction_native;
 pub mod bidding;
 pub mod detail;
 pub mod providers;

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -21,9 +21,9 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     data_access_layer::{
         BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
-        QueryResult, StepRequest, StepResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, QueryRequest, QueryResult, StepRequest, StepResult,
     },
     global_state::{
         state::{
@@ -34,6 +34,7 @@ use casper_storage::{
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::lmdb::LmdbTrieStore,
     },
+    system::runtime_native::{Config, TransferConfig},
 };
 use casper_types::{
     account::AccountHash,
@@ -52,10 +53,10 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
-    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
-    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Transfer,
-    TransferAddr, URef, OS_PAGE_SIZE, U512,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, FeeHandling,
+    Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    SystemEntityRegistry, Transfer, TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -880,23 +881,49 @@ where
         step_result
     }
 
+    /// Distribute fees.
+    pub fn distribute_fees(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        administrative_accounts: BTreeSet<AccountHash>,
+        block_time: u64,
+    ) -> FeeResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let config = TransferConfig::default(); // todo fill this in from chainspec
+
+        let fee_req = FeeRequest::new(
+            config,
+            pre_state_hash,
+            protocol_version,
+            administrative_accounts,
+            FeeHandling::Accumulate,
+            block_time,
+        );
+        let fee_result = self.engine_state.commit_fees(fee_req);
+
+        if let FeeResult::Success {
+            post_state_hash, ..
+        } = fee_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        fee_result
+    }
+
     /// Distributes the rewards.
     pub fn distribute(
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
         rewards: BTreeMap<PublicKey, U512>,
-        next_block_height: u64,
         time: u64,
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let distribute_req = BlockRewardsRequest::new(
-            pre_state_hash,
-            protocol_version,
-            rewards,
-            next_block_height,
-            time,
-        );
+        let config = Config::default(); // todo fill this in from chainspec
+        let distribute_req =
+            BlockRewardsRequest::new(config, pre_state_hash, protocol_version, time, rewards);
         let distribute_block_rewards_result =
             self.engine_state.commit_block_rewards(distribute_req);
 

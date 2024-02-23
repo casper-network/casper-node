@@ -5,17 +5,17 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
     EntityAddr, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 use once_cell::sync::Lazy;
+use std::collections::BTreeSet;
 
 use crate::{
     lmdb_fixture,
-    test::private_chain::{
-        self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, VALIDATOR_1_PUBLIC_KEY,
-    },
+    test::private_chain::{self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR},
     wasm_utils,
 };
 
@@ -213,19 +213,17 @@ fn should_distribute_accumulated_fees_to_admins() {
         .expect("should have admin account");
     let admin_balance_before = builder.get_purse_balance(admin.main_purse());
 
-    assert!(
-        builder
-            .distribute(
-                None,
-                *DEFAULT_PROTOCOL_VERSION,
-                IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))])
-                    .collect(),
-                1,
-                DEFAULT_BLOCK_TIME,
-            )
-            .is_success(),
-        "should distribute"
+    let mut administrative_accounts: BTreeSet<AccountHash> = BTreeSet::new();
+    administrative_accounts.insert(*DEFAULT_ADMIN_ACCOUNT_ADDR);
+
+    let result = builder.distribute_fees(
+        None,
+        *DEFAULT_PROTOCOL_VERSION,
+        administrative_accounts,
+        DEFAULT_BLOCK_TIME,
     );
+
+    assert!(result.is_success(), "should distribute");
 
     let accumulated_purse_balance_after_distribute = builder.get_purse_balance(accumulation_purse);
 

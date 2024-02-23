@@ -17,7 +17,7 @@ use casper_types::{
     U512, UREF_SERIALIZED_LENGTH,
 };
 
-use super::{args::Args, Error, Runtime};
+use super::{args::Args, ExecError, Runtime};
 use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
@@ -297,10 +297,10 @@ where
                     Err(ApiError::PurseNotCreated)
                 } else {
                     let purse = self.create_purse()?;
-                    let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
+                    let purse_bytes = purse.into_bytes().map_err(ExecError::BytesRepr)?;
                     self.try_get_memory()?
                         .set(dest_ptr, &purse_bytes)
-                        .map_err(|e| Error::Interpreter(e.into()))?;
+                        .map_err(|e| ExecError::Interpreter(e.into()))?;
                     Ok(())
                 };
 
@@ -331,15 +331,15 @@ where
                 )?;
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
 
                 let ret = match self.transfer_to_account(account_hash, amount, id)? {
@@ -348,7 +348,7 @@ where
                         let result_value_bytes = result_value.to_le_bytes();
                         self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
-                            .map_err(|error| Error::Interpreter(error.into()))?;
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
                         Ok(())
                     }
                     Err(api_error) => Err(api_error),
@@ -393,19 +393,19 @@ where
                 )?;
                 let source_purse = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
                 let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
@@ -418,7 +418,7 @@ where
                         let result_value_bytes = result_value.to_le_bytes();
                         self.try_get_memory()?
                             .set(result_ptr, &result_value_bytes)
-                            .map_err(|error| Error::Interpreter(error.into()))?;
+                            .map_err(|error| ExecError::Interpreter(error.into()))?;
                         Ok(())
                     }
                     Err(api_error) => Err(api_error),
@@ -461,22 +461,22 @@ where
 
                 let source: URef = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
 
                 let target: URef = {
                     let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
 
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
 
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(ExecError::BytesRepr)?
                 };
 
                 let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;
@@ -939,7 +939,7 @@ where
 
                 self.try_get_memory()?
                     .set(out_ptr, &digest)
-                    .map_err(|error| Error::Interpreter(error.into()))?;
+                    .map_err(|error| ExecError::Interpreter(error.into()))?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
 
@@ -1099,7 +1099,7 @@ where
 
                 self.try_get_memory()?
                     .set(out_ptr, &random_bytes)
-                    .map_err(|error| Error::Interpreter(error.into()))?;
+                    .map_err(|error| ExecError::Interpreter(error.into()))?;
 
                 Ok(Some(RuntimeValue::I32(0)))
             }
@@ -1154,18 +1154,18 @@ where
                 let topic_name_bytes =
                     self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
                 let topic_name = std::str::from_utf8(&topic_name_bytes)
-                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
+                    .map_err(|e| Trap::from(ExecError::InvalidUtf8Encoding(e)))?;
 
                 if operation_size as usize > MessageTopicOperation::max_serialized_len() {
-                    return Err(Trap::from(Error::InvalidMessageTopicOperation));
+                    return Err(Trap::from(ExecError::InvalidMessageTopicOperation));
                 }
                 let topic_operation = self
                     .t_from_mem(operation_ptr, operation_size)
-                    .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
+                    .map_err(|_e| Trap::from(ExecError::InvalidMessageTopicOperation))?;
 
                 // only allow managing messages from stored contracts
                 if !self.context.get_entity_key().is_smart_contract_key() {
-                    return Err(Trap::from(Error::InvalidContext));
+                    return Err(Trap::from(ExecError::InvalidContext));
                 }
 
                 let result = match topic_operation {
@@ -1211,7 +1211,7 @@ where
                 let topic_name_bytes =
                     self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
                 let topic_name = std::str::from_utf8(&topic_name_bytes)
-                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
+                    .map_err(|e| Trap::from(ExecError::InvalidUtf8Encoding(e)))?;
 
                 let message = self.t_from_mem(message_ptr, message_size)?;
 
@@ -1222,7 +1222,7 @@ where
                         .context
                         .emit_message_cost()
                         .checked_add(host_function_costs.cost_increase_per_message.into())
-                        .ok_or(Error::GasLimit)?;
+                        .ok_or(ExecError::GasLimit)?;
                     self.context.set_emit_message_cost(new_cost);
                 }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))

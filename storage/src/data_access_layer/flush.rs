@@ -25,3 +25,17 @@ pub enum FlushResult {
     /// Failed to flush.
     Failure(GlobalStateError),
 }
+
+impl FlushResult {
+    /// Flush succeeded
+    pub fn flushed(&self) -> bool {
+        matches!(self, FlushResult::Success)
+    }
+
+    pub fn as_error(self) -> Result<(), GlobalStateError> {
+        match self {
+            FlushResult::ManualSyncDisabled | FlushResult::Success => Ok(()),
+            FlushResult::Failure(gse) => Err(gse),
+        }
+    }
+}

@@ -3081,7 +3081,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     );
     assert!(
         builder
-            .distribute(None, new_protocol_version, rewards, 10, timestamp_millis)
+            .distribute(None, new_protocol_version, rewards, timestamp_millis)
             .is_success(),
         "must distribute"
     );

@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{runtime_args, AccessRights, RuntimeArgs};
 
 const REGRESSION_20220204_CONTRACT: &str = "regression_20220204.wasm";
@@ -43,7 +43,7 @@ fn regression_20220204_as_contract() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse
         ),
         "Expected revert but received {:?}",
@@ -77,7 +77,7 @@ fn regression_20220204_as_contract_attenuated() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse
         ),
         "Expected revert but received {:?}",
@@ -106,7 +106,7 @@ fn regression_20220204_as_contract_attenuated() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse
         ),
         "Expected revert but received {:?}",
@@ -140,7 +140,7 @@ fn regression_20220204_as_contract_by_hash() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse.with_access_rights(expected)
         ),
         "Expected revert but received {:?}",
@@ -174,7 +174,7 @@ fn regression_20220204_nontrivial_arg_as_contract() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse
         ),
         "Expected revert but received {:?}",
@@ -208,7 +208,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse.with_access_rights(expected)
         ),
         "Expected revert but received {:?}",
@@ -237,7 +237,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == main_purse.with_access_rights(expected)
         ),
         "Expected revert but received {:?}",

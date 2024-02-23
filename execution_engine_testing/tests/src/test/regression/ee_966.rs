@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
-    execution::Error as ExecError,
+    execution::ExecError,
 };
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,

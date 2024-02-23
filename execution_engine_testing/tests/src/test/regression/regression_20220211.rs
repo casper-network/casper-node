@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{runtime_args, AccessRights, RuntimeArgs, URef};
 
 const REGRESSION_20220211_CONTRACT: &str = "regression_20220211.wasm";
@@ -64,7 +64,7 @@ fn test(entrypoint: &str) {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == expected_forged_uref
         ),
         "Expected revert but received {:?}",

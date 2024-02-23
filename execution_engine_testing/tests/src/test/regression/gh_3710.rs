@@ -182,7 +182,6 @@ fn distribute_rewards<S>(
         ProtocolVersion::V1_0_0,
         IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
         block_height,
-        0,
     );
 }
 

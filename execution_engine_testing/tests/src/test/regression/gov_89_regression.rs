@@ -99,8 +99,12 @@ fn should_not_create_any_purse() {
     );
 
     let effects_1 = match builder.step(step_request_1) {
-        StepResult::RootNotFound | StepResult::Failure(_) => {
-            panic!("step_request_1: failed to run step")
+        StepResult::Failure(step_error) => {
+            println!("step_request_1: {}", step_error);
+            panic!("step_request_1: Failure")
+        }
+        StepResult::RootNotFound => {
+            panic!("step_request_1: RootNotFound")
         }
         StepResult::Success { effects, .. } => effects,
     };

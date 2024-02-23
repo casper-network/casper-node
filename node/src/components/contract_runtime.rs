@@ -567,10 +567,12 @@ impl ContractRuntime {
             } => {
                 if let Transaction::Deploy(deploy) = *transaction {
                     let engine_state = Arc::clone(&self.engine_state);
+                    let data_access_layer = Arc::clone(&self.data_access_layer);
                     async move {
                         let result = run_intensive_task(move || {
                             speculatively_execute(
                                 engine_state.as_ref(),
+                                data_access_layer.as_ref(),
                                 execution_prestate,
                                 DeployItem::from(deploy.clone()),
                             )

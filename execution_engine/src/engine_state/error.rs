@@ -15,7 +15,7 @@ use casper_types::{
 };
 
 use crate::{
-    execution,
+    execution::ExecError,
     runtime::{stack, PreprocessingError},
 };
 
@@ -40,7 +40,7 @@ pub enum Error {
     WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
-    Exec(execution::Error),
+    Exec(ExecError),
     /// Storage error.
     #[error("Storage error: {0}")]
     Storage(#[from] global_state::error::Error),
@@ -134,7 +134,7 @@ impl Error {
     /// This method should be used only by native code that has to mimic logic of a WASM executed
     /// code.
     pub fn reverter(api_error: impl Into<ApiError>) -> Error {
-        Error::Exec(execution::Error::Revert(api_error.into()))
+        Error::Exec(ExecError::Revert(api_error.into()))
     }
 }
 
@@ -144,10 +144,10 @@ impl From<TransferError> for Error {
     }
 }
 
-impl From<execution::Error> for Error {
-    fn from(error: execution::Error) -> Self {
+impl From<ExecError> for Error {
+    fn from(error: ExecError) -> Self {
         match error {
-            execution::Error::WasmPreprocessing(preprocessing_error) => {
+            ExecError::WasmPreprocessing(preprocessing_error) => {
                 Error::WasmPreprocessing(preprocessing_error)
             }
             _ => Error::Exec(error),

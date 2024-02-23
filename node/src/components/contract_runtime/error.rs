@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
-    data_access_layer::{BlockRewardsError, StepError},
+    data_access_layer::{BlockRewardsError, FeeError, StepError},
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
@@ -78,6 +78,12 @@ pub enum BlockExecutionError {
         StepError,
     ),
     #[error(transparent)]
+    DistributeFees(
+        #[from]
+        #[serde(skip_serializing)]
+        FeeError,
+    ),
+    #[error(transparent)]
     DistributeBlockRewards(
         #[from]
         #[serde(skip_serializing)]
@@ -123,4 +129,7 @@ pub enum BlockExecutionError {
     /// A root state hash was not found.
     #[error("Root state hash not found in global state.")]
     RootNotFound(Digest),
+    /// Missing checksum registry.
+    #[error("Missing checksum registry")]
+    MissingChecksumRegistry,
 }

@@ -167,7 +167,13 @@ pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let validator_slots: u32 = read_from(provider, VALIDATOR_SLOTS_KEY)?;
+    let validator_slots: u32 = match read_from(provider, VALIDATOR_SLOTS_KEY) {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to find VALIDATOR_SLOTS_KEY {}", err);
+            return Err(err);
+        }
+    };
     let validator_slots = validator_slots
         .try_into()
         .map_err(|_| Error::InvalidValidatorSlotsValue)?;
@@ -178,7 +184,13 @@ pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let auction_delay: u64 = read_from(provider, AUCTION_DELAY_KEY)?;
+    let auction_delay: u64 = match read_from(provider, AUCTION_DELAY_KEY) {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to find AUCTION_DELAY_KEY {}", err);
+            return Err(err);
+        }
+    };
     Ok(auction_delay)
 }
 
