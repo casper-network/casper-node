@@ -19,6 +19,7 @@ use vm::{
 const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
 const VM2_HARNESS: &[u8] = include_bytes!("../vm2-harness.wasm");
 const VM2_CEP18: &[u8] = include_bytes!("../vm2_cep18.wasm");
+const VM2_TRAITS: &[u8] = include_bytes!("../vm2-trait.wasm");
 
 #[test]
 fn test_contract() {
@@ -36,6 +37,11 @@ fn harness() {
 #[test]
 fn cep18() {
     run_wasm(VM2_CEP18, ());
+}
+
+#[test]
+fn traits() {
+    run_wasm(VM2_TRAITS, ());
 }
 
 type Blake2b256 = Blake2b<U32>;

@@ -154,7 +154,6 @@ pub fn call() {
     {
         let contract_handle = Harness::create(HarnessRef::initialize()).expect("Should create");
         log!("success");
-        log!("package_address: {:?}", contract_handle.package_address());
         log!("contract_address: {:?}", contract_handle.contract_address());
 
         // Verify that the address captured inside constructor is not the same as caller.
@@ -236,7 +235,6 @@ pub fn call() {
         let contract_handle = Harness::create(HarnessRef::constructor_with_args("World".into()))
             .expect("Should create");
         log!("success 2");
-        log!("package_address: {:?}", contract_handle.package_address());
         log!("contract_address: {:?}", contract_handle.contract_address());
 
         let result = contract_handle

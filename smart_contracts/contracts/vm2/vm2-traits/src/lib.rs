@@ -13,11 +13,7 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    host::{self, Alloc, CallResult},
-    log, revert,
-    sys::CreateResult,
-    types::{Address, CallError, ResultCode},
-    Contract, Selector, ToCallData,
+    host::{self, Alloc, CallResult}, log, revert, sys::CreateResult, types::{Address, CallError, ResultCode}, Contract, ContractHandle, Selector, ToCallData
 };
 
 const GREET_RETURN_VALUE: u64 = 123456789;
@@ -110,6 +106,73 @@ impl HasTraits {
         // Can extend contract that implements a trait to also call methods provided by a trait.
         let counter_state = self.counter_state();
         log!("Foobar! Counter value: {}", counter_state.value);
+    }
+}
+
+pub fn perform_test() {
+    let contract_handle = HasTraits::default_create().expect("Create");
+    let trait1_handle =
+        ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
+    let counter_handle =
+        ContractHandle::<CounterRef>::from_address(contract_handle.contract_address());
+
+    {
+        let greet_result: u64 = contract_handle
+            .build_call()
+            .cast::<Trait1Ref>()
+            .call(|trait1ref| trait1ref.greet("World".into()))
+            .expect("Call as Trait1Ref");
+        assert_eq!(greet_result, GREET_RETURN_VALUE);
+    }
+
+    {
+        let () = trait1_handle
+            .call(|trait1ref| trait1ref.abstract_greet())
+            .expect("Call as Trait1Ref");
+    }
+
+    {
+        let result: u64 = contract_handle
+            .build_call()
+            .cast::<Trait1Ref>()
+            .call(|trait1ref| trait1ref.adder(1111, 2222))
+            .expect("Call as Trait1Ref");
+        assert_eq!(result, 1111 + 2222);
+    }
+
+    //
+    // Counter trait
+    //
+
+    {
+        let counter_value = counter_handle
+            .call(|counter| counter.get_counter_value())
+            .expect("Call");
+        assert_eq!(counter_value, 0);
+
+        // call increase
+        let () = counter_handle
+            .call(|counter| counter.increment())
+            .expect("Call");
+
+        // get value
+        let counter_value = counter_handle
+            .call(|counter| counter.get_counter_value())
+            .expect("Call");
+
+        // check that the value increased
+        assert_eq!(counter_value, 1);
+
+        // call decrease
+        let () = counter_handle
+            .call(|counter| counter.decrement())
+            .expect("Call");
+
+        // get value and compare the difference
+        let counter_value = counter_handle
+            .call(|counter| counter.get_counter_value())
+            .expect("Call");
+        assert_eq!(counter_value, 0);
     }
 }
 
@@ -301,70 +364,7 @@ mod tests {
     #[test]
     fn foo() {
         let _ = dispatch_with(Environment::default(), || {
-            let contract_handle = HasTraits::default_create().expect("Create");
-            let trait1_handle =
-                ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
-            let counter_handle =
-                ContractHandle::<CounterRef>::from_address(contract_handle.contract_address());
-
-            {
-                let greet_result: u64 = contract_handle
-                    .build_call()
-                    .cast::<Trait1Ref>()
-                    .call(|trait1ref| trait1ref.greet("World".into()))
-                    .expect("Call as Trait1Ref");
-                assert_eq!(greet_result, GREET_RETURN_VALUE);
-            }
-
-            {
-                let () = trait1_handle
-                    .call(|trait1ref| trait1ref.abstract_greet())
-                    .expect("Call as Trait1Ref");
-            }
-
-            {
-                let result: u64 = contract_handle
-                    .build_call()
-                    .cast::<Trait1Ref>()
-                    .call(|trait1ref| trait1ref.adder(1111, 2222))
-                    .expect("Call as Trait1Ref");
-                assert_eq!(result, 1111 + 2222);
-            }
-
-            //
-            // Counter trait
-            //
-
-            {
-                let counter_value = counter_handle
-                    .call(|counter| counter.get_counter_value())
-                    .expect("Call");
-                assert_eq!(counter_value, 0);
-
-                // call increase
-                let () = counter_handle
-                    .call(|counter| counter.increment())
-                    .expect("Call");
-
-                // get value
-                let counter_value = counter_handle
-                    .call(|counter| counter.get_counter_value())
-                    .expect("Call");
-
-                // check that the value increased
-                assert_eq!(counter_value, 1);
-
-                // call decrease
-                let () = counter_handle
-                    .call(|counter| counter.decrement())
-                    .expect("Call");
-
-                // get value and compare the difference
-                let counter_value = counter_handle
-                    .call(|counter| counter.get_counter_value())
-                    .expect("Call");
-                assert_eq!(counter_value, 0);
-            }
+            super::perform_test();
         });
 
         log!("Success");
