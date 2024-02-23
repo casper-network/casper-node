@@ -180,7 +180,9 @@ pub fn perform_test() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CounterExt, CounterRef, CounterState, HasTraits, Trait1, GREET_RETURN_VALUE};
+    use crate::{
+        CounterExt, CounterRef, CounterState, HasTraits, HasTraitsRef, Trait1, GREET_RETURN_VALUE,
+    };
 
     use super::Trait1Ref;
     use alloc::collections::BTreeSet;
@@ -370,5 +372,11 @@ mod tests {
         });
 
         log!("Success");
+    }
+
+    #[test]
+    fn bar() {
+        let inst = <HasTraitsRef as ContractRef>::new();
+        let _call_data = inst.get_counter_value();
     }
 }
