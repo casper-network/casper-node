@@ -11,8 +11,9 @@ use casper_types::{Chainspec, ChainspecRawBytes};
 
 use super::network::NetworkedReactor;
 use crate::{
-    components::{network::Identity as NetworkIdentity, ComponentState},
+    components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::NodeId,
     NodeRng,
@@ -87,8 +88,8 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
         }
     }
 
-    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
-        self.inner().get_component_state(name)
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        self.reactor.activate_failpoint(activation);
     }
 }
 

@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use casper_types::{
     system::auction::EraValidators, Block, BlockHeader, BlockV2, EraId, FinalitySignature,
-    Transaction,
+    FinalitySignatureV2, Transaction,
 };
 
 use crate::{
@@ -167,12 +167,12 @@ pub(crate) enum MainEvent {
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
-    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignature>),
+    FinalitySignatureGossiper(#[serde(skip_serializing)] gossiper::Event<FinalitySignatureV2>),
     #[from]
-    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignature>),
+    FinalitySignatureGossiperIncoming(GossiperIncoming<FinalitySignatureV2>),
     #[from]
     FinalitySignatureGossiperAnnouncement(
-        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignature>,
+        #[serde(skip_serializing)] GossiperAnnouncement<FinalitySignatureV2>,
     ),
     #[from]
     FinalitySignatureFetcher(#[serde(skip_serializing)] fetcher::Event<FinalitySignature>),
@@ -604,8 +604,8 @@ impl From<NetworkRequest<gossiper::Message<BlockV2>>> for MainEvent {
     }
 }
 
-impl From<NetworkRequest<gossiper::Message<FinalitySignature>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<FinalitySignature>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<FinalitySignatureV2>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<FinalitySignatureV2>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

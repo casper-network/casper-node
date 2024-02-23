@@ -57,15 +57,24 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Returns a default `Config` suitable for tests, along with a `TempDir` which must be kept
-    /// alive for the duration of the test since its destructor removes the dir from the filesystem.
+    /// Returns a `Config` suitable for tests, along with a `TempDir` which must be kept alive for
+    /// the duration of the test since its destructor removes the dir from the filesystem.
+    ///
+    /// `size_multiplier` is used to multiply the default DB sizes.
     #[cfg(test)]
-    pub(crate) fn default_for_tests() -> (Self, TempDir) {
+    pub(crate) fn new_for_tests(size_multiplier: u8) -> (Self, TempDir) {
+        if size_multiplier == 0 {
+            panic!("size_multiplier cannot be zero");
+        }
         let tempdir = tempfile::tempdir().expect("should get tempdir");
         let path = tempdir.path().join("lmdb");
 
         let config = Config {
             path,
+            max_block_store_size: 1024 * 1024 * size_multiplier as usize,
+            max_deploy_store_size: 1024 * 1024 * size_multiplier as usize,
+            max_deploy_metadata_store_size: 1024 * 1024 * size_multiplier as usize,
+            max_state_store_size: 12 * 1024 * size_multiplier as usize,
             ..Default::default()
         };
         (config, tempdir)

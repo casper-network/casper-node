@@ -4736,6 +4736,37 @@
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",
+      "oneOf": [
+        {
+          "description": "Version 1 of the finality signature.",
+          "type": "object",
+          "required": [
+            "V1"
+          ],
+          "properties": {
+            "V1": {
+              "$ref": "#/definitions/FinalitySignatureV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Version 2 of the finality signature.",
+          "type": "object",
+          "required": [
+            "V2"
+          ],
+          "properties": {
+            "V2": {
+              "$ref": "#/definitions/FinalitySignatureV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FinalitySignatureV1": {
+      "description": "A validator's signature of a block, confirming it is finalized.",
       "type": "object",
       "required": [
         "block_hash",
@@ -4777,6 +4808,74 @@
           ]
         }
       }
+    },
+    "FinalitySignatureV2": {
+      "description": "A validator's signature of a block, confirming it is finalized.",
+      "type": "object",
+      "required": [
+        "block_hash",
+        "block_height",
+        "chain_name_hash",
+        "era_id",
+        "public_key",
+        "signature"
+      ],
+      "properties": {
+        "block_hash": {
+          "description": "The block hash of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "block_height": {
+          "description": "The height of the associated block.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "era_id": {
+          "description": "The era in which the associated block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "chain_name_hash": {
+          "description": "The hash of the chain name of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ChainNameDigest"
+            }
+          ]
+        },
+        "signature": {
+          "description": "The signature over the block hash of the associated block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Signature"
+            }
+          ]
+        },
+        "public_key": {
+          "description": "The public key of the signing validator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        }
+      }
+    },
+    "ChainNameDigest": {
+      "description": "Hex-encoded cryptographic hash of a chain name.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     }
   }
 }

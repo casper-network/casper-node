@@ -244,7 +244,7 @@ async fn binary_port_component() {
         asserter,
     } in test_cases
     {
-        let header = BinaryRequestHeader::new(ProtocolVersion::V1_0_0, request.tag());
+        let header = BinaryRequestHeader::new(ProtocolVersion::from_parts(2, 0, 0), request.tag());
         let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
         let original_request_bytes = header_bytes

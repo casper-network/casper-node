@@ -1,33 +1,41 @@
 mod binary_port;
 
 use std::{
-    collections::BTreeMap, convert::TryFrom, iter, net::SocketAddr, str::FromStr, sync::Arc,
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+    iter,
+    net::SocketAddr,
+    str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
 use either::Either;
 use num::Zero;
 use num_rational::Ratio;
+use num_traits::One;
 use rand::Rng;
 use tempfile::TempDir;
 use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult},
+    data_access_layer::{BidsRequest, BidsResult, QueryRequest, QueryResult::*},
     global_state::state::{StateProvider, StateReader},
+    tracking_copy::TrackingCopyError,
 };
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        AUCTION,
+        mint, AUCTION,
     },
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId,
-    Key, Motes, NextUpgrade, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EntityAddr, EraId, Key, Motes, NextUpgrade, ProtocolVersion,
+    PublicKey, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp,
+    Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -42,10 +50,11 @@ use crate::{
         requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
+    failpoints::FailpointActivation,
     protocol::Message,
     reactor::{
         main_reactor::{Config, MainEvent, MainReactor, ReactorState},
-        Runner,
+        Reactor, Runner,
     },
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
@@ -79,18 +88,33 @@ enum InitialStakes {
     AllEqual { count: usize, stake: u128 },
 }
 
-struct ChainspecOverride {
+/// Options to allow overriding default chainspec and config settings.
+struct ConfigsOverride {
+    era_duration: TimeDiff,
     minimum_block_time: TimeDiff,
     minimum_era_height: u64,
     unbonding_delay: u64,
+    round_seigniorage_rate: Ratio<u64>,
+    consensus_protocol: ConsensusProtocolName,
+    finders_fee: Ratio<u64>,
+    finality_signature_proportion: Ratio<u64>,
+    signature_rewards_max_delay: u64,
+    storage_multiplier: u8,
 }
 
-impl Default for ChainspecOverride {
+impl Default for ConfigsOverride {
     fn default() -> Self {
-        ChainspecOverride {
+        ConfigsOverride {
+            era_duration: TimeDiff::from_millis(0), // zero means use the default value
             minimum_block_time: "1second".parse().unwrap(),
             minimum_era_height: 2,
             unbonding_delay: 3,
+            round_seigniorage_rate: Ratio::new(1, 100),
+            consensus_protocol: ConsensusProtocolName::Zug,
+            finders_fee: Ratio::new(1, 4),
+            finality_signature_proportion: Ratio::new(1, 3),
+            signature_rewards_max_delay: 5,
+            storage_multiplier: 1,
         }
     }
 }
@@ -115,7 +139,7 @@ impl TestFixture {
     ///
     /// Runs the network until all nodes are initialized (i.e. none of their reactor states are
     /// still `ReactorState::Initialize`).
-    async fn new(initial_stakes: InitialStakes, spec_override: Option<ChainspecOverride>) -> Self {
+    async fn new(initial_stakes: InitialStakes, spec_override: Option<ConfigsOverride>) -> Self {
         let mut rng = TestRng::new();
         let stake_values = match initial_stakes {
             InitialStakes::FromVec(stakes) => {
@@ -148,7 +172,7 @@ impl TestFixture {
         mut rng: TestRng,
         secret_keys: Vec<Arc<SecretKey>>,
         stakes: BTreeMap<PublicKey, U512>,
-        spec_override: Option<ChainspecOverride>,
+        spec_override: Option<ConfigsOverride>,
     ) -> Self {
         testing::init_logging();
 
@@ -185,12 +209,31 @@ impl TestFixture {
         chainspec.core_config.era_duration = TimeDiff::from_millis(0);
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.validator_slots = 100;
-        let spec_override = spec_override.unwrap_or_default();
-        chainspec.core_config.minimum_block_time = spec_override.minimum_block_time;
-        chainspec.core_config.minimum_era_height = spec_override.minimum_era_height;
-        chainspec.core_config.unbonding_delay = spec_override.unbonding_delay;
+        let ConfigsOverride {
+            era_duration,
+            minimum_block_time,
+            minimum_era_height,
+            unbonding_delay,
+            round_seigniorage_rate,
+            consensus_protocol,
+            finders_fee,
+            finality_signature_proportion,
+            signature_rewards_max_delay,
+            storage_multiplier,
+        } = spec_override.unwrap_or_default();
+        if era_duration != TimeDiff::from_millis(0) {
+            chainspec.core_config.era_duration = era_duration;
+        }
+        chainspec.core_config.minimum_block_time = minimum_block_time;
+        chainspec.core_config.minimum_era_height = minimum_era_height;
+        chainspec.core_config.unbonding_delay = unbonding_delay;
+        chainspec.core_config.round_seigniorage_rate = round_seigniorage_rate;
+        chainspec.core_config.consensus_protocol = consensus_protocol;
+        chainspec.core_config.finders_fee = finders_fee;
+        chainspec.core_config.finality_signature_proportion = finality_signature_proportion;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
+        chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
 
         let mut fixture = TestFixture {
             rng,
@@ -201,7 +244,8 @@ impl TestFixture {
         };
 
         for secret_key in secret_keys {
-            let (config, storage_dir) = fixture.create_node_config(secret_key.as_ref(), None);
+            let (config, storage_dir) =
+                fixture.create_node_config(secret_key.as_ref(), None, storage_multiplier);
             fixture.add_node(secret_key, config, storage_dir).await;
         }
 
@@ -270,6 +314,7 @@ impl TestFixture {
         &mut self,
         secret_key: &SecretKey,
         maybe_trusted_hash: Option<BlockHash>,
+        storage_multiplier: u8,
     ) -> (Config, TempDir) {
         // Set the network configuration.
         let network_cfg = match self.node_contexts.first() {
@@ -295,7 +340,7 @@ impl TestFixture {
         };
 
         // Additionally set up storage in a temporary directory.
-        let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        let (storage_cfg, temp_dir) = storage::Config::new_for_tests(storage_multiplier);
         // ...and the secret key for our validator.
         {
             let secret_key_path = temp_dir.path().join("secret_key");
@@ -306,6 +351,8 @@ impl TestFixture {
         }
         cfg.storage = storage_cfg;
         cfg.node.trusted_hash = maybe_trusted_hash;
+        cfg.contract_runtime.max_global_state_size =
+            Some(1024 * 1024 * storage_multiplier as usize);
 
         (cfg, temp_dir)
     }
@@ -788,7 +835,7 @@ async fn run_network() {
 #[tokio::test]
 async fn historical_sync_with_era_height_1() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_block_time: "4seconds".parse().unwrap(),
         ..Default::default()
     };
@@ -800,7 +847,7 @@ async fn historical_sync_with_era_height_1() {
     // Create a joiner node.
     let secret_key = SecretKey::random(&mut fixture.rng);
     let trusted_hash = *fixture.highest_complete_block().hash();
-    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash));
+    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash), 1);
     config.node.sync_handling = SyncHandling::Genesis;
     let joiner_id = fixture
         .add_node(Arc::new(secret_key), config, storage_dir)
@@ -836,9 +883,9 @@ async fn historical_sync_with_era_height_1() {
 #[tokio::test]
 async fn should_not_historical_sync_no_sync_node() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_block_time: "4seconds".parse().unwrap(),
-        minimum_era_height: 1,
+        minimum_era_height: 2,
         ..Default::default()
     };
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
@@ -857,7 +904,7 @@ async fn should_not_historical_sync_no_sync_node() {
     );
     info!("joining node using block {trusted_height} {trusted_hash}");
     let secret_key = SecretKey::random(&mut fixture.rng);
-    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash));
+    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash), 1);
     config.node.sync_handling = SyncHandling::NoSync;
     let joiner_id = fixture
         .add_node(Arc::new(secret_key), config, storage_dir)
@@ -940,8 +987,10 @@ async fn run_equivocator_network() {
     ];
 
     // We configure the era to take 15 rounds. That should guarantee that the two nodes equivocate.
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 10,
+        consensus_protocol: ConsensusProtocolName::Highway,
+        storage_multiplier: 2,
         ..Default::default()
     };
 
@@ -1335,7 +1384,7 @@ async fn empty_block_validation_regression() {
         count: 4,
         stake: 100,
     };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 15,
         ..Default::default()
     };
@@ -1611,7 +1660,7 @@ async fn run_redelegate_bid_network() {
         charlie_stake.into(),
     ]);
 
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         unbonding_delay: 1,
         minimum_era_height: 5,
         ..Default::default()
@@ -1733,7 +1782,7 @@ async fn run_redelegate_bid_network() {
 #[tokio::test]
 async fn rewards_are_calculated() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 3,
         ..Default::default()
     };
@@ -1747,4 +1796,675 @@ async fn rewards_are_calculated() {
     for reward in switch_block.era_end().unwrap().rewards().values() {
         assert_ne!(reward, &U512::zero());
     }
+}
+
+// Reactor pattern tests for simplified rewards
+
+// Fundamental network parameters that are not critical for assessing reward calculation correctness
+const STAKE: u128 = 1000000000;
+const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
+const ERA_COUNT: u64 = 3;
+const ERA_DURATION: u64 = 30000; //milliseconds
+const MIN_HEIGHT: u64 = 10;
+const BLOCK_TIME: u64 = 3000; //milliseconds
+const TIME_OUT: u64 = 600; //seconds
+const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
+const REPRESENTATIVE_NODE_INDEX: usize = 0;
+// Parameters we generally want to vary
+const CONSENSUS_ZUG: ConsensusProtocolName = ConsensusProtocolName::Zug;
+const CONSENSUS_HIGHWAY: ConsensusProtocolName = ConsensusProtocolName::Highway;
+const FINDERS_FEE_ZERO: (u64, u64) = (0u64, 1u64);
+const FINDERS_FEE_HALF: (u64, u64) = (1u64, 2u64);
+//const FINDERS_FEE_ONE: (u64, u64) = (1u64, 1u64);
+const FINALITY_SIG_PROP_ZERO: (u64, u64) = (0u64, 1u64);
+const FINALITY_SIG_PROP_HALF: (u64, u64) = (1u64, 2u64);
+const FINALITY_SIG_PROP_ONE: (u64, u64) = (1u64, 1u64);
+const FILTERED_NODES_INDICES: &[usize] = &[3, 4];
+const FINALITY_SIG_LOOKBACK: u64 = 3;
+
+async fn run_rewards_network_scenario(
+    initial_stakes: impl Into<Vec<u128>>,
+    era_count: u64,
+    time_out: u64, //seconds
+    representative_node_index: usize,
+    filtered_nodes_indices: &[usize],
+    spec_override: ConfigsOverride,
+) {
+    trait AsU512Ext {
+        fn into_u512(self) -> Ratio<U512>;
+    }
+    impl AsU512Ext for Ratio<u64> {
+        fn into_u512(self) -> Ratio<U512> {
+            Ratio::new(U512::from(*self.numer()), U512::from(*self.denom()))
+        }
+    }
+
+    let initial_stakes = initial_stakes.into();
+
+    // Instantiate the chain
+    let mut fixture =
+        TestFixture::new(InitialStakes::FromVec(initial_stakes), Some(spec_override)).await;
+
+    for i in filtered_nodes_indices {
+        let filtered_node = fixture.network.runners_mut().nth(*i).unwrap();
+        filtered_node
+            .reactor_mut()
+            .inner_mut()
+            .activate_failpoint(&FailpointActivation::new("finality_signature_creation"));
+    }
+
+    // Run the network for a specified number of eras
+    // TODO: Consider replacing era duration estimate with actual chainspec value
+    let timeout = Duration::from_secs(time_out);
+    fixture
+        .run_until_stored_switch_block_header(EraId::new(era_count - 1), timeout)
+        .await;
+
+    // DATA COLLECTION
+    // Get the switch blocks and bid structs first
+    let switch_blocks = SwitchBlocks::collect(fixture.network.nodes(), era_count);
+
+    // Representative node
+    // (this test should normally run a network at nominal performance with identical nodes)
+    let representative_node = fixture
+        .network
+        .nodes()
+        .values()
+        .nth(representative_node_index)
+        .unwrap();
+    let representative_storage = &representative_node.main_reactor().storage;
+    let representative_runtime = &representative_node.main_reactor().contract_runtime;
+
+    // Recover highest completed block height
+    let highest_completed_height = representative_storage
+        .highest_complete_block_height()
+        .expect("missing highest completed block");
+
+    // Get all the blocks
+    let blocks: Vec<Block> = (0..highest_completed_height + 1)
+        .map(|i| {
+            representative_storage
+                .read_block_by_height(i)
+                .expect("block not found")
+                .unwrap()
+        })
+        .collect();
+
+    // Recover history of total supply
+    let mint_hash: AddressableEntityHash = {
+        let any_state_hash = *switch_blocks.headers[0].state_root_hash();
+        representative_runtime
+            .engine_state()
+            .get_system_mint_hash(any_state_hash)
+            .expect("mint contract hash not found")
+    };
+
+    // Get total supply history
+    let total_supply: Vec<U512> = (0..highest_completed_height + 1)
+        .map(|height: u64| {
+            let state_hash = *representative_storage
+                .read_block_header_by_height(height, true)
+                .expect("failure to read block header")
+                .unwrap()
+                .state_root_hash();
+
+            let request = QueryRequest::new(
+                state_hash,
+                Key::AddressableEntity(EntityAddr::System(mint_hash.value())),
+                vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
+            );
+
+            let result = representative_runtime.engine_state().run_query(request);
+
+            match result {
+                Success { value, proofs: _ } => value
+                    .as_cl_value()
+                    .expect("failure to recover total supply as CL value")
+                    .clone()
+                    .into_t::<U512>()
+                    .map_err(TrackingCopyError::CLValue),
+                ValueNotFound(_) => Err(TrackingCopyError::NamedKeyNotFound(
+                    mint::TOTAL_SUPPLY_KEY.to_owned(),
+                )),
+                RootNotFound => Err(TrackingCopyError::Storage(
+                    casper_storage::global_state::error::Error::RootNotFound,
+                )),
+                Failure(e) => Err(e),
+            }
+            .expect("failure to recover total supply")
+        })
+        .collect();
+
+    // Tiny helper function
+    #[inline]
+    fn add_to_rewards(
+        recipient: PublicKey,
+        reward: Ratio<U512>,
+        rewards: &mut BTreeMap<PublicKey, Ratio<U512>>,
+    ) {
+        match rewards.get_mut(&recipient) {
+            Some(value) => {
+                *value += reward;
+            }
+            None => {
+                rewards.insert(recipient, reward);
+            }
+        }
+    }
+
+    let mut recomputed_total_supply = BTreeMap::new();
+    recomputed_total_supply.insert(0, Ratio::from(total_supply[0]));
+    let recomputed_rewards: BTreeMap<_, _> = switch_blocks
+        .headers
+        .iter()
+        .enumerate()
+        .map(|(i, switch_block)| {
+            if switch_block.is_genesis() || switch_block.height() > highest_completed_height {
+                return (i, BTreeMap::new());
+            }
+            let mut recomputed_era_rewards = BTreeMap::new();
+            if !(switch_block.is_genesis()) {
+                let supply_carryover = recomputed_total_supply
+                    .get(&(i - 1))
+                    .copied()
+                    .expect("expected prior recomputed supply value");
+                recomputed_total_supply.insert(i, supply_carryover);
+            }
+
+            // It's not a genesis block, so we know there's something with a lower era id
+            let previous_switch_block_height = switch_blocks.headers[i - 1].height();
+            let current_era_slated_weights = match switch_blocks.headers[i - 1].clone_era_end() {
+                Some(era_report) => era_report.next_era_validator_weights().clone(),
+                _ => panic!("unexpectedly absent era report"),
+            };
+            let total_current_era_weights = current_era_slated_weights
+                .iter()
+                .fold(U512::zero(), move |acc, s| acc + s.1);
+            let (previous_era_slated_weights, total_previous_era_weights) =
+                if switch_blocks.headers[i - 1].is_genesis() {
+                    (None, None)
+                } else {
+                    match switch_blocks.headers[i - 2].clone_era_end() {
+                        Some(era_report) => {
+                            let next_weights = era_report.next_era_validator_weights().clone();
+                            let total_next_weights = next_weights
+                                .iter()
+                                .fold(U512::zero(), move |acc, s| acc + s.1);
+                            (Some(next_weights), Some(total_next_weights))
+                        }
+                        _ => panic!("unexpectedly absent era report"),
+                    }
+                };
+
+            // TODO: Investigate whether the rewards pay out for the signatures
+            // _in the switch block itself_
+            let rewarded_range =
+                previous_switch_block_height as usize + 1..switch_block.height() as usize + 1;
+            let rewarded_blocks = &blocks[rewarded_range];
+            let block_reward = (Ratio::<U512>::one()
+                - fixture
+                    .chainspec
+                    .core_config
+                    .finality_signature_proportion
+                    .into_u512())
+                * recomputed_total_supply[&(i - 1)]
+                * fixture
+                    .chainspec
+                    .core_config
+                    .round_seigniorage_rate
+                    .into_u512();
+            let signatures_reward = fixture
+                .chainspec
+                .core_config
+                .finality_signature_proportion
+                .into_u512()
+                * recomputed_total_supply[&(i - 1)]
+                * fixture
+                    .chainspec
+                    .core_config
+                    .round_seigniorage_rate
+                    .into_u512();
+            let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
+                None
+            } else {
+                Some(
+                    fixture
+                        .chainspec
+                        .core_config
+                        .finality_signature_proportion
+                        .into_u512()
+                        * recomputed_total_supply[&(i - 2)]
+                        * fixture
+                            .chainspec
+                            .core_config
+                            .round_seigniorage_rate
+                            .into_u512(),
+                )
+            };
+
+            rewarded_blocks.iter().for_each(|block: &Block| {
+                // Block production rewards
+                let proposer = block.proposer().clone();
+                add_to_rewards(proposer.clone(), block_reward, &mut recomputed_era_rewards);
+
+                // Recover relevant finality signatures
+                // TODO: Deal with the implicit assumption that lookback only look backs one
+                // previous era
+                block.rewarded_signatures().iter().enumerate().for_each(
+                    |(offset, signatures_packed)| {
+                        if block.height() as usize - offset - 1
+                            <= previous_switch_block_height as usize
+                            && !switch_blocks.headers[i - 1].is_genesis()
+                        {
+                            let rewarded_contributors = signatures_packed.to_validator_set(
+                                previous_era_slated_weights
+                                    .as_ref()
+                                    .expect("expected previous era weights")
+                                    .keys()
+                                    .cloned()
+                                    .collect::<BTreeSet<PublicKey>>(),
+                            );
+                            rewarded_contributors.iter().for_each(|contributor| {
+                                let contributor_proportion = Ratio::new(
+                                    previous_era_slated_weights
+                                        .as_ref()
+                                        .expect("expected previous era weights")
+                                        .get(contributor)
+                                        .copied()
+                                        .expect("expected current era validator"),
+                                    total_previous_era_weights
+                                        .expect("expected total previous era weight"),
+                                );
+                                add_to_rewards(
+                                    proposer.clone(),
+                                    fixture.chainspec.core_config.finders_fee.into_u512()
+                                        * contributor_proportion
+                                        * previous_signatures_reward.unwrap(),
+                                    &mut recomputed_era_rewards,
+                                );
+                                add_to_rewards(
+                                    contributor.clone(),
+                                    (Ratio::<U512>::one()
+                                        - fixture.chainspec.core_config.finders_fee.into_u512())
+                                        * contributor_proportion
+                                        * previous_signatures_reward.unwrap(),
+                                    &mut recomputed_era_rewards,
+                                )
+                            });
+                        } else {
+                            let rewarded_contributors = signatures_packed.to_validator_set(
+                                current_era_slated_weights
+                                    .keys()
+                                    .cloned()
+                                    .collect::<BTreeSet<PublicKey>>(),
+                            );
+                            rewarded_contributors.iter().for_each(|contributor| {
+                                let contributor_proportion = Ratio::new(
+                                    *current_era_slated_weights
+                                        .get(contributor)
+                                        .expect("expected current era validator"),
+                                    total_current_era_weights,
+                                );
+                                add_to_rewards(
+                                    proposer.clone(),
+                                    fixture.chainspec.core_config.finders_fee.into_u512()
+                                        * contributor_proportion
+                                        * signatures_reward,
+                                    &mut recomputed_era_rewards,
+                                );
+                                add_to_rewards(
+                                    contributor.clone(),
+                                    (Ratio::<U512>::one()
+                                        - fixture.chainspec.core_config.finders_fee.into_u512())
+                                        * contributor_proportion
+                                        * signatures_reward,
+                                    &mut recomputed_era_rewards,
+                                );
+                            });
+                        }
+                    },
+                );
+            });
+
+            // Make sure we round just as we do in the real code, at the end of an era's
+            // calculation, right before minting and transferring
+            recomputed_era_rewards.iter_mut().for_each(|(_, reward)| {
+                let truncated_reward = reward.trunc();
+                *reward = truncated_reward;
+                let era_end_supply = recomputed_total_supply
+                    .get_mut(&i)
+                    .expect("expected supply at end of era");
+                *era_end_supply += truncated_reward;
+            });
+
+            (i, recomputed_era_rewards)
+        })
+        .collect();
+
+    // Recalculated total supply is equal to observed total supply
+    switch_blocks.headers.iter().for_each(|header| {
+        if header.height() <= highest_completed_height {
+            assert_eq!(
+                Ratio::from(total_supply[header.height() as usize]),
+                *(recomputed_total_supply
+                    .get(&(header.era_id().value() as usize))
+                    .expect("expected recalculated supply")),
+                "total supply does not match at height {}",
+                header.height()
+            )
+        }
+    });
+
+    // Recalculated rewards are equal to observed rewards; total supply increase is equal to total
+    // rewards;
+    recomputed_rewards.iter().for_each(|(era, rewards)| {
+        if era > &0 && switch_blocks.headers[*era].height() <= highest_completed_height {
+            let observed_total_rewards = match switch_blocks.headers[*era]
+                .clone_era_end()
+                .expect("expected EraEnd")
+                .rewards()
+            {
+                Rewards::V1(v1_rewards) => v1_rewards
+                    .iter()
+                    .fold(U512::zero(), |acc, reward| U512::from(*reward.1) + acc),
+                Rewards::V2(v2_rewards) => v2_rewards
+                    .iter()
+                    .fold(U512::zero(), |acc, reward| *reward.1 + acc),
+            };
+            let recomputed_total_rewards = rewards
+                .iter()
+                .fold(U512::zero(), |acc, x| x.1.to_integer() + acc);
+            assert_eq!(
+                Ratio::from(recomputed_total_rewards),
+                Ratio::from(observed_total_rewards),
+                "total rewards do not match at era {}",
+                era
+            );
+            assert_eq!(
+                Ratio::from(recomputed_total_rewards),
+                recomputed_total_supply
+                    .get(era)
+                    .expect("expected recalculated supply")
+                    - recomputed_total_supply
+                        .get(&(era - 1))
+                        .expect("expected recalculated supply"),
+                "supply growth does not match rewards at era {}",
+                era
+            )
+        }
+    })
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
+    run_rewards_network_scenario(
+        PRIME_STAKES,
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        PRIME_STAKES,
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: 0,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
+    run_rewards_network_scenario(
+        [STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ZERO.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras() {
+    run_rewards_network_scenario(
+        [STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_HALF.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_HALF.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        [STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_HALF.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_HALF.into(),
+            signature_rewards_max_delay: 0,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        [STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        &[],
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_HALF.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: 0,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_half_finders() {
+    run_rewards_network_scenario(
+        [
+            STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE,
+        ],
+        ERA_COUNT,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES,
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_HALF.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
+    run_rewards_network_scenario(
+        [
+            STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE,
+        ],
+        5,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES,
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_HALF.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_zero_finders() {
+    run_rewards_network_scenario(
+        [
+            STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE,
+        ],
+        ERA_COUNT,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES,
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_ZUG,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_highway_all_finality_zero_finders() {
+    run_rewards_network_scenario(
+        [
+            STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE,
+        ],
+        ERA_COUNT,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES,
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_HIGHWAY,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ONE.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_highway_no_finality() {
+    run_rewards_network_scenario(
+        [
+            STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE,
+        ],
+        ERA_COUNT,
+        TIME_OUT,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES,
+        ConfigsOverride {
+            consensus_protocol: CONSENSUS_HIGHWAY,
+            era_duration: TimeDiff::from_millis(ERA_DURATION),
+            minimum_era_height: MIN_HEIGHT,
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            round_seigniorage_rate: SEIGNIORAGE.into(),
+            finders_fee: FINDERS_FEE_ZERO.into(),
+            finality_signature_proportion: FINALITY_SIG_PROP_ZERO.into(),
+            signature_rewards_max_delay: FINALITY_SIG_LOOKBACK,
+            ..Default::default()
+        },
+    )
+    .await;
 }

@@ -17,8 +17,9 @@ use casper_types::{
     binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
-    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, Deploy, DeployHash, Digest,
-    FinalizedApprovals, FinalizedDeployApprovals, Transaction, TransactionHash,
+    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, FinalizedApprovals, FinalizedDeployApprovals,
+    Transaction, TransactionHash,
 };
 
 use super::{
@@ -86,6 +87,10 @@ impl VersionedValue for ExecutionResult {
 
 impl VersionedValue for FinalizedApprovals {
     type Legacy = FinalizedDeployApprovals;
+}
+
+impl VersionedValue for BlockSignatures {
+    type Legacy = BlockSignaturesV1;
 }
 
 impl<K, V> RawDataAccess for VersionedDatabases<K, V>

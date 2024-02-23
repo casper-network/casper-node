@@ -27,10 +27,12 @@ use tracing::{debug, error, info, warn};
 use casper_types::{
     binary_port::{LastProgress, NetworkName, Uptime},
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, U512,
+    FinalitySignatureV2, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionHeader, TransactionId, U512,
 };
 
+#[cfg(test)]
+use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         binary_port::BinaryPort,
@@ -79,11 +81,6 @@ use crate::{
     },
     utils::{Source, WithDir},
     NodeRng,
-};
-#[cfg(test)]
-use crate::{
-    components::{ComponentState, InitializedComponent},
-    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -163,7 +160,7 @@ pub(crate) struct MainReactor {
     transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
-        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
+        Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -198,6 +195,8 @@ pub(crate) struct MainReactor {
     signature_gossip_tracker: SignatureGossipTracker,
     /// The instant at which the node has started.
     node_startup_instant: Instant,
+
+    finality_signature_creation: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -260,9 +259,13 @@ impl reactor::Reactor for MainReactor {
                     .respond(self.chainspec.protocol_version())
                     .ignore(),
             },
-            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
-                self.handle_meta_block(effect_builder, rng, meta_block)
-            }
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
+                .handle_meta_block(
+                    effect_builder,
+                    rng,
+                    self.finality_signature_creation,
+                    meta_block,
+                ),
             MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
                 let only_from_available_block_range = true;
                 if let Ok(Some(block_header)) = self
@@ -526,7 +529,9 @@ impl reactor::Reactor for MainReactor {
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::FinalitySignature(finality_signature),
+                        event_stream_server::Event::FinalitySignature(Box::new(
+                            (*finality_signature).into(),
+                        )),
                     ),
                 ));
 
@@ -682,17 +687,25 @@ impl reactor::Reactor for MainReactor {
                     finality_signature,
                     peer,
                 },
-            ) => reactor::wrap_effects(
-                MainEvent::BlockAccumulator,
-                self.block_accumulator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_accumulator::Event::ReceivedFinalitySignature {
-                        finality_signature,
-                        sender: peer,
-                    },
-                ),
-            ),
+            ) => {
+                // If the signature is not convertible to the current version it means
+                // that it is historical.
+                if let FinalitySignature::V2(sig) = *finality_signature {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedFinalitySignature {
+                                finality_signature: Box::new(sig),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
+            }
 
             // DEPLOYS
             MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
@@ -1053,6 +1066,7 @@ impl reactor::Reactor for MainReactor {
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let validator_matrix = ValidatorMatrix::new(
             chainspec.core_config.finality_threshold_fraction,
+            chainspec.name_hash(),
             chainspec
                 .protocol_config
                 .global_state_update
@@ -1131,12 +1145,12 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
-        let finality_signature_gossiper =
-            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
-                "finality_signature_gossiper",
-                config.gossip,
-                registry,
-            )?;
+        let finality_signature_gossiper = Gossiper::<
+            { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
+            _,
+        >::new(
+            "finality_signature_gossiper", config.gossip, registry
+        )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -1221,6 +1235,7 @@ impl reactor::Reactor for MainReactor {
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
             node_startup_instant,
+            finality_signature_creation: true,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1242,18 +1257,8 @@ impl reactor::Reactor for MainReactor {
                 activation,
             );
         }
-    }
-
-    #[cfg(test)]
-    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
-        match name {
-            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
-                &self.rest_server,
-            )),
-            "binary_port" => Some(<BinaryPort as InitializedComponent<MainEvent>>::state(
-                &self.binary_port,
-            )),
-            _ => None,
+        if activation.key().starts_with("finality_signature_creation") {
+            self.finality_signature_creation = false;
         }
     }
 }
@@ -1287,6 +1292,7 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
+        create_finality_signatures: bool,
         mut meta_block: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
@@ -1403,6 +1409,7 @@ impl MainReactor {
                 .mut_state()
                 .register_we_have_tried_to_sign()
                 .was_updated()
+                && create_finality_signatures
             {
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
@@ -1419,7 +1426,7 @@ impl MainReactor {
                     effects.extend(reactor::wrap_effects(
                         MainEvent::Storage,
                         effect_builder
-                            .put_finality_signature_to_storage(finality_signature.clone())
+                            .put_finality_signature_to_storage(finality_signature.clone().into())
                             .ignore(),
                     ));
 

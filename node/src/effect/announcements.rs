@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, DeployHash, EraId, FinalitySignature, NextUpgrade, PublicKey,
-    Timestamp, Transaction, U512,
+    execution::Effects, Block, DeployHash, EraId, FinalitySignature, FinalitySignatureV2,
+    NextUpgrade, PublicKey, Timestamp, Transaction, U512,
 };
 
 use crate::{
@@ -401,7 +401,7 @@ pub(crate) enum BlockAccumulatorAnnouncement {
     /// A finality signature which wasn't previously stored on this node has been accepted and
     /// stored.
     AcceptedNewFinalitySignature {
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
     },
 }
 

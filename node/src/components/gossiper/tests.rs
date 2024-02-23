@@ -18,7 +18,7 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
     ProtocolVersion, TimeDiff, Transaction,
 };
 
@@ -113,7 +113,7 @@ impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
-impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
@@ -157,7 +157,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,

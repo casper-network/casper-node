@@ -18,8 +18,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSynchronizerStatus, Deploy, FinalizedApprovals, FinalizedDeployApprovals, Peers,
-    ReactorState, SignedBlock, StoredValue, Transaction, Transfer,
+    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
+    FinalizedDeployApprovals, Peers, ReactorState, SignedBlock, StoredValue, Transaction, Transfer,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -51,6 +51,8 @@ pub enum PayloadType {
     ApprovalsHashesV1,
     /// Approvals hashes
     ApprovalsHashes,
+    /// Legacy version of the block signatures.
+    BlockSignaturesV1,
     /// Block signatures.
     BlockSignatures,
     /// Deploy.
@@ -113,7 +115,7 @@ impl PayloadType {
             (true, RecordId::BlockHeader) => Self::BlockHeaderV1,
             (true, RecordId::BlockBody) => Self::BlockBodyV1,
             (true, RecordId::ApprovalsHashes) => Self::ApprovalsHashesV1,
-            (true, RecordId::BlockMetadata) => Self::BlockSignatures,
+            (true, RecordId::BlockMetadata) => Self::BlockSignaturesV1,
             (true, RecordId::Transaction) => Self::Deploy,
             (true, RecordId::ExecutionResult) => Self::ExecutionResultV1,
             (true, RecordId::Transfer) => Self::Transfers,
@@ -146,6 +148,7 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::BlockBody as u8 => Ok(PayloadType::BlockBody),
             x if x == PayloadType::ApprovalsHashesV1 as u8 => Ok(PayloadType::ApprovalsHashesV1),
             x if x == PayloadType::ApprovalsHashes as u8 => Ok(PayloadType::ApprovalsHashes),
+            x if x == PayloadType::BlockSignaturesV1 as u8 => Ok(PayloadType::BlockSignaturesV1),
             x if x == PayloadType::BlockSignatures as u8 => Ok(PayloadType::BlockSignatures),
             x if x == PayloadType::Deploy as u8 => Ok(PayloadType::Deploy),
             x if x == PayloadType::Transaction as u8 => Ok(PayloadType::Transaction),
@@ -209,6 +212,7 @@ impl fmt::Display for PayloadType {
             PayloadType::BlockBody => write!(f, "BlockBody"),
             PayloadType::ApprovalsHashesV1 => write!(f, "ApprovalsHashesV1"),
             PayloadType::ApprovalsHashes => write!(f, "ApprovalsHashes"),
+            PayloadType::BlockSignaturesV1 => write!(f, "BlockSignaturesV1"),
             PayloadType::BlockSignatures => write!(f, "BlockSignatures"),
             PayloadType::Deploy => write!(f, "Deploy"),
             PayloadType::Transaction => write!(f, "Transaction"),
@@ -249,32 +253,33 @@ const BLOCK_BODY_TAG: u8 = 3;
 const APPROVALS_HASHES_TAG: u8 = 4;
 const APPROVALS_HASHES_V1_TAG: u8 = 5;
 const BLOCK_SIGNATURES_TAG: u8 = 6;
-const DEPLOY_TAG: u8 = 7;
-const TRANSACTION_TAG: u8 = 8;
-const EXECUTION_RESULT_V1_TAG: u8 = 9;
-const EXECUTION_RESULT_TAG: u8 = 10;
-const TRANSFERS_TAG: u8 = 11;
-const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 12;
-const FINALIZED_APPROVALS_TAG: u8 = 13;
-const SIGNED_BLOCK_TAG: u8 = 14;
-const TRANSACTION_WITH_EXECUTION_INFO_TAG: u8 = 15;
-const PEERS_TAG: u8 = 16;
-const UPTIME_TAG: u8 = 17;
-const LAST_PROGRESS_TAG: u8 = 18;
-const REACTOR_STATE_TAG: u8 = 19;
-const NETWORK_NAME_TAG: u8 = 20;
-const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 21;
-const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 22;
-const AVAILABLE_BLOCK_RANGE_TAG: u8 = 23;
-const NEXT_UPGRADE_TAG: u8 = 24;
-const CONSENSUS_STATUS_TAG: u8 = 25;
-const CHAINSPEC_RAW_BYTES_TAG: u8 = 26;
-const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 27;
-const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 28;
-const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 29;
-const STORED_VALUES_TAG: u8 = 30;
-const GET_TRIE_FULL_RESULT_TAG: u8 = 31;
-const NODE_STATUS_TAG: u8 = 32;
+const BLOCK_SIGNATURES_V1_TAG: u8 = 7;
+const DEPLOY_TAG: u8 = 8;
+const TRANSACTION_TAG: u8 = 9;
+const EXECUTION_RESULT_V1_TAG: u8 = 10;
+const EXECUTION_RESULT_TAG: u8 = 11;
+const TRANSFERS_TAG: u8 = 12;
+const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 13;
+const FINALIZED_APPROVALS_TAG: u8 = 14;
+const SIGNED_BLOCK_TAG: u8 = 15;
+const TRANSACTION_WITH_EXECUTION_INFO_TAG: u8 = 16;
+const PEERS_TAG: u8 = 17;
+const UPTIME_TAG: u8 = 18;
+const LAST_PROGRESS_TAG: u8 = 19;
+const REACTOR_STATE_TAG: u8 = 20;
+const NETWORK_NAME_TAG: u8 = 21;
+const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 22;
+const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 23;
+const AVAILABLE_BLOCK_RANGE_TAG: u8 = 24;
+const NEXT_UPGRADE_TAG: u8 = 25;
+const CONSENSUS_STATUS_TAG: u8 = 26;
+const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
+const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
+const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
+const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
+const STORED_VALUES_TAG: u8 = 31;
+const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
+const NODE_STATUS_TAG: u8 = 33;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -289,8 +294,9 @@ impl ToBytes for PayloadType {
             PayloadType::BlockHeader => BLOCK_HEADER_TAG,
             PayloadType::BlockBodyV1 => BLOCK_BODY_V1_TAG,
             PayloadType::BlockBody => BLOCK_BODY_TAG,
-            PayloadType::ApprovalsHashes => APPROVALS_HASHES_TAG,
             PayloadType::ApprovalsHashesV1 => APPROVALS_HASHES_V1_TAG,
+            PayloadType::ApprovalsHashes => APPROVALS_HASHES_TAG,
+            PayloadType::BlockSignaturesV1 => BLOCK_SIGNATURES_V1_TAG,
             PayloadType::BlockSignatures => BLOCK_SIGNATURES_TAG,
             PayloadType::Deploy => DEPLOY_TAG,
             PayloadType::Transaction => TRANSACTION_TAG,
@@ -335,8 +341,9 @@ impl FromBytes for PayloadType {
             BLOCK_HEADER_TAG => PayloadType::BlockHeader,
             BLOCK_BODY_V1_TAG => PayloadType::BlockBodyV1,
             BLOCK_BODY_TAG => PayloadType::BlockBody,
-            APPROVALS_HASHES_TAG => PayloadType::ApprovalsHashes,
             APPROVALS_HASHES_V1_TAG => PayloadType::ApprovalsHashesV1,
+            APPROVALS_HASHES_TAG => PayloadType::ApprovalsHashes,
+            BLOCK_SIGNATURES_V1_TAG => PayloadType::BlockSignaturesV1,
             BLOCK_SIGNATURES_TAG => PayloadType::BlockSignatures,
             DEPLOY_TAG => PayloadType::Deploy,
             TRANSACTION_TAG => PayloadType::Transaction,
@@ -400,6 +407,14 @@ impl PayloadEntity for BlockBodyV1 {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BlockBodyV1;
 }
 
+impl PayloadEntity for BlockSignatures {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignatures;
+}
+
+impl PayloadEntity for BlockSignaturesV1 {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignaturesV1;
+}
+
 impl PayloadEntity for ExecutionResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResult;
 }
@@ -426,10 +441,6 @@ impl PayloadEntity for TransactionWithExecutionInfo {
 
 impl PayloadEntity for Peers {
     const PAYLOAD_TYPE: PayloadType = PayloadType::Peers;
-}
-
-impl PayloadEntity for BlockSignatures {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignatures;
 }
 
 impl PayloadEntity for Vec<Transfer> {

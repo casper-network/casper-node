@@ -4,7 +4,8 @@ mod tests;
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
 use casper_storage::data_access_layer::{
-    EraValidatorsRequest, RoundSeigniorageRateResult, TotalSupplyResult,
+    EraValidatorsRequest, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+    TotalSupplyRequest, TotalSupplyResult,
 };
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 
@@ -32,6 +33,7 @@ impl<T> ReactorEventT for T where T: Send + From<StorageRequest> + From<Contract
 
 #[derive(Debug)]
 pub(crate) struct CitedBlock {
+    protocol_version: ProtocolVersion,
     height: u64,
     era_id: EraId,
     proposer: PublicKey,
@@ -39,6 +41,21 @@ pub(crate) struct CitedBlock {
     state_root_hash: Digest,
     is_switch_block: bool,
     is_genesis: bool,
+}
+
+impl CitedBlock {
+    fn from_executable_block(block: ExecutableBlock, protocol_version: ProtocolVersion) -> Self {
+        Self {
+            protocol_version,
+            era_id: block.era_id,
+            height: block.height,
+            proposer: *block.proposer,
+            rewarded_signatures: block.rewarded_signatures,
+            state_root_hash: Digest::default(),
+            is_switch_block: block.era_report.is_some(),
+            is_genesis: block.era_id.is_genesis(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -78,7 +95,7 @@ pub enum RewardsError {
 }
 
 impl RewardsInfo {
-    pub async fn new_from_storage<REv: ReactorEventT>(
+    pub async fn new<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         signature_rewards_max_delay: u64,
@@ -114,15 +131,13 @@ impl RewardsInfo {
             "blocks fetched",
         );
 
-        let eras_info = Self::create_eras_info(
-            effect_builder,
-            current_era_id,
-            protocol_version,
-            cited_blocks.iter(),
-        )
-        .await?;
+        let eras_info =
+            Self::create_eras_info(effect_builder, current_era_id, cited_blocks.iter()).await?;
 
-        cited_blocks.push(executable_block.into());
+        cited_blocks.push(CitedBlock::from_executable_block(
+            executable_block,
+            protocol_version,
+        ));
 
         Ok(RewardsInfo {
             eras_info,
@@ -143,7 +158,6 @@ impl RewardsInfo {
     async fn create_eras_info<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         current_era_id: EraId,
-        protocol_version: ProtocolVersion,
         mut cited_blocks: impl Iterator<Item = &CitedBlock>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
         let oldest_block = cited_blocks.next();
@@ -165,13 +179,14 @@ impl RewardsInfo {
             .chain(cited_blocks.filter(|&block| block.is_switch_block))
             .map(|block| {
                 let state_root_hash = block.state_root_hash;
+                let protocol_version = block.protocol_version;
                 let era = if block.is_switch_block {
                     block.era_id.successor()
                 } else {
                     block.era_id
                 };
 
-                (era, state_root_hash)
+                (era, protocol_version, state_root_hash)
             })
             .collect();
 
@@ -179,7 +194,7 @@ impl RewardsInfo {
             eras_and_state_root_hashes.len() + usize::from(oldest_block_is_genesis);
 
         let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
-            .then(|(era_id, state_root_hash)| async move {
+            .then(|(era_id, protocol_version, state_root_hash)| async move {
                 let era_validators_result = effect_builder
                     .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
                         state_root_hash,
@@ -197,7 +212,10 @@ impl RewardsInfo {
                     .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
                     .1;
 
-                let total_supply = match effect_builder.get_total_supply(state_root_hash).await {
+                let total_supply_request =
+                    TotalSupplyRequest::new(state_root_hash, protocol_version);
+                let total_supply = match effect_builder.get_total_supply(total_supply_request).await
+                {
                     TotalSupplyResult::RootNotFound
                     | TotalSupplyResult::MintNotFound
                     | TotalSupplyResult::ValueNotFound(_)
@@ -207,8 +225,10 @@ impl RewardsInfo {
                     TotalSupplyResult::Success { total_supply } => total_supply,
                 };
 
+                let seignorate_rate_request =
+                    RoundSeigniorageRateRequest::new(state_root_hash, protocol_version);
                 let seignorate_rate = match effect_builder
-                    .get_round_seigniorage_rate(state_root_hash)
+                    .get_round_seigniorage_rate(seignorate_rate_request)
                     .await
                 {
                     RoundSeigniorageRateResult::RootNotFound
@@ -342,9 +362,11 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
         "starting the rewards calculation"
     );
 
-    if current_era_id.is_genesis() {
-        // Special case: genesis block does not yield any reward, because there is no block
-        // producer, and no previous blocks whose signatures are to be rewarded:
+    if current_era_id.is_genesis()
+        || current_era_id == chainspec.protocol_config.activation_point.era_id()
+    {
+        // Special case: genesis block and immediate switch blocks do not yield any reward, because
+        // there is no block producer, and no signatures from previous blocks to be rewarded:
         Ok(chainspec
             .network_config
             .accounts_config
@@ -352,7 +374,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
             .map(|account| (account.public_key.clone(), U512::zero()))
             .collect())
     } else {
-        let rewards_info = RewardsInfo::new_from_storage(
+        let rewards_info = RewardsInfo::new(
             effect_builder,
             chainspec.protocol_version(),
             chainspec.core_config.signature_rewards_max_delay,
@@ -499,6 +521,7 @@ async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
 impl From<Block> for CitedBlock {
     fn from(block: Block) -> Self {
         Self {
+            protocol_version: block.protocol_version(),
             era_id: block.era_id(),
             height: block.height(),
             proposer: block.proposer().clone(),
@@ -506,20 +529,6 @@ impl From<Block> for CitedBlock {
             state_root_hash: *block.state_root_hash(),
             is_switch_block: block.is_switch_block(),
             is_genesis: block.is_genesis(),
-        }
-    }
-}
-
-impl From<ExecutableBlock> for CitedBlock {
-    fn from(block: ExecutableBlock) -> Self {
-        Self {
-            era_id: block.era_id,
-            height: block.height,
-            proposer: *block.proposer,
-            rewarded_signatures: block.rewarded_signatures,
-            state_root_hash: Digest::default(),
-            is_switch_block: block.era_report.is_some(),
-            is_genesis: block.era_id.is_genesis(),
         }
     }
 }
