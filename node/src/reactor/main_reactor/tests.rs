@@ -31,11 +31,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
         ComponentState,
     },
-    effect::{
-        incoming::ConsensusMessageIncoming,
-        requests::{ContractRuntimeRequest, NetworkRequest},
-        EffectExt,
-    },
+    effect::{incoming::ConsensusMessageIncoming, requests::ContractRuntimeRequest, EffectExt},
     protocol::Message,
     reactor::{
         main_reactor::{Config, MainEvent, MainReactor, ReactorState},
@@ -752,15 +748,19 @@ async fn run_equivocator_network() {
         if is_ping(&event) {
             return Either::Left(time::sleep((min_round_len * 30).into()).event(move |_| event));
         }
+
+        // Filter out all incoming and outgoing consensus message traffic.
         let now = Timestamp::now();
         match &event {
-            MainEvent::ConsensusMessageIncoming(_) => {}
-            MainEvent::NetworkRequest(
-                NetworkRequest::SendMessage { payload, .. }
-                | NetworkRequest::ValidatorBroadcast { payload, .. }
-                | NetworkRequest::Gossip { payload, .. },
-            ) if matches!(**payload, Message::Consensus(_)) => {}
-            _ => return Either::Right(event),
+            MainEvent::ConsensusMessageIncoming(_) | MainEvent::ConsensusDemand(_) => {
+                // delayed.
+            }
+            MainEvent::NetworkRequest(req) if matches!(req.payload(), Message::Consensus(_)) => {
+                // delayed
+            }
+            _ => {
+                return Either::Right(event);
+            }
         };
         let first_message_time = *maybe_first_message_time.get_or_insert(now);
         if now < first_message_time + min_round_len * 3 {
@@ -777,6 +777,7 @@ async fn run_equivocator_network() {
         Either::Right(event)
     });
 
+    assert!(alice_reactors.next().is_none());
     drop(alice_reactors);
 
     let era_count = 4;

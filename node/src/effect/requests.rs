@@ -172,6 +172,19 @@ impl<P> NetworkRequest<P> {
             },
         }
     }
+
+    /// Returns the message's payload.
+    ///
+    /// This is typically used for filtering payloads in tests.
+    #[cfg(test)]
+    #[inline(always)]
+    pub(crate) fn payload(&self) -> &P {
+        match self {
+            NetworkRequest::SendMessage { payload, .. } => payload,
+            NetworkRequest::ValidatorBroadcast { payload, .. } => payload,
+            NetworkRequest::Gossip { payload, .. } => payload,
+        }
+    }
 }
 
 impl<P> Display for NetworkRequest<P>
