@@ -6,8 +6,7 @@ use std::{
 use super::{lmdb_block_store::LmdbBlockStore, lmdb_ext::LmdbExtError, temp_map::TempMap};
 use datasize::DataSize;
 use lmdb::{
-    Database, Environment, RoTransaction, RwCursor, RwTransaction, Transaction as LmdbTransaction,
-    WriteFlags,
+    Environment, RoTransaction, RwCursor, RwTransaction, Transaction as LmdbTransaction, WriteFlags,
 };
 
 use tracing::info;
@@ -249,9 +248,9 @@ impl IndexedLmdbBlockStore {
             block_store.block_body_dbs,
             deleted_block_body_hashes,
         )?;
-        initialize_block_metadata_db(
+        initialize_block_metadata_dbs(
             &block_store.env,
-            block_store.block_metadata_db,
+            block_store.block_metadata_dbs,
             deleted_block_hashes,
         )?;
         initialize_execution_result_dbs(
@@ -292,9 +291,9 @@ fn initialize_block_body_dbs(
 }
 
 /// Purges stale entries from the block metadata database.
-fn initialize_block_metadata_db(
+fn initialize_block_metadata_dbs(
     env: &Environment,
-    block_metadata_db: Database,
+    block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     deleted_block_hashes: HashSet<BlockHash>,
 ) -> Result<(), BlockStoreError> {
     let block_count_to_be_deleted = deleted_block_hashes.len();
@@ -306,10 +305,9 @@ fn initialize_block_metadata_db(
         .begin_rw_txn()
         .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
     for block_hash in deleted_block_hashes {
-        match txn.del(block_metadata_db, &block_hash, None) {
-            Ok(()) | Err(lmdb::Error::NotFound) => {}
-            Err(error) => return Err(BlockStoreError::InternalStorage(Box::new(error))),
-        }
+        block_metadata_dbs
+            .delete(&mut txn, &block_hash)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?
     }
     txn.commit()
         .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;

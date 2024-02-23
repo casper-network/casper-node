@@ -60,7 +60,7 @@ use crate::{
 use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_STORAGE_REQUEST_SIZE < 97);
+const_assert!(_STORAGE_REQUEST_SIZE < 129);
 
 /// A metrics request.
 #[derive(Debug)]

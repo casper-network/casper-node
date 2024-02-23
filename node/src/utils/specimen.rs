@@ -22,13 +22,14 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockHeaderV1, BlockHeaderV2,
-    BlockSignatures, BlockV2, ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash,
-    DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport, ExecutableDeployItem,
-    FinalitySignature, FinalitySignatureId, PackageHash, ProtocolVersion, RewardedSignatures,
-    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff,
-    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Builder,
-    TransactionV1Hash, URef, KEY_HASH_LENGTH, U512,
+    BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest, ChunkWithProof, Deploy,
+    DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId,
+    EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId, FinalitySignatureV2,
+    PackageHash, ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey, SemVer,
+    SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionApprovalsHash, TransactionHash, TransactionId, TransactionV1, TransactionV1Approval,
+    TransactionV1ApprovalsHash, TransactionV1Builder, TransactionV1Hash, URef, KEY_HASH_LENGTH,
+    U512,
 };
 
 use crate::{
@@ -658,18 +659,17 @@ impl LargestSpecimen for SignedBlockHeader {
 
 impl LargestSpecimen for BlockSignatures {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        let mut block_signatures = BlockSignatures::new(
+        let mut block_signatures = BlockSignaturesV2::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         );
-        let block_hash = *block_signatures.block_hash();
-        let era_id = block_signatures.era_id();
         let sigs = btree_map_distinct_from_prop(estimator, "validator_count", cache);
         sigs.into_iter().for_each(|(public_key, sig)| {
-            block_signatures
-                .insert_signature(FinalitySignature::new(block_hash, era_id, sig, public_key));
+            block_signatures.insert_signature(public_key, sig);
         });
-        block_signatures
+        BlockSignatures::V2(block_signatures)
     }
 }
 
@@ -735,7 +735,15 @@ impl LargestSpecimen for FinalizedBlock {
 
 impl LargestSpecimen for FinalitySignature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        FinalitySignature::new(
+        FinalitySignature::V2(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for FinalitySignatureV2 {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        FinalitySignatureV2::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -767,6 +775,13 @@ impl LargestSpecimen for EraReport<PublicKey> {
 impl LargestSpecimen for BlockHash {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         BlockHash::new(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for ChainNameDigest {
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
+        // ChainNameDigest is fixed size by definition, so any value will do.
+        ChainNameDigest::from_chain_name("")
     }
 }
 

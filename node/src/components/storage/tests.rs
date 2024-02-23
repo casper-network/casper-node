@@ -26,10 +26,11 @@ use casper_types::{
     },
     generate_ed25519_keypair,
     testing::TestRng,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy,
-    DeployApprovalsHash, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion,
-    PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff,
-    Transaction, TransactionApprovalsHash, TransactionHash, TransactionV1Hash,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest,
+    Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
+    FinalitySignature, FinalitySignatureV2, Key, ProtocolVersion, PublicKey, SecretKey,
+    SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
+    TransactionApprovalsHash, TransactionHash, TransactionV1Hash,
     TransactionWithFinalizedApprovals, Transfer, U512,
 };
 use tempfile::tempdir;
@@ -148,17 +149,28 @@ fn create_sync_leap_test_chain(
             Arc::new(block.clone())
         ));
 
-        let fs = FinalitySignature::create(*block.hash(), block.era_id(), &validator_secret_key);
+        let fs = FinalitySignatureV2::create(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            chainspec.name_hash(),
+            &validator_secret_key,
+        );
         assert!(fs.is_verified().is_ok());
 
-        let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
-        block_signatures.insert_signature(fs);
+        let mut block_signatures = BlockSignaturesV2::new(
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            chainspec.name_hash(),
+        );
+        block_signatures.insert_signature(fs.public_key().clone(), *fs.signature());
 
         if !non_signed_blocks.contains(&block.height()) {
             assert!(put_block_signatures(
                 &mut harness,
                 &mut storage,
-                block_signatures
+                block_signatures.into()
             ));
             storage.completed_blocks.insert(block.height());
         }
@@ -263,14 +275,27 @@ fn storage_fixture_with_hard_reset(
 }
 
 /// Creates 3 random signatures for the given block.
-fn random_signatures(rng: &mut TestRng, block_hash: BlockHash, era_id: EraId) -> BlockSignatures {
-    let mut block_signatures = BlockSignatures::new(block_hash, era_id);
+fn random_signatures(
+    rng: &mut TestRng,
+    block_hash: BlockHash,
+    block_height: u64,
+    era_id: EraId,
+    chain_name_hash: ChainNameDigest,
+) -> BlockSignatures {
+    let mut block_signatures =
+        BlockSignaturesV2::new(block_hash, block_height, era_id, chain_name_hash);
     for _ in 0..3 {
         let secret_key = SecretKey::random(rng);
-        let signature = FinalitySignature::create(block_hash, era_id, &secret_key);
-        block_signatures.insert_signature(signature);
+        let signature = FinalitySignatureV2::create(
+            block_hash,
+            block_height,
+            era_id,
+            chain_name_hash,
+            &secret_key,
+        );
+        block_signatures.insert_signature(signature.public_key().clone(), *signature.signature());
     }
-    block_signatures
+    block_signatures.into()
 }
 
 /// Loads a block from a storage component.
@@ -1672,6 +1697,7 @@ fn should_hard_reset() {
     let blocks_per_era = 3;
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
+    let chain_name_hash = ChainNameDigest::random(&mut harness.rng);
 
     let random_txns: Vec<_> = iter::repeat_with(|| Transaction::random(&mut harness.rng))
         .take(blocks_count)
@@ -1702,7 +1728,13 @@ fn should_hard_reset() {
 
     // Create and store signatures for these blocks.
     for block in &blocks {
-        let block_signatures = random_signatures(&mut harness.rng, *block.hash(), block.era_id());
+        let block_signatures = random_signatures(
+            &mut harness.rng,
+            *block.hash(),
+            block.height(),
+            block.era_id(),
+            chain_name_hash,
+        );
         assert!(put_block_signatures(
             &mut harness,
             &mut storage,
@@ -2342,62 +2374,79 @@ fn assert_signatures(storage: &Storage, block_hash: BlockHash, expected: Vec<Fin
 fn store_and_purge_signatures() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
+    let chain_name_hash = ChainNameDigest::random(&mut harness.rng);
 
     let block_1 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_1_1 = FinalitySignature::random_for_block(
+    let fs_1_1 = FinalitySignatureV2::random_for_block(
         *block_1.hash(),
+        block_1.height(),
         block_1.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
-    let fs_1_2 = FinalitySignature::random_for_block(
+    let fs_1_2 = FinalitySignatureV2::random_for_block(
         *block_1.hash(),
+        block_1.height(),
         block_1.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
 
     let block_2 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_2_1 = FinalitySignature::random_for_block(
+    let fs_2_1 = FinalitySignatureV2::random_for_block(
         *block_2.hash(),
+        block_2.height(),
         block_2.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
-    let fs_2_2 = FinalitySignature::random_for_block(
+    let fs_2_2 = FinalitySignatureV2::random_for_block(
         *block_2.hash(),
+        block_2.height(),
         block_2.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
 
     let block_3 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_3_1 = FinalitySignature::random_for_block(
+    let fs_3_1 = FinalitySignatureV2::random_for_block(
         *block_3.hash(),
+        block_3.height(),
         block_3.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
-    let fs_3_2 = FinalitySignature::random_for_block(
+    let fs_3_2 = FinalitySignatureV2::random_for_block(
         *block_3.hash(),
+        block_3.height(),
         block_3.header().era_id(),
+        chain_name_hash,
         &mut harness.rng,
     );
 
     let block_4 = TestBlockBuilder::new().build(&mut harness.rng);
 
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_1_1.clone()));
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_1_2.clone()));
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_2_1.clone()));
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_2_2.clone()));
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_3_1.clone()));
-    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_3_2.clone()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_1_1.clone().into()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_1_2.clone().into()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_2_1.clone().into()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_2_2.clone().into()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_3_1.clone().into()));
+    let _ = put_finality_signature(&mut harness, &mut storage, Box::new(fs_3_2.clone().into()));
 
-    assert_signatures(&storage, *block_1.hash(), vec![fs_1_1, fs_1_2]);
+    assert_signatures(
+        &storage,
+        *block_1.hash(),
+        vec![fs_1_1.into(), fs_1_2.into()],
+    );
     assert_signatures(
         &storage,
         *block_2.hash(),
-        vec![fs_2_1.clone(), fs_2_2.clone()],
+        vec![fs_2_1.clone().into(), fs_2_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_3.hash(),
-        vec![fs_3_1.clone(), fs_3_2.clone()],
+        vec![fs_3_1.clone().into(), fs_3_2.clone().into()],
     );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
@@ -2409,12 +2458,12 @@ fn store_and_purge_signatures() {
     assert_signatures(
         &storage,
         *block_2.hash(),
-        vec![fs_2_1.clone(), fs_2_2.clone()],
+        vec![fs_2_1.clone().into(), fs_2_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_3.hash(),
-        vec![fs_3_1.clone(), fs_3_2.clone()],
+        vec![fs_3_1.clone().into(), fs_3_2.clone().into()],
     );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
@@ -2423,8 +2472,16 @@ fn store_and_purge_signatures() {
     let _ = DataWriter::<BlockHash, BlockSignatures>::delete(&mut writer, *block_4.hash());
     writer.commit().unwrap();
     assert_signatures(&storage, *block_1.hash(), vec![]);
-    assert_signatures(&storage, *block_2.hash(), vec![fs_2_1, fs_2_2]);
-    assert_signatures(&storage, *block_3.hash(), vec![fs_3_1, fs_3_2]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.into(), fs_2_2.into()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.into(), fs_3_2.into()],
+    );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging for all blocks should leave no signatures.
@@ -2873,6 +2930,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
         None,
         None,
     );
+    let chain_name_hash = ChainNameDigest::random(&mut harness.rng);
 
     // Check that legacy blocks appear in the available range
     let available_range = get_available_block_range(&mut harness, &mut storage);
@@ -2999,7 +3057,9 @@ fn check_block_operations_with_node_1_5_2_storage() {
         let block_signatures = random_signatures(
             &mut harness.rng,
             *new_lowest_block.hash(),
+            new_lowest_block.height(),
             new_lowest_block.era_id(),
+            chain_name_hash,
         );
         assert!(put_block_signatures(
             &mut harness,
@@ -3048,7 +3108,9 @@ fn check_block_operations_with_node_1_5_2_storage() {
         let block_signatures = random_signatures(
             &mut harness.rng,
             *new_highest_block.hash(),
+            new_highest_block.height(),
             new_highest_block.era_id(),
+            chain_name_hash,
         );
         assert!(put_block_signatures(
             &mut harness,
@@ -3102,7 +3164,9 @@ fn check_block_operations_with_node_1_5_2_storage() {
         let block_signatures = random_signatures(
             &mut harness.rng,
             *new_highest_block.hash(),
+            new_highest_block.height(),
             new_highest_block.era_id(),
+            chain_name_hash,
         );
         assert!(put_block_signatures(
             &mut harness,

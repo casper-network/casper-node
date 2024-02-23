@@ -69,11 +69,11 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DeployApprovalsHash,
-    DeployHash, EraId, FinalitySignature, FinalizedApprovals, ProtocolVersion, SignedBlockHeader,
-    StoredValue, Timestamp, Transaction, TransactionApprovalsHash, TransactionHash,
-    TransactionHeader, TransactionId, TransactionV1ApprovalsHash,
-    TransactionWithFinalizedApprovals, Transfer,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1,
+    BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash, DeployHash, EraId,
+    FinalitySignature, FinalizedApprovals, ProtocolVersion, SignedBlockHeader, StoredValue,
+    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
+    TransactionId, TransactionV1ApprovalsHash, TransactionWithFinalizedApprovals, Transfer,
 };
 
 use crate::{
@@ -146,6 +146,8 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
+    /// The hash of the chain name.
+    chain_name_hash: ChainNameDigest,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -283,6 +285,7 @@ impl Storage {
             recent_era_count,
             max_ttl,
             metrics,
+            chain_name_hash: ChainNameDigest::from_chain_name(network_name),
         };
 
         if force_resync {
@@ -772,7 +775,7 @@ impl Storage {
                 }
                 let block_signatures = match ro_txn.read(block_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.era_id()),
+                    None => self.get_default_block_signatures(&block),
                 };
                 if block_signatures.is_verified().is_err() {
                     error!(?block, "invalid block signatures for block");
@@ -826,7 +829,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match ro_txn.read(*hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
+                    None => self.get_default_block_signatures(&block),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -857,7 +860,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match ro_txn.read(*hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
+                    None => self.get_default_block_signatures(&block),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -892,7 +895,7 @@ impl Storage {
                 let hash = highest_block.hash();
                 let block_signatures = match ro_txn.read(*hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.era_id()),
+                    None => self.get_default_block_signatures(&highest_block),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -934,13 +937,51 @@ impl Storage {
             } => {
                 let mut rw_txn = self.block_store.checkout_rw()?;
                 let block_hash = signature.block_hash();
-                let mut signatures = if let Some(existing_signatures) = rw_txn.read(*block_hash)? {
-                    existing_signatures
-                } else {
-                    BlockSignatures::new(*signature.block_hash(), signature.era_id())
-                };
-                signatures.insert_signature(*signature);
-                let _ = rw_txn.write(&signatures);
+                let mut block_signatures: BlockSignatures =
+                    if let Some(existing_signatures) = rw_txn.read(*block_hash)? {
+                        existing_signatures
+                    } else {
+                        match &*signature {
+                            FinalitySignature::V1(signature) => {
+                                BlockSignaturesV1::new(*signature.block_hash(), signature.era_id())
+                                    .into()
+                            }
+                            FinalitySignature::V2(signature) => BlockSignaturesV2::new(
+                                *signature.block_hash(),
+                                signature.block_height(),
+                                signature.era_id(),
+                                signature.chain_name_hash(),
+                            )
+                            .into(),
+                        }
+                    };
+                match (&mut block_signatures, *signature) {
+                    (
+                        BlockSignatures::V1(ref mut block_signatures),
+                        FinalitySignature::V1(signature),
+                    ) => {
+                        block_signatures.insert_signature(
+                            signature.public_key().clone(),
+                            *signature.signature(),
+                        );
+                    }
+                    (
+                        BlockSignatures::V2(ref mut block_signatures),
+                        FinalitySignature::V2(signature),
+                    ) => {
+                        block_signatures.insert_signature(
+                            signature.public_key().clone(),
+                            *signature.signature(),
+                        );
+                    }
+                    (block_signatures, signature) => {
+                        let mismatch =
+                            VariantMismatch(Box::new((block_signatures.clone(), signature)));
+                        return Err(FatalStorageError::from(mismatch));
+                    }
+                }
+
+                let _ = rw_txn.write(&block_signatures);
                 rw_txn.commit()?;
                 responder.respond(true).ignore()
             }
@@ -1312,7 +1353,18 @@ impl Storage {
                 let block_header_hash = header.block_hash();
                 let block_signatures: BlockSignatures = match txn.read(block_header_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_header_hash, header.era_id()),
+                    None => match &header {
+                        BlockHeader::V1(header) => BlockSignatures::V1(BlockSignaturesV1::new(
+                            header.block_hash(),
+                            header.era_id(),
+                        )),
+                        BlockHeader::V2(header) => BlockSignatures::V2(BlockSignaturesV2::new(
+                            header.block_hash(),
+                            header.height(),
+                            header.era_id(),
+                            self.chain_name_hash,
+                        )),
+                    },
                 };
                 Ok(Some(SignedBlockHeader::new(header, block_signatures)))
             }
@@ -1417,9 +1469,18 @@ impl Storage {
                 Some(block_header) => {
                     let block_signatures = match txn.read(block_header.block_hash())? {
                         Some(signatures) => signatures,
-                        None => {
-                            BlockSignatures::new(block_header.block_hash(), block_header.era_id())
-                        }
+                        None => match &block_header {
+                            BlockHeader::V1(header) => BlockSignatures::V1(BlockSignaturesV1::new(
+                                header.block_hash(),
+                                header.era_id(),
+                            )),
+                            BlockHeader::V2(header) => BlockSignatures::V2(BlockSignaturesV2::new(
+                                header.block_hash(),
+                                header.height(),
+                                header.era_id(),
+                                self.chain_name_hash,
+                            )),
+                        },
                     };
                     result.push(SignedBlockHeader::new(block_header, block_signatures))
                 }
@@ -1865,6 +1926,19 @@ impl Storage {
             request.chunk_index(),
             execution_results,
         ))
+    }
+
+    fn get_default_block_signatures(&self, block: &Block) -> BlockSignatures {
+        match block {
+            Block::V1(block) => BlockSignaturesV1::new(*block.hash(), block.era_id()).into(),
+            Block::V2(block) => BlockSignaturesV2::new(
+                *block.hash(),
+                block.height(),
+                block.era_id(),
+                self.chain_name_hash,
+            )
+            .into(),
+        }
     }
 
     fn update_chain_height_metrics(&self) {

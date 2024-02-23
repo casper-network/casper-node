@@ -39,7 +39,7 @@ const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 const MAX_TRANSACTIONS: u32 = 5;
 
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 15;
+const MAX_DB_COUNT: u32 = 16;
 
 /// OS-specific lmdb flags.
 #[cfg(not(target_os = "macos"))]
@@ -65,8 +65,7 @@ pub struct LmdbBlockStore {
     /// The approvals hashes databases.
     approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
     /// The block metadata db.
-    #[data_size(skip)]
-    pub(crate) block_metadata_db: Database,
+    pub(crate) block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     /// The transaction databases.
     pub(crate) transaction_dbs: VersionedDatabases<TransactionHash, Transaction>,
     /// Databases of `ExecutionResult`s indexed by transaction hash for current DB or by deploy
@@ -93,9 +92,9 @@ impl LmdbBlockStore {
         let block_body_dbs =
             VersionedDatabases::<_, BlockBody>::new(&env, "block_body", "block_body_v2")
                 .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
-        let block_metadata_db = env
-            .create_db(Some("block_metadata"), DatabaseFlags::empty())
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+        let block_metadata_dbs =
+            VersionedDatabases::new(&env, "block_metadata", "block_metadata_v2")
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         let transaction_dbs = VersionedDatabases::new(&env, "deploys", "transactions")
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         let execution_result_dbs =
@@ -121,7 +120,7 @@ impl LmdbBlockStore {
             block_header_dbs,
             block_body_dbs,
             approvals_hashes_dbs,
-            block_metadata_db,
+            block_metadata_dbs,
             transaction_dbs,
             execution_result_dbs,
             transfer_db,
@@ -136,9 +135,12 @@ impl LmdbBlockStore {
         signatures: &BlockSignatures,
     ) -> Result<BlockHash, BlockStoreError> {
         let block_hash = signatures.block_hash();
-        txn.put_value(self.block_metadata_db, block_hash, signatures, true)
-            .map(|_| *block_hash)
-            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+        let _ = self
+            .block_metadata_dbs
+            .put(txn, block_hash, signatures, true)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+
+        Ok(*block_hash)
     }
 
     pub(crate) fn delete_finality_signatures(
@@ -146,7 +148,8 @@ impl LmdbBlockStore {
         txn: &mut RwTransaction,
         block_hash: &BlockHash,
     ) -> Result<(), BlockStoreError> {
-        txn.del(self.block_metadata_db, block_hash, None)
+        self.block_metadata_dbs
+            .delete(txn, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
@@ -341,7 +344,8 @@ impl LmdbBlockStore {
         txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, BlockStoreError> {
-        txn.get_value(self.block_metadata_db, block_hash)
+        self.block_metadata_dbs
+            .get(txn, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
@@ -350,7 +354,8 @@ impl LmdbBlockStore {
         txn: &Tx,
         block_hash: &BlockHash,
     ) -> Result<bool, BlockStoreError> {
-        txn.value_exists(self.block_metadata_db, block_hash)
+        self.block_metadata_dbs
+            .exists(txn, block_hash)
             .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
