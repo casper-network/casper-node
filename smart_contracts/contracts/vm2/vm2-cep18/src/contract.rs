@@ -1,6 +1,6 @@
 use crate::{
     error, security_badge,
-    traits::{CEP18Dispatch, CEP18Ref, CEP18State, CEP18},
+    traits::{CEP18Ref, CEP18State, CEP18},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};

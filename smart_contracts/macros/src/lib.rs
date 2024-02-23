@@ -51,13 +51,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let mut dynamic_manifest = Vec::new();
     if let Some(traits) = contract_attributes.impl_traits {
         for path in traits.iter() {
-            let ext_struct = format_ident!("{}Dispatch", path.require_ident().unwrap());
+            let ext_struct = format_ident!("{}Ref", path.require_ident().unwrap());
             dynamic_manifest.push(quote! {
                 {
-                    const DISPATCHER: #ext_struct = <#ext_struct>::new::<#name>();
-                    DISPATCHER.0.as_slice()
+                    const DISPATCHER: &[casper_sdk::sys::EntryPoint] = &(<#ext_struct>::__casper_new_trait_dispatch_table::<#name>());
+                    DISPATCHER
                 }
-
             });
         }
     }
@@ -350,26 +349,18 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let manifest_data_len = dispatch_table.len();
 
                 let extension_struct = quote! {
-
-                    #[doc(hidden)]
-                    #vis struct #dispatch_struct_name(#vis [casper_sdk::sys::EntryPoint; #manifest_data_len]);
-
-                    impl #dispatch_struct_name {
-                        #[doc(hidden)]
-                        #vis const fn new<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> Self {
-                            // This will create set of extern "C" function pointers that will dispatch to a concerete implementation.
-                            // Essentially, this constructor provides 'late binding' and crates function pointers for any concrete implementation of given trait.
-                            Self([
-                                #(#dispatch_table,)*
-                            ])
-                        }
-
-                    }
-
                     #vis struct #ref_struct;
 
                     impl #ref_struct {
 
+                        #[doc(hidden)]
+                        #vis const fn __casper_new_trait_dispatch_table<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> [casper_sdk::sys::EntryPoint; #manifest_data_len] {
+                            // This will create set of extern "C" function pointers that will dispatch to a concerete implementation.
+                            // Essentially, this constructor provides 'late binding' and crates function pointers for any concrete implementation of given trait.
+                            [
+                                #(#dispatch_table,)*
+                            ]
+                        }
                         #[doc(hidden)]
                         #vis fn __casper_populate_definitions(definitions: &mut casper_sdk::abi::Definitions) {
                             #(#populate_definitions)*;
