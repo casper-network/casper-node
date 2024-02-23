@@ -126,7 +126,6 @@ pub struct Storage {
     /// Storage location.
     root: PathBuf,
     /// Block store
-    #[data_size(skip)]
     pub(crate) block_store: IndexedLmdbBlockStore,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,

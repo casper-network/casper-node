@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-#[allow(dead_code)]
 enum EntryState<V> {
     Deleted,
     Occupied(V),
@@ -39,7 +38,6 @@ where
     }
 
     /// Checks if a key exists in this map.
-    #[allow(dead_code)]
     pub(crate) fn contains_key(&self, key: &K) -> bool {
         if self.new_index.contains_key(key) {
             true
@@ -54,7 +52,6 @@ where
     }
 
     /// Removes the value from the map.
-    #[allow(dead_code)]
     pub(crate) fn remove(&mut self, key: K) {
         if self.contains_key(&key) {
             self.new_index.insert(key, EntryState::Deleted);

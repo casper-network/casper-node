@@ -1,6 +1,3 @@
-#[cfg(test)]
-use std::{cmp::Ord, collections::BTreeSet};
-
 use datasize::DataSize;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, RwCursor, RwTransaction,
@@ -11,8 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 
-#[cfg(test)]
-use casper_types::bytesrepr;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
@@ -271,26 +266,6 @@ where
     {
         txn.put_value(self.legacy, legacy_key, legacy_value, overwrite)
             .expect("should put legacy value")
-    }
-
-    /// Returns the keys from the `current` database only.
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(super) fn keys<Tx: LmdbTransaction>(&self, txn: &Tx) -> BTreeSet<K>
-    where
-        K: Ord + FromBytes,
-    {
-        let mut cursor = txn
-            .open_ro_cursor(self.current)
-            .expect("should create cursor");
-
-        cursor
-            .iter()
-            .map(Result::unwrap)
-            .map(|(raw_key, _)| {
-                bytesrepr::deserialize(raw_key.to_vec()).expect("malformed key in DB")
-            })
-            .collect()
     }
 }
 
