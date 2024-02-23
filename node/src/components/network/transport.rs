@@ -56,7 +56,9 @@ pub(super) fn create_rpc_builder(
     );
 
     juliet::rpc::RpcBuilder::new(io_core)
-        .with_bubble_timeouts(true)
+        // We currently disable bubble timeouts due to not having enough data on whether nodes can
+        // process data fast enough in all cases. For now, we just warn.
+        .with_bubble_timeouts(false)
         .with_default_timeout(ack_timeout.into())
 }
 

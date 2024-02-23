@@ -1018,7 +1018,12 @@ fn process_request_guard(channel: Channel, guard: RequestGuard) {
             // We got an incredibly quick round-trip, lucky us! Nothing to do.
         }
         Ok(Err(err)) => {
-            debug!(%channel, %err, "failed to send message");
+            rate_limited!(
+                MESSAGE_SENDING_FAILURE,
+                5,
+                Duration::from_secs(60),
+                |dropped| warn!(%channel, %err, dropped, "failed to send message")
+            );
         }
         Err(guard) => {
             // No ACK received yet, forget, so we don't cancel.
