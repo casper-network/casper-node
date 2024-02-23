@@ -4,7 +4,7 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{Error as EngineStateError, NewRequestError};
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{
     contract_messages::Messages,
@@ -13,7 +13,7 @@ use casper_types::{
     TransactionHash, TransactionHeader, U512,
 };
 
-use crate::types::ApprovalsHashes;
+use crate::{contract_runtime::NewUserRequestError, types::ApprovalsHashes};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +181,7 @@ impl ExecutionPreState {
 pub enum SpeculativeExecutionError {
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
-    NewRequest(#[from] NewRequestError),
+    NewRequest(#[from] NewUserRequestError),
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
     EngineState(#[from] EngineStateError),

@@ -1,11 +1,12 @@
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
 
@@ -200,15 +201,11 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let transfer_args = runtime_args! {
-        mint::ARG_TARGET => new_validator_hash,
-        mint::ARG_AMOUNT => transfer_amount,
-        mint::ARG_ID => Some(1u64),
-    };
-    let exec_request =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
+    let exec_request = TransferRequestBuilder::new(transfer_amount, new_validator_hash)
+        .with_transfer_id(1)
+        .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder.transfer_and_commit(exec_request).expect_success();
 
     let new_validator_account = builder
         .get_entity_by_account_hash(new_validator_hash)

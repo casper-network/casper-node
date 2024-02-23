@@ -1,18 +1,15 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, TransferRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT;
 use casper_types::{
     runtime_args,
-    system::{
-        auction::{self, DelegationRate, INITIAL_ERA_ID},
-        mint,
-    },
+    system::auction::{self, DelegationRate, INITIAL_ERA_ID},
     EraId, ProtocolVersion, PublicKey, SecretKey, U256, U512,
 };
 
@@ -50,15 +47,8 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     let mut public_keys = generate_public_keys();
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => PublicKey::System,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, PublicKey::System).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
@@ -73,23 +63,21 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    builder.exec(fund_request).expect_success().commit();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     // Add validators
     for _ in 0..DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT {
         let public_key = public_keys.next().unwrap();
 
-        let transfer_request = ExecuteRequestBuilder::transfer(
-            *DEFAULT_ACCOUNT_ADDR,
-            runtime_args! {
-                mint::ARG_TARGET => public_key.to_account_hash(),
-                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE / 10),
-                mint::ARG_ID => <Option<u64>>::None,
-            },
+        let transfer_request = TransferRequestBuilder::new(
+            MINIMUM_ACCOUNT_CREATION_BALANCE / 10,
+            public_key.to_account_hash(),
         )
         .build();
 
-        builder.exec(transfer_request).commit().expect_success();
+        builder
+            .transfer_and_commit(transfer_request)
+            .expect_success();
 
         let delegation_rate: DelegationRate = 10;
 

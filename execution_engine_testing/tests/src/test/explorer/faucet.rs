@@ -3,12 +3,12 @@ use num_rational::Ratio;
 use casper_execution_engine::{engine_state, execution};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint, ApiError,
-    Key, PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, Key,
+    PublicKey, SecretKey, U512,
 };
 
 // test constants.
@@ -42,9 +42,8 @@ fn should_install_faucet_contract() {
         .build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     let install_faucet_request = FaucetInstallSessionRequestBuilder::new().build();
 
@@ -144,9 +143,8 @@ fn should_allow_installer_to_set_variables() {
         .with_faucet_time_interval(Some(FAUCET_TIME_INTERVAL));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -238,9 +236,8 @@ fn should_fund_new_account() {
         .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -305,9 +302,8 @@ fn should_fund_existing_account() {
         .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     let user_account_initial_balance = U512::from(15_000_000_000u64);
 
@@ -316,7 +312,9 @@ fn should_fund_existing_account() {
         .with_fund_amount(user_account_initial_balance)
         .build();
 
-    builder.exec(fund_user_request).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_user_request)
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -383,9 +381,8 @@ fn should_not_fund_once_exhausted() {
 
     // fund installer amount
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     // faucet install request
     builder
@@ -579,9 +576,8 @@ fn should_allow_installer_to_fund_freely() {
         .with_faucet_time_interval(Some(10_000u64));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -674,9 +670,8 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         .build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
 
@@ -734,9 +729,8 @@ fn should_allow_funding_by_an_authorized_account() {
         .with_faucet_time_interval(Some(10_000u64));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -874,9 +868,8 @@ fn should_refund_proper_amount() {
 
     let mut helper = FaucetDeployHelper::default();
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     let user_account_initial_balance = U512::from(15_000_000_000u64);
 
@@ -885,7 +878,9 @@ fn should_refund_proper_amount() {
         .with_fund_amount(user_account_initial_balance)
         .build();
 
-    builder.exec(fund_user_request).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_user_request)
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -930,10 +925,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_331_256_210;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_508_680;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_087_900;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_374_600;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_845_549_880;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_527_120;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_103_080;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_410_400;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
@@ -941,20 +936,12 @@ fn faucet_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
+    let fund_installer_account_request =
+        TransferRequestBuilder::new(INSTALLER_FUND_AMOUNT, installer_account).build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(

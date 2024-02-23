@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, Gas, InitiatorAddr, PublicKey,
@@ -53,21 +53,17 @@ fn should_record_wasmless_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let id = Some(0);
+    let id = 0;
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            TRANSFER_ARG_TARGET => *ALICE_ADDR,
-            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1,
-            TRANSFER_ARG_ID => id
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR)
+        .with_transfer_id(id)
+        .build();
 
-    let txn_hash = transfer_request.transaction_hash;
+    let txn_hash = transfer_request.transaction_hash();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -88,7 +84,7 @@ fn should_record_wasmless_transfer() {
     assert_eq!(txn_info.transaction_hash, txn_hash);
     assert_eq!(
         txn_info.from,
-        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
+        InitiatorAddr::PublicKey(DEFAULT_ACCOUNT_PUBLIC_KEY.clone())
     );
     assert_eq!(txn_info.source, default_account.main_purse());
 
@@ -114,7 +110,7 @@ fn should_record_wasmless_transfer() {
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
     assert_eq!(transfer.gas, Gas::zero());
-    assert_eq!(transfer.id, id);
+    assert_eq!(transfer.id, Some(id));
 }
 
 #[ignore]

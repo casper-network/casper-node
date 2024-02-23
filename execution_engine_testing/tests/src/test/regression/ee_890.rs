@@ -57,7 +57,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
         .commit();
     let message = builder.get_error_message().expect("should fail");
     assert!(
-        message.contains("UnsupportedWasmStart"),
+        message.contains("Unsupported Wasm start"),
         "Error message {:?} does not contain expected pattern",
         message
     );
@@ -85,7 +85,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
         .commit();
     let message = builder.get_error_message().expect("should fail");
     assert!(
-        message.contains("UnsupportedWasmStart"),
+        message.contains("Unsupported Wasm start"),
         "Error message {:?} does not contain expected pattern",
         message
     );

@@ -449,6 +449,7 @@ dependencies = [
 name = "casper-engine-test-support"
 version = "6.0.0"
 dependencies = [
+ "blake2",
  "casper-execution-engine",
  "casper-storage",
  "casper-types",

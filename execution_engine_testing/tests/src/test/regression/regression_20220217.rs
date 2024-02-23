@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state, execution};
@@ -258,15 +258,8 @@ fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let fund_account_1_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_account_1_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
     let fund_purse_1_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         TRANSFER_TO_NAMED_PURSE_CONTRACT,
@@ -296,9 +289,8 @@ fn setup() -> LmdbWasmTestBuilder {
     .build();
 
     builder
-        .exec(fund_account_1_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_account_1_request)
+        .expect_success();
     builder.exec(fund_purse_1_request).expect_success().commit();
     builder.exec(fund_purse_2_request).expect_success().commit();
     builder.exec(fund_purse_3_request).expect_success().commit();

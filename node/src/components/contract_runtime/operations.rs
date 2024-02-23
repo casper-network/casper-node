@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::TryInto,
+    sync::Arc,
+    time::Instant,
+};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -11,33 +16,31 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     data_access_layer::{
         transfer::TransferConfig, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
-        TransferRequest,
+        TransferRequest, TransferResult,
     },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider, StateReader},
 };
-// use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{
+    account::AccountHash,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, InitiatorAddr,
-    Key, ProtocolVersion, PublicKey, Transaction, TransactionHash, TransactionHeader, U512,
+    BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
+    ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionEntryPoint, TransactionHash,
+    TransactionHeader, U512,
 };
 
 use crate::{
-    components::{
-        contract_runtime::{
-            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionError,
-            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
-        },
-        fetcher::FetchItem,
-    },
-    contract_runtime::utils::calculate_prune_eras,
+    components::fetcher::FetchItem,
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
-use super::ExecutionArtifact;
+use super::{
+    utils::calculate_prune_eras, BlockAndExecutionResults, BlockExecutionError, ExecutionArtifact,
+    ExecutionPreState, Metrics, NewUserRequestError, SpeculativeExecutionError,
+    SpeculativeExecutionState, StepEffectsAndUpcomingEraValidators, APPROVALS_CHECKSUM_NAME,
+    EXECUTION_RESULTS_CHECKSUM_NAME,
+};
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -51,6 +54,9 @@ pub fn execute_finalized_block(
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
+    administrative_accounts: &BTreeSet<AccountHash>,
+    allow_unrestricted_transfers: bool,
+    system_costs: SystemConfig,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -68,7 +74,7 @@ pub fn execute_finalized_block(
     let mut execution_results: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
     // Run any transactions that must be executed
-    let block_time = executable_block.timestamp.millis();
+    let block_time = BlockTime::new(executable_block.timestamp.millis());
     let start = Instant::now();
     let txn_ids = executable_block
         .transactions
@@ -93,97 +99,70 @@ pub fn execute_finalized_block(
         )?;
     }
 
-    for transaction in executable_block.transactions {
-        let (txn_hash, txn) = match transaction {
-            Transaction::Deploy(deploy) => {
-                let deploy_hash = *deploy.hash();
-                let txn_hash = TransactionHash::Deploy(deploy_hash);
-                if deploy.is_transfer() {
-                    // native transfers are routed to the data provider
-                    let authorization_keys = deploy
-                        .approvals()
-                        .iter()
-                        .map(|approval| approval.signer().to_account_hash())
-                        .collect();
-                    let transfer_req = TransferRequest::with_runtime_args(
-                        TransferConfig::Unadministered, /* TODO: check chainspec & handle
-                                                         * administered possibility */
-                        state_root_hash,
-                        block_time,
-                        protocol_version,
-                        PublicKey::clone(&executable_block.proposer),
-                        txn_hash,
-                        InitiatorAddr::PublicKey(deploy.header().account().clone()),
-                        authorization_keys,
-                        deploy.session().args().clone(),
-                        Gas::zero(), /* <-- this should be the native transfer cost from the
-                                      * chainspec */
-                    );
-                    // native transfer auto-commits
-                    let transfer_result = data_access_layer.transfer(transfer_req);
-                    trace!(%txn_hash, ?transfer_result, "native transfer result");
-                    match EngineExecutionResult::from_transfer_result(transfer_result, Gas::zero())
-                    {
-                        Err(_) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
-                        Ok(exec_result) => {
-                            let ExecutionResultAndMessages {
-                                execution_result,
-                                messages,
-                            } = ExecutionResultAndMessages::from(exec_result);
-                            let versioned_execution_result =
-                                ExecutionResult::from(execution_result);
-                            execution_results.push(ExecutionArtifact::new(
-                                txn_hash,
-                                TransactionHeader::Deploy(deploy.header().clone()),
-                                versioned_execution_result,
-                                messages,
-                            ));
-                        }
-                    }
-                    continue;
-                }
-                (
-                    TransactionHash::Deploy(deploy_hash),
-                    Transaction::Deploy(deploy),
-                )
-            }
-            txn @ Transaction::V1(_) => (txn.hash(), txn),
-        };
-
-        if txn.is_native() {
-            todo!("route native transactions to data access layer");
-        }
-
+    for txn in executable_block.transactions {
+        let txn_hash = txn.hash();
         let txn_header = match &txn {
             Transaction::Deploy(deploy) => TransactionHeader::from(deploy.header().clone()),
             Transaction::V1(v1_txn) => TransactionHeader::from(v1_txn.header().clone()),
         };
-        let execute_request = ExecuteRequest::new(
+
+        let request = UserRequest::new(
             state_root_hash,
-            BlockTime::new(block_time),
+            block_time,
+            protocol_version,
             txn,
             (*executable_block.proposer).clone(),
+            administrative_accounts.clone(),
+            allow_unrestricted_transfers,
+            &system_costs,
         )?;
 
-        let exec_result_and_msgs = execute(&scratch_state, metrics.clone(), execute_request)?;
+        match request {
+            UserRequest::Execute(execute_request) => {
+                let exec_result_and_msgs =
+                    execute(&scratch_state, metrics.clone(), execute_request)?;
 
-        trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
-        // As for now a given state is expected to exist.
-        let new_state_root_hash = commit_execution_result(
-            &scratch_state,
-            // data_access_layer,
-            metrics.clone(),
-            state_root_hash,
-            txn_hash,
-            &exec_result_and_msgs.execution_result,
-        )?;
-        execution_results.push(ExecutionArtifact::new(
-            txn_hash,
-            txn_header,
-            ExecutionResult::from(exec_result_and_msgs.execution_result),
-            exec_result_and_msgs.messages,
-        ));
-        state_root_hash = new_state_root_hash;
+                trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
+                // As for now a given state is expected to exist.
+                let new_state_root_hash = commit_execution_result(
+                    &scratch_state,
+                    // data_access_layer,
+                    metrics.clone(),
+                    state_root_hash,
+                    txn_hash,
+                    &exec_result_and_msgs.execution_result,
+                )?;
+                execution_results.push(ExecutionArtifact::new(
+                    txn_hash,
+                    txn_header,
+                    ExecutionResult::from(exec_result_and_msgs.execution_result),
+                    exec_result_and_msgs.messages,
+                ));
+                state_root_hash = new_state_root_hash;
+            }
+            UserRequest::Transfer(transfer_request) => {
+                let gas = transfer_request.gas();
+                // native transfer auto-commits
+                let transfer_result = data_access_layer.transfer(transfer_request);
+                if let TransferResult::Success {
+                    post_state_hash, ..
+                } = &transfer_result
+                {
+                    state_root_hash = *post_state_hash;
+                }
+                trace!(%txn_hash, ?transfer_result, "native transfer result");
+                let Ok(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                };
+                let exec_result_and_msgs = ExecutionResultAndMessages::from(exec_result);
+                execution_results.push(ExecutionArtifact::new(
+                    txn_hash,
+                    txn_header,
+                    ExecutionResult::from(exec_result_and_msgs.execution_result),
+                    exec_result_and_msgs.messages,
+                ));
+            }
+        }
     }
 
     // Write the transaction approvals' and execution results' checksums to global state.
@@ -367,7 +346,7 @@ pub fn execute_finalized_block(
             return Err(BlockExecutionError::FailedToCreateEraEnd {
                 maybe_era_report,
                 maybe_next_era_validator_weights,
-            })
+            });
         }
     };
 
@@ -397,13 +376,13 @@ pub fn execute_finalized_block(
             None => {
                 return Err(BlockExecutionError::EngineState(
                     engine_state::Error::MissingChecksumRegistry,
-                ))
+                ));
             }
         },
         None => {
             return Err(BlockExecutionError::EngineState(
                 engine_state::Error::RootNotFound(state_root_hash),
-            ))
+            ));
         }
     };
 
@@ -463,6 +442,9 @@ where
 pub(super) fn speculatively_execute<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
+    administrative_accounts: BTreeSet<AccountHash>,
+    allow_unrestricted_transfers: bool,
+    system_costs: SystemConfig,
     txn: Transaction,
 ) -> Result<(ExecutionResultV2, Messages), SpeculativeExecutionError>
 where
@@ -471,20 +453,28 @@ where
     let SpeculativeExecutionState {
         state_root_hash,
         block_time,
-        protocol_version: _,
+        protocol_version,
     } = execution_state;
-    if txn.is_native() {
-        todo!("route native transactions to data access layer");
-    }
-    let execute_request = ExecuteRequest::new(
+
+    let request = UserRequest::new(
         state_root_hash,
         BlockTime::new(block_time.millis()),
+        protocol_version,
         txn,
         PublicKey::System,
+        administrative_accounts,
+        allow_unrestricted_transfers,
+        &system_costs,
     )?;
-    execute(engine_state, None, execute_request)
-        .map(|res_and_msgs| (res_and_msgs.execution_result, res_and_msgs.messages))
-        .map_err(SpeculativeExecutionError::from)
+
+    match request {
+        UserRequest::Execute(execute_request) => execute(engine_state, None, execute_request)
+            .map(|res_and_msgs| (res_and_msgs.execution_result, res_and_msgs.messages))
+            .map_err(SpeculativeExecutionError::from),
+        UserRequest::Transfer(_transfer_request) => {
+            todo!("route native transactions to data access layer, but don't commit them");
+        }
+    }
 }
 
 fn execute<S>(
@@ -594,4 +584,81 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
+}
+
+enum UserRequest {
+    Execute(ExecuteRequest),
+    Transfer(TransferRequest),
+}
+
+impl UserRequest {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        state_hash: Digest,
+        block_time: BlockTime,
+        protocol_version: ProtocolVersion,
+        txn: Transaction,
+        proposer: PublicKey,
+        administrative_accounts: BTreeSet<AccountHash>,
+        allow_unrestricted_transfers: bool,
+        system_costs: &SystemConfig,
+    ) -> Result<Self, NewUserRequestError> {
+        if txn.is_native() {
+            let txn_hash = txn.hash();
+            let initiator_addr = txn.initiator_addr();
+            let authorization_keys = txn.signers();
+
+            let v1_txn = match txn {
+                Transaction::Deploy(deploy) => {
+                    if !deploy.is_transfer() {
+                        return Err(NewUserRequestError::ExpectedNativeTransferDeploy(txn_hash));
+                    }
+                    let transfer_req = TransferRequest::with_runtime_args(
+                        TransferConfig::new(administrative_accounts, allow_unrestricted_transfers),
+                        state_hash,
+                        block_time,
+                        protocol_version,
+                        proposer,
+                        txn_hash,
+                        initiator_addr,
+                        authorization_keys,
+                        deploy.session().args().clone(),
+                        Gas::new(system_costs.mint_costs().transfer),
+                    );
+                    return Ok(UserRequest::Transfer(transfer_req));
+                }
+                Transaction::V1(v1_txn) => v1_txn,
+            };
+
+            match v1_txn.entry_point() {
+                TransactionEntryPoint::Custom(_) => {
+                    return Err(NewUserRequestError::InvalidEntryPoint(txn_hash));
+                }
+                TransactionEntryPoint::Transfer => {
+                    let transfer_req = TransferRequest::with_runtime_args(
+                        TransferConfig::new(administrative_accounts, allow_unrestricted_transfers),
+                        state_hash,
+                        block_time,
+                        protocol_version,
+                        proposer,
+                        txn_hash,
+                        initiator_addr,
+                        authorization_keys,
+                        v1_txn.take_args(),
+                        Gas::new(system_costs.mint_costs().transfer),
+                    );
+                    return Ok(UserRequest::Transfer(transfer_req));
+                }
+                TransactionEntryPoint::AddBid => todo!("make auction request"),
+                TransactionEntryPoint::WithdrawBid => todo!("make auction request"),
+                TransactionEntryPoint::Delegate => todo!("make auction request"),
+                TransactionEntryPoint::Undelegate => todo!("make auction request"),
+                TransactionEntryPoint::Redelegate => todo!("make auction request"),
+            }
+        }
+
+        let execute_req = ExecuteRequest::new(state_hash, block_time, txn, proposer)
+            .map_err(NewUserRequestError::Execute)?;
+        Ok(UserRequest::Execute(execute_req))
+    }
 }

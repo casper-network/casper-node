@@ -1,15 +1,13 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{self, Error},
     execution,
 };
 use casper_storage::{system::transfer::TransferError, tracking_copy::TrackingCopyError};
-use casper_types::{
-    account::AccountHash, addressable_entity::Weight, runtime_args, system::mint, U512,
-};
+use casper_types::{account::AccountHash, addressable_entity::Weight, runtime_args, U512};
 
 const CONTRACT_ADD_ASSOCIATED_KEY: &str = "add_associated_key.wasm";
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
@@ -513,24 +511,11 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         .commit();
 
     // KEY_1 (w: 2) DEFAULT_ACCOUNT (w: 1) does not pass deploy threshold of 5
-    let id: Option<u64> = None;
+    let transfer_request_1 = TransferRequestBuilder::new(transfer_amount, KEY_2)
+        .with_authorization_keys([KEY_1, *DEFAULT_ACCOUNT_ADDR])
+        .build();
 
-    let transfer_request_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_transfer_args(runtime_args! {
-                mint::ARG_TARGET => KEY_2,
-                mint::ARG_AMOUNT => transfer_amount,
-                mint::ARG_ID => id,
-            })
-            .with_deploy_hash([36; 32])
-            .with_authorization_keys(&[KEY_1, *DEFAULT_ACCOUNT_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
-
-    builder.exec(transfer_request_1).commit();
+    builder.transfer_and_commit(transfer_request_1);
 
     let response = builder
         .get_exec_result_owned(3)
@@ -544,22 +529,11 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     ));
 
     // KEY_1 (w: 2) KEY_2 (w: 2) DEFAULT_ACCOUNT_ADDR (w: 1) each passes threshold of 5
-    let id: Option<u64> = None;
+    let transfer_request = TransferRequestBuilder::new(transfer_amount, KEY_2)
+        .with_authorization_keys([KEY_2, KEY_1, *DEFAULT_ACCOUNT_ADDR])
+        .build();
 
-    let transfer_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_transfer_args(runtime_args! {
-                mint::ARG_TARGET => KEY_2,
-                mint::ARG_AMOUNT => transfer_amount,
-                mint::ARG_ID => id,
-            })
-            .with_deploy_hash([37; 32])
-            .with_authorization_keys(&[KEY_2, KEY_1, *DEFAULT_ACCOUNT_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
-
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
 }

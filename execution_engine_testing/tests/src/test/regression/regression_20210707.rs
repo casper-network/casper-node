@@ -1,10 +1,10 @@
 use casper_engine_test_support::{
     DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
-use casper_storage::system::transfer::TransferError;
+use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
     PublicKey, RuntimeArgs, SecretKey, URef, U512,
@@ -52,16 +52,10 @@ fn setup_regression_contract() -> ExecuteRequest {
     .build()
 }
 
-fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteRequest {
-    ExecuteRequestBuilder::transfer(
-        sender,
-        runtime_args! {
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => U512::from(amount),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build()
+fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> TransferRequest {
+    TransferRequestBuilder::new(amount, target)
+        .with_initiator(sender)
+        .build()
 }
 
 fn get_account_entity_hash(entity: &EntityWithNamedKeys) -> AddressableEntityHash {
@@ -100,7 +94,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -146,8 +140,8 @@ fn should_transfer_funds_from_contract_to_existing_account() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
+    builder.transfer_and_commit(fund_request_2).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -185,24 +179,16 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     let take_from = builder.get_expected_addressable_entity_by_account_hash(*ALICE_ADDR);
     let alice_main_purse = take_from.main_purse();
 
-    let transfer_request = {
-        let id: Option<u64> = None;
-        let transfer_args = runtime_args! {
-            mint::ARG_SOURCE => alice_main_purse,
-            mint::ARG_TARGET => *BOB_ADDR,
-            mint::ARG_AMOUNT => U512::from(700_000_000_000u64),
-            mint::ARG_ID => id,
-        };
+    let transfer_request = TransferRequestBuilder::new(700_000_000_000_u64, *BOB_ADDR)
+        .with_source(alice_main_purse)
+        .build();
 
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
-    };
-
-    builder.exec(transfer_request).commit();
+    builder.transfer_and_commit(transfer_request);
 
     let error = builder.get_error().expect("should have error");
 
@@ -236,8 +222,8 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
+    builder.transfer_and_commit(fund_request_2).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -284,7 +270,7 @@ fn should_not_transfer_funds_into_bob_purse() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -329,7 +315,7 @@ fn should_not_transfer_from_hardcoded_purse() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -376,8 +362,8 @@ fn should_not_refund_to_bob_and_charge_alice() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
+    builder.transfer_and_commit(fund_request_2).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -434,8 +420,8 @@ fn should_not_charge_alice_for_execution() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
+    builder.transfer_and_commit(fund_request_2).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -492,8 +478,8 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
     );
 
     builder.exec(store_request).commit().expect_success();
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder.transfer_and_commit(fund_request_1).expect_success();
+    builder.transfer_and_commit(fund_request_2).expect_success();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

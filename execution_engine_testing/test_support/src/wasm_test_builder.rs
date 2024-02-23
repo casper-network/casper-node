@@ -25,7 +25,8 @@ use casper_storage::{
     data_access_layer::{
         BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
         EraValidatorsResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, QueryRequest, QueryResult,
+        ProtocolUpgradeResult, QueryRequest, QueryResult, TransferConfig, TransferRequest,
+        TransferResult,
     },
     global_state::{
         state::{
@@ -53,11 +54,11 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
-    CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash, TransactionInfo, Transfer,
-    TransferAddr, URef, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
+    ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig, ProtocolVersion,
+    PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash, TransactionInfo,
+    Transfer, TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -79,6 +80,7 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 const GLOBAL_STATE_DIR: &str = "global_state";
 
 /// A wrapper structure that groups an entity alongside its namedkeys.
+#[derive(Debug)]
 pub struct EntityWithNamedKeys {
     entity: AddressableEntity,
     named_keys: NamedKeys,
@@ -182,14 +184,15 @@ impl LmdbWasmTestBuilder {
     /// Upgrades the execution engine using the scratch trie.
     pub fn upgrade_using_scratch(
         &mut self,
-        engine_config: EngineConfig,
+        mut engine_config: EngineConfig,
         upgrade_config: &mut ProtocolUpgradeConfig,
     ) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(engine_config);
+        Rc::get_mut(&mut self.engine_state)
+            .unwrap()
+            .update_config(engine_config.clone());
 
         let scratch_state = self.engine_state.get_scratch_engine_state();
         let pre_state_hash = upgrade_config.pre_state_hash();
@@ -202,6 +205,10 @@ impl LmdbWasmTestBuilder {
                     .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())
                     .unwrap();
                 self.post_state_hash = Some(post_state_hash);
+                engine_config.set_protocol_version(upgrade_config.new_protocol_version());
+                Rc::get_mut(&mut self.engine_state)
+                    .unwrap()
+                    .update_config(engine_config);
                 ProtocolUpgradeResult::Success {
                     post_state_hash,
                     effects,
@@ -504,7 +511,7 @@ impl LmdbWasmTestBuilder {
         // Scratch still requires that one deploy be executed and committed at a time.
         let exec_request = {
             let hash = self.post_state_hash.expect("expected post_state_hash");
-            exec_request.pre_state_hash = hash;
+            exec_request.state_hash = hash;
             exec_request
         };
 
@@ -550,6 +557,31 @@ impl LmdbWasmTestBuilder {
         cached_state
             .commit_step(step_request)
             .expect("unable to run step request against scratch global state");
+        self
+    }
+
+    /// Runs a [`TransferRequest`].
+    pub fn transfer_and_commit(&mut self, mut transfer_request: TransferRequest) -> &mut Self {
+        let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let transfer_config = TransferConfig::new(
+            self.engine_state.config().administrative_accounts().clone(),
+            self.engine_state.config().allow_unrestricted_transfers(),
+        );
+        transfer_request.set_state_hash_and_config(pre_state_hash, transfer_config);
+        let gas = transfer_request.gas();
+        let data_access_layer = self.engine_state.get_state();
+        let transfer_result = data_access_layer.transfer(transfer_request);
+        // native transfer auto-commits
+        if let TransferResult::Success {
+            post_state_hash, ..
+        } = &transfer_result
+        {
+            self.post_state_hash = Some(*post_state_hash);
+        }
+        // Cache transformations
+        let execution_result = ExecutionResult::from_transfer_result(transfer_result, gas).unwrap();
+        self.effects.push(execution_result.effects().clone());
+        self.exec_results.push(execution_result);
         self
     }
 }
@@ -749,7 +781,7 @@ where
 
     /// Runs an [`ExecuteRequest`].
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
-        exec_request.pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
+        exec_request.state_hash = self.post_state_hash.expect("expected post_state_hash");
         let execution_result = self.engine_state.execute_transaction(exec_request).unwrap();
         // Cache transformations
         self.effects.push(execution_result.effects().clone());
@@ -796,14 +828,14 @@ where
         engine_config: Option<EngineConfig>,
         upgrade_config: &mut ProtocolUpgradeConfig,
     ) -> &mut Self {
-        let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
+        let mut engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
 
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state_mut =
-            Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
-        engine_state_mut.update_config(engine_config);
+        Rc::get_mut(&mut self.engine_state)
+            .unwrap()
+            .update_config(engine_config.clone());
 
         let req = ProtocolUpgradeRequest::new(upgrade_config.clone());
         let result = self.engine_state.commit_upgrade(req);
@@ -812,6 +844,10 @@ where
             post_state_hash, ..
         } = result
         {
+            engine_config.set_protocol_version(upgrade_config.new_protocol_version());
+            Rc::get_mut(&mut self.engine_state)
+                .unwrap()
+                .update_config(engine_config);
             self.post_state_hash = Some(post_state_hash);
         }
 
@@ -868,7 +904,7 @@ where
             protocol_version,
             rewards,
             next_block_height,
-            time,
+            BlockTime::new(time),
         )?;
 
         self.post_state_hash = Some(post_state_hash);

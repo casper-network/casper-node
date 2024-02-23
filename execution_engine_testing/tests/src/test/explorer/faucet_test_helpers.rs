@@ -2,12 +2,13 @@ use rand::Rng;
 
 use casper_engine_test_support::{
     DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    TransferRequestBuilder, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
+use casper_storage::data_access_layer::TransferRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,
-    system::mint, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{
@@ -45,16 +46,12 @@ impl FundAccountRequestBuilder {
         self
     }
 
-    pub fn build(&self) -> ExecuteRequest {
-        ExecuteRequestBuilder::transfer(
-            *DEFAULT_ACCOUNT_ADDR,
-            runtime_args! {
-                mint::ARG_TARGET => self.target_account,
-                mint::ARG_AMOUNT => self.fund_amount,
-                mint::ARG_ID => self.fund_id
-            },
-        )
-        .build()
+    pub fn build(&self) -> TransferRequest {
+        let mut builder = TransferRequestBuilder::new(self.fund_amount, self.target_account);
+        if let Some(id) = self.fund_id {
+            builder = builder.with_transfer_id(id);
+        }
+        builder.build()
     }
 }
 
@@ -551,7 +548,7 @@ impl FaucetDeployHelper {
         self.faucet_time_interval
     }
 
-    pub fn fund_installer_request(&self) -> ExecuteRequest {
+    pub fn fund_installer_request(&self) -> TransferRequest {
         self.fund_account_request_builder
             .with_target_account(self.installer_account)
             .with_fund_amount(self.installer_fund_amount)

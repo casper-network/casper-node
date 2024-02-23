@@ -1,16 +1,14 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 use casper_execution_engine::{engine_state, execution::Error};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    runtime_args,
-    system::mint,
-    AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash, ProtocolVersion,
-    RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION,
+    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash,
+    ProtocolVersion, RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -868,17 +866,11 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
         )
         .expect_upgrade_success();
 
-    let transfer = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
-            mint::ARG_ID => Some(42u64),
-        },
-    )
-    .build();
+    let transfer = TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR)
+        .with_transfer_id(42)
+        .build();
 
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 
     (builder, ACCOUNT_1_ADDR)
 }

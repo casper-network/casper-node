@@ -120,7 +120,7 @@ pub enum Error {
     #[error("Host buffer is empty")]
     HostBufferEmpty,
     /// WASM bytes contains an unsupported "start" section.
-    #[error("Unsupported WASM start")]
+    #[error("Unsupported Wasm start")]
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]

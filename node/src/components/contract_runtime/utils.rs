@@ -17,7 +17,7 @@ use casper_execution_engine::engine_state::EngineState;
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
-use casper_types::{Chainspec, EraId, Key};
+use casper_types::{Chainspec, EraId, Key, PublicKey};
 use once_cell::sync::Lazy;
 use std::{
     cmp,
@@ -89,7 +89,7 @@ pub(super) async fn exec_or_requeue<REv>(
             {
                 Ok(rewards) => rewards,
                 Err(e) => {
-                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
+                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await;
                 }
             };
 
@@ -101,6 +101,15 @@ pub(super) async fn exec_or_requeue<REv>(
             BTreeMap::new()
         });
     }
+
+    let administrative_accounts = chainspec
+        .core_config
+        .administrators
+        .iter()
+        .map(PublicKey::to_account_hash)
+        .collect();
+    let allow_unrestricted_transfers = chainspec.core_config.allow_unrestricted_transfers;
+    let system_costs = chainspec.system_costs_config;
 
     let BlockAndExecutionResults {
         block,
@@ -119,6 +128,9 @@ pub(super) async fn exec_or_requeue<REv>(
             activation_point.era_id(),
             key_block_height_for_activation_point,
             prune_batch_size,
+            &administrative_accounts,
+            allow_unrestricted_transfers,
+            system_costs,
         )
     })
     .await
@@ -304,9 +316,9 @@ mod tests {
 
     #[test]
     fn calculation_is_safe_with_invalid_input() {
-        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
-        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5,), None);
-        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5), None);
+        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0), None);
         assert_eq!(
             calculate_prune_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
             None
@@ -319,7 +331,7 @@ mod tests {
         // batch out of u64::MAX of erainfos needs to iterate over all chunks.
         assert!(calculate_prune_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
         assert_eq!(
-            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100,)
+            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100)
                 .unwrap()
                 .len(),
             100
@@ -339,7 +351,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(0))])
         );
@@ -348,7 +360,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(1))])
         );
@@ -357,7 +369,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(2))])
         );
@@ -366,7 +378,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(3))])
         );
@@ -375,7 +387,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 4,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
@@ -400,11 +412,11 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                2
+                2,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
-                Key::EraInfo(EraId::new(1))
+                Key::EraInfo(EraId::new(1)),
             ])
         );
         assert_eq!(
@@ -412,11 +424,11 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                2
+                2,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(2)),
-                Key::EraInfo(EraId::new(3))
+                Key::EraInfo(EraId::new(3)),
             ])
         );
         assert_eq!(
@@ -424,7 +436,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                2
+                2,
             ),
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
@@ -433,7 +445,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
-                2
+                2,
             ),
             None
         );
@@ -449,7 +461,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                3
+                3,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -462,7 +474,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                3
+                3,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(3)),
@@ -475,7 +487,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                3
+                3,
             ),
             None
         );
@@ -491,7 +503,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                4
+                4,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -505,9 +517,9 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                4
+                4,
             ),
-            Some(vec![Key::EraInfo(EraId::new(4)),])
+            Some(vec![Key::EraInfo(EraId::new(4))])
         );
 
         assert_eq!(
@@ -515,7 +527,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                4
+                4,
             ),
             None
         );
@@ -531,7 +543,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                5
+                5,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -556,7 +568,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                5
+                5,
             ),
             None
         );
@@ -572,7 +584,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                6
+                6,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -597,7 +609,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                6
+                6,
             ),
             None
         );

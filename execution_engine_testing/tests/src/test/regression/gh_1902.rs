@@ -1,8 +1,9 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest,
@@ -12,7 +13,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate},
-        mint, standard_payment,
+        standard_payment,
     },
     AddressableEntity, Gas, PublicKey, SecretKey, U512,
 };
@@ -30,15 +31,11 @@ static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
-    let id: Option<u64> = None;
-    let transfer_args_1 = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => id,
-    };
-    let transfer_request_1 =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
-    builder.exec(transfer_request_1).expect_success().commit();
+    let transfer_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR).build();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
     builder
 }
 

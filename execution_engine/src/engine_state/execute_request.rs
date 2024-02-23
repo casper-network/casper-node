@@ -212,18 +212,15 @@ impl TryFrom<(TransactionV1Body, TransactionV1Hash)> for SessionInfo {
     ) -> Result<Self, Self::Error> {
         let (args, target, entry_point, _scheduling) = txn_v1_body.destructure();
 
-        let session: Session;
-        match target {
+        let session = match target {
             TransactionTarget::Native => {
-                return Err(NewRequestError::InvalidSessionV1Target(txn_v1_hash))
+                return Err(NewRequestError::InvalidSessionV1Target(txn_v1_hash));
             }
-            TransactionTarget::Stored { id, .. } => {
-                session = Session::Stored(id);
-            }
+            TransactionTarget::Stored { id, .. } => Session::Stored(id),
             TransactionTarget::Session {
                 kind, module_bytes, ..
-            } => session = Session::ModuleBytes { kind, module_bytes },
-        }
+            } => Session::ModuleBytes { kind, module_bytes },
+        };
 
         let TransactionEntryPoint::Custom(session_entry_point) = entry_point else {
             return Err(NewRequestError::InvalidSessionV1EntryPoint(txn_v1_hash));
@@ -258,7 +255,7 @@ pub enum NewRequestError {
 #[derive(Debug)]
 pub struct ExecuteRequest {
     /// State root hash of the global state in which the transaction will be executed.
-    pub pre_state_hash: Digest,
+    pub state_hash: Digest,
     /// Block time represented as a unix timestamp.
     pub block_time: BlockTime,
     /// The hash identifying the transaction.
@@ -288,7 +285,7 @@ pub struct ExecuteRequest {
 impl ExecuteRequest {
     /// Creates a new execute request.
     pub fn new(
-        parent_state_hash: Digest,
+        state_hash: Digest,
         block_time: BlockTime,
         txn: Transaction,
         proposer: PublicKey,
@@ -331,7 +328,7 @@ impl ExecuteRequest {
         };
 
         Ok(Self {
-            pre_state_hash: parent_state_hash,
+            state_hash,
             block_time,
             transaction_hash,
             gas_price,

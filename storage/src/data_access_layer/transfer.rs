@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, Gas, InitiatorAddr, ProtocolVersion,
-    PublicKey, RuntimeArgs, TransactionHash, TransferAddr,
+    account::AccountHash, execution::Effects, BlockTime, Digest, Gas, InitiatorAddr,
+    ProtocolVersion, PublicKey, RuntimeArgs, TransactionHash, TransferAddr,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -86,7 +86,7 @@ pub struct TransferRequest {
     /// State root hash.
     state_hash: Digest,
     /// Block time represented as a unix timestamp.
-    block_time: u64,
+    block_time: BlockTime,
     /// Protocol version.
     protocol_version: ProtocolVersion,
     /// Public key of the proposer.
@@ -109,7 +109,7 @@ impl TransferRequest {
     pub fn new(
         config: TransferConfig,
         state_hash: Digest,
-        block_time: u64,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
         transaction_hash: TransactionHash,
@@ -138,7 +138,7 @@ impl TransferRequest {
     pub fn with_runtime_args(
         config: TransferConfig,
         state_hash: Digest,
-        block_time: u64,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
         transaction_hash: TransactionHash,
@@ -185,9 +185,8 @@ impl TransferRequest {
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
-
     /// Returns block time.
-    pub fn block_time(&self) -> u64 {
+    pub fn block_time(&self) -> BlockTime {
         self.block_time
     }
 
@@ -214,6 +213,14 @@ impl TransferRequest {
     /// Into args.
     pub fn into_args(self) -> TransferRequestArgs {
         self.args
+    }
+
+    /// Used by `WasmTestBuilder` to set the appropriate state root hash and transfer config before
+    /// executing the transfer.
+    #[doc(hidden)]
+    pub fn set_state_hash_and_config(&mut self, state_hash: Digest, config: TransferConfig) {
+        self.state_hash = state_hash;
+        self.config = config;
     }
 }
 

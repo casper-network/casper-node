@@ -230,7 +230,7 @@ fn should_charge_session_with_incorrect_wasm_no_memory_section() {
 fn should_charge_payment_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Payment;
-    let expected_error = "Unsupported WASM start";
+    let expected_error = "Unsupported Wasm start";
     run_test_case(&wasm_bytes, expected_error, execution_phase)
 }
 
@@ -239,6 +239,6 @@ fn should_charge_payment_with_incorrect_wasm_start_section() {
 fn should_charge_session_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Session;
-    let expected_error = "Unsupported WASM start";
+    let expected_error = "Unsupported Wasm start";
     run_test_case(&wasm_bytes, expected_error, execution_phase)
 }

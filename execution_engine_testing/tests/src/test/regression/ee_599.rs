@@ -9,7 +9,7 @@ use casper_types::{account::AccountHash, runtime_args, U512};
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const DONATION_PURSE_COPY_KEY: &str = "donation_purse_copy";
-const EXPECTED_ERROR: &str = "ForgedReference";
+const EXPECTED_ERROR: &str = "Forged reference";
 const TRANSFER_FUNDS_KEY: &str = "transfer_funds";
 const VICTIM_ADDR: AccountHash = AccountHash::new([42; 32]);
 

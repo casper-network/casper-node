@@ -1,18 +1,19 @@
+use std::{convert::TryFrom, path::PathBuf};
+
 use casper_engine_test_support::{
     utils::create_genesis_config, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    TransferRequestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
-    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
-    RuntimeArgs, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, AccessRights,
+    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
+    StoredValue, U512,
 };
-use std::{convert::TryFrom, path::PathBuf};
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 
@@ -28,15 +29,8 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -45,7 +39,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     builder
         .exec(install_contract_request)
@@ -114,7 +108,7 @@ fn query_dictionary_item(
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
-                        )
+                        );
                     }
                 };
 
@@ -456,15 +450,8 @@ fn dictionary_put_should_fail_with_large_item_key() {
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -475,7 +462,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
     builder.exec(install_contract_request).commit();
     let exec_result = builder.get_last_exec_result().expect("should have results");
     let error = exec_result.as_error().expect("should have error");
@@ -496,15 +483,8 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -515,7 +495,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
     builder.exec(install_contract_request).commit();
     let exec_result = builder.get_last_exec_result().expect("should have results");
     let error = exec_result.as_error().expect("should have error");

@@ -42,7 +42,9 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig};
+use casper_types::{
+    Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig, PublicKey,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -61,7 +63,9 @@ use crate::{
     NodeRng,
 };
 pub(crate) use config::Config;
-pub(crate) use error::{BlockExecutionError, ConfigError, ContractRuntimeError};
+pub(crate) use error::{
+    BlockExecutionError, ConfigError, ContractRuntimeError, NewUserRequestError,
+};
 pub(crate) use event::Event;
 use exec_queue::{ExecQueue, QueueItem};
 use metrics::Metrics;
@@ -565,11 +569,24 @@ impl ContractRuntime {
                 responder,
             } => {
                 let engine_state = Arc::clone(&self.engine_state);
+                let administrative_accounts = self
+                    .chainspec
+                    .core_config
+                    .administrators
+                    .iter()
+                    .map(PublicKey::to_account_hash)
+                    .collect();
+                let allow_unrestricted_transfers =
+                    self.chainspec.core_config.allow_unrestricted_transfers;
+                let system_costs = self.chainspec.system_costs_config;
                 async move {
                     let result = run_intensive_task(move || {
                         speculatively_execute(
                             engine_state.as_ref(),
                             execution_prestate,
+                            administrative_accounts,
+                            allow_unrestricted_transfers,
+                            system_costs,
                             *transaction,
                         )
                     })

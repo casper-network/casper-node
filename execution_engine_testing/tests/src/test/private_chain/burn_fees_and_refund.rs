@@ -1,11 +1,10 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
-    runtime_args,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    EntityAddr, FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    system::handle_payment::ACCUMULATION_PURSE_KEY, EntityAddr, FeeHandling, RefundHandling,
+    RuntimeArgs, DEFAULT_NOP_COST, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 use num_rational::Ratio;
 use num_traits::{One, Zero};
@@ -84,6 +83,7 @@ fn should_burn_zero_refund_and_burn_fees() {
     let expected_fee_amount = *DEFAULT_PAYMENT; // 0% refund + fee
     test_burning_fees(full_refund_handling, fee_handling, expected_fee_amount);
 }
+
 #[ignore]
 #[test]
 fn should_burn_full_refund_and_burn_fees() {
@@ -137,16 +137,14 @@ fn test_burning_fees(
         expected_burn_amount,
         "total supply should be burned exactly by the amount of calculated fee after refund"
     );
-    let exec_request_2 = {
-        let transfer_args = runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        };
-        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build()
-    };
+    let transfer_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
     let total_supply_before = builder.total_supply(None);
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
     let total_supply_after = builder.total_supply(None);
 
     match fee_handling {

@@ -1,13 +1,10 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error as CoreError, execution::Error as ExecError};
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{mint, standard_payment},
-    AddressableEntityHash, Key, U512,
+    account::AccountHash, runtime_args, system::standard_payment, AddressableEntityHash, Key, U512,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -27,15 +24,7 @@ fn regression_20211110() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(funds),
-            mint::ARG_ID => Option::<u64>::None
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(funds, ACCOUNT_1_ADDR).build();
 
     let install_request = {
         let session_args = runtime_args! {};
@@ -53,7 +42,9 @@ fn regression_20211110() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
     builder.exec(install_request).expect_success().commit();
 
     funds = funds.checked_sub(INSTALL_COST).unwrap();

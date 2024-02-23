@@ -3471,9 +3471,9 @@ where
 fn dump_runtime_stack_info(instance: casper_wasmi::ModuleRef, max_stack_height: u32) {
     let globals = instance.globals();
     let Some(current_runtime_call_stack_height) = globals.last()
-    else {
-        return;
-    };
+        else {
+            return;
+        };
 
     if let RuntimeValue::I32(current_runtime_call_stack_height) =
         current_runtime_call_stack_height.get()

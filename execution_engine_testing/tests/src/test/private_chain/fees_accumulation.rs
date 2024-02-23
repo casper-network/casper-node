@@ -1,13 +1,12 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
-    runtime_args,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    EntityAddr, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
+    system::handle_payment::ACCUMULATION_PURSE_KEY, EntityAddr, EraId, FeeHandling, Key,
+    ProtocolVersion, RuntimeArgs, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -83,21 +82,19 @@ fn should_finalize_and_accumulate_rewards_purse() {
         "none of the named keys should change before and after execution"
     );
 
-    let exec_request_2 = {
-        let transfer_args = runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        };
-        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build()
-    };
+    let transfer_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
-    let exec_request_2_proposer = exec_request_2.proposer.clone();
+    let exec_request_2_proposer = transfer_request.proposer().clone();
     let proposer_account_2 = builder
         .get_entity_by_account_hash(exec_request_2_proposer.to_account_hash())
         .expect("should have proposer account");
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
     assert_eq!(
         builder.get_purse_balance(proposer_account_2.main_purse()),
         U512::zero()

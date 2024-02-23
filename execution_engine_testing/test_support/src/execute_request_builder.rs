@@ -18,7 +18,7 @@ use crate::{
 /// Builds an [`ExecuteRequest`].
 #[derive(Debug)]
 pub struct ExecuteRequestBuilder {
-    pre_state_hash: Digest,
+    state_hash: Digest,
     block_time: BlockTime,
     transaction_hash: TransactionHash,
     gas_price: u64,
@@ -36,7 +36,7 @@ pub struct ExecuteRequestBuilder {
 impl Default for ExecuteRequestBuilder {
     fn default() -> Self {
         ExecuteRequestBuilder {
-            pre_state_hash: Self::DEFAULT_PRE_STATE_HASH,
+            state_hash: Self::DEFAULT_STATE_HASH,
             block_time: BlockTime::new(DEFAULT_BLOCK_TIME),
             transaction_hash: Self::DEFAULT_TRANSACTION_HASH,
             gas_price: DEFAULT_GAS_PRICE,
@@ -54,8 +54,8 @@ impl Default for ExecuteRequestBuilder {
 }
 
 impl ExecuteRequestBuilder {
-    /// The default value used for `ExecuteRequest::pre_state_hash`.
-    pub const DEFAULT_PRE_STATE_HASH: Digest = Digest::from_raw([1; 32]);
+    /// The default value used for `ExecuteRequest::state_hash`.
+    pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
     /// The default value used for `ExecuteRequest::transaction_hash`.
     pub const DEFAULT_TRANSACTION_HASH: TransactionHash =
         TransactionHash::V1(TransactionV1Hash::from_raw([2; 32]));
@@ -65,8 +65,6 @@ impl ExecuteRequestBuilder {
     pub const DEFAULT_PAYMENT_ENTRY_POINT: &'static str = "call";
     /// The default value used for `ExecuteRequest::session_entry_point`.
     pub const DEFAULT_SESSION_ENTRY_POINT: &'static str = "call";
-    /// The default value used in `ExecuteRequest::authorization_keys`.
-    pub const DEFAULT_AUTHORIZATION_KEY: AccountHash = AccountHash::new([3; 32]);
 
     /// Returns a new `ExecuteRequestBuilder` with default values.
     pub fn new() -> Self {
@@ -222,10 +220,10 @@ impl ExecuteRequestBuilder {
         self
     }
 
-    /// Consumes self and returns an [`ExecuteRequest`].
+    /// Consumes self and returns an `ExecuteRequest`.
     pub fn build(self) -> ExecuteRequest {
         ExecuteRequest {
-            pre_state_hash: self.pre_state_hash,
+            state_hash: self.state_hash,
             block_time: self.block_time,
             transaction_hash: self.transaction_hash,
             gas_price: self.gas_price,
@@ -241,12 +239,5 @@ impl ExecuteRequestBuilder {
             authorization_keys: self.authorization_keys,
             proposer: self.proposer,
         }
-    }
-
-    /// Returns an [`ExecuteRequest`] for a native transfer.
-    pub fn transfer(_sender: AccountHash, _transfer_args: RuntimeArgs) -> Self {
-        todo!(
-            "this should not be a part of Self - should maybe have an ExecuteNativeRequestBuilder"
-        );
     }
 }

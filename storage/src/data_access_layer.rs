@@ -10,7 +10,6 @@ use crate::tracking_copy::TrackingCopy;
 mod addressable_entity;
 pub mod balance;
 pub mod era_validators;
-mod execute;
 mod execution_results_checksum;
 mod flush;
 mod genesis;
@@ -25,7 +24,6 @@ mod trie;
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
-pub use execute::{ExecuteNativeRequest, NativeEntryPoint, NewNativeRequestError};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
@@ -37,7 +35,7 @@ pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
-pub use transfer::{TransferRequest, TransferResult};
+pub use transfer::{TransferConfig, TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
 pub struct Block {

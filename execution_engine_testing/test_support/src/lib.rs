@@ -13,6 +13,7 @@ mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
+mod transfer_request_builder;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
@@ -39,6 +40,7 @@ use chainspec_config::PRODUCTION_PATH;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
+pub use transfer_request_builder::TransferRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{EntityWithNamedKeys, LmdbWasmTestBuilder, WasmTestBuilder};
 

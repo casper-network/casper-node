@@ -1,14 +1,12 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::Weight,
-    runtime_args,
-    system::{mint, standard_payment::ARG_AMOUNT},
-    ApiError, PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::Weight, runtime_args,
+    system::standard_payment::ARG_AMOUNT, ApiError, PublicKey, SecretKey,
 };
 use once_cell::sync::Lazy;
 
@@ -42,7 +40,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR],
         ),
         "one signature should match the expected authorization key"
     );
@@ -50,7 +48,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
         ),
         "two signatures are off by one"
     );
@@ -58,7 +56,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
-            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_2_ADDR]
+            vec![*DEFAULT_ACCOUNT_ADDR, *ACCOUNT_2_ADDR],
         ),
         "two signatures should match the expected list"
     );
@@ -66,7 +64,7 @@ fn should_list_authorization_keys() {
         test_match(
             *ACCOUNT_1_ADDR,
             vec![*ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_1_ADDR]
+            vec![*ACCOUNT_1_ADDR],
         ),
         "one signature should match the output for non-default account"
     );
@@ -75,7 +73,7 @@ fn should_list_authorization_keys() {
         test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR]
+            vec![*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR],
         ),
         "multisig matches expected list"
     );
@@ -83,7 +81,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![]
+            vec![],
         ),
         "multisig is not empty"
     );
@@ -91,7 +89,7 @@ fn should_list_authorization_keys() {
         !test_match(
             *DEFAULT_ACCOUNT_ADDR,
             vec![*ACCOUNT_2_ADDR, *DEFAULT_ACCOUNT_ADDR, *ACCOUNT_1_ADDR],
-            vec![*ACCOUNT_2_ADDR, *ACCOUNT_1_ADDR]
+            vec![*ACCOUNT_2_ADDR, *ACCOUNT_1_ADDR],
         ),
         "multisig does not include caller account"
     );
@@ -150,18 +148,13 @@ fn setup() -> LmdbWasmTestBuilder {
             .build()
         };
 
-        let transfer_request = {
-            let transfer_args = runtime_args! {
-                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-                mint::ARG_TARGET => account,
-                mint::ARG_ID => Option::<u64>::None,
-            };
-
-            ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
-        };
+        let transfer_request =
+            TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, account).build();
 
         builder.exec(add_key_request).expect_success().commit();
-        builder.exec(transfer_request).expect_success().commit();
+        builder
+            .transfer_and_commit(transfer_request)
+            .expect_success();
     }
 
     builder

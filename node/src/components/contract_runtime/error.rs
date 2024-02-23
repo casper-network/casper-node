@@ -6,12 +6,12 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_execution_engine::engine_state::{
-    Error as EngineStateError, NewRequestError, StepError,
+    Error as EngineStateError, NewRequestError as NewExecuteRequestError, StepError,
 };
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, TransactionHash, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -41,6 +41,20 @@ pub(crate) enum ContractRuntimeError {
     /// Chunking error.
     #[error("failed to chunk the data {0}")]
     ChunkingError(#[source] ChunkingError),
+}
+
+/// Error returned if constructing a new user request fails.
+#[derive(Copy, Clone, Eq, PartialEq, Error, Serialize, Debug)]
+pub enum NewUserRequestError {
+    /// The transaction is a native one, but the wrapped deploy is not a transfer.
+    #[error("native transaction of deploy variant is not a transfer")]
+    ExpectedNativeTransferDeploy(TransactionHash),
+    /// The transaction is a native version 1 variant, but has a custom entry point.
+    #[error("cannot use custom variant for entry point in native transaction v1 {0}")]
+    InvalidEntryPoint(TransactionHash),
+    /// Error constructing a new execution request.
+    #[error(transparent)]
+    Execute(#[from] NewExecuteRequestError),
 }
 
 /// An error during block execution.
@@ -119,9 +133,5 @@ pub enum BlockExecutionError {
     RootNotFound(Digest),
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
-    NewRequest(
-        #[from]
-        #[serde(skip_serializing)]
-        NewRequestError,
-    ),
+    NewRequest(#[from] NewUserRequestError),
 }

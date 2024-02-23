@@ -87,7 +87,7 @@ fn should_run_ee_572_regression() {
     let error_message = builder.get_error_message().unwrap();
 
     assert!(
-        error_message.contains("ForgedReference"),
+        error_message.contains("Forged reference"),
         "{}",
         error_message
     );

@@ -5,18 +5,16 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
-    system::{
-        auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
-        mint,
-    },
+    system::auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
     GenesisAccount, GenesisConfigBuilder, GenesisValidator, Motes, PublicKey, SecretKey, U256,
     U512,
 };
@@ -107,17 +105,13 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
     builder.run_genesis(run_genesis_request);
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => PublicKey::System.to_account_hash(),
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
+    let fund_request = TransferRequestBuilder::new(
+        MINIMUM_ACCOUNT_CREATION_BALANCE,
+        PublicKey::System.to_account_hash(),
     )
     .build();
 
-    builder.exec(fund_request).expect_success().commit();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     builder
 }
@@ -269,17 +263,13 @@ fn should_retain_genesis_validator_slot_protection() {
         let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
         builder.run_genesis(run_genesis_request);
 
-        let fund_request = ExecuteRequestBuilder::transfer(
-            *DEFAULT_ACCOUNT_ADDR,
-            runtime_args! {
-                mint::ARG_TARGET => PublicKey::System.to_account_hash(),
-                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-                mint::ARG_ID => <Option<u64>>::None,
-            },
+        let fund_request = TransferRequestBuilder::new(
+            MINIMUM_ACCOUNT_CREATION_BALANCE,
+            PublicKey::System.to_account_hash(),
         )
         .build();
 
-        builder.exec(fund_request).expect_success().commit();
+        builder.transfer_and_commit(fund_request).expect_success();
 
         builder
     };

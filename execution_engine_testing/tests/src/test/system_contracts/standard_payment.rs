@@ -34,7 +34,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
         runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
     )
-    .build();
+        .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -57,7 +57,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         .expect("there should be a response");
 
     assert!(
-        error_message.contains("InsufficientPayment"),
+        error_message.contains("Insufficient payment"),
         "expected insufficient payment, got: {}",
         error_message
     );
@@ -85,7 +85,7 @@ fn should_forward_payment_execution_runtime_error() {
             .with_payment_code(REVERT_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
@@ -157,7 +157,7 @@ fn should_forward_payment_execution_gas_limit_error() {
             .with_payment_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();

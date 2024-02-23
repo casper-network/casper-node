@@ -1,11 +1,11 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
@@ -417,15 +417,13 @@ fn native_transfer_should_create_new_private_account() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
-    let transfer_args = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-        mint::ARG_AMOUNT => U512::one(),
-        mint::ARG_ID => Some(1u64),
-    };
-    let transfer_request =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build();
+    let transfer_request = TransferRequestBuilder::new(1, *ACCOUNT_2_ADDR)
+        .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
 
     let _account_2 = builder
         .get_entity_by_account_hash(*ACCOUNT_2_ADDR)

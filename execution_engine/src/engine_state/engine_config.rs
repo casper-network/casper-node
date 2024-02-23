@@ -228,6 +228,15 @@ impl EngineConfig {
     pub fn compute_rewards(&self) -> bool {
         self.compute_rewards
     }
+
+    /// Sets the protocol version of the config.
+    ///
+    /// NOTE: This is only useful to the WasmTestBuilder for emulating a network upgrade, and hence
+    /// is subject to change or deletion without notice.
+    #[doc(hidden)]
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
+    }
 }
 
 /// A builder for an [`EngineConfig`].

@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
@@ -11,10 +11,7 @@ use casper_execution_engine::{
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{
-        auction::{self, BidsExt, DelegationRate},
-        mint,
-    },
+    system::auction::{self, BidsExt, DelegationRate},
     ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
@@ -49,57 +46,37 @@ fn setup() -> LmdbWasmTestBuilder {
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let id: Option<u64> = None;
-
-    let transfer_args_1 = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => id,
-    };
-
     let transfer_request_1 =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR).build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
-
-    let transfer_args_2 = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => id,
-    };
+    builder
+        .transfer_and_commit(transfer_request_1)
+        .expect_success();
 
     let transfer_request_2 =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_2).build();
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_2_ADDR).build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request_2)
+        .expect_success();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let id: Option<u64> = None;
-
-    let transfer_args_1 = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => id,
-    };
-
     let transfer_request_1 =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR).build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
-
-    let transfer_args_2 = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-        mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-        mint::ARG_ID => id,
-    };
+    builder
+        .transfer_and_commit(transfer_request_1)
+        .expect_success();
 
     let transfer_request_2 =
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_2).build();
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_2_ADDR).build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request_2)
+        .expect_success();
 
     let install_request_1 = ExecuteRequestBuilder::standard(
         *ACCOUNT_2_ADDR,

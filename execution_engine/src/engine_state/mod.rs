@@ -26,7 +26,6 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        transfer::{TransferConfig, TransferRequest},
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
         GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
@@ -56,8 +55,8 @@ use casper_types::{
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AddressableEntity, AddressableEntityHash, BlockTime, Digest, EntityAddr, FeeHandling, Gas,
-    InitiatorAddr, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    AddressableEntity, AddressableEntityHash, BlockTime, Digest, EntityAddr, FeeHandling, Gas, Key,
+    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionInfo, TransactionSessionKind,
     TransactionV1Hash, URef, U512,
 };
@@ -338,46 +337,6 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    /// Executes a transfer.
-    ///
-    /// Native transfers do not involve WASM at all, and also skip executing payment code.
-    /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
-    ///
-    /// Returns an [`ExecutionResult`] for a successful native transfer.
-    #[allow(clippy::too_many_arguments)]
-    pub fn transfer(
-        &self,
-        _executor: &Executor,
-        protocol_version: ProtocolVersion,
-        prestate_hash: Digest,
-        blocktime: BlockTime,
-        deploy_item: DeployItem,
-        proposer: PublicKey,
-    ) -> Result<ExecutionResult, Error> {
-        let deploy_hash = deploy_item.deploy_hash;
-        let transfer_config = TransferConfig::new(
-            self.config.administrative_accounts.clone(),
-            self.config.allow_unrestricted_transfers,
-        );
-        let wasmless_transfer_gas =
-            Gas::new(self.config().system_config().wasmless_transfer_cost());
-        let transfer_req = TransferRequest::with_runtime_args(
-            transfer_config,
-            prestate_hash,
-            blocktime.value(),
-            protocol_version,
-            proposer,
-            TransactionHash::Deploy(deploy_hash), // TODO - should have this passed in
-            InitiatorAddr::AccountHash(deploy_item.address), // TODO - should have this passed in
-            deploy_item.authorization_keys,
-            deploy_item.session.args().clone(),
-            wasmless_transfer_gas,
-        );
-        let transfer_result = self.state.transfer(transfer_req);
-        ExecutionResult::from_transfer_result(transfer_result, wasmless_transfer_gas)
-            .map_err(|_| Error::RootNotFound(prestate_hash))
-    }
-
     /// Executes a transaction.
     ///
     /// A transaction execution consists of running the payment code, which is expected to deposit
@@ -391,7 +350,7 @@ where
     pub fn execute_transaction(
         &self,
         ExecuteRequest {
-            pre_state_hash,
+            state_hash,
             block_time,
             transaction_hash,
             gas_price,
@@ -413,9 +372,9 @@ where
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
         // do this second; as there is no reason to proceed if the prestate hash is invalid
-        let tracking_copy = match self.tracking_copy(pre_state_hash) {
+        let tracking_copy = match self.tracking_copy(state_hash) {
             Err(gse) => return Ok(ExecutionResult::precondition_failure(Error::Storage(gse))),
-            Ok(None) => return Err(Error::RootNotFound(pre_state_hash)),
+            Ok(None) => return Err(Error::RootNotFound(state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
@@ -560,8 +519,8 @@ where
         // payment_code_spec_6: system contract validity
         let Some(payment_purse_key) =
             handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY).copied() else {
-                return Ok(ExecutionResult::precondition_failure(Error::Deploy));
-            };
+            return Ok(ExecutionResult::precondition_failure(Error::Deploy));
+        };
 
         let payment_purse_uref = payment_purse_key
             .into_uref()
@@ -571,7 +530,7 @@ where
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
         let rewards_target_purse =
-            match self.get_rewards_purse(protocol_version, proposer, pre_state_hash) {
+            match self.get_rewards_purse(protocol_version, proposer, state_hash) {
                 Ok(target_purse) => target_purse,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
@@ -901,7 +860,7 @@ where
                 ) else {
                     return Ok(ExecutionResult::precondition_failure(
                         Error::GasConversionOverflow,
-                    ))
+                    ));
                 };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -1154,7 +1113,9 @@ where
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                        return BidsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
                     }
                     None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
@@ -1171,7 +1132,7 @@ where
         protocol_version: ProtocolVersion,
         rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
-        time: u64,
+        block_time: BlockTime,
     ) -> Result<Digest, StepError> {
         let tracking_copy = match self.tracking_copy(pre_state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -1200,7 +1161,7 @@ where
 
         let txn_hash = {
             // seeds address generator w/ era_end_timestamp_millis
-            let mut bytes = time.into_bytes()?;
+            let mut bytes = block_time.into_bytes()?;
             bytes.append(&mut next_block_height.into_bytes()?);
             TransactionHash::V1(TransactionV1Hash::new(Digest::hash(&bytes)))
         };
