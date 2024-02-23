@@ -73,6 +73,8 @@ pub struct RuntimeContext<'a, R> {
     entity_kind: EntityKind,
     account_hash: AccountHash,
     emit_message_cost: U512,
+    // Whether the execution is permitted to call FFI `casper_add_contract_version()` or not.
+    allow_casper_add_contract_version: bool,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -104,6 +106,7 @@ where
         transfers: Vec<TransferAddr>,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
+        allow_casper_add_contract_version: bool,
     ) -> Self {
         let emit_message_cost = engine_config
             .wasm_config()
@@ -133,6 +136,7 @@ where
             remaining_spending_limit,
             entity_kind,
             emit_message_cost,
+            allow_casper_add_contract_version,
         }
     }
 
@@ -188,6 +192,7 @@ where
             remaining_spending_limit,
             entity_kind,
             emit_message_cost: self.emit_message_cost,
+            allow_casper_add_contract_version: self.allow_casper_add_contract_version,
         }
     }
 
@@ -336,6 +341,11 @@ where
     /// Returns the current phase.
     pub fn phase(&self) -> Phase {
         self.phase
+    }
+
+    /// Returns `true` if the execution is permitted to call `casper_add_contract_version()`.
+    pub fn allow_casper_add_contract_version(&self) -> bool {
+        self.allow_casper_add_contract_version
     }
 
     /// Generates new deterministic hash for uses as an address.

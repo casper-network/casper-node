@@ -18,7 +18,10 @@ use crate::{
 #[derive(Clone, Debug)]
 pub(crate) enum ExecutionKind<'a> {
     /// Standard (non-specialized) Wasm bytes.
-    Standard(&'a Bytes),
+    Standard {
+        module_bytes: &'a Bytes,
+        allow_casper_add_contract_version: bool,
+    },
     /// Wasm bytes which install a stored entity.
     Installer(&'a Bytes),
     /// Wasm bytes which upgrade a stored entity.
@@ -36,8 +39,11 @@ pub(crate) enum ExecutionKind<'a> {
 
 impl<'a> ExecutionKind<'a> {
     /// Returns a new `Standard` variant of `ExecutionKind`.
-    pub fn new_standard(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Standard(module_bytes)
+    pub fn new_standard(module_bytes: &'a Bytes, allow_casper_add_contract_version: bool) -> Self {
+        ExecutionKind::Standard {
+            module_bytes,
+            allow_casper_add_contract_version,
+        }
     }
 
     /// Returns a new `Installer` variant of `ExecutionKind`.
@@ -61,14 +67,17 @@ impl<'a> ExecutionKind<'a> {
         if module_bytes.is_empty() {
             return Err(Error::EmptyCustomPaymentModuleBytes);
         }
-        Ok(ExecutionKind::Standard(module_bytes))
+        Ok(ExecutionKind::Standard {
+            module_bytes,
+            allow_casper_add_contract_version: false,
+        })
     }
 
     /// Returns a new `ExecutionKind` cloned from `self`, but converting any Wasm bytes variant to
     /// `Standard`, and returning an error if they are empty.
     pub fn convert_for_payment(&self) -> Result<Self, Error> {
         match self {
-            ExecutionKind::Standard(module_bytes)
+            ExecutionKind::Standard { module_bytes, .. }
             | ExecutionKind::Installer(module_bytes)
             | ExecutionKind::Upgrader(module_bytes)
             | ExecutionKind::Isolated(module_bytes) => Self::new_for_payment(module_bytes),

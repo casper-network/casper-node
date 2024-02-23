@@ -1793,6 +1793,10 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
+        if !self.context.allow_casper_add_contract_version() {
+            return Ok(Err(ApiError::NotAllowedToAddContractVersion));
+        }
+
         if entry_points.contains_stored_session() {
             return Err(Error::InvalidEntryPointType);
         }

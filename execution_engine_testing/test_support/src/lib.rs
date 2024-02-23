@@ -17,7 +17,6 @@ mod transfer_request_builder;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
-// mod execute_request_builder;
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -80,11 +79,12 @@ pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 
 /// Default genesis config hash.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
+/// Default account secret key.
+pub static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
 /// Default account public key.
-pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
+pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
 /// Default test account address.
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));

@@ -113,13 +113,15 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for PaymentInfo {
 pub enum Session {
     /// A stored entity or package.
     Stored(TransactionInvocationTarget),
-    /// Compiled Wasm as byte code.
+    /// Compiled Wasm from a transaction >= V1 as byte code.
     ModuleBytes {
         /// The kind of session.
         kind: TransactionSessionKind,
         /// The compiled Wasm.
         module_bytes: Bytes,
     },
+    /// Compiled Wasm from a deploy as byte code.
+    DeployModuleBytes(Bytes),
 }
 
 /// The session-related portion of an `ExecuteRequest`.
@@ -143,10 +145,7 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
         let session_args: RuntimeArgs;
         match session_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
-                session = Session::ModuleBytes {
-                    kind: TransactionSessionKind::Standard,
-                    module_bytes,
-                };
+                session = Session::DeployModuleBytes(module_bytes);
                 session_entry_point = DEFAULT_ENTRY_POINT.to_string();
                 session_args = args;
             }

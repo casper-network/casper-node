@@ -163,6 +163,7 @@ fn new_runtime_context<'a>(
         Vec::default(),
         U512::MAX,
         EntryPointType::Session,
+        false,
     );
 
     (runtime_context, tempdir)
@@ -427,6 +428,7 @@ fn contract_key_addable_valid() {
         Vec::default(),
         U512::zero(),
         EntryPointType::Session,
+        false,
     );
 
     assert!(runtime_context
@@ -485,6 +487,7 @@ fn contract_key_addable_invalid() {
         Vec::default(),
         U512::zero(),
         EntryPointType::Session,
+        false,
     );
 
     let result = runtime_context.metered_add_gs(contract_key, named_uref_tuple);

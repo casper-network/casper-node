@@ -436,19 +436,25 @@ where
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Standard,
                 module_bytes,
-            } => ExecutionKind::new_standard(module_bytes),
+            } => ExecutionKind::new_standard(module_bytes, false),
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Installer,
                 module_bytes,
+                ..
             } => ExecutionKind::new_installer(module_bytes),
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Upgrader,
                 module_bytes,
+                ..
             } => ExecutionKind::new_upgrader(module_bytes),
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Isolated,
                 module_bytes,
+                ..
             } => ExecutionKind::new_isolated(module_bytes),
+            Session::DeployModuleBytes(module_bytes) => {
+                ExecutionKind::new_standard(module_bytes, true)
+            }
         };
 
         // Get account main purse balance key
