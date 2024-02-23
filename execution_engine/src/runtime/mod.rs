@@ -523,7 +523,7 @@ where
         args: &RuntimeArgs,
         name: &str,
     ) -> Result<T, Error> {
-        let arg: CLValue = args
+        let arg = args
             .get(name)
             .cloned()
             .ok_or(Error::Revert(ApiError::MissingArgument))?;
@@ -841,15 +841,28 @@ where
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
-                let minimum_delegation_amount: Option<u64> =
-                    Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
-                let minimum_delegation_amount = minimum_delegation_amount
-                    .unwrap_or(self.context.engine_config().minimum_delegation_amount());
+                let global_minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
+                let minimum_delegation_amount = Self::get_named_argument::<Option<u64>>(
+                    runtime_args,
+                    auction::ARG_MINIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_minimum_delegation_amount);
 
-                let maximum_delegation_amount: Option<u64> =
-                    Self::get_named_argument(runtime_args, auction::ARG_MAXIMUM_DELEGATION_AMOUNT)?;
-                let maximum_delegation_amount = maximum_delegation_amount
-                    .unwrap_or(self.context.engine_config().maximum_delegation_amount());
+                let global_maximum_delegation_amount =
+                    self.context.engine_config().maximum_delegation_amount();
+                let maximum_delegation_amount = Self::get_named_argument::<Option<u64>>(
+                    runtime_args,
+                    auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
+                )?
+                .unwrap_or(global_minimum_delegation_amount);
+
+                if minimum_delegation_amount < global_minimum_delegation_amount
+                    || maximum_delegation_amount > global_maximum_delegation_amount
+                    || minimum_delegation_amount > maximum_delegation_amount
+                {
+                    return Err(Error::Revert(ApiError::InvalidDelegationAmountLimits));
+                }
 
                 let result = runtime
                     .add_bid(

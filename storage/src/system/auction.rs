@@ -98,7 +98,12 @@ pub trait Auction:
         {
             validator_bid.increase_stake(amount)?;
             validator_bid.with_delegation_rate(delegation_rate);
-            // TODO: handle minimum and maximum delegation amounts
+            // FIXME: maybe handle limit change differently?
+            if minimum_delegation_amount != validator_bid.minimum_delegation_amount()
+                || maximum_delegation_amount != validator_bid.maximum_delegation_amount()
+            {
+                return Err(ApiError::InvalidDelegationAmountLimits);
+            }
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
             let bonding_purse = self.create_purse()?;
