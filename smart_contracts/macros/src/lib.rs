@@ -47,21 +47,29 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     };
 
     // let manifest_name = format_ident!("{name}::MANIFEST");
+    let ref_name = format_ident!("{}Ref", name);
 
     let mut dynamic_manifest = Vec::new();
+    let mut impl_for_ref = Vec::new();
     if let Some(traits) = contract_attributes.impl_traits {
         for path in traits.iter() {
-            let ext_struct = format_ident!("{}Ref", path.require_ident().unwrap());
+            let ref_trait = format_ident!("{}Ext", path.require_ident().unwrap());
+            let ref_struct = format_ident!("{}Ref", path.require_ident().unwrap());
             dynamic_manifest.push(quote! {
                 {
-                    const DISPATCHER: &[casper_sdk::sys::EntryPoint] = &(<#ext_struct>::__casper_new_trait_dispatch_table::<#name>());
+                    const DISPATCHER: &[casper_sdk::sys::EntryPoint] = &(<#ref_struct>::__casper_new_trait_dispatch_table::<#name>());
                     DISPATCHER
                 }
             });
+
+            impl_for_ref.push(quote! {
+                impl #ref_trait for #ref_name {}
+            })
         }
     }
 
-    let ref_name = format_ident!("{}Ref", name);
+    // let ext_struct_name = format_ident!("{st_name}Ref");
+
     let f = quote! {
 
         impl casper_sdk::Contract for #name {
@@ -109,6 +117,11 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
         }
+
+        #[derive(Debug)]
+        pub struct #ref_name;
+
+        #(#impl_for_ref)*
     };
     f.into()
 }
@@ -310,11 +323,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 None
                             } else {
                                 Some(quote! {
-                                    &self,
+                                    self,
                                 })
                             };
                             extra_code.push(quote! {
-                                pub fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
+                                fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                     #[derive(BorshSerialize)]
                                     struct #ident {
                                         #(pub #arg_names: #arg_types,)*
@@ -343,12 +356,18 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
 
-                let dispatch_struct_name = format_ident!("{trait_name}Dispatch");
+                // let dispatch_struct_name = format_ident!("{trait_name}Dispatch");
                 let ref_struct = format_ident!("{trait_name}Ref");
+                let ref_struct_trait = format_ident!("{trait_name}Ext");
 
                 let manifest_data_len = dispatch_table.len();
 
                 let extension_struct = quote! {
+                    #vis trait #ref_struct_trait: Sized {
+                        #(#extra_code)*
+                    }
+
+
                     #vis struct #ref_struct;
 
                     impl #ref_struct {
@@ -372,11 +391,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 #(#schema_entry_points,)*
                             ]
                         }
-
-                        #(#extra_code)*
-
-
                     }
+
+                    impl #ref_struct_trait for #ref_struct {}
 
                         impl casper_sdk::schema::CasperSchema for #ref_struct {
                             fn schema() -> casper_sdk::schema::Schema {
@@ -721,7 +738,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             None
                                         } else {
                                             Some(quote! {
-                                                &self,
+                                               &self,
                                             })
                                         };
 
@@ -906,9 +923,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         #entry_points
 
                         #handle_manifest
-
-                        #[derive(Debug)]
-                        pub struct #ext_struct_name;
 
                         impl #ext_struct_name {
                             #(#extra_code)*

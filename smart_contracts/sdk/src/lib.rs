@@ -178,7 +178,7 @@ impl<T: ContractRef> ContractHandle<T> {
     #[inline]
     pub fn call<'a, CallData: ToCallData>(
         &self,
-        func: impl FnOnce(&mut T) -> CallData,
+        func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
         CallData::Return<'a>: BorshDeserialize + Clone,
@@ -190,7 +190,7 @@ impl<T: ContractRef> ContractHandle<T> {
     #[inline]
     pub fn try_call<'a, CallData: ToCallData>(
         &self,
-        func: impl FnOnce(&mut T) -> CallData,
+        func: impl FnOnce(T) -> CallData,
     ) -> Result<CallResult<CallData>, CallError> {
         self.build_call().try_call(func)
     }
@@ -231,22 +231,22 @@ impl<T: ContractRef> CallBuilder<T> {
 
     pub fn try_call<'a, CallData: ToCallData>(
         &self,
-        func: impl FnOnce(&mut T) -> CallData,
+        func: impl FnOnce(T) -> CallData,
     ) -> Result<CallResult<CallData>, CallError> {
         let mut inst = T::new();
-        let call_data = func(&mut inst);
+        let call_data = func(inst);
         host::call(&self.address, self.value.unwrap_or(0), call_data)
     }
 
     pub fn call<'a, CallData: ToCallData>(
         &self,
-        func: impl FnOnce(&mut T) -> CallData,
+        func: impl FnOnce(T) -> CallData,
     ) -> Result<CallData::Return<'a>, CallError>
     where
         CallData::Return<'a>: BorshDeserialize + Clone,
     {
         let mut inst = T::new();
-        let call_data = func(&mut inst);
+        let call_data = func(inst);
         let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
         Ok(call_result.into_return_value())
     }

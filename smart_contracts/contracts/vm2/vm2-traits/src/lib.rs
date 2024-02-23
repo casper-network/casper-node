@@ -123,8 +123,7 @@ pub fn perform_test() {
     {
         let greet_result: u64 = contract_handle
             .build_call()
-            .cast::<Trait1Ref>()
-            .call(|trait1ref| trait1ref.greet("World".into()))
+            .call(|has_traits| has_traits.greet("World".into()))
             .expect("Call as Trait1Ref");
         assert_eq!(greet_result, GREET_RETURN_VALUE);
     }
@@ -138,7 +137,6 @@ pub fn perform_test() {
     {
         let result: u64 = contract_handle
             .build_call()
-            .cast::<Trait1Ref>()
             .call(|trait1ref| trait1ref.adder(1111, 2222))
             .expect("Call as Trait1Ref");
         assert_eq!(result, 1111 + 2222);
@@ -182,7 +180,7 @@ pub fn perform_test() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{CounterRef, CounterState, HasTraits, Trait1, GREET_RETURN_VALUE};
+    use crate::{CounterExt, CounterRef, CounterState, HasTraits, Trait1, GREET_RETURN_VALUE};
 
     use super::Trait1Ref;
     use alloc::collections::BTreeSet;
