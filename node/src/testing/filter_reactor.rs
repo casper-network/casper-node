@@ -13,6 +13,7 @@ use super::network::NetworkedReactor;
 use crate::{
     components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::NodeId,
     NodeRng,
@@ -85,6 +86,10 @@ impl<R: Reactor> Reactor for FilterReactor<R> {
             Either::Left(effects) => effects,
             Either::Right(event) => self.reactor.dispatch_event(effect_builder, rng, event),
         }
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        self.reactor.activate_failpoint(activation);
     }
 }
 
