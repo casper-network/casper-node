@@ -56,7 +56,7 @@ pub use deploy::{
 pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
-pub use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
+use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
@@ -219,8 +219,8 @@ impl Transaction {
         Ok(approvals_hash)
     }
 
-    /// Turns `self` into an invalid `Deploy` by clearing the `chain_name`, invalidating the deploy
-    /// hash.
+    /// Turns `self` into an invalid `Transaction` by clearing the `chain_name`, invalidating the
+    /// transaction hash.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn invalidate(&mut self) {
         match self {

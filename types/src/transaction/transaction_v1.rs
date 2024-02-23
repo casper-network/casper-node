@@ -94,7 +94,7 @@ pub struct TransactionV1 {
 impl TransactionV1 {
     /// Called by the `TransactionBuilder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
-    pub fn build(
+    pub(super) fn build(
         chain_name: String,
         timestamp: Timestamp,
         ttl: TimeDiff,

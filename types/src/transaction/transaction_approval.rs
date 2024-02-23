@@ -12,9 +12,9 @@ use crate::{DeployApproval, TransactionV1Approval};
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum TransactionApproval {
-    /// A deploy.
+    /// A deploy approval.
     Deploy(DeployApproval),
-    /// A version 1 transaction.
+    /// A version 1 transaction approval.
     #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1Approval),
 }

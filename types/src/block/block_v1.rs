@@ -183,7 +183,7 @@ impl BlockV1 {
     }
 
     /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn transaction_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())

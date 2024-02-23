@@ -1232,7 +1232,7 @@ impl Storage {
         )?;
         let transaction_hashes = match block {
             Block::V1(v1) => v1
-                .transaction_and_transfer_hashes()
+                .deploy_and_transfer_hashes()
                 .map(TransactionHash::from)
                 .collect(),
             Block::V2(v2) => v2.all_transactions().copied().collect(),

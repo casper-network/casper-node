@@ -329,7 +329,7 @@ impl TransactionBuffer {
         match block {
             Block::V1(v1_block) => {
                 let transaction_hashes: Vec<TransactionHash> = v1_block
-                    .transaction_and_transfer_hashes()
+                    .deploy_and_transfer_hashes()
                     .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
                     .collect();
                 self.register_transactions(timestamp, transaction_hashes.iter())

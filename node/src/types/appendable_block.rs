@@ -373,7 +373,7 @@ impl AppendableBlock {
             == self.transaction_config.block_max_standard_count as usize
     }
 
-    /// Returns `true` if adding the transaction with 'additional_approvals` approvals would exceed
+    /// Returns `true` if adding the transaction with `additional_approvals` approvals would exceed
     /// the approval limits.
     /// Note that we also disallow adding transactions with a number of approvals that would make it
     /// impossible to fill the rest of the block with transactions that have one approval each.
