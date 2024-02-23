@@ -4,6 +4,7 @@ mod block_header;
 mod block_signatures;
 mod block_v1;
 mod block_v2;
+mod chain_name_digest;
 mod era_end;
 mod finality_signature;
 mod finality_signature_id;
@@ -11,12 +12,8 @@ mod json_compatibility;
 mod rewarded_signatures;
 mod rewards;
 mod signed_block_header;
-
-#[cfg(any(feature = "testing", test))]
-mod test_block_builder {
-    pub mod test_block_v1_builder;
-    pub mod test_block_v2_builder;
-}
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
@@ -39,22 +36,22 @@ use crate::{
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
 pub use block_hash::BlockHash;
 pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
-pub use block_signatures::{BlockSignatures, BlockSignaturesMergeError};
+pub use block_signatures::{
+    BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2,
+};
 pub use block_v1::BlockV1;
 pub use block_v2::BlockV2;
+pub use chain_name_digest::ChainNameDigest;
 pub use era_end::{EraEnd, EraEndV1, EraEndV2, EraReport};
-pub use finality_signature::FinalitySignature;
+pub use finality_signature::{FinalitySignature, FinalitySignatureV1, FinalitySignatureV2};
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use json_compatibility::JsonBlockWithSignatures;
 pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures};
 pub use rewards::Rewards;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
-#[cfg(any(feature = "testing", test))]
-pub use test_block_builder::{
-    test_block_v1_builder::TestBlockV1Builder,
-    test_block_v2_builder::TestBlockV2Builder as TestBlockBuilder,
-};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use test_block_builder::{TestBlockBuilder, TestBlockV1Builder};
 
 #[cfg(feature = "json-schema")]
 static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());

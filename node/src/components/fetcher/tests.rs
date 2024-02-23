@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, FinalitySignatureV2, Transaction,
     TransactionHash, TransactionId,
 };
 
@@ -71,7 +71,7 @@ pub struct FetcherTestConfig {
 
 impl Default for FetcherTestConfig {
     fn default() -> Self {
-        let (storage_config, temp_dir) = storage::Config::default_for_tests();
+        let (storage_config, temp_dir) = storage::Config::new_for_tests(1);
         FetcherTestConfig {
             fetcher_config: Default::default(),
             storage_config,
@@ -127,7 +127,7 @@ enum Event {
     #[from]
     GossiperIncomingBlock(GossiperIncoming<BlockV2>),
     #[from]
-    GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
+    GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignatureV2>),
     #[from]
     GossiperIncomingGossipedAddress(GossiperIncoming<GossipedAddress>),
     #[from]

@@ -1,7 +1,11 @@
 //! Configuration of the Wasm execution engine.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -137,6 +141,7 @@ impl FromBytes for WasmConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<WasmConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WasmConfig {
         WasmConfig {

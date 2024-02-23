@@ -3,10 +3,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{Error as CoreError, ExecuteRequest},
-    execution::Error as ExecError,
-};
+use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
+use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
     PublicKey, RuntimeArgs, SecretKey, URef, U512,
@@ -208,7 +206,12 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
 
     let error = builder.get_error().expect("should have error");
 
-    assert_forged_uref_error(error, alice_main_purse);
+    assert!(
+        matches!(error, CoreError::Transfer(TransferError::ForgedReference(uref)) if uref == alice_main_purse),
+        "Expected forged uref {:?} but received {:?}",
+        alice_main_purse,
+        error
+    );
 }
 
 #[ignore]

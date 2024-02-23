@@ -30,7 +30,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -44,7 +44,6 @@ pub use fee_handling::FeeHandling;
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 #[cfg(any(feature = "testing", test))]
 pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
-
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
@@ -119,6 +118,11 @@ pub struct Chainspec {
 }
 
 impl Chainspec {
+    /// Returns the hash of the chainspec's name.
+    pub fn name_hash(&self) -> ChainNameDigest {
+        ChainNameDigest::from_chain_name(&self.network_config.name)
+    }
+
     /// Serializes `self` and hashes the resulting bytes.
     pub fn hash(&self) -> Digest {
         let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {

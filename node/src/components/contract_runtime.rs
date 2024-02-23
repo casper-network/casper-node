@@ -72,7 +72,7 @@ use metrics::Metrics;
 #[cfg(test)]
 pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
-use operations::execute_only;
+use operations::speculatively_execute;
 pub(crate) use types::{
     BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionState,
     StepEffectsAndUpcomingEraValidators,
@@ -262,7 +262,7 @@ impl ContractRuntime {
         if result.is_success() {
             let flush_req = FlushRequest::new();
             if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-                return GenesisResult::Failure(GenesisError::TrackingCopyError(
+                return GenesisResult::Failure(GenesisError::TrackingCopy(
                     TrackingCopyError::Storage(err),
                 ));
             }
@@ -288,7 +288,7 @@ impl ContractRuntime {
         if result.is_success() {
             let flush_req = FlushRequest::new();
             if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
-                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
+                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                     err.into(),
                 ));
             }
@@ -519,34 +519,6 @@ impl ContractRuntime {
                                 .ignore(),
                         );
                     }
-                    // This is the next block to be executed, we do it right away:
-                    Ordering::Equal => {
-                        info!(
-                            "ContractRuntime: execute finalized block({}) with {} transactions",
-                            finalized_block_height,
-                            executable_block.transactions.len()
-                        );
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
-                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
-                        let current_gas_price = self.current_gas_price.gas_price();
-                        effects.extend(
-                            exec_or_requeue(
-                                engine_state,
-                                metrics,
-                                self.chainspec.clone(),
-                                exec_queue,
-                                shared_pre_state,
-                                current_pre_state.clone(),
-                                effect_builder,
-                                executable_block,
-                                key_block_height_for_activation_point,
-                                meta_block_state,
-                                current_gas_price,
-                            )
-                            .ignore(),
-                        )
-                    }
                     // This is a future block, we store it into exec_queue, to be executed later:
                     Ordering::Greater => {
                         debug!(
@@ -567,6 +539,36 @@ impl ContractRuntime {
                             },
                         );
                     }
+                    // This is the next block to be executed, we do it right away:
+                    Ordering::Equal => {
+                        info!(
+                            "ContractRuntime: execute finalized block({}) with {} transactions",
+                            finalized_block_height,
+                            executable_block.transactions.len()
+                        );
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let data_access_layer = Arc::clone(&self.data_access_layer);
+                        let metrics = Arc::clone(&self.metrics);
+                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        let current_gas_price = self.current_gas_price.gas_price();
+                        effects.extend(
+                            exec_or_requeue(
+                                engine_state,
+                                data_access_layer,
+                                metrics,
+                                self.chainspec.clone(),
+                                exec_queue,
+                                shared_pre_state,
+                                current_pre_state.clone(),
+                                effect_builder,
+                                executable_block,
+                                key_block_height_for_activation_point,
+                                meta_block_state,
+                                current_gas_price,
+                            )
+                            .ignore(),
+                        )
+                    }
                 }
                 self.metrics
                     .exec_queue_size
@@ -582,7 +584,7 @@ impl ContractRuntime {
                     let engine_state = Arc::clone(&self.engine_state);
                     async move {
                         let result = run_intensive_task(move || {
-                            execute_only(
+                            speculatively_execute(
                                 engine_state.as_ref(),
                                 execution_prestate,
                                 DeployItem::from(deploy.clone()),
@@ -594,6 +596,7 @@ impl ContractRuntime {
                     .ignore()
                 } else {
                     unreachable!()
+                    //async move { responder.respond(Ok(None)).await }.ignore()
                 }
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder

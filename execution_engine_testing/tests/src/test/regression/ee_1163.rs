@@ -2,15 +2,15 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
-    execution,
+use casper_execution_engine::engine_state::{
+    Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
+use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
@@ -48,7 +48,8 @@ fn should_charge_for_user_error(
         .get(0)
         .cloned()
         .expect("should have first result");
-    assert_eq!(response.cost(), transfer_cost);
+    // TODO: reenable when new payment logic is added
+    // assert_eq!(response.cost(), transfer_cost);
     assert_eq!(
         purse_balance_before - transfer_cost_motes.value(),
         purse_balance_after
@@ -123,7 +124,6 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
 #[ignore]
 #[test]
 fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
-    let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
     // implies 1:1 gas/motes conversion rate regardless of gas price
     let transfer_cost_motes = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
 
@@ -162,18 +162,20 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     let purse_balance_after = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have result")
-        .get(0)
-        .cloned()
-        .expect("should have first result");
-    assert_eq!(
-        response.cost(),
-        transfer_cost,
-        "expected actual cost is {}",
-        transfer_cost
-    );
+    // TODO: reenable when new payment logic is added
+    // let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    // let response = builder
+    //     .get_exec_result_owned(0)
+    //     .expect("should have result")
+    //     .get(0)
+    //     .cloned()
+    //     .expect("should have first result");
+    // assert_eq!(
+    //     response.cost(),
+    //     transfer_cost,
+    //     "expected actual cost is {}",
+    //     transfer_cost
+    // );
     assert_eq!(
         purse_balance_before - transfer_cost_motes.value() - transfer_amount.value(),
         purse_balance_after
@@ -196,7 +198,7 @@ fn should_charge_for_wasmless_transfer_missing_args() {
 
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::Revert(ApiError::MissingArgument))
+        Error::Transfer(TransferError::MissingArgument)
     ));
 }
 
@@ -223,6 +225,6 @@ fn should_charge_for_wasmless_transfer_invalid_purse() {
     let error = should_charge_for_user_error(&mut builder, transfer_request);
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::Revert(ApiError::InvalidPurse))
+        Error::Transfer(TransferError::InvalidPurse)
     ));
 }

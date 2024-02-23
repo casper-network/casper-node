@@ -1,16 +1,77 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use thiserror::Error;
 
-use casper_storage::{
-    global_state::{error::Error as GlobalStateError, state::StateReader},
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
-};
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, system::mint, AccessRights,
-    AddressableEntity, ApiError, CLType, CLValueError, Key, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, URef, U512,
+    account::AccountHash,
+    addressable_entity::NamedKeys,
+    bytesrepr::FromBytes,
+    system::{mint, mint::Error as MintError},
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
-use crate::{engine_state::Error, execution::Error as ExecError};
+use crate::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
+};
+
+#[derive(Clone, Error, Debug)]
+pub enum TransferError {
+    /// Invalid key variant.
+    #[error("Invalid key {0}")]
+    UnexpectedKeyVariant(Key),
+    /// Type mismatch error.
+    #[error("{}", _0)]
+    TypeMismatch(StoredValueTypeMismatch),
+    /// Forged reference error.
+    #[error("Forged reference: {}", _0)]
+    ForgedReference(URef),
+    /// Invalid access.
+    #[error("Invalid access rights: {}", required)]
+    InvalidAccess {
+        /// Required access rights of the operation.
+        required: AccessRights,
+    },
+    /// Error converting a CLValue.
+    #[error("{0}")]
+    CLValue(CLValueError),
+    /// Invalid purse.
+    #[error("Invalid purse")]
+    InvalidPurse,
+    /// Invalid argument.
+    #[error("Invalid argument")]
+    InvalidArgument,
+    /// Missing argument.
+    #[error("Missing argument")]
+    MissingArgument,
+    /// Invalid purse.
+    #[error("Attempt to transfer amount 0")]
+    AttemptToTransferZero,
+    /// Invalid operation.
+    #[error("Invalid operation")]
+    InvalidOperation,
+    /// Failed to transfer tokens on a private chain.
+    #[error("Failed to transfer with unrestricted transfers disabled")]
+    DisabledUnrestrictedTransfers,
+    /// Tracking copy error.
+    #[error("{0}")]
+    TrackingCopy(TrackingCopyError),
+    /// Mint error.
+    #[error("{0}")]
+    Mint(MintError),
+}
+
+impl From<GlobalStateError> for TransferError {
+    fn from(gse: GlobalStateError) -> Self {
+        TransferError::TrackingCopy(TrackingCopyError::Storage(gse))
+    }
+}
+
+impl From<TrackingCopyError> for TransferError {
+    fn from(tce: TrackingCopyError) -> Self {
+        TransferError::TrackingCopy(tce)
+    }
+}
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
@@ -27,7 +88,7 @@ pub enum TransferTargetMode {
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) enum NewTransferTargetMode {
+pub enum NewTransferTargetMode {
     /// Native transfer arguments resolved into a transfer to an existing account.
     ExistingAccount {
         /// Existing account hash.
@@ -44,7 +105,7 @@ pub(crate) enum NewTransferTargetMode {
 /// Mint's transfer arguments.
 ///
 /// A struct has a benefit of static typing, which is helpful while resolving the arguments.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransferArgs {
     to: Option<AccountHash>,
     source: URef,
@@ -81,6 +142,11 @@ impl TransferArgs {
         self.source
     }
 
+    /// Returns `target` field.
+    pub fn target(&self) -> URef {
+        self.target
+    }
+
     /// Returns `arg_id` field.
     pub fn arg_id(&self) -> Option<u64> {
         self.arg_id
@@ -110,7 +176,7 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 
 /// State of a builder of a `TransferArgs`.
 ///
-/// Purpose of this builder is to resolve native tranfer args into [`TransferTargetMode`] and a
+/// Purpose of this builder is to resolve native transfer args into [`TransferTargetMode`] and a
 /// [`TransferArgs`] instance to execute actual token transfer on the mint contract.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferRuntimeArgsBuilder {
@@ -151,9 +217,10 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_source_uref<R>(
         &self,
         account: &AddressableEntity,
-        named_keys: NamedKeys,
+        named_keys: NamedKeys, /* TODO: consider passing in URef values inside named keys
+                                * instead of entire named keys */
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<URef, Error>
+    ) -> Result<URef, TransferError>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
@@ -161,7 +228,7 @@ impl TransferRuntimeArgsBuilder {
         let arg_name = mint::ARG_SOURCE;
         match imputed_runtime_args.get(arg_name) {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
-                let uref: URef = cl_value.clone().into_t().map_err(Error::reverter)?;
+                let uref: URef = self.map_cl_value(cl_value)?;
 
                 if account.main_purse().addr() == uref.addr() {
                     return Ok(uref);
@@ -177,26 +244,24 @@ impl TransferRuntimeArgsBuilder {
                         if found_uref.is_writeable() {
                             // it is a URef and caller has access but is it a purse URef?
                             if !self.purse_exists(found_uref.to_owned(), tracking_copy) {
-                                return Err(Error::reverter(ApiError::InvalidPurse));
+                                return Err(TransferError::InvalidPurse);
                             }
 
                             Ok(uref)
                         } else {
-                            Err(Error::Exec(ExecError::InvalidAccess {
+                            Err(TransferError::InvalidAccess {
                                 required: AccessRights::WRITE,
-                            }))
+                            })
                         }
                     }
-                    Some(key) => Err(Error::Exec(ExecError::TypeMismatch(
-                        casper_types::StoredValueTypeMismatch::new(
-                            "Key::URef".to_string(),
-                            key.type_string(),
-                        ),
+                    Some(key) => Err(TransferError::TypeMismatch(StoredValueTypeMismatch::new(
+                        "Key::URef".to_string(),
+                        key.type_string(),
                     ))),
-                    None => Err(Error::Exec(ExecError::ForgedReference(uref))),
+                    None => Err(TransferError::ForgedReference(uref)),
                 }
             }
-            Some(_) => Err(Error::reverter(ApiError::InvalidArgument)),
+            Some(_) => Err(TransferError::InvalidArgument),
             None => Ok(account.main_purse()), // if no source purse passed use account main purse
         }
     }
@@ -207,17 +272,17 @@ impl TransferRuntimeArgsBuilder {
     ///   * an existing purse [`URef`]
     ///   * a 32-byte array, interpreted as an account hash
     ///   * a [`Key::Account`], from which the account hash is extracted
-    ///   * a [`PublicKey`], which is converted to an account hash
+    ///   * a [`casper_types::PublicKey`], which is converted to an account hash
     ///
     /// If the "target" account hash is not existing, then a special variant is returned that
     /// indicates that the system has to create new account first.
     ///
     /// Returns [`NewTransferTargetMode`] with a resolved variant.
-    pub(super) fn resolve_transfer_target_mode<R>(
+    pub fn resolve_transfer_target_mode<R>(
         &mut self,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<NewTransferTargetMode, Error>
+    ) -> Result<NewTransferTargetMode, TransferError>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
@@ -226,34 +291,30 @@ impl TransferRuntimeArgsBuilder {
 
         let account_hash = match imputed_runtime_args.get(arg_name) {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
-                let uref: URef = cl_value.clone().into_t().map_err(Error::reverter)?;
+                let uref = self.map_cl_value(cl_value)?;
 
                 if !self.purse_exists(uref, tracking_copy) {
-                    return Err(Error::reverter(ApiError::InvalidPurse));
+                    return Err(TransferError::InvalidPurse);
                 }
 
                 return Ok(NewTransferTargetMode::PurseExists(uref));
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
-                let account_hash: AccountHash =
-                    cl_value.clone().into_t().map_err(Error::reverter)?;
-                account_hash
+                self.map_cl_value(cl_value)?
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::Key => {
-                let account_key: Key = cl_value.clone().into_t().map_err(Error::reverter)?;
-
+                let account_key: Key = self.map_cl_value(cl_value)?;
                 let account_hash: AccountHash = account_key
                     .into_account()
-                    .ok_or_else(|| Error::reverter(ApiError::Transfer))?;
+                    .ok_or_else(|| TransferError::UnexpectedKeyVariant(account_key))?;
                 account_hash
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::PublicKey => {
-                let public_key: PublicKey = cl_value.clone().into_t().map_err(Error::reverter)?;
-
+                let public_key = self.map_cl_value(cl_value)?;
                 AccountHash::from(&public_key)
             }
-            Some(_) => return Err(Error::reverter(ApiError::InvalidArgument)),
-            None => return Err(Error::reverter(ApiError::MissingArgument)),
+            Some(_) => return Err(TransferError::InvalidArgument),
+            None => return Err(TransferError::MissingArgument),
         };
 
         match tracking_copy
@@ -275,38 +336,34 @@ impl TransferRuntimeArgsBuilder {
     /// Resolves amount.
     ///
     /// User has to specify "amount" argument that could be either a [`U512`] or a u64.
-    fn resolve_amount(&self) -> Result<U512, Error> {
+    fn resolve_amount(&self) -> Result<U512, TransferError> {
         let imputed_runtime_args = &self.inner;
 
         let amount = match imputed_runtime_args.get(mint::ARG_AMOUNT) {
-            Some(amount_value) if *amount_value.cl_type() == CLType::U512 => amount_value
-                .clone()
-                .into_t::<U512>()
-                .map_err(Error::reverter)?,
+            Some(amount_value) if *amount_value.cl_type() == CLType::U512 => {
+                self.map_cl_value(amount_value)?
+            }
             Some(amount_value) if *amount_value.cl_type() == CLType::U64 => {
-                let amount = amount_value
-                    .clone()
-                    .into_t::<u64>()
-                    .map_err(Error::reverter)?;
+                let amount: u64 = self.map_cl_value(amount_value)?;
                 U512::from(amount)
             }
-            Some(_) => return Err(Error::reverter(ApiError::InvalidArgument)),
-            None => return Err(Error::reverter(ApiError::MissingArgument)),
+            Some(_) => return Err(TransferError::InvalidArgument),
+            None => return Err(TransferError::MissingArgument),
         };
 
         if amount.is_zero() {
-            return Err(Error::reverter(ApiError::Transfer));
+            return Err(TransferError::AttemptToTransferZero);
         }
 
         Ok(amount)
     }
 
-    fn resolve_id(&self) -> Result<Option<u64>, Error> {
+    fn resolve_id(&self) -> Result<Option<u64>, TransferError> {
         let id_value = self
             .inner
             .get(mint::ARG_ID)
-            .ok_or_else(|| Error::reverter(ApiError::MissingArgument))?;
-        let id: Option<u64> = id_value.clone().into_t().map_err(Error::reverter)?;
+            .ok_or_else(|| TransferError::MissingArgument)?;
+        let id: Option<u64> = self.map_cl_value(id_value)?;
         Ok(id)
     }
 
@@ -317,7 +374,7 @@ impl TransferRuntimeArgsBuilder {
         entity_named_keys: NamedKeys,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferArgs, Error>
+    ) -> Result<TransferArgs, TransferError>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
@@ -333,7 +390,7 @@ impl TransferRuntimeArgsBuilder {
                 // Method "build()" is called after `resolve_transfer_target_mode` is first called
                 // and handled by creating a new account. Calling `resolve_transfer_target_mode`
                 // for the second time should never return `CreateAccount` variant.
-                return Err(Error::reverter(ApiError::Transfer));
+                return Err(TransferError::InvalidOperation);
             }
         };
 
@@ -341,7 +398,7 @@ impl TransferRuntimeArgsBuilder {
             self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
-            return Err(Error::reverter(ApiError::InvalidPurse));
+            return Err(TransferError::InvalidPurse);
         }
 
         let amount = self.resolve_amount()?;
@@ -355,5 +412,9 @@ impl TransferRuntimeArgsBuilder {
             amount,
             arg_id: id,
         })
+    }
+
+    fn map_cl_value<T: CLTyped + FromBytes>(&self, cl_value: &CLValue) -> Result<T, TransferError> {
+        cl_value.clone().into_t().map_err(TransferError::CLValue)
     }
 }

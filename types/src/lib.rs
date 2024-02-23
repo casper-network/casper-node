@@ -90,12 +90,13 @@ pub use api_error::ApiError;
 pub use block::JsonBlockWithSignatures;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader, BlockHeaderV1,
-    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
-    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
-    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
+    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
+    BlockSignaturesV2, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd, EraEndV1,
+    EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
+    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};

@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::{BlockV2, FinalitySignature, Transaction};
+use casper_types::{BlockV2, FinalitySignatureV2, Transaction};
 
 use crate::{
     components::{
@@ -49,7 +49,7 @@ pub(crate) enum Message {
     #[from]
     TransactionGossiper(gossiper::Message<Transaction>),
     #[from]
-    FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
+    FinalitySignatureGossiper(gossiper::Message<FinalitySignatureV2>),
     /// Address gossiper component message.
     #[from]
     AddressGossiper(gossiper::Message<GossipedAddress>),
@@ -69,7 +69,7 @@ pub(crate) enum Message {
     },
     /// Finality signature.
     #[from]
-    FinalitySignature(Box<FinalitySignature>),
+    FinalitySignature(Box<FinalitySignatureV2>),
 }
 
 impl Payload for Message {
@@ -302,7 +302,7 @@ where
         + From<ConsensusDemand>
         + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Transaction>>
-        + From<GossiperIncoming<FinalitySignature>>
+        + From<GossiperIncoming<FinalitySignatureV2>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
