@@ -4,17 +4,18 @@ extern crate alloc;
 pub mod contract;
 pub mod error;
 pub mod security_badge;
+pub mod traits;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector};
 use casper_sdk::{log, Contract};
-use contract::{CEP18Ref, CEP18};
+use contract::{TokenContract, TokenContractRef};
 
 #[casper(export)]
 pub fn call() {
     log!("Hello");
-    let constructor = CEP18Ref::new("my token name".to_string());
-    let result = CEP18::create(constructor);
+    let constructor = TokenContractRef::new("my token name".to_string());
+    let result = TokenContract::create(constructor);
     log!("CEP18 succeeded");
 }
 

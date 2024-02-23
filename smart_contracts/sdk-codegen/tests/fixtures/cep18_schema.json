@@ -1,9 +1,9 @@
 {
-  "name": "CEP18",
+  "name": "TokenContract",
   "version": "0.1.0",
   "type": {
     "type": "Contract",
-    "state": "vm2_cep18::contract::CEP18"
+    "state": "vm2_cep18::contract::TokenContract"
   },
   "definitions": {
     "()": {
@@ -80,40 +80,12 @@
       "length": 32,
       "decl": "U8"
     },
-    "vm2_cep18::contract::CEP18": {
+    "vm2_cep18::contract::TokenContract": {
       "type": "Struct",
       "items": [
         {
-          "name": "name",
-          "decl": "String"
-        },
-        {
-          "name": "symbol",
-          "decl": "String"
-        },
-        {
-          "name": "decimals",
-          "decl": "U8"
-        },
-        {
-          "name": "total_supply",
-          "decl": "U64"
-        },
-        {
-          "name": "balances",
-          "decl": "Map<[U8; 32], U64>"
-        },
-        {
-          "name": "allowances",
-          "decl": "Map<([U8; 32], [U8; 32]), U64>"
-        },
-        {
-          "name": "security_badges",
-          "decl": "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>"
-        },
-        {
-          "name": "enable_mint_burn",
-          "decl": "Bool"
+          "name": "state",
+          "decl": "vm2_cep18::traits::CEP18State"
         }
       ]
     },
@@ -236,6 +208,43 @@
           "decl": "()"
         }
       ]
+    },
+    "vm2_cep18::traits::CEP18State": {
+      "type": "Struct",
+      "items": [
+        {
+          "name": "name",
+          "decl": "String"
+        },
+        {
+          "name": "symbol",
+          "decl": "String"
+        },
+        {
+          "name": "decimals",
+          "decl": "U8"
+        },
+        {
+          "name": "total_supply",
+          "decl": "U64"
+        },
+        {
+          "name": "balances",
+          "decl": "Map<[U8; 32], U64>"
+        },
+        {
+          "name": "allowances",
+          "decl": "Map<([U8; 32], [U8; 32]), U64>"
+        },
+        {
+          "name": "security_badges",
+          "decl": "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>"
+        },
+        {
+          "name": "enable_mint_burn",
+          "decl": "Bool"
+        }
+      ]
     }
   },
   "entry_points": [
@@ -248,8 +257,15 @@
           "decl": "String"
         }
       ],
-      "result": "vm2_cep18::contract::CEP18",
+      "result": "vm2_cep18::contract::TokenContract",
       "flags": 1
+    },
+    {
+      "name": "my_balance",
+      "selector": 926069361,
+      "arguments": [],
+      "result": "U64",
+      "flags": 0
     },
     {
       "name": "name",

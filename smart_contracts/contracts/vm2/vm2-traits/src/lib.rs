@@ -13,7 +13,11 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    host::{self, Alloc, CallResult}, log, revert, sys::CreateResult, types::{Address, CallError, ResultCode}, Contract, ContractHandle, Selector, ToCallData
+    host::{self, Alloc, CallResult},
+    log, revert,
+    sys::CreateResult,
+    types::{Address, CallError, ResultCode},
+    Contract, ContractHandle, Selector, ToCallData,
 };
 
 const GREET_RETURN_VALUE: u64 = 123456789;

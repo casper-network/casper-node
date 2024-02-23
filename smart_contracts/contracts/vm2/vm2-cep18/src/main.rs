@@ -1,6 +1,6 @@
 use casper_sdk::cli;
-use vm2_cep18::contract::CEP18;
+use vm2_cep18::contract::TokenContract;
 
 fn main() {
-    cli::command_line::<CEP18>();
+    cli::command_line::<TokenContract>();
 }

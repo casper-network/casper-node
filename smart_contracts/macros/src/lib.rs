@@ -352,7 +352,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let extension_struct = quote! {
 
                     #[doc(hidden)]
-                    #vis struct #dispatch_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
+                    #vis struct #dispatch_struct_name(#vis [casper_sdk::sys::EntryPoint; #manifest_data_len]);
 
                     impl #dispatch_struct_name {
                         #[doc(hidden)]
@@ -371,12 +371,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     impl #ref_struct {
 
                         #[doc(hidden)]
-                        fn __casper_populate_definitions(definitions: &mut casper_sdk::abi::Definitions) {
+                        #vis fn __casper_populate_definitions(definitions: &mut casper_sdk::abi::Definitions) {
                             #(#populate_definitions)*;
                         }
 
                         #[doc(hidden)]
-                        fn __casper_schema_entry_points() -> Vec<casper_sdk::schema::SchemaEntryPoint> {
+                        #vis fn __casper_schema_entry_points() -> Vec<casper_sdk::schema::SchemaEntryPoint> {
                             vec![
                                 #(#schema_entry_points,)*
                             ]
