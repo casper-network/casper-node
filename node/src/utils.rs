@@ -307,20 +307,6 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// XORs two byte sequences.
-///
-/// # Panics
-///
-/// Panics if `lhs` and `rhs` are not of equal length.
-#[inline]
-pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
-    // Implementing SIMD support is left as an exercise for the reader.
-    assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
-    lhs.iter_mut()
-        .zip(rhs.iter())
-        .for_each(|(sb, &cb)| sb.bitxor_assign(cb));
-}
-
 /// Wait until all strong references for a particular arc have been dropped.
 ///
 /// Downgrades and immediately drops the `Arc`, keeping only a weak reference. The reference will
@@ -427,7 +413,7 @@ mod tests {
 
     use crate::utils::resolve_address;
 
-    use super::{wait_for_arc_drop, xor};
+    use super::wait_for_arc_drop;
 
     /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
 
@@ -444,26 +430,6 @@ mod tests {
                 }
             })
             .collect()
-    }
-
-    #[test]
-    fn xor_works() {
-        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
-        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11, 0x12, 0x23];
-        let xor_result = [0x47, 0x58, 0xae, 0x8e, 0x46, 0x61, 0xe9, 0xd7];
-
-        xor(&mut lhs, &rhs);
-
-        assert_eq!(lhs, xor_result);
-    }
-
-    #[test]
-    #[should_panic(expected = "equal length")]
-    fn xor_panics_on_uneven_inputs() {
-        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
-        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11];
-
-        xor(&mut lhs, &rhs);
     }
 
     #[tokio::test]
