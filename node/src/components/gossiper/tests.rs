@@ -18,7 +18,7 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
     ProtocolVersion, TimeDiff, Transaction,
 };
 
@@ -113,7 +113,7 @@ impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
-impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
