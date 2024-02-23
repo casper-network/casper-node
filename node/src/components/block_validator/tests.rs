@@ -6,8 +6,8 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
-    BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem, RuntimeArgs,
-    SecretKey, TestBlockBuilder, TimeDiff, Transaction, U512,
+    BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
+    FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction, U512,
 };
 
 use crate::{
@@ -237,7 +237,7 @@ struct ValidationContext {
     deploys: HashMap<TransactionId, Deploy>,
     transfers: HashMap<TransactionId, Deploy>,
     // map of block height → signatures for the block
-    signatures: HashMap<u64, HashMap<PublicKey, FinalitySignature>>,
+    signatures: HashMap<u64, HashMap<PublicKey, FinalitySignatureV2>>,
     // map of signatures that aren't stored, but are fetchable
     fetchable_signatures: HashMap<FinalitySignatureId, FinalitySignature>,
 
@@ -342,8 +342,13 @@ impl ValidationContext {
                     .secret_keys
                     .get(validator)
                     .expect("should have validator");
-                let signature =
-                    FinalitySignature::create(*block.hash(), block.era_id(), secret_key);
+                let signature = FinalitySignatureV2::create(
+                    *block.hash(),
+                    block.height(),
+                    block.era_id(),
+                    self.chainspec.name_hash(),
+                    secret_key,
+                );
                 self.signatures
                     .entry(height)
                     .or_default()
@@ -366,8 +371,13 @@ impl ValidationContext {
                     .secret_keys
                     .get(validator)
                     .expect("should have validator");
-                let signature =
-                    FinalitySignature::create(*block.hash(), block.era_id(), secret_key);
+                let signature = FinalitySignature::V2(FinalitySignatureV2::create(
+                    *block.hash(),
+                    block.height(),
+                    block.era_id(),
+                    self.chainspec.name_hash(),
+                    secret_key,
+                ));
                 self.fetchable_signatures
                     .insert(*signature.fetch_id(), signature);
             }
@@ -457,13 +467,19 @@ impl ValidationContext {
         self.past_blocks.get(&block_height).map(|block| {
             let empty_hashmap = HashMap::new();
             let signatures = self.signatures.get(&block_height).unwrap_or(&empty_hashmap);
-            let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
+            let mut block_signatures = BlockSignaturesV2::new(
+                *block.hash(),
+                block.height(),
+                block.era_id(),
+                self.chainspec.name_hash(),
+            );
             for signature in signatures.values() {
-                block_signatures.insert_signature(signature.clone());
+                block_signatures
+                    .insert_signature(signature.public_key().clone(), *signature.signature());
             }
             BlockWithMetadata {
                 block: block.clone(),
-                block_signatures,
+                block_signatures: BlockSignatures::V2(block_signatures),
             }
         })
     }

@@ -121,6 +121,7 @@ impl ValidatorMatrix {
         );
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
+            chainspec_name_hash: ChainNameDigest::from_chain_name("casper-example"),
             chainspec_validators: None,
             chainspec_activation_era: EraId::from(0),
             finality_threshold_fraction,
