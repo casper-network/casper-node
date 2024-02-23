@@ -764,7 +764,9 @@ async fn run_equivocator_network() {
         };
         let first_message_time = *maybe_first_message_time.get_or_insert(now);
         if now < first_message_time + min_round_len * 3 {
-            return Either::Left(time::sleep(min_round_len.into()).event(move |_| event));
+            return Either::Left(
+                time::sleep(Duration::from(min_round_len) * 3).event(move |_| event),
+            );
         }
         Either::Right(event)
     });
