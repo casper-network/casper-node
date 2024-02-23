@@ -86,7 +86,7 @@ function dev_branch_settings() {
     pushd "$(get_path_to_remotes)"
     RC_VERSION="$(ls --group-directories-first -d */ | sort -r | head -n 1 | tr -d '/')"
 
-    [[ "$RC_VERSION" =~ (.*[^0-9])([0-9])(.)([0-9]+) ]] && INCREMENT="${BASH_REMATCH[1]}$((${BASH_REMATCH[2]} + 1))${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    [[ "$RC_VERSION" =~ (.*[^0-9])([0-9])(.)([0-9]+) ]] && INCREMENT="2.0${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
 
     RC_VERSION=$(echo "$RC_VERSION" | sed 's/\./\_/g')
     INCREMENT=$(echo "$INCREMENT" | sed 's/\./\_/g')

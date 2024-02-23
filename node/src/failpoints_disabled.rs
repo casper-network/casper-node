@@ -53,6 +53,11 @@ impl<T> Failpoint<T> {
 pub(crate) struct FailpointActivation;
 
 impl FailpointActivation {
+    #[allow(dead_code)]
+    pub(crate) fn new<S: ToString>(_key: S) -> FailpointActivation {
+        FailpointActivation
+    }
+
     pub(crate) fn key(&self) -> &str {
         ""
     }

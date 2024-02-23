@@ -71,7 +71,7 @@ pub struct FetcherTestConfig {
 
 impl Default for FetcherTestConfig {
     fn default() -> Self {
-        let (storage_config, temp_dir) = storage::Config::default_for_tests();
+        let (storage_config, temp_dir) = storage::Config::new_for_tests(1);
         FetcherTestConfig {
             fetcher_config: Default::default(),
             storage_config,

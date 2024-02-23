@@ -910,9 +910,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
     )
     .with_protocol_version(new_protocol_version)
     .build();
-
     builder.exec(exec_request).expect_success().commit();
-
     let purse_holder_as_entity = builder
         .get_addressable_entity(contract_hash)
         .expect("must have purse holder entity hash");

@@ -8,6 +8,7 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -304,6 +305,7 @@ impl TryFrom<Key> for URef {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<URef> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> URef {
         URef::new(rng.gen(), rng.gen())
