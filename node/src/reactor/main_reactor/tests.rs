@@ -1856,7 +1856,6 @@ async fn run_rewards_network_scenario(
             representative_storage
                 .read_block_by_height(i)
                 .expect("block not found")
-                .unwrap()
         })
         .collect();
 

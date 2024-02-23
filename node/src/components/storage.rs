@@ -2125,6 +2125,14 @@ impl Storage {
             .expect("could not retrieve value from storage")
     }
 
+    pub(crate) fn read_block_by_height(&self, height: u64) -> Option<Block> {
+        self.block_store
+            .checkout_ro()
+            .expect("could not create RO transaction")
+            .read(height)
+            .expect("could not retrieve value from storage")
+    }
+
     pub(crate) fn read_highest_block(&self) -> Option<Block> {
         self.block_store
             .checkout_ro()
