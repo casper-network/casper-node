@@ -1,4 +1,5 @@
 [workspace]
+resolver = "1"
 members = [
     "ci/casper_updater",
     "execution_engine",
