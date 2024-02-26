@@ -572,7 +572,8 @@ async fn handle_incoming(
             //       Juliet API). This would allow the peer to update its backoff timer.
             return;
         }
-        guard.unban(&peer_id);
+        guard.unban(&peer_id); // TODO: `is_still_banned` is only called from mutable
+                               //       contexts, can include an unban.
 
         // Check if there is a route registered, i.e. an incoming handler is already running.
         if guard.routing_table.contains_key(&peer_id) {
