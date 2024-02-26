@@ -15,19 +15,11 @@ use casper_types::{
 
 use super::{
     transaction::{DeployHashWithApprovals, TransactionV1HashWithApprovals},
-    BlockPayload, DeployFootprint, TransactionFootprint, TransactionV1Footprint,
+    BlockPayload, DeployFootprint, TransactionFootprint, TransactionV1Footprint, VariantMismatch,
 };
 use crate::types::TransactionHashWithApprovals;
 
 const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
-
-#[derive(Debug, Error)]
-pub(crate) enum MismatchType {
-    #[error("legacy deploy with V1 footprint")]
-    LegacyDeployWithV1Footprint,
-    #[error("V1 transaction with legacy footprint")]
-    V1TransactionWithLegacyDeployFootprint,
-}
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -51,8 +43,8 @@ pub(crate) enum AddError {
     InvalidDeploy,
     #[error("transaction is not valid in this context")]
     InvalidTransaction,
-    #[error("footprint type mismatch: {0}")]
-    FootprintTypeMismatch(MismatchType),
+    #[error(transparent)]
+    VariantMismatch(#[from] VariantMismatch),
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
@@ -107,14 +99,10 @@ impl AppendableBlock {
                 TransactionHashWithApprovals::V1(thwa),
                 TransactionFootprint::V1(transaction_footprint),
             ) => self.add_transaction_v1(thwa, transaction_footprint),
-            (TransactionHashWithApprovals::V1 { .. }, TransactionFootprint::Deploy(_)) => {
-                Err(AddError::FootprintTypeMismatch(
-                    MismatchType::V1TransactionWithLegacyDeployFootprint,
-                ))
+            (thwa, footprint) => {
+                let mismatch = VariantMismatch(Box::new((thwa, footprint.clone())));
+                Err(AddError::from(mismatch))
             }
-            (TransactionHashWithApprovals::Deploy { .. }, TransactionFootprint::V1(_)) => Err(
-                AddError::FootprintTypeMismatch(MismatchType::LegacyDeployWithV1Footprint),
-            ),
         }
     }
 

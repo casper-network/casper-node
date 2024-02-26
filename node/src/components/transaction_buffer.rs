@@ -548,8 +548,10 @@ impl TransactionBuffer {
                             // a block limit has been reached
                             break;
                         }
-                        AddError::FootprintTypeMismatch(mismatch) => {
-                            error!(?transaction_hash, %mismatch, "TransactionBuffer: data mismatch");
+                        AddError::VariantMismatch(mismatch) => {
+                            error!(?transaction_hash, %mismatch,
+                                "TransactionBuffer: data mismatch when adding transaction"
+                            );
                             // keep iterating
                         }
                     }
