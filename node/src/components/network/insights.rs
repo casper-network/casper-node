@@ -62,6 +62,13 @@ impl Display for NetworkInsights {
             OptDisplay::new(self.public_addr, "no listen addr")
         )?;
 
+        write!(f, "in {} (according to networking), ", self.net_active_era)?;
+
+        match self.consensus_public_key.as_ref() {
+            Some(pub_key) => write!(f, "consensus pubkey {}", pub_key)?,
+            None => f.write_str("no consensus key")?,
+        }
+
         Ok(())
     }
 }
