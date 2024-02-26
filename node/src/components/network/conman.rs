@@ -163,6 +163,10 @@ pub(crate) struct Route {
     /// For outgoing connections, this will be the peer address we connected to, for incoming ones
     /// it is the usually randomly selected outgoing address of the peer.
     pub(crate) remote_addr: SocketAddr,
+    /// The direction of the connection.
+    ///
+    /// This is only used for reporting purposes.
+    pub(crate) direction: Direction,
 }
 
 /// An active route that is registered in a routing table.
@@ -521,7 +525,8 @@ async fn handle_incoming(
         return;
     }
 
-    if we_should_be_outgoing(ctx.our_id, peer_id) {
+    let direction = Direction::determine(ctx.our_id, peer_id);
+    if direction != Direction::Incoming {
         // The connection is supposed to be outgoing from our perspective.
         debug!("closing low-ranking incoming connection");
 
@@ -569,7 +574,14 @@ async fn handle_incoming(
             return;
         }
 
-        ActiveRoute::new(&mut *guard, ctx.clone(), peer_id, rpc_client, remote_addr)
+        ActiveRoute::new(
+            &mut *guard,
+            ctx.clone(),
+            peer_id,
+            rpc_client,
+            remote_addr,
+            direction,
+        )
     };
 
     info!("now connected via incoming connection");
@@ -795,7 +807,8 @@ impl OutgoingHandler {
             return Err(OutgoingError::LoopbackEncountered);
         }
 
-        if !we_should_be_outgoing(self.ctx.our_id, peer_id) {
+        let direction = Direction::determine(self.ctx.our_id, peer_id);
+        if direction != Direction::Outgoing {
             return Err(OutgoingError::ShouldBeIncoming);
         }
 
@@ -820,6 +833,7 @@ impl OutgoingHandler {
                 peer_id,
                 rpc_client,
                 self.peer_addr,
+                direction,
             )
         };
 
@@ -844,17 +858,20 @@ impl Drop for OutgoingHandler {
 
 impl ActiveRoute {
     /// Creates a new active route by registering it on the given context.
+    #[inline(always)]
     fn new(
         state: &mut ConManState,
         ctx: Arc<ConManContext>,
         peer_id: NodeId,
         rpc_client: RpcClient,
         remote_addr: SocketAddr,
+        direction: Direction,
     ) -> Self {
         let route = Route {
             peer: peer_id,
             client: rpc_client,
             remote_addr,
+            direction,
         };
 
         if state.routing_table.insert(peer_id, route).is_some() {
@@ -959,10 +976,25 @@ where
     }
 }
 
-/// Determines whether an outgoing connection from us outranks an incoming connection from them.
-#[inline(always)]
-fn we_should_be_outgoing(our_id: NodeId, peer_id: NodeId) -> bool {
-    our_id > peer_id
+/// A connection direction.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub(crate) enum Direction {
+    /// A connection made by a peer, connected back to us.
+    Incoming,
+    /// A connection initiated by us, to a peer.
+    Outgoing,
+}
+
+impl Direction {
+    #[inline(always)]
+    pub(crate) fn determine(us: NodeId, them: NodeId) -> Self {
+        if us > them {
+            Direction::Outgoing
+        } else {
+            Direction::Incoming
+        }
+    }
 }
 
 impl Default for Config {
