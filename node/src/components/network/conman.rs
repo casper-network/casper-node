@@ -1029,7 +1029,7 @@ impl Default for Config {
             tcp_connect_attempts: NonZeroUsize::new(8).unwrap(),
             tcp_connect_base_backoff: Duration::from_secs(1),
             significant_error_backoff: Duration::from_secs(60),
-            permanent_error_backoff: Duration::from_secs(60 * 60),
+            permanent_error_backoff: Duration::from_secs(10 * 60),
             flaky_connection_threshold: Duration::from_secs(60),
             successful_reconnect_delay: Duration::from_secs(1),
             max_incoming_connections: 10_000,
