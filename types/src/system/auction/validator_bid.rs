@@ -239,14 +239,24 @@ impl ValidatorBid {
         true
     }
 
-    /// Returns allowed delegation amount in motes.
+    /// Returns minimum allowed delegation amount in motes.
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
     }
 
-    /// Returns allowed delegation amount in motes.
+    /// Returns maximum allowed delegation amount in motes.
     pub fn maximum_delegation_amount(&self) -> u64 {
         self.maximum_delegation_amount
+    }
+
+    /// Sets minimum and maximum delegation amounts in modes.
+    pub fn set_delegation_amount_boundaries(
+        &mut self,
+        minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
+    ) {
+        self.minimum_delegation_amount = minimum_delegation_amount;
+        self.maximum_delegation_amount = maximum_delegation_amount;
     }
 }
 
