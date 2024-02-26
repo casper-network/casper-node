@@ -36,6 +36,10 @@ pub(crate) struct NetworkInsights {
     consensus_public_key: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
+    /// Addresses for which an outgoing task is currently running.
+    address_book: Vec<SocketAddr>,
+    /// Blocked addresses.
+    do_not_call_list: Vec<DoNotCallInsight>,
     /// All active routes.
     active_routes: Vec<RouteInsight>,
     /// Bans currently active.
@@ -57,6 +61,7 @@ pub(crate) struct RouteInsight {
     pub(crate) since: TimeDiff,
 }
 
+/// Information about an existing ban.
 #[derive(Debug, Serialize)]
 pub(crate) struct SentenceInsight {
     /// The peer banned.
@@ -67,9 +72,18 @@ pub(crate) struct SentenceInsight {
     pub(crate) justification: BlocklistJustification,
 }
 
+/// Information about an entry of the do-not-call list.
+#[derive(Debug, Serialize)]
+pub(crate) struct DoNotCallInsight {
+    /// Address not to be called.
+    pub(crate) addr: SocketAddr,
+    /// How long not to call the address.
+    pub(crate) remaining: Option<TimeDiff>,
+}
+
 impl SentenceInsight {
     /// Creates a new instance from an existing `Route`.
-    fn collect_from_route(now: Instant, peer: NodeId, sentence: &Sentence) -> Self {
+    fn collect_from_sentence(now: Instant, peer: NodeId, sentence: &Sentence) -> Self {
         let remaining = if sentence.until > now {
             Some(sentence.until.duration_since(now).into())
         } else {
@@ -96,12 +110,27 @@ impl RouteInsight {
     }
 }
 
+impl DoNotCallInsight {
+    /// Creates a new instance from an existing entry on the do-not-call list.
+    fn collect_from_dnc(now: Instant, addr: SocketAddr, until: Instant) -> Self {
+        let remaining = if until > now {
+            Some(until.duration_since(now).into())
+        } else {
+            None
+        };
+
+        DoNotCallInsight { addr, remaining }
+    }
+}
+
 impl NetworkInsights {
     /// Collect networking insights from a given networking component.
     pub(super) fn collect_from_component<P>(net: &Network<P>) -> Self
     where
         P: Payload,
     {
+        let mut address_book = Vec::new();
+        let mut do_not_call_list = Vec::new();
         let mut active_routes = Vec::new();
         let mut blocked = Vec::new();
 
@@ -109,22 +138,30 @@ impl NetworkInsights {
             // Acquire lock only long enough to copy routing table.
             let guard = conman.read_state();
             let now = Instant::now();
+            address_book = guard.address_book().iter().cloned().collect();
+
             active_routes.extend(
                 guard
                     .routing_table()
                     .values()
                     .map(|route| RouteInsight::collect_from_route(now, route)),
             );
-            blocked.extend(
-                guard.banlist().iter().map(|(&peer, sentence)| {
-                    SentenceInsight::collect_from_route(now, peer, sentence)
-                }),
+            do_not_call_list.extend(
+                guard
+                    .do_not_call()
+                    .iter()
+                    .map(|(&addr, &until)| DoNotCallInsight::collect_from_dnc(now, addr, until)),
             );
+            blocked.extend(guard.banlist().iter().map(|(&peer, sentence)| {
+                SentenceInsight::collect_from_sentence(now, peer, sentence)
+            }));
         }
 
         // Sort only after releasing lock.
+        address_book.sort();
+        do_not_call_list.sort_by_key(|dnc| dnc.addr);
         active_routes.sort_by_key(|route_insight| route_insight.peer);
-        blocked.sort_by_key(|sentence_insight| sentence_insight.remaining);
+        blocked.sort_by_key(|sentence_insight| sentence_insight.peer);
 
         NetworkInsights {
             our_id: net.our_id,
@@ -132,9 +169,23 @@ impl NetworkInsights {
             public_addr: net.public_addr,
             consensus_public_key: net.node_key_pair.as_ref().map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
+            address_book,
+            do_not_call_list,
             active_routes,
             blocked,
         }
+    }
+}
+
+impl Display for DoNotCallInsight {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} for another {} ",
+            self.addr,
+            OptDisplay::new(self.remaining.as_ref(), "(expired)"),
+        )
     }
 }
 
@@ -186,7 +237,19 @@ impl Display for NetworkInsights {
             None => f.write_str("no consensus key\n")?,
         }
 
-        f.write_str("\npeers:\n")?;
+        f.write_str("\naddress book:\n")?;
+
+        for addr in &self.address_book {
+            write!(f, "{} ", addr)?;
+        }
+
+        f.write_str("\ndo-not-call:\n")?;
+
+        for dnc in &self.do_not_call_list {
+            writeln!(f, "{}", dnc)?;
+        }
+
+        f.write_str("\routes:\n")?;
 
         for route in &self.active_routes {
             writeln!(f, "{}", route)?;
