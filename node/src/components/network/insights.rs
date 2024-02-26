@@ -243,13 +243,13 @@ impl Display for NetworkInsights {
             write!(f, "{} ", addr)?;
         }
 
-        f.write_str("\ndo-not-call:\n")?;
+        f.write_str("\n\ndo-not-call:\n")?;
 
         for dnc in &self.do_not_call_list {
             writeln!(f, "{}", dnc)?;
         }
 
-        f.write_str("\routes:\n")?;
+        f.write_str("\nroutes:\n")?;
 
         for route in &self.active_routes {
             writeln!(f, "{}", route)?;
