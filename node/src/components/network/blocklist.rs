@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Reasons why a peer was blocked.
-#[derive(DataSize, Debug, Serialize)]
+#[derive(Clone, DataSize, Debug, Serialize)]
 pub(crate) enum BlocklistJustification {
     /// Peer sent incorrect item.
     SentBadItem { tag: Tag },

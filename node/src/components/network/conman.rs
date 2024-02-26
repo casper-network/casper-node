@@ -141,6 +141,11 @@ impl ConManState {
     pub(crate) fn routing_table(&self) -> &HashMap<NodeId, Route> {
         &self.routing_table
     }
+
+    /// Returns a reference to the banlist of this [`ConManState`].
+    pub(crate) fn banlist(&self) -> &HashMap<NodeId, Sentence> {
+        &self.banlist
+    }
 }
 
 /// Record of punishment for a peers malicious behavior.
