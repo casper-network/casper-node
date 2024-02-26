@@ -25,7 +25,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -90,7 +90,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 }
             };
 
-            info!("rewards successfully computed");
+            debug!("rewards successfully computed");
 
             rewards
         } else {
@@ -177,7 +177,7 @@ pub(super) async fn exec_or_requeue<REv>(
             .await;
     }
 
-    info!(
+    debug!(
         block_hash = %block.hash(),
         height = block.height(),
         era = block.era_id().value(),

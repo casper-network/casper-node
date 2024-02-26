@@ -105,12 +105,10 @@ pub fn execute_finalized_block(
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
-                effects: fee_effects,
                 post_state_hash, ..
                 //transfers: fee_transfers,
             } => {
                 state_root_hash = post_state_hash;
-                effects.append(fee_effects);
                 //transfers.extend(fee_transfers);
                 // TODO: looks like effects & transfer records are associated with the ExecutionResult struct
                 // which assumes they were caused by a deploy. however, systemic operations produce effects
@@ -119,7 +117,11 @@ pub fn execute_finalized_block(
         }
     }
 
-    // Pay out block rewards
+    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
+    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
+    // at one point, they were going to be paid out per block (and might be in the future)
+    // but it ended up settling on per era. the behavior is driven by Some / None as sent
+    // thus if in future calling logic passes rewards per block it should just work as is.
     if let Some(rewards) = &executable_block.rewards {
         let rewards_req = BlockRewardsRequest::new(
             native_runtime_config.clone(),
@@ -136,11 +138,9 @@ pub fn execute_finalized_block(
                 return Err(BlockExecutionError::DistributeBlockRewards(bre))
             }
             BlockRewardsResult::Success {
-                post_state_hash,
-                effects: reward_effects,
+                post_state_hash, ..
             } => {
                 state_root_hash = post_state_hash;
-                effects.append(reward_effects);
             }
         }
     }

@@ -235,7 +235,6 @@ impl RewardsInfo {
                     | RoundSeigniorageRateResult::MintNotFound
                     | RoundSeigniorageRateResult::ValueNotFound(_)
                     | RoundSeigniorageRateResult::Failure(_) => {
-                        debug_assert!(false, "wtf");
                         return Err(RewardsError::FailedToFetchSeigniorageRate);
                     }
                     RoundSeigniorageRateResult::Success { rate } => rate,

@@ -18,20 +18,19 @@ use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult, QueryRequest, QueryResult::*},
+    data_access_layer::{BidsRequest, BidsResult, TotalSupplyRequest, TotalSupplyResult},
     global_state::state::{StateProvider, StateReader},
-    tracking_copy::TrackingCopyError,
 };
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        mint, AUCTION,
+        AUCTION,
     },
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
     BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
-    EntityAddr, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
     SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
@@ -625,8 +624,7 @@ impl TestFixture {
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
-            .engine_state()
-            .get_state()
+            .data_provider()
             .checkout(*highest_block.state_root_hash())
             .expect("should checkout")
             .expect("should have view")
@@ -790,8 +788,8 @@ impl SwitchBlocks {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = BidsRequest::new(state_root_hash);
-            let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            if let BidsResult::Success { bids } = engine_state.get_bids(request) {
+            let data_provider = runner.main_reactor().contract_runtime().data_provider();
+            if let BidsResult::Success { bids } = data_provider.bids(request) {
                 return bids;
             }
         }
@@ -1779,10 +1777,10 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 30000; //milliseconds
-const MIN_HEIGHT: u64 = 10;
-const BLOCK_TIME: u64 = 3000; //milliseconds
-const TIME_OUT: u64 = 600; //seconds
+const ERA_DURATION: u64 = 25000; //milliseconds
+const MIN_HEIGHT: u64 = 8;
+const BLOCK_TIME: u64 = 2500; //milliseconds
+const TIME_OUT: u64 = 500; //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
@@ -1865,14 +1863,7 @@ async fn run_rewards_network_scenario(
         })
         .collect();
 
-    // Recover history of total supply
-    let mint_hash: AddressableEntityHash = {
-        let any_state_hash = *switch_blocks.headers[0].state_root_hash();
-        representative_runtime
-            .engine_state()
-            .get_system_mint_hash(any_state_hash)
-            .expect("mint contract hash not found")
-    };
+    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
     // Get total supply history
     let total_supply: Vec<U512> = (0..highest_completed_height + 1)
@@ -1882,31 +1873,16 @@ async fn run_rewards_network_scenario(
                 .expect("failure to read block header")
                 .unwrap()
                 .state_root_hash();
+            let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
+            let result = representative_runtime
+                .data_provider()
+                .total_supply(total_supply_req);
 
-            let request = QueryRequest::new(
-                state_hash,
-                Key::AddressableEntity(EntityAddr::System(mint_hash.value())),
-                vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
-            );
-
-            let result = representative_runtime.engine_state().run_query(request);
-
-            match result {
-                Success { value, proofs: _ } => value
-                    .as_cl_value()
-                    .expect("failure to recover total supply as CL value")
-                    .clone()
-                    .into_t::<U512>()
-                    .map_err(TrackingCopyError::CLValue),
-                ValueNotFound(_) => Err(TrackingCopyError::NamedKeyNotFound(
-                    mint::TOTAL_SUPPLY_KEY.to_owned(),
-                )),
-                RootNotFound => Err(TrackingCopyError::Storage(
-                    casper_storage::global_state::error::Error::RootNotFound,
-                )),
-                Failure(e) => Err(e),
+            if let TotalSupplyResult::Success { total_supply } = result {
+                total_supply
+            } else {
+                panic!("expected success, not: {:?}", result);
             }
-            .expect("failure to recover total supply")
         })
         .collect();
 
@@ -1938,7 +1914,7 @@ async fn run_rewards_network_scenario(
                 return (i, BTreeMap::new());
             }
             let mut recomputed_era_rewards = BTreeMap::new();
-            if !(switch_block.is_genesis()) {
+            if !switch_block.is_genesis() {
                 let supply_carryover = recomputed_total_supply
                     .get(&(i - 1))
                     .copied()
@@ -2126,7 +2102,7 @@ async fn run_rewards_network_scenario(
                     .expect("expected recalculated supply")),
                 "total supply does not match at height {}",
                 header.height()
-            )
+            );
         }
     });
 

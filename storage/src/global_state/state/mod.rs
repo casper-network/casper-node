@@ -320,6 +320,7 @@ pub trait CommitProvider: StateProvider {
         let state_hash = request.state_hash();
         let rewards = request.rewards();
         if rewards.is_empty() {
+            warn!("rewards are empty");
             // if there are no rewards to distribute, this is effectively a noop
             return BlockRewardsResult::Success {
                 post_state_hash: state_hash,
@@ -375,6 +376,10 @@ pub trait CommitProvider: StateProvider {
         };
 
         if let Err(auction_error) = runtime.distribute(rewards.clone()) {
+            error!(
+                "distribute block rewards failed due to auction error {:?}",
+                auction_error
+            );
             return BlockRewardsResult::Failure(BlockRewardsError::Auction(auction_error));
         }
 
