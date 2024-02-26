@@ -9,15 +9,13 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     sync::Arc,
+    time::Instant,
 };
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, TimeDiff};
 use serde::Serialize;
 
-use crate::{
-    types::NodeId,
-    utils::opt_display::{self, OptDisplay},
-};
+use crate::{types::NodeId, utils::opt_display::OptDisplay};
 
 use super::{
     conman::{Direction, Route},
@@ -52,16 +50,19 @@ pub(crate) struct RouteInsights {
     pub(crate) direction: Direction,
     /// The consensus key provided by the peer during handshake.
     pub(crate) consensus_key: Option<Arc<PublicKey>>,
+    /// Duration since this route was established.
+    pub(crate) since: TimeDiff,
 }
 
 impl RouteInsights {
     /// Creates a new instance from an existing `Route`.
-    fn collect_from_route(route: &Route) -> Self {
+    fn collect_from_route(now: Instant, route: &Route) -> Self {
         Self {
             peer: route.peer,
             remote_addr: route.remote_addr,
             direction: route.direction,
             consensus_key: route.consensus_key.clone(),
+            since: now.duration_since(route.since).into(),
         }
     }
 }
@@ -76,12 +77,13 @@ impl NetworkInsights {
 
         if let Some(ref conman) = net.conman {
             // Acquire lock only long enough to copy routing table.
+            let guard = conman.read_state();
+            let now = Instant::now();
             active_routes.extend(
-                conman
-                    .read_state()
+                guard
                     .routing_table()
                     .values()
-                    .map(RouteInsights::collect_from_route),
+                    .map(|route| RouteInsights::collect_from_route(now, route)),
             );
         }
 
@@ -104,11 +106,12 @@ impl Display for RouteInsights {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} @ {} [{}] {}",
+            "{} @ {} [{}] {}, since {}",
             self.peer,
             self.remote_addr,
             self.direction,
             OptDisplay::new(self.consensus_key.as_ref(), "no key provided"),
+            self.since,
         )
     }
 }

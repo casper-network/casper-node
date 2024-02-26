@@ -173,6 +173,8 @@ pub(crate) struct Route {
     // TODO: It may be beneficial to make this not a part of `Route` with a fixed type, to reduce
     //       coupling (e.g. use a `Route<Option<Box<PublicKey>>>` instead, rename to `data`).
     pub(crate) consensus_key: Option<Arc<PublicKey>>,
+    /// Timestamp recording when this route was created.
+    pub(crate) since: Instant,
 }
 
 /// An active route that is registered in a routing table.
@@ -882,6 +884,7 @@ impl ActiveRoute {
             remote_addr,
             direction,
             consensus_key: consensus_key.map(Arc::from),
+            since: Instant::now(),
         };
 
         if state.routing_table.insert(peer_id, route).is_some() {
