@@ -506,6 +506,13 @@ where
                     }
                 }
             }
+        } else {
+            rate_limited!(
+                LOST_MESSAGE,
+                5,
+                Duration::from_secs(30),
+                |dropped| warn!(%channel, %dest, size=payload.len(), dropped, "discarding message to peer, no longer connected")
+            );
         }
     }
 
@@ -1009,7 +1016,7 @@ where
 }
 
 /// Given a message payload, puts it into a proper message envelope and returns the serialized
-/// envlope along with the channel it should be sent on.
+/// envelope along with the channel it should be sent on.
 #[inline(always)]
 fn stuff_into_envelope<P: Payload>(payload: P) -> Option<(Channel, Bytes)> {
     let msg = Message::Payload(payload);
