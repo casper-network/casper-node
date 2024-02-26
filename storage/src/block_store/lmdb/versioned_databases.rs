@@ -11,8 +11,9 @@ use std::marker::PhantomData;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
-    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures, Deploy,
-    DeployHash, Digest, FinalizedApprovals, FinalizedDeployApprovals, Transaction, TransactionHash,
+    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, FinalizedApprovals, FinalizedDeployApprovals,
+    Transaction, TransactionHash,
 };
 
 use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
@@ -83,7 +84,7 @@ impl VersionedValue for FinalizedApprovals {
 }
 
 impl VersionedValue for BlockSignatures {
-    type Legacy = BlockSignatures;
+    type Legacy = BlockSignaturesV1;
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the
