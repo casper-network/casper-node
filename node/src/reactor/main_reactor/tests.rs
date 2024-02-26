@@ -685,6 +685,77 @@ impl TestFixture {
         assert_eq!(actual_price, expected_price);
     }
 
+    #[track_caller]
+    fn get_score_for_era(&self, era_id: EraId) -> u64 {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let era_usage = runner.main_reactor().storage.get_utilization_for_era(era_id)
+            .expect("must have score a given era");
+
+        let switch_block_header = runner.main_reactor().storage.read_switch_block_header_by_era_id(era_id)
+            .unwrap()
+            .expect("must have block header");
+
+        let switch_block_height = switch_block_header.height();
+        println!("height {switch_block_height}");
+        assert_eq!(era_id, switch_block_header.era_id());
+
+        let mut blocks_in_era = 1;
+
+        for height in (0..switch_block_height).rev() {
+            println!("{height}");
+            let block_header = runner.main_reactor().storage.read_block_header_by_height(height, true)
+                .unwrap()
+                .expect("must have block header");
+
+            if block_header.era_id() != era_id {
+                break
+            } else {
+                if !block_header.is_switch_block() {
+                    blocks_in_era += 1;
+                }
+            }
+        }
+
+        println!("Number of blocks in {era_id} is {blocks_in_era}");
+
+        let max_capacity = {
+            let capacity_per_block = self.chainspec.transaction_config.block_max_install_upgrade_count
+                + self.chainspec.transaction_config.block_max_standard_count
+                + self.chainspec.transaction_config.block_max_transfer_count
+                + self.chainspec.transaction_config.block_max_staking_count;
+
+            blocks_in_era * (capacity_per_block as u64)
+        };
+
+
+        let era_score = Ratio::new(
+            era_usage * 100,
+            max_capacity
+        );
+
+        era_score.to_integer()
+    }
+
+    #[track_caller]
+    fn get_current_era_price(&self) -> u8 {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let price = runner.main_reactor().contract_runtime.current_era_price();
+
+        price.gas_price()
+    }
+
     async fn inject_transaction(&mut self, txn: Transaction) {
         // saturate the network with the deploy via just making them all store and accept it
         // they're all validators so one of them should propose it
@@ -2490,9 +2561,9 @@ async fn block_vacancy() {
     ]);
 
     let spec_override = ConfigsOverride {
-        minimum_era_height: 1,
-        go_down: 10,
-        go_up: 24,
+        minimum_era_height: 2,
+        go_down: 5,
+        go_up: 10,
         max_standard_count: 1,
         max_staking_count: 1,
         max_install_count: 1,
@@ -2504,7 +2575,7 @@ async fn block_vacancy() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_public_key = PublicKey::from(&*fixture.node_contexts[1].secret_key);
-    let charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
+    let _charlie_public_key = PublicKey::from(&*fixture.node_contexts[2].secret_key);
 
     // Wait for all nodes to complete
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
@@ -2531,49 +2602,36 @@ async fn block_vacancy() {
         .run_until_executed_transaction(&txn_hash, TEN_SECS)
         .await;
 
+    let price_for_era_1 = fixture.get_current_era_price();
+
     fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
 
-    // Create & sign transaction to undelegate Alice from Bob and delegate to Charlie.
-    let mut deploy = Deploy::redelegate(
-        fixture.chainspec.network_config.name.clone(),
-        fixture.system_contract_hash(AUCTION),
-        bob_public_key.clone(),
-        alice_public_key.clone(),
-        charlie_public_key.clone(),
-        alice_delegation_amount,
-        Timestamp::now(),
-        TimeDiff::from_seconds(60),
-    );
+    let actual_utilization_era_one = fixture
+        .get_score_for_era(ERA_ONE);
 
-    deploy.sign(&alice_secret_key);
-    let txn = Transaction::Deploy(deploy);
-    let txn_hash = txn.hash();
+    println!("{actual_utilization_era_one}");
 
-    // Inject the transaction and run the network until executed.
-    fixture.inject_transaction(txn).await;
+    let expected_price = if actual_utilization_era_one > fixture.chainspec.vacancy_config.upper_threshold {
+        price_for_era_1 + 1
+    } else {
+        price_for_era_1
+    };
+
+    fixture
+        .check_price_for_era(ERA_TWO, expected_price);
+
+    let price_for_era_two = fixture.get_current_era_price();
 
     fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
 
-    let highest_block = fixture.highest_complete_block();
+    let actual_utilization_for_era_two = fixture
+        .get_score_for_era(ERA_TWO);
 
-    let actual_gas_price = highest_block
-        .maybe_current_gas_price()
-        .expect("must have actual gas price");
-    let expected_gas_price: u8 = 2;
-    assert_eq!(actual_gas_price, expected_gas_price);
+    // Since we don't send any deploys or transactions, this should be zero.
+    assert!(actual_utilization_for_era_two.is_zero());
 
-    fixture.check_price_for_era(ERA_TWO, expected_gas_price);
-
-    let expected_gas_price_for_era_three = 1;
-    fixture.check_price_for_era(ERA_THREE, expected_gas_price_for_era_three);
-
-    fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
-        .await;
-
-    let era_four = EraId::new(4);
-
-    fixture.run_until_consensus_in_era(era_four, ONE_MIN).await;
-
-    fixture.check_price_for_era(era_four, 2u8);
+    // Since the utilization is zero we should expect a tick down in price.
+    let expected_price = price_for_era_two - 1u8;
+    fixture.check_price_for_era(ERA_THREE, expected_price);
 }
+

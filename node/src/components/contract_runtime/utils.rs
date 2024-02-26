@@ -147,6 +147,8 @@ pub(super) async fn exec_or_requeue<REv>(
                     Ratio::new(numerator, denominator).to_integer()
                 };
 
+                println!("{era_id} {era_score}");
+
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
                     if current_gas_price > max {
@@ -732,22 +734,22 @@ mod tests {
     }
 }
 
-#[derive(Clone, Copy, Ord, Eq, PartialOrd, PartialEq, DataSize)]
-pub(super) struct EraPrice {
+#[derive(Clone, Copy, Ord, Eq, PartialOrd, PartialEq, DataSize, Debug)]
+pub(crate) struct EraPrice {
     era_id: EraId,
     gas_price: u8,
 }
 
 impl EraPrice {
-    pub(super) fn new(era_id: EraId, gas_price: u8) -> Self {
+    pub(crate) fn new(era_id: EraId, gas_price: u8) -> Self {
         Self { era_id, gas_price }
     }
 
-    pub(super) fn gas_price(&self) -> u8 {
+    pub(crate) fn gas_price(&self) -> u8 {
         self.gas_price
     }
 
-    pub(super) fn maybe_gas_price_for_era_id(&self, era_id: EraId) -> Option<u8> {
+    pub(crate) fn maybe_gas_price_for_era_id(&self, era_id: EraId) -> Option<u8> {
         if self.era_id == era_id {
             return Some(self.gas_price);
         }

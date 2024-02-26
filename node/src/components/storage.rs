@@ -1197,18 +1197,10 @@ impl Storage {
                 transaction_count,
                 responder,
             } => {
-                match self.utilization_tracker.get_mut(&era_id) {
-                    None => responder.respond(Some((transaction_count, 1u64))).ignore(),
-                    Some(block_utilization) => {
-                        // TODO: Check the possiblity of an accidental upsert here
-                        block_utilization.insert(block_height, transaction_count);
-                        let raw_score = block_utilization.values().sum();
+                let utilization = self
+                    .get_block_utilization_score(era_id, block_height, transaction_count);
 
-                        let block_count = block_utilization.len() as u64;
-
-                        responder.respond(Some((raw_score, block_count))).ignore()
-                    }
-                }
+                responder.respond(utilization).ignore()
             }
         })
     }
@@ -1288,6 +1280,17 @@ impl Storage {
         if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
             block_score.insert(block.height(), transaction_hash_count);
         };
+
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(block_score) => {
+                block_score.insert(block.height(), transaction_hash_count);
+            },
+            None => {
+                let mut block_score = BTreeMap::new();
+                block_score.insert(block.height(), transaction_hash_count);
+                self.utilization_tracker.insert(era_id, block_score);
+            }
+        }
 
         Ok(true)
     }
@@ -1641,6 +1644,23 @@ impl Storage {
         }
         txn.commit()?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn get_utilization_for_era(
+        &self,
+        era_id: EraId
+    ) -> Option<u64> {
+        let era_utilization = match self.utilization_tracker.get(&era_id) {
+            Some(utilization) => utilization,
+            None => return None
+        };
+
+        let total_utilization: u64 = era_utilization
+            .values()
+            .sum();
+
+        Some(total_utilization)
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
@@ -2759,6 +2779,32 @@ impl Storage {
             }
         }
     }
+
+    fn get_block_utilization_score(&mut self, era_id: EraId, block_height: u64, transaction_count: u64) -> Option<(u64, u64)> {
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(utilization) => {
+                if !utilization.contains_key(&block_height) {
+                    utilization.insert(block_height, transaction_count);
+                }
+
+                let transaction_count = utilization.values().into_iter().sum();
+                let block_count = utilization.keys().len() as u64;
+
+                Some((transaction_count, block_count))
+            },
+            None => {
+                println!("In none case for utilization for {era_id} and {block_height}");
+                let mut utilization = BTreeMap::new();
+                utilization.insert(block_height, transaction_count);
+
+                self.utilization_tracker.insert(era_id, utilization);
+
+                let block_count = 1u64;
+                Some((transaction_count, block_count))
+            }
+        }
+    }
+
 }
 
 /// Decodes an item's ID, typically from an incoming request.

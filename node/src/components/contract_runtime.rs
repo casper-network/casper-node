@@ -125,7 +125,7 @@ impl ContractRuntime {
                 EraPrice::new(era_id, chainspec.vacancy_config.min_gas_price)
             }
             ActivationPoint::Genesis(_) => {
-                EraPrice::new(EraId::new(1), chainspec.vacancy_config.min_gas_price)
+                EraPrice::new(EraId::new(0), chainspec.vacancy_config.min_gas_price)
             }
         };
 
@@ -701,6 +701,11 @@ impl ContractRuntime {
     #[cfg(test)]
     pub(crate) fn data_provider(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
         Arc::clone(&self.data_access_layer)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_era_price(&self) -> EraPrice {
+        self.current_gas_price
     }
 }
 
