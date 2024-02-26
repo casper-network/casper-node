@@ -470,8 +470,19 @@ impl ConManState {
     ///
     /// Returns `None` if the peer is NOT banned, its remaining sentence otherwise.
     #[inline(always)]
-    fn is_still_banned(&self, peer: &NodeId, now: Instant) -> Option<&Sentence> {
-        self.banlist.get(peer).filter(|entry| now <= entry.until)
+    fn is_still_banned(&mut self, peer: &NodeId, now: Instant) -> Option<&Sentence> {
+        let sentence = self.banlist.get(peer)?;
+
+        if now < sentence.until {
+            // Unfortunately it seems we cannot have a lifetime has matches `&self` (for returning
+            // the sentence), but also is shorter lived than this function's scope, so we can
+            // reborrow for removal. This is a workaround, retrieving the peer a second time.
+            return self.banlist.get(peer);
+        }
+
+        self.banlist.remove(peer);
+
+        None
     }
 
     /// Unban a peer.
@@ -572,8 +583,6 @@ async fn handle_incoming(
             //       Juliet API). This would allow the peer to update its backoff timer.
             return;
         }
-        guard.unban(&peer_id); // TODO: `is_still_banned` is only called from mutable
-                               //       contexts, can include an unban.
 
         // Check if there is a route registered, i.e. an incoming handler is already running.
         if guard.routing_table.contains_key(&peer_id) {
@@ -835,7 +844,6 @@ impl OutgoingHandler {
 
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
-            guard.unban(&peer_id);
 
             ActiveRoute::new(
                 &mut *guard,
