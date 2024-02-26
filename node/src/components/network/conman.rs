@@ -711,7 +711,7 @@ impl OutgoingHandler {
                         ));
                         ctx.cfg.successful_reconnect_delay
                     } else {
-                        rate_limited!(LOST_FLAKY_CONNECTION, |dropped| info!(
+                        rate_limited!(LOST_FLAKY_CONNECTION, |dropped| warn!(
                             dropped,
                             "lost connection, but its flaky, will reconnect later"
                         ));
