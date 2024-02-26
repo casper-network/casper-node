@@ -499,14 +499,6 @@ impl ConManState {
 
         None
     }
-
-    /// Unban a peer.
-    ///
-    /// Can safely be called if the peer is not banned.
-    #[inline(always)]
-    fn unban(&mut self, peer: &NodeId) {
-        self.banlist.remove(peer);
-    }
 }
 
 /// Handles an incoming connections.
