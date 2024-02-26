@@ -129,8 +129,8 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    EraId, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -864,7 +864,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
     ) where
         REv: From<BlockAccumulatorAnnouncement>,
     {
