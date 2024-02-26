@@ -24,7 +24,7 @@ use std::{
     fs::File,
     io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
-    ops::{Add, BitXorAssign, Div},
+    ops::{Add, Div},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
