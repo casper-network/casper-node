@@ -321,7 +321,7 @@ impl TransactionV1Body {
             }
             6 => Self::random_standard(rng),
             7 => {
-                let mut buffer = vec![0u8; rng.gen_range(0..100)];
+                let mut buffer = vec![0u8; rng.gen_range(1..100)];
                 rng.fill_bytes(buffer.as_mut());
                 let target = TransactionTarget::Session {
                     kind: TransactionSessionKind::random(rng),
