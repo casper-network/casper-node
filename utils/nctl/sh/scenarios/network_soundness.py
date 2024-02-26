@@ -133,7 +133,7 @@ def start_network():
         chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
 
-    command = "RUST_LOG=debug nctl-start"
+    command = "RUST_LOG=debug,juliet=info nctl-start"
     invoke(command)
 
 
