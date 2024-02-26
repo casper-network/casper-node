@@ -8,12 +8,16 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
+    sync::Arc,
 };
 
 use casper_types::{EraId, PublicKey};
 use serde::Serialize;
 
-use crate::{types::NodeId, utils::opt_display::OptDisplay};
+use crate::{
+    types::NodeId,
+    utils::opt_display::{self, OptDisplay},
+};
 
 use super::{
     conman::{Direction, Route},
@@ -46,6 +50,8 @@ pub(crate) struct RouteInsights {
     pub(crate) remote_addr: SocketAddr,
     /// Incoming or outgoing?
     pub(crate) direction: Direction,
+    /// The consensus key provided by the peer during handshake.
+    pub(crate) consensus_key: Option<Arc<PublicKey>>,
 }
 
 impl RouteInsights {
@@ -55,6 +61,7 @@ impl RouteInsights {
             peer: route.peer,
             remote_addr: route.remote_addr,
             direction: route.direction,
+            consensus_key: route.consensus_key.clone(),
         }
     }
 }
@@ -95,7 +102,14 @@ impl NetworkInsights {
 impl Display for RouteInsights {
     #[inline(always)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} @ {} [{}]", "TODO", self.peer, self.direction)
+        write!(
+            f,
+            "{} @ {} [{}] {}",
+            self.peer,
+            self.remote_addr,
+            self.direction,
+            OptDisplay::new(self.consensus_key.as_ref(), "no key provided"),
+        )
     }
 }
 

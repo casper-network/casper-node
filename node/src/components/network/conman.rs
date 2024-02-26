@@ -19,6 +19,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use casper_types::PublicKey;
 use futures::{TryFuture, TryFutureExt};
 use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
 use serde::Serialize;
@@ -168,6 +169,10 @@ pub(crate) struct Route {
     ///
     /// This is only used for reporting purposes.
     pub(crate) direction: Direction,
+    /// The consensus key the node presented upon handshaking.
+    // TODO: It may be beneficial to make this not a part of `Route` with a fixed type, to reduce
+    //       coupling (e.g. use a `Route<Option<Box<PublicKey>>>` instead, rename to `data`).
+    pub(crate) consensus_key: Option<Arc<PublicKey>>,
 }
 
 /// An active route that is registered in a routing table.
@@ -582,6 +587,7 @@ async fn handle_incoming(
             rpc_client,
             remote_addr,
             direction,
+            handshake_outcome.peer_consensus_public_key,
         )
     };
 
@@ -835,6 +841,7 @@ impl OutgoingHandler {
                 rpc_client,
                 self.peer_addr,
                 direction,
+                handshake_outcome.peer_consensus_public_key,
             )
         };
 
@@ -867,12 +874,14 @@ impl ActiveRoute {
         rpc_client: RpcClient,
         remote_addr: SocketAddr,
         direction: Direction,
+        consensus_key: Option<Box<PublicKey>>,
     ) -> Self {
         let route = Route {
             peer: peer_id,
             client: rpc_client,
             remote_addr,
             direction,
+            consensus_key: consensus_key.map(Arc::from),
         };
 
         if state.routing_table.insert(peer_id, route).is_some() {
