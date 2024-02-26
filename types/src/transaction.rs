@@ -366,36 +366,6 @@ impl Display for Transaction {
     }
 }
 
-/// Transaction error.
-#[derive(Debug)]
-pub enum TransactionError {
-    /// Error related to Deploy.
-    Deploy(DeployError),
-    /// Error related to Transaction V1.
-    V1(TransactionV1Error),
-}
-
-impl From<TransactionV1Error> for TransactionError {
-    fn from(value: TransactionV1Error) -> Self {
-        Self::V1(value)
-    }
-}
-
-impl From<DeployError> for TransactionError {
-    fn from(value: DeployError) -> Self {
-        Self::Deploy(value)
-    }
-}
-
-impl Display for TransactionError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            TransactionError::Deploy(deploy) => write!(formatter, "{}", deploy),
-            TransactionError::V1(v1) => write!(formatter, "{}", v1),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

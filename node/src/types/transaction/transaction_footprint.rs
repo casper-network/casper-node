@@ -1,8 +1,10 @@
-use casper_types::{Digest, Transaction, TransactionError};
+use casper_types::{Digest, Transaction};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::{DeployExt, DeployFootprint, TransactionV1Ext, TransactionV1Footprint};
+use super::{
+    error::TransactionError, DeployExt, DeployFootprint, TransactionV1Ext, TransactionV1Footprint,
+};
 
 #[derive(Clone, Debug, DataSize, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

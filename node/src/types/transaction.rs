@@ -1,5 +1,6 @@
 mod deploy;
 mod deploy_or_transaction_hash;
+mod error;
 mod execution_info;
 mod finalized_approvals;
 mod transaction_footprint;
