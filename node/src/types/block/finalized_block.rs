@@ -15,7 +15,7 @@ use casper_types::{
     BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, SingleBlockRewardedSignatures,
     Timestamp, TransactionHash, TransactionV1Approval, TransactionV1Hash,
 };
-#[cfg(any(feature = "testing", test))]
+#[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
@@ -287,8 +287,8 @@ impl Display for FinalizedBlock {
 }
 
 impl InternalEraReport {
-    /// Returns a random `EraReport`.
-    #[cfg(any(feature = "testing", test))]
+    /// Returns a random `InternalEraReport`.
+    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let equivocators_count = rng.gen_range(0..5);
         let inactive_count = rng.gen_range(0..5);

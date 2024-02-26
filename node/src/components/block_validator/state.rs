@@ -9,7 +9,7 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     Chainspec, DeployApprovalsHash, FinalitySignatureId, Timestamp, TransactionApproval,
-    TransactionApprovalsHash, TransactionFootprint, TransactionHash, TransactionV1ApprovalsHash,
+    TransactionApprovalsHash, TransactionHash, TransactionV1ApprovalsHash,
 };
 
 use crate::{
@@ -17,7 +17,8 @@ use crate::{
     effect::Responder,
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
-        DeployOrTransferHash, NodeId, TransactionHashWithApprovals, TransactionV1OrTransferV1Hash,
+        DeployOrTransferHash, NodeId, TransactionFootprint, TransactionHashWithApprovals,
+        TransactionV1OrTransferV1Hash,
     },
 };
 
@@ -636,7 +637,10 @@ mod tests {
     use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction};
 
     use super::{super::tests::*, *};
-    use crate::{types::TransactionHashWithApprovals, utils::Loadable};
+    use crate::{
+        types::{DeployExt, TransactionExt, TransactionHashWithApprovals, TransactionV1Ext},
+        utils::Loadable,
+    };
 
     struct Fixture {
         rng: TestRng,

@@ -2,7 +2,6 @@ mod deploy_approval;
 mod deploy_approvals_hash;
 #[cfg(any(feature = "std", test))]
 mod deploy_builder;
-mod deploy_footprint;
 mod deploy_hash;
 mod deploy_header;
 mod deploy_id;
@@ -62,7 +61,6 @@ pub use deploy_approval::DeployApproval;
 pub use deploy_approvals_hash::DeployApprovalsHash;
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
-pub use deploy_footprint::DeployFootprint;
 pub use deploy_hash::DeployHash;
 pub use deploy_header::DeployHeader;
 pub use deploy_id::DeployId;
@@ -358,25 +356,6 @@ impl Deploy {
 
         #[cfg(not(any(feature = "once_cell", test)))]
         validate_deploy(self)
-    }
-
-    /// Returns the `DeployFootprint`.
-    pub fn footprint(&self) -> Result<DeployFootprint, DeployError> {
-        let header = self.header().clone();
-        let gas_estimate = match self.payment().payment_amount(header.gas_price()) {
-            Some(gas) => gas,
-            None => {
-                return Err(DeployError::InvalidPayment);
-            }
-        };
-        let size_estimate = self.serialized_length();
-        let is_transfer = self.session.is_transfer();
-        Ok(DeployFootprint {
-            header,
-            gas_estimate,
-            size_estimate,
-            is_transfer,
-        })
     }
 
     /// Returns `true` if this deploy is a native transfer.

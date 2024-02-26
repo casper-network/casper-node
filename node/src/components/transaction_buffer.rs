@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockV2, Digest, DisplayIter, Timestamp, Transaction, TransactionApproval,
-    TransactionConfig, TransactionFootprint, TransactionHash, TransactionId, TransactionV1Category,
+    TransactionConfig, TransactionHash, TransactionId, TransactionV1Category,
 };
 
 use crate::{
@@ -38,7 +38,7 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        FinalizedBlock,
+        FinalizedBlock, TransactionExt, TransactionFootprint,
     },
     NodeRng,
 };

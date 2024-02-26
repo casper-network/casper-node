@@ -169,20 +169,20 @@ pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::{
     AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
-    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
-    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApproval,
-    TransactionApprovalsHash, TransactionConfigFailure, TransactionEntryPoint,
-    TransactionFootprint, TransactionHash, TransactionHeader, TransactionId,
-    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
-    TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1Body, TransactionV1Category, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Footprint, TransactionV1Hash, TransactionV1Header, TransferTarget,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
+    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, NamedArg,
+    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApproval,
+    TransactionApprovalsHash, TransactionConfigFailure, TransactionEntryPoint, TransactionHash,
+    TransactionHeader, TransactionId, TransactionInvocationTarget, TransactionRuntime,
+    TransactionScheduling, TransactionSessionKind, TransactionTarget, TransactionV1,
+    TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body, TransactionV1Category,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
-    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
+    DeployBuilder, DeployBuilderError, TransactionError, TransactionV1Builder,
+    TransactionV1BuilderError,
 };
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,

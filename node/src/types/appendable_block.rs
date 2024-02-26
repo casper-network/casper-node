@@ -9,13 +9,13 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    DeployFootprint, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig,
-    TransactionFootprint, TransactionHash, TransactionV1Category, TransactionV1Footprint,
+    Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig, TransactionHash,
+    TransactionV1Category,
 };
 
 use super::{
     transaction::{DeployHashWithApprovals, TransactionV1HashWithApprovals},
-    BlockPayload,
+    BlockPayload, DeployFootprint, TransactionFootprint, TransactionV1Footprint,
 };
 use crate::types::TransactionHashWithApprovals;
 

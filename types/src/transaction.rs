@@ -9,7 +9,6 @@ mod runtime_args;
 mod transaction_approval;
 mod transaction_approvals_hash;
 mod transaction_entry_point;
-mod transaction_footprint;
 mod transaction_hash;
 mod transaction_header;
 mod transaction_id;
@@ -49,7 +48,7 @@ use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader, DeployId,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
@@ -63,7 +62,6 @@ pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use transaction_approval::TransactionApproval;
 pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_entry_point::TransactionEntryPoint;
-pub use transaction_footprint::TransactionFootprint;
 pub use transaction_hash::TransactionHash;
 pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
@@ -75,8 +73,7 @@ pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
     TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
     TransactionV1Category, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Footprint, TransactionV1Hash,
-    TransactionV1Header,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -190,14 +187,6 @@ impl Transaction {
             Transaction::Deploy(deploy) => deploy.sign(secret_key),
             Transaction::V1(v1) => v1.sign(secret_key),
         }
-    }
-
-    /// Returns the `TransactionFootprint`.
-    pub fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
-        Ok(match self {
-            Transaction::Deploy(deploy) => deploy.footprint()?.into(),
-            Transaction::V1(v1) => v1.footprint()?.into(),
-        })
     }
 
     /// Returns the `Approval`s for this transaction.
@@ -377,9 +366,12 @@ impl Display for Transaction {
     }
 }
 
+/// Transaction error.
 #[derive(Debug)]
 pub enum TransactionError {
+    /// Error related to Deploy.
     Deploy(DeployError),
+    /// Error related to Transaction V1.
     V1(TransactionV1Error),
 }
 

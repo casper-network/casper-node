@@ -39,8 +39,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, DeployOrTransactionHash, NodeId, TransactionHashWithApprovals,
-        ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransactionHash, NodeId, TransactionExt,
+        TransactionHashWithApprovals, ValidatorMatrix,
     },
     NodeRng,
 };

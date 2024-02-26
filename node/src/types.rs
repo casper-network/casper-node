@@ -44,11 +44,14 @@ pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub use transaction::TransactionHashWithApprovals;
+#[cfg(test)]
+pub(crate) use transaction::{DeployExt, TransactionV1Ext};
 pub(crate) use transaction::{
-    DeployHashWithApprovals, DeployOrTransactionHash, DeployOrTransferHash,
+    DeployFootprint, DeployHashWithApprovals, DeployOrTransactionHash, DeployOrTransferHash,
     DeployWithFinalizedApprovals, ExecutionInfo, FinalizedApprovals, FinalizedDeployApprovals,
-    FinalizedTransactionV1Approvals, LegacyDeploy, TransactionV1OrTransferV1Hash,
-    TransactionWithFinalizedApprovals, TypedTransactionHash,
+    FinalizedTransactionV1Approvals, LegacyDeploy, TransactionExt, TransactionFootprint,
+    TransactionV1Footprint, TransactionV1OrTransferV1Hash, TransactionWithFinalizedApprovals,
+    TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{

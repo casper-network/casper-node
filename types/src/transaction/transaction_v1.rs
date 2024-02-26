@@ -5,7 +5,6 @@ mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
 mod transaction_v1_category;
-mod transaction_v1_footprint;
 mod transaction_v1_hash;
 mod transaction_v1_header;
 
@@ -41,8 +40,8 @@ use crate::testing::TestRng;
 use crate::TransactionConfig;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, Gas, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
-    TransactionSessionKind, U512,
+    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionSessionKind,
 };
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
@@ -54,7 +53,6 @@ pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transaction_v1_category::TransactionV1Category;
-pub use transaction_v1_footprint::TransactionV1Footprint;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -302,19 +300,6 @@ impl TransactionV1 {
         Ok(())
     }
 
-    /// Returns the `TransactionV1Footprint`.
-    pub fn footprint(&self) -> Result<TransactionV1Footprint, TransactionV1Error> {
-        let header = self.header().clone();
-
-        let size_estimate = self.serialized_length();
-        Ok(TransactionV1Footprint {
-            header,
-            size_estimate,
-            category: self.category()?,
-            gas_estimate: Gas::new(U512::from(0)), // TODO[RC]: Implement gas estimation.
-        })
-    }
-
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp
@@ -513,7 +498,7 @@ impl TransactionV1 {
     }
 
     /// Returns transaction category.
-    fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
+    pub fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
         let body = self.body();
         let target = body.target();
         let entry_point = body.entry_point();
