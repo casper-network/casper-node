@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{BlockHash, BlockHeader, BlockSignatures};
 use crate::EraId;
-#[cfg(any(feature = "testing", test))]
-use crate::Signature;
 
 /// An error which can result from validating a [`SignedBlockHeader`].
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -116,7 +114,7 @@ impl SignedBlockHeader {
     /// the max value).
     #[cfg(any(feature = "testing", test))]
     pub fn invalidate_era(&mut self) {
-        self.block_signatures.era_id = EraId::new(u64::MAX);
+        self.block_signatures.invalidate_era()
     }
 
     /// Replaces the signature field of the last `block_signatures` entry with the `System` variant
@@ -127,12 +125,7 @@ impl SignedBlockHeader {
     /// performed.
     #[cfg(any(feature = "testing", test))]
     pub fn invalidate_last_signature(&mut self) {
-        let last_proof = self
-            .block_signatures
-            .proofs
-            .last_entry()
-            .expect("should have at least one signature");
-        *last_proof.into_mut() = Signature::System;
+        self.block_signatures.invalidate_last_signature()
     }
 }
 

@@ -16,8 +16,8 @@ use casper_types::bytesrepr;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
-    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, Deploy, DeployHash, Digest,
-    Transaction, TransactionHash,
+    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash,
 };
 
 use super::{
@@ -85,6 +85,10 @@ impl VersionedValue for ExecutionResult {
 
 impl VersionedValue for FinalizedApprovals {
     type Legacy = FinalizedDeployApprovals;
+}
+
+impl VersionedValue for BlockSignatures {
+    type Legacy = BlockSignaturesV1;
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the
