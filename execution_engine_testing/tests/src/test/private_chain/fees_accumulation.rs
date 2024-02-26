@@ -216,14 +216,9 @@ fn should_distribute_accumulated_fees_to_admins() {
     let mut administrative_accounts: BTreeSet<AccountHash> = BTreeSet::new();
     administrative_accounts.insert(*DEFAULT_ADMIN_ACCOUNT_ADDR);
 
-    let result = builder.distribute_fees(
-        None,
-        *DEFAULT_PROTOCOL_VERSION,
-        administrative_accounts,
-        DEFAULT_BLOCK_TIME,
-    );
+    let result = builder.distribute_fees(None, *DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
 
-    assert!(result.is_success(), "should distribute");
+    assert!(result.is_success(), "expected success not: {:?}", result);
 
     let accumulated_purse_balance_after_distribute = builder.get_purse_balance(accumulation_purse);
 

@@ -56,8 +56,8 @@ where
 pub(super) async fn exec_or_requeue<REv>(
     engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
-    metrics: Arc<Metrics>,
     chainspec: Arc<Chainspec>,
+    metrics: Arc<Metrics>,
     mut exec_queue: ExecQueue,
     shared_pre_state: Arc<Mutex<ExecutionPreState>>,
     current_pre_state: ExecutionPreState,
@@ -75,14 +75,11 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    let protocol_version = chainspec.protocol_version();
-    let activation_point = chainspec.protocol_config.activation_point;
-    let prune_batch_size = chainspec.core_config.prune_batch_size;
     if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
-                chainspec,
+                chainspec.as_ref(),
                 executable_block.clone(),
             )
             .await
@@ -112,13 +109,11 @@ pub(super) async fn exec_or_requeue<REv>(
         execute_finalized_block(
             engine_state.as_ref(),
             data_access_layer.as_ref(),
+            chainspec.as_ref(),
             Some(contract_runtime_metrics),
-            protocol_version,
             current_pre_state,
             executable_block,
-            activation_point.era_id(),
             key_block_height_for_activation_point,
-            prune_batch_size,
         )
     })
     .await

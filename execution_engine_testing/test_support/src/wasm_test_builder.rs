@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -34,7 +34,7 @@ use casper_storage::{
         trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::runtime_native::{Config, TransferConfig},
+    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
 };
 use casper_types::{
     account::AccountHash,
@@ -53,10 +53,10 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
-    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, FeeHandling,
-    Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemEntityRegistry, Transfer, TransferAddr, URef, OS_PAGE_SIZE, U512,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
+    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Transfer,
+    TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -881,23 +881,47 @@ where
         step_result
     }
 
+    fn native_runtime_config(&self) -> NativeRuntimeConfig {
+        let transfer_config = TransferConfig::new(
+            self.engine_state.config().administrative_accounts().clone(),
+            self.engine_state.config().allow_unrestricted_transfers(),
+        );
+
+        let fee_handling = self.engine_state.config().fee_handling();
+        let refund_handling = *self.engine_state.config().refund_handling();
+        let vesting_schedule_period_millis =
+            self.engine_state.config().vesting_schedule_period_millis();
+        let allow_auction_bids = self.engine_state.config().allow_auction_bids();
+        let compute_rewards = self.engine_state.config().compute_rewards();
+        let max_delegators_per_validator =
+            self.engine_state.config().max_delegators_per_validator();
+        let minimum_delegation_amount = self.engine_state.config().minimum_delegation_amount();
+        NativeRuntimeConfig::new(
+            transfer_config,
+            fee_handling,
+            refund_handling,
+            vesting_schedule_period_millis,
+            allow_auction_bids,
+            compute_rewards,
+            max_delegators_per_validator,
+            minimum_delegation_amount,
+        )
+    }
+
     /// Distribute fees.
     pub fn distribute_fees(
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        administrative_accounts: BTreeSet<AccountHash>,
         block_time: u64,
     ) -> FeeResult {
-        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let config = TransferConfig::default(); // todo fill this in from chainspec
+        let native_runtime_config = self.native_runtime_config();
 
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let fee_req = FeeRequest::new(
-            config,
+            native_runtime_config,
             pre_state_hash,
             protocol_version,
-            administrative_accounts,
-            FeeHandling::Accumulate,
             block_time,
         );
         let fee_result = self.engine_state.commit_fees(fee_req);
@@ -921,9 +945,14 @@ where
         time: u64,
     ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let config = Config::default(); // todo fill this in from chainspec
-        let distribute_req =
-            BlockRewardsRequest::new(config, pre_state_hash, protocol_version, time, rewards);
+        let native_runtime_config = self.native_runtime_config();
+        let distribute_req = BlockRewardsRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            time,
+            rewards,
+        );
         let distribute_block_rewards_result =
             self.engine_state.commit_block_rewards(distribute_req);
 

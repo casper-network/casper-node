@@ -32,7 +32,10 @@ use casper_storage::{
         },
         trie::TrieRaw,
     },
-    system::{auction, runtime_native::TransferConfig},
+    system::{
+        auction,
+        runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
@@ -107,7 +110,7 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         }
     }
 
-    /// Gets underlyng LmdbGlobalState
+    /// Gets underlying LmdbGlobalState
     pub fn get_state(&self) -> &DataAccessLayer<LmdbGlobalState> {
         &self.state
     }
@@ -311,6 +314,25 @@ where
             self.config.administrative_accounts.clone(),
             self.config.allow_unrestricted_transfers,
         );
+
+        let fee_handling = self.config.fee_handling;
+        let refund_handling = self.config.refund_handling;
+        let vesting_schedule_period_millis = self.config.vesting_schedule_period_millis();
+        let allow_auction_bids = self.config.allow_auction_bids;
+        let compute_rewards = self.config.compute_rewards;
+        let max_delegators_per_validator = self.config.max_delegators_per_validator();
+        let minimum_delegation_amount = self.config.minimum_delegation_amount();
+
+        let native_runtime_config = NativeRuntimeConfig::new(
+            transfer_config,
+            fee_handling,
+            refund_handling,
+            vesting_schedule_period_millis,
+            allow_auction_bids,
+            compute_rewards,
+            max_delegators_per_validator,
+            minimum_delegation_amount,
+        );
         let wasmless_transfer_gas = Gas::new(U512::from(
             self.config().system_config().wasmless_transfer_cost(),
         ));
@@ -318,7 +340,7 @@ where
         let transaction_hash = TransactionHash::Deploy(deploy_hash);
 
         let transfer_req = TransferRequest::with_runtime_args(
-            transfer_config,
+            native_runtime_config,
             prestate_hash,
             blocktime.value(),
             protocol_version,

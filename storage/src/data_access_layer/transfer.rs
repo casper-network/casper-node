@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::system::runtime_native::TransferConfig;
+use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, ProtocolVersion, RuntimeArgs,
     TransactionHash, TransferAddr, U512,
@@ -19,7 +19,7 @@ pub enum TransferRequestArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferRequest {
     /// Config.
-    config: TransferConfig,
+    config: NativeRuntimeConfig,
     /// State root hash.
     state_hash: Digest,
     /// Block time represented as a unix timestamp.
@@ -42,7 +42,7 @@ impl TransferRequest {
     /// Creates new request object.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: TransferConfig,
+        config: NativeRuntimeConfig,
         state_hash: Digest,
         block_time: u64,
         protocol_version: ProtocolVersion,
@@ -69,7 +69,7 @@ impl TransferRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn with_runtime_args(
-        config: TransferConfig,
+        config: NativeRuntimeConfig,
         state_hash: Digest,
         block_time: u64,
         protocol_version: ProtocolVersion,
@@ -93,8 +93,12 @@ impl TransferRequest {
         }
     }
 
-    pub fn config(&self) -> &TransferConfig {
+    pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
+    }
+
+    pub fn transfer_config(&self) -> &TransferConfig {
+        self.config.transfer_config()
     }
 
     /// Returns state root hash.

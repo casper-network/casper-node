@@ -87,7 +87,7 @@ where
     }
 
     fn should_compute_rewards(&self) -> bool {
-        self.should_compute_rewards()
+        self.compute_rewards()
     }
 }
 

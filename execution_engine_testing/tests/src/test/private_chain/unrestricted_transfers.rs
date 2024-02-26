@@ -60,9 +60,9 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::RestrictedTransferAttempted)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected RestrictedTransferAttempted error, found {:?}",
         error
     );
 
@@ -305,7 +305,7 @@ fn should_allow_admin_to_transfer_to_own_purse_in_wasm_session() {
 
 #[ignore]
 #[test]
-fn should_disallow_transfer_to_own_purse_via_native_transfer() {
+fn should_disallow_transfer_to_unknown_target_from_non_admin() {
     let mut builder = super::private_chain_setup();
 
     let session_args = runtime_args! {
@@ -350,9 +350,9 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::UnableToVerifyTargetIsAdmin)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected UnableToVerifyTargetIsAdmin error, found {:?}",
         error
     );
 }
@@ -539,9 +539,9 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::RestrictedTransferAttempted)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected RestrictedTransferAttempted error, found {:?}",
         error
     );
 

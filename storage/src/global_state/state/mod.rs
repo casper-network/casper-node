@@ -65,7 +65,7 @@ use crate::{
         genesis::{GenesisError, GenesisInstaller},
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
-        runtime_native::{Config, RuntimeNative},
+        runtime_native::RuntimeNative,
         transfer::{
             NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
         },
@@ -394,16 +394,21 @@ pub trait CommitProvider: StateProvider {
     /// Distribute fees, if relevant to the chainspec configured behavior.
     fn distribute_fees(&self, request: FeeRequest) -> FeeResult {
         let state_hash = request.state_hash();
-        // this logic is only relevant if chainspec FeeHandling == Accumulate
-        // the various public networks do not use this option.
-        if !request.fee_handling().is_accumulate() {
+        if !request.should_distribute_fees() {
             // effectively noop
             return FeeResult::Success {
-                effects: Effects::default(),
                 post_state_hash: state_hash,
+                effects: Effects::new(),
                 transfers: vec![],
             };
         }
+
+        let administrative_accounts = match request.administrative_accounts() {
+            Some(administrative_accounts) => administrative_accounts,
+            None => {
+                return FeeResult::Failure(FeeError::AdministrativeAccountsNotFound);
+            }
+        };
 
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -467,8 +472,6 @@ pub trait CommitProvider: StateProvider {
         let mut current_state_hash = state_hash;
         let mut effects = Effects::new();
         let mut transfers = vec![];
-
-        let administrative_accounts = request.administrative_accounts();
         let recipient_count = U512::from(administrative_accounts.len());
 
         // distribute fees to administrators
@@ -592,11 +595,11 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        let account_hash = request.address();
+        let source_account_hash = request.address();
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
-            .migrate_account(account_hash, protocol_version)
+            .migrate_account(source_account_hash, protocol_version)
         {
             return TransferResult::Failure(tce.into());
         }
@@ -604,7 +607,8 @@ pub trait CommitProvider: StateProvider {
         let authorization_keys = request.authorization_keys();
 
         let config = request.config();
-        let administrative_accounts = config.administrative_accounts();
+        let transfer_config = config.transfer_config();
+        let administrative_accounts = transfer_config.administrative_accounts();
 
         let runtime_args = match request.args() {
             TransferRequestArgs::Raw(runtime_args) => runtime_args.clone(),
@@ -633,35 +637,34 @@ pub trait CommitProvider: StateProvider {
             Err(error) => return TransferResult::Failure(error),
         };
 
-        if config.enforce_transfer_restrictions(&account_hash) {
-            // We need to make sure that either the source or target is an admin.
-            match transfer_target_mode {
-                NewTransferTargetMode::ExistingAccount {
-                    target_account_hash,
-                    ..
-                }
-                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
+        // On some private networks, transfers are restricted.
+        // This means that they must either the source or target are an admin account.
+        // This behavior is not used on public networks.
+        if transfer_config.enforce_transfer_restrictions(&source_account_hash) {
+            // if the source is an admin, enforce_transfer_restrictions == false
+            // if the source is not an admin, enforce_transfer_restrictions == true
+            // and we must check to see if the target is an admin.
+            // if the target is also not an admin, this transfer is not permitted.
+            match transfer_target_mode.target_account_hash() {
+                Some(target_account_hash) => {
                     let is_target_system_account =
                         target_account_hash == PublicKey::System.to_account_hash();
-                    let is_target_administrator = config.is_administrator(&target_account_hash);
+                    let is_target_administrator =
+                        transfer_config.is_administrator(&target_account_hash);
                     if !(is_target_system_account || is_target_administrator) {
                         // Transferring from normal account to a purse doesn't work.
-                        return TransferResult::Failure(
-                            TransferError::DisabledUnrestrictedTransfers,
-                        );
+                        return TransferResult::Failure(TransferError::RestrictedTransferAttempted);
                     }
                 }
-                NewTransferTargetMode::PurseExists(_) => {
-                    // We don't know who is the target and we can't simply reverse search
-                    // account/contract that owns it. We also can't know if purse is owned exactly
-                    // by one entity in the system.
-                    return TransferResult::Failure(TransferError::DisabledUnrestrictedTransfers);
+                None => {
+                    // can't allow this transfer because we are not sure if the target is an admin.
+                    return TransferResult::Failure(TransferError::UnableToVerifyTargetIsAdmin);
                 }
             }
         }
 
         let (entity, entity_named_keys, entity_access_rights) = {
-            if account_hash == casper_types::PublicKey::System.to_account_hash() {
+            if source_account_hash == PublicKey::System.to_account_hash() {
                 match tc.borrow_mut().system_entity(protocol_version) {
                     Ok(ret) => ret,
                     Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
@@ -669,7 +672,7 @@ pub trait CommitProvider: StateProvider {
             } else {
                 let (entity, entity_addr) = match tc.borrow_mut().get_authorized_addressable_entity(
                     protocol_version,
-                    account_hash,
+                    source_account_hash,
                     authorization_keys,
                     &administrative_accounts,
                 ) {
@@ -693,15 +696,14 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        let config = Config::for_transfer(request.config().clone());
         let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
-        // this runtime uses the payer's context
+        // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             protocol_version,
-            config,
+            config.clone(),
             id,
             Rc::clone(&tc),
-            account_hash,
+            source_account_hash,
             entity.clone(),
             entity_named_keys.clone(),
             entity_access_rights,
@@ -711,7 +713,7 @@ pub trait CommitProvider: StateProvider {
 
         match transfer_target_mode {
             NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists(_) => {
+            | NewTransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
             NewTransferTargetMode::CreateAccount(account_hash) => {
@@ -757,13 +759,12 @@ pub trait CommitProvider: StateProvider {
         let transfers = runtime.into_transfers();
 
         {
-            // TODO: this block needs to be updated with version management for new style
-            // Transactions
+            // TODO: this lexical block needs to be updated with the new versioned transaction types
             let deploy_hash = DeployHash::new(request.transaction_hash().digest());
             let deploy_info = casper_types::DeployInfo::new(
                 deploy_hash,
                 &transfers,
-                account_hash,
+                source_account_hash,
                 entity.main_purse(),
                 request.cost(),
             );

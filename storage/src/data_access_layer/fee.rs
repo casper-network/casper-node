@@ -1,7 +1,10 @@
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-use crate::system::{runtime_native::TransferConfig, transfer::TransferError};
+use crate::system::{
+    runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    transfer::TransferError,
+};
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, FeeHandling, ProtocolVersion, TransferAddr,
 };
@@ -10,35 +13,29 @@ use crate::tracking_copy::TrackingCopyError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeeRequest {
-    config: TransferConfig,
+    config: NativeRuntimeConfig,
     state_hash: Digest,
     protocol_version: ProtocolVersion,
     block_time: u64,
-    fee_handling: FeeHandling,
-    administrative_accounts: BTreeSet<AccountHash>,
 }
 
 impl FeeRequest {
     pub fn new(
-        config: TransferConfig,
+        config: NativeRuntimeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
-        administrative_accounts: BTreeSet<AccountHash>,
-        fee_handling: FeeHandling,
         block_time: u64,
     ) -> Self {
         FeeRequest {
             config,
             state_hash,
             protocol_version,
-            administrative_accounts,
-            fee_handling,
             block_time,
         }
     }
 
     /// Returns config.
-    pub fn config(&self) -> &TransferConfig {
+    pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
     }
 
@@ -53,8 +50,8 @@ impl FeeRequest {
     }
 
     /// Returns fee handling setting.
-    pub fn fee_handling(&self) -> FeeHandling {
-        self.fee_handling
+    pub fn fee_handling(&self) -> &FeeHandling {
+        self.config.fee_handling()
     }
 
     /// Returns block time.
@@ -62,9 +59,30 @@ impl FeeRequest {
         self.block_time
     }
 
-    /// Returns administrative accounts.
-    pub fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        &self.administrative_accounts
+    /// Returns administrative accounts, if any.
+    pub fn administrative_accounts(&self) -> Option<&BTreeSet<AccountHash>> {
+        match self.config.transfer_config() {
+            TransferConfig::Administered {
+                administrative_accounts,
+                ..
+            } => Some(administrative_accounts),
+            TransferConfig::Unadministered => None,
+        }
+    }
+
+    /// Should we attempt to distribute fees?
+    pub fn should_distribute_fees(&self) -> bool {
+        // we only distribute if chainspec FeeHandling == Accumulate
+        // and if there are administrative accounts to receive the fees.
+        // the various public networks do not use this option.
+        if !self.fee_handling().is_accumulate() {
+            return false;
+        }
+
+        matches!(
+            self.config.transfer_config(),
+            TransferConfig::Administered { .. }
+        )
     }
 }
 
@@ -80,6 +98,8 @@ pub enum FeeError {
     Transfer(TransferError),
     #[error("Named keys not found")]
     NamedKeysNotFound,
+    #[error("Administrative accounts not found")]
+    AdministrativeAccountsNotFound,
 }
 
 #[derive(Debug, Clone)]

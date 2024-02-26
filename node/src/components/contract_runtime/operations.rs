@@ -1,9 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    convert::TryInto,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -26,13 +21,13 @@ use casper_storage::{
             StateReader,
         },
     },
-    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    system::runtime_native::Config as NativeRuntimeConfig,
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, FeeHandling, Gas, Key,
+    BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
 
@@ -56,13 +51,11 @@ use super::ExecutionArtifact;
 pub fn execute_finalized_block(
     engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
-    protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
-    activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
-    prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -71,11 +64,14 @@ pub fn execute_finalized_block(
         });
     }
 
+    let protocol_version = chainspec.protocol_version();
+    let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
+    let prune_batch_size = chainspec.core_config.prune_batch_size;
+    let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
-    let _next_block_height = execution_pre_state.next_block_height();
-    let transfer_config = TransferConfig::Unadministered; // todo: get from chainspec
 
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<ExecutionArtifact> =
@@ -97,15 +93,10 @@ pub fn execute_finalized_block(
 
     // Pay out fees, if relevant.
     {
-        // TODO: get these values from the chainspec
-        let administrative_accounts = BTreeSet::default();
-        let fee_handling = FeeHandling::PayToProposer;
         let fee_req = FeeRequest::new(
-            transfer_config.clone(),
+            native_runtime_config.clone(),
             state_root_hash,
             protocol_version,
-            administrative_accounts,
-            fee_handling,
             block_time,
         );
         match data_access_layer.distribute_fees(fee_req) {
@@ -130,9 +121,8 @@ pub fn execute_finalized_block(
 
     // Pay out block rewards
     if let Some(rewards) = &executable_block.rewards {
-        let native_runtime_config = native_runtime_config();
         let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config,
+            native_runtime_config.clone(),
             state_root_hash,
             protocol_version,
             block_time,
@@ -166,9 +156,8 @@ pub fn execute_finalized_block(
                         .iter()
                         .map(|approval| approval.signer().to_account_hash())
                         .collect();
-                    /* TODO: check chainspec & handle administered use case */
                     let transfer_req = TransferRequest::with_runtime_args(
-                        transfer_config.clone(),
+                        native_runtime_config.clone(),
                         state_root_hash,
                         block_time,
                         protocol_version,
@@ -280,6 +269,7 @@ pub fn execute_finalized_block(
         &executable_block.era_report
     {
         let step_effects = match commit_step(
+            native_runtime_config,
             &scratch_state,
             metrics,
             protocol_version,
@@ -621,29 +611,9 @@ where
     result
 }
 
-fn native_runtime_config() -> NativeRuntimeConfig {
-    // TODO: wire chainspec thru and pull the relevant values for below:
-    let administrative_accounts = BTreeSet::new();
-    let allow_unrestricted_transfer = false;
-    let vesting_schedule_period_millis = 0;
-    let allow_auction_bids = true;
-    let should_compute_rewards = true;
-    let max_delegators_per_validator = Some(100);
-    let minimum_delegation_amount = 500;
-    let transfer_config = TransferConfig::new(administrative_accounts, allow_unrestricted_transfer);
-    NativeRuntimeConfig::new(
-        transfer_config,
-        vesting_schedule_period_millis,
-        allow_auction_bids,
-        should_compute_rewards,
-        max_delegators_per_validator,
-        minimum_delegation_amount,
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 fn commit_step(
-    //data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    native_runtime_config: NativeRuntimeConfig,
     scratch_state: &ScratchGlobalState,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
@@ -661,8 +631,6 @@ fn commit_step(
         .chain(equivocators)
         .map(EvictItem::new)
         .collect();
-
-    let native_runtime_config = native_runtime_config();
 
     let step_request = StepRequest::new(
         native_runtime_config,
