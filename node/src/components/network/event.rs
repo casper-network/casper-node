@@ -57,6 +57,9 @@ where
     /// The node should gossip its own public listening address.
     GossipOurAddress,
 
+    /// Internet metrics should be updated.
+    SyncMetrics,
+
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
 
@@ -92,7 +95,8 @@ where
             } => write!(f, "msg from {}: {}", node_id, msg),
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),
-            Event::GossipOurAddress => write!(f, "gossip our address"),
+            Event::GossipOurAddress => f.write_str("gossip our address"),
+            Event::SyncMetrics => f.write_str("sync metrics"),
             Event::PeerAddressReceived(gossiped_address) => {
                 write!(f, "received gossiped peer address {}", gossiped_address)
             }

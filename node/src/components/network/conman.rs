@@ -779,8 +779,8 @@ impl OutgoingHandler {
 
     /// Performs one iteration of a connection cycle.
     ///
-    /// Will attempet several times to TCP connect, then handshake and establish a connection. If
-    /// the connection is closed without errors, returns the duration of the connection, otherwise a
+    /// Will attempt several times to TCP connect, then handshake and establish a connection. If the
+    /// connection is closed without errors, returns the duration of the connection, otherwise a
     /// more specific `Err` is returned.
     ///
     /// ## Cancellation safety

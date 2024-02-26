@@ -18,7 +18,6 @@ pub(super) struct Metrics {
     pub(super) queued_messages: RegisteredMetric<IntGauge>,
     /// Number of connected peers.
     pub(super) peers: RegisteredMetric<IntGauge>,
-
     /// Count of outgoing messages that are protocol overhead.
     pub(super) out_count_protocol: RegisteredMetric<IntCounter>,
     /// Count of outgoing messages with consensus payload.

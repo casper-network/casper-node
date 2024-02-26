@@ -117,6 +117,9 @@ const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
 /// Delays in between dropping metrics.
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
+/// How often metrics are synced.
+const METRICS_UPDATE_RATE: Duration = Duration::from_secs(1);
+
 #[derive(DataSize, Debug)]
 pub(crate) struct Network<P>
 where
@@ -254,6 +257,8 @@ where
                 .set_timeout(self.config.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
+
+        effects.extend(effect_builder.immediately().event(|_| Event::SyncMetrics));
 
         let keylog = match self.config.keylog_path {
             Some(ref path) => {
@@ -786,6 +791,7 @@ where
                 | Event::NetworkRequest { .. }
                 | Event::NetworkInfoRequest { .. }
                 | Event::GossipOurAddress
+                | Event::SyncMetrics
                 | Event::PeerAddressReceived(_)
                 | Event::BlocklistAnnouncement(_) => {
                     warn!(
@@ -856,6 +862,19 @@ where
                     self.learn_known_addresses();
 
                     effects
+                }
+                Event::SyncMetrics => {
+                    // Update the `peers` metric.
+                    // TODO: Add additional metrics for bans, do-not-calls, etc.
+                    let peers = if let Some(ref conman) = self.conman {
+                        conman.read_state().routing_table().len()
+                    } else {
+                        0
+                    };
+                    self.net_metrics.peers.set(peers as i64);
+                    effect_builder
+                        .set_timeout(METRICS_UPDATE_RATE)
+                        .event(|_| Event::SyncMetrics)
                 }
                 Event::PeerAddressReceived(gossiped_address) => {
                     if let Some(ref conman) = self.conman {
