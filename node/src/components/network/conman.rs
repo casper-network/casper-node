@@ -11,7 +11,7 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
-    fmt::Debug,
+    fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     num::NonZeroUsize,
     sync::{Arc, RwLock},
@@ -21,6 +21,7 @@ use std::{
 use async_trait::async_trait;
 use futures::{TryFuture, TryFutureExt};
 use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
+use serde::Serialize;
 use strum::EnumCount;
 use thiserror::Error;
 use tokio::{
@@ -603,7 +604,7 @@ async fn handle_incoming(
 }
 
 impl Debug for ConManContext {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConManContext")
             .field("protocol_handler", &"...")
             .field("rpc_builder", &"...")
@@ -977,7 +978,7 @@ where
 }
 
 /// A connection direction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
 #[repr(u8)]
 pub(crate) enum Direction {
     /// A connection made by a peer, connected back to us.
@@ -993,6 +994,16 @@ impl Direction {
             Direction::Outgoing
         } else {
             Direction::Incoming
+        }
+    }
+}
+
+impl Display for Direction {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Incoming => f.write_str("incoming"),
+            Direction::Outgoing => f.write_str("outgoing"),
         }
     }
 }

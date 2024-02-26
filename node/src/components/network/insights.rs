@@ -15,7 +15,10 @@ use serde::Serialize;
 
 use crate::{types::NodeId, utils::opt_display::OptDisplay};
 
-use super::{Network, Payload};
+use super::{
+    conman::{Direction, Route},
+    Network, Payload,
+};
 
 /// A collection of insights into the active networking component.
 #[derive(Debug, Serialize)]
@@ -30,6 +33,30 @@ pub(crate) struct NetworkInsights {
     consensus_public_key: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
+    /// All active routes.
+    active_routes: Vec<RouteInsights>,
+}
+
+/// Information about existing routes.
+#[derive(Debug, Serialize)]
+pub(crate) struct RouteInsights {
+    /// Node ID of the peer.
+    pub(crate) peer: NodeId,
+    /// The remote address of the peer.
+    pub(crate) remote_addr: SocketAddr,
+    /// Incoming or outgoing?
+    pub(crate) direction: Direction,
+}
+
+impl RouteInsights {
+    /// Creates a new instance from an existing `Route`.
+    fn collect_from_route(route: &Route) -> Self {
+        Self {
+            peer: route.peer,
+            remote_addr: route.remote_addr,
+            direction: route.direction,
+        }
+    }
 }
 
 impl NetworkInsights {
@@ -38,13 +65,37 @@ impl NetworkInsights {
     where
         P: Payload,
     {
+        let mut active_routes = Vec::new();
+
+        if let Some(ref conman) = net.conman {
+            // Acquire lock only long enough to copy routing table.
+            active_routes.extend(
+                conman
+                    .read_state()
+                    .routing_table()
+                    .values()
+                    .map(RouteInsights::collect_from_route),
+            );
+        }
+
+        // Sort only after releasing lock.
+        active_routes.sort_by_key(|route_insight| route_insight.peer);
+
         NetworkInsights {
             our_id: net.our_id,
             network_ca: net.identity.network_ca.is_some(),
             public_addr: net.public_addr,
             consensus_public_key: net.node_key_pair.as_ref().map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
+            active_routes,
         }
+    }
+}
+
+impl Display for RouteInsights {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} @ {} [{}]", "TODO", self.peer, self.direction)
     }
 }
 
@@ -65,8 +116,12 @@ impl Display for NetworkInsights {
         write!(f, "in {} (according to networking), ", self.net_active_era)?;
 
         match self.consensus_public_key.as_ref() {
-            Some(pub_key) => write!(f, "consensus pubkey {}", pub_key)?,
-            None => f.write_str("no consensus key")?,
+            Some(pub_key) => writeln!(f, "consensus pubkey {}", pub_key)?,
+            None => f.write_str("no consensus key\n")?,
+        }
+
+        for route in &self.active_routes {
+            writeln!(f, "{}", route)?;
         }
 
         Ok(())
