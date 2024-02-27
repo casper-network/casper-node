@@ -58,23 +58,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Burns native tokens.
-    fn burn(&mut self, purses: Vec<URef>) -> Result<(), Error> {
-        let mut burned_amount: U512 = U512::zero();
-
-        for uref in purses {
-            let source_balance: U512 = match self.read_balance(uref)? {
-                Some(source_balance) => source_balance,
-                None => return Err(Error::PurseNotFound),
-            };
-
-            self.write_balance(uref, U512::zero())?;
-
-            burned_amount += source_balance;
-        }
-
-        reduce_total_supply_unchecked(self, burned_amount)
-    }
-
+    fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error>;
+    
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {

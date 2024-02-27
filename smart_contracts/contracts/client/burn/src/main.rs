@@ -3,22 +3,22 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::mint, RuntimeArgs, URef};
+use casper_types::{runtime_args, system::mint, RuntimeArgs, URef, U512};
 
-fn burn(urefs: Vec<URef>) {
+fn burn(uref: URef, amount: U512) {
     let contract_hash = system::get_mint();
     let args = runtime_args! {
-        mint::ARG_PURSES => urefs,
+        mint::ARG_PURSE => uref,
+        mint::ARG_AMOUNT => amount,
     };
     runtime::call_contract::<()>(contract_hash, mint::METHOD_BURN, args);
 }
 
-// Accepts a public key. Issues an activate-bid bid to the auction contract.
+// Accepts a Vector of purse URefs. Burn tokens from provided URefs.
 #[no_mangle]
 pub extern "C" fn call() {
-    let urefs: Vec<URef> = runtime::get_named_arg(mint::ARG_PURSES);
-    burn(urefs);
+    let purse: URef = runtime::get_named_arg(mint::ARG_PURSE);
+    let amount: U512 = runtime::get_named_arg(mint::ARG_AMOUNT);
+    burn(purse, amount);
 }

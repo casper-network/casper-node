@@ -23,7 +23,7 @@ pub trait StorageProvider {
 
     /// Write balance.
     fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error>;
-
+  
     /// Add amount to an existing balance.
     fn add_balance(&mut self, uref: URef, value: U512) -> Result<(), Error>;
 }

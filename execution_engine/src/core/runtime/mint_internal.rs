@@ -11,7 +11,7 @@ use crate::{
     storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-        system_provider::SystemProvider, Mint,
+        system_provider::SystemProvider, Mint,detail
     },
 };
 
@@ -189,4 +189,26 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
+    /// Burns native tokens.
+    fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
+        let key = Key::Balance(purse.addr());
+        self.context.validate_writeable(&key).map_err(|_| Error::InvalidAccessRights)?;
+        self.context.validate_key(&key).map_err(|_| Error::InvalidURef)?;
+
+        let source_balance: U512 = match self.read_balance(purse)? {
+            Some(source_balance) => source_balance,
+            None => return Err(Error::PurseNotFound),
+        };
+
+        let new_balance = match source_balance.checked_sub(amount) {
+            Some(value) => value,
+            None => U512::zero()
+        };
+
+        // source_balance is >= than new_balance
+        let burned_amount = source_balance - new_balance;
+
+        self.write_balance(purse, new_balance)?;
+        detail::reduce_total_supply_unchecked(self, burned_amount)
+    }
 }

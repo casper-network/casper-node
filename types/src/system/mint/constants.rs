@@ -1,7 +1,5 @@
 /// Named constant for `purse`.
 pub const ARG_PURSE: &str = "purse";
-/// Named constant for `purses`.
-pub const ARG_PURSES: &str = "purses";
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `id`.
