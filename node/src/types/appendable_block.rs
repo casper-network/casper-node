@@ -52,7 +52,7 @@ pub(crate) enum AddError {
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
     transactions: Vec<(TransactionHashWithApprovals, TransactionV1Category)>,
-    transaction_and_transfer_set: HashSet<TransactionHash>,
+    transaction_hashes: HashSet<TransactionHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
     total_gas: Gas,
@@ -67,7 +67,7 @@ impl AppendableBlock {
             transaction_config,
             transactions: Vec::new(),
             timestamp,
-            transaction_and_transfer_set: HashSet::new(),
+            transaction_hashes: HashSet::new(),
             total_gas: Gas::zero(),
             total_size: 0,
             total_approvals: 0,
@@ -117,7 +117,7 @@ impl AppendableBlock {
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
-            .transaction_and_transfer_set
+            .transaction_hashes
             .contains(&TransactionHash::from(transfer.deploy_hash()))
         {
             return Err(AddError::Duplicate);
@@ -143,7 +143,7 @@ impl AppendableBlock {
         if self.would_exceed_approval_limits(transfer.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
-        self.transaction_and_transfer_set
+        self.transaction_hashes
             .insert(TransactionHash::from(transfer.deploy_hash()));
         self.total_approvals += transfer.approvals().len();
         self.transactions.push((
@@ -164,7 +164,7 @@ impl AppendableBlock {
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
-            .transaction_and_transfer_set
+            .transaction_hashes
             .contains(&TransactionHash::from(deploy.deploy_hash()))
         {
             return Err(AddError::Duplicate);
@@ -207,7 +207,7 @@ impl AppendableBlock {
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
         self.total_approvals += deploy.approvals().len();
-        self.transaction_and_transfer_set
+        self.transaction_hashes
             .insert(TransactionHash::from(deploy.deploy_hash()));
         self.transactions
             .push((deploy.into(), TransactionV1Category::Standard));
@@ -222,7 +222,7 @@ impl AppendableBlock {
         footprint: &TransactionV1Footprint,
     ) -> Result<(), AddError> {
         if self
-            .transaction_and_transfer_set
+            .transaction_hashes
             .contains(&TransactionHash::from(transaction.transaction_hash()))
         {
             return Err(AddError::Duplicate);
@@ -267,7 +267,7 @@ impl AppendableBlock {
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
         self.total_approvals += transaction.approvals().len();
-        self.transaction_and_transfer_set
+        self.transaction_hashes
             .insert(TransactionHash::from(transaction.transaction_hash()));
         self.transactions.push((
             TransactionHashWithApprovals::V1(transaction),
@@ -438,7 +438,7 @@ mod tests {
 
     impl AppendableBlock {
         pub(crate) fn transaction_and_transfer_set(&self) -> &HashSet<TransactionHash> {
-            &self.transaction_and_transfer_set
+            &self.transaction_hashes
         }
     }
 }
