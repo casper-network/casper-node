@@ -55,12 +55,32 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn non_transfer_transactions(&self) -> Vec<TransactionHashWithApprovals> {
+    fn transfers(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().transfer().cloned().collect()
+    }
+
+    fn non_transfer(&self) -> Vec<TransactionHashWithApprovals> {
         self.value().non_transfer().cloned().collect()
     }
 
-    fn transfers(&self) -> Vec<TransactionHashWithApprovals> {
-        self.value().transfer().cloned().collect()
+    fn non_transfer_count(&self) -> usize {
+        self.value().non_transfer_count()
+    }
+
+    fn standard_count(&self) -> usize {
+        self.value().standard_count()
+    }
+
+    fn staking_count(&self) -> usize {
+        self.value().staking_count()
+    }
+
+    fn install_upgrade_count(&self) -> usize {
+        self.value().install_upgrade_count()
+    }
+
+    fn transfer_count(&self) -> usize {
+        self.value().transfer_count()
     }
 }
 

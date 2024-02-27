@@ -56,6 +56,11 @@ impl BlockPayload {
         self.transfer.iter()
     }
 
+    /// Returns the count of transfer transactions within the block.
+    pub fn transfer_count(&self) -> usize {
+        self.transfer.len()
+    }
+
     /// Returns the hashes and approvals of the non-transfer transactions within the block.
     pub fn non_transfer(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
         self.standard
@@ -64,9 +69,19 @@ impl BlockPayload {
             .chain(self.install_upgrade.iter())
     }
 
-    /// Returns the hashes and approvals of the non-transfer, native transactions within the block.
+    /// Returns the count of non-transfer transactions within the block.
+    pub fn non_transfer_count(&self) -> usize {
+        self.staking_count() + self.install_upgrade_count() + self.standard_count()
+    }
+
+    /// Returns the hashes and approvals of the staking transactions within the block.
     pub fn staking(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
         self.staking.iter()
+    }
+
+    /// Returns the count of staking transactions within the block.
+    pub fn staking_count(&self) -> usize {
+        self.staking.len()
     }
 
     /// Returns the hashes and approvals of the installer/upgrader transactions within the block.
@@ -74,9 +89,19 @@ impl BlockPayload {
         self.install_upgrade.iter()
     }
 
+    /// Returns the count of installer/upgrader transactions within the block.
+    pub fn install_upgrade_count(&self) -> usize {
+        self.install_upgrade.len()
+    }
+
     /// Returns the hashes and approvals of all other transactions within the block.
     pub fn standard(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
         self.standard.iter()
+    }
+
+    /// Returns the count of standard transactions within the block.
+    pub fn standard_count(&self) -> usize {
+        self.standard.len()
     }
 
     /// Returns all of the transaction hashes and approvals within the block.

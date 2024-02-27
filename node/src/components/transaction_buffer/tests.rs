@@ -7,34 +7,12 @@ use casper_types::{
 
 use super::*;
 use crate::{
+    components::tests::TransactionCategory,
     effect::announcements::TransactionBufferAnnouncement::{self, TransactionsExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::FinalizedBlock,
     utils,
 };
-
-#[derive(Debug)]
-enum TransactionCategory {
-    TransferLegacy,
-    Transfer,
-    StandardLegacy,
-    Standard,
-    InstallUpgrade,
-    Staking,
-}
-
-impl TransactionCategory {
-    fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..6) {
-            0 => TransactionCategory::TransferLegacy,
-            1 => TransactionCategory::Transfer,
-            2 => TransactionCategory::StandardLegacy,
-            3 => TransactionCategory::Standard,
-            4 => TransactionCategory::InstallUpgrade,
-            _ => TransactionCategory::Staking,
-        }
-    }
-}
 
 fn get_appendable_block(
     rng: &mut TestRng,
