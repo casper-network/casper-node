@@ -1,13 +1,12 @@
-use std::collections::VecDeque;
-
+use alloc::{collections::VecDeque, vec::Vec};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Digest,
-};
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use crate::global_state::trie::{Pointer, Trie, RADIX};
+use super::pointer::Pointer;
+
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
 const TRIE_MERKLE_PROOF_STEP_NODE_ID: u8 = 0;
 const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
@@ -44,6 +43,27 @@ impl TrieMerkleProofStep {
             affix: affix.into(),
         }
     }
+
+    /// Returns a random `TrieMerkleProofStep`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        use rand::Rng;
+
+        match rng.gen_range(0..2) {
+            0 => {
+                let hole_index = rng.gen();
+                let indexed_pointers_with_hole = (0..rng.gen_range(0..10))
+                    .map(|_| (rng.gen(), Pointer::random(rng)))
+                    .collect();
+                Self::node(hole_index, indexed_pointers_with_hole)
+            }
+            1 => {
+                let affix = (0..rng.gen_range(0..10)).map(|_| rng.gen()).collect();
+                Self::extension(affix)
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl ToBytes for TrieMerkleProofStep {
@@ -67,7 +87,7 @@ impl ToBytes for TrieMerkleProofStep {
     }
 
     fn serialized_length(&self) -> usize {
-        std::mem::size_of::<u8>()
+        core::mem::size_of::<u8>()
             + match self {
                 TrieMerkleProofStep::Node {
                     hole_index,
@@ -146,56 +166,6 @@ impl<K, V> TrieMerkleProof<K, V> {
     }
 }
 
-impl<K, V> TrieMerkleProof<K, V>
-where
-    K: ToBytes + Copy + Clone,
-    V: ToBytes + Clone,
-{
-    /// Recomputes a state root hash from a [`TrieMerkleProof`].
-    /// This is done in the following steps:
-    ///
-    /// 1. Using [`TrieMerkleProof::key`] and [`TrieMerkleProof::value`], construct a
-    /// [`Trie::Leaf`] and compute a hash for that leaf.
-    ///
-    /// 2. We then iterate over [`TrieMerkleProof::proof_steps`] left to right, using the hash from
-    /// the previous step combined with the next step to compute a new hash.
-    ///
-    /// 3. When there are no more steps, we return the final hash we have computed.
-    ///
-    /// The steps in this function reflect `operations::rehash`.
-    pub fn compute_state_hash(&self) -> Result<Digest, bytesrepr::Error> {
-        let mut hash = {
-            let leaf = Trie::leaf(self.key, self.value.to_owned());
-            leaf.trie_hash()?
-        };
-
-        for (proof_step_index, proof_step) in self.proof_steps.iter().enumerate() {
-            let pointer = if proof_step_index == 0 {
-                Pointer::LeafPointer(hash)
-            } else {
-                Pointer::NodePointer(hash)
-            };
-            let proof_step_bytes = match proof_step {
-                TrieMerkleProofStep::Node {
-                    hole_index,
-                    indexed_pointers_with_hole,
-                } => {
-                    let hole_index = *hole_index;
-                    assert!(hole_index as usize <= RADIX, "hole_index exceeded RADIX");
-                    let mut indexed_pointers = indexed_pointers_with_hole.to_owned();
-                    indexed_pointers.push((hole_index, pointer));
-                    Trie::<K, V>::node(&indexed_pointers).to_bytes()?
-                }
-                TrieMerkleProofStep::Extension { affix } => {
-                    Trie::<K, V>::extension(affix.clone().into(), pointer).to_bytes()?
-                }
-            };
-            hash = Digest::hash(&proof_step_bytes);
-        }
-        Ok(hash)
-    }
-}
-
 impl<K, V> ToBytes for TrieMerkleProof<K, V>
 where
     K: ToBytes,
@@ -238,63 +208,10 @@ where
 }
 
 #[cfg(test)]
-mod gens {
-    use proptest::{collection::vec, prelude::*};
-
-    use casper_types::{
-        gens::{key_arb, stored_value_arb},
-        Key, StoredValue,
-    };
-
-    use crate::global_state::trie::{
-        gens::trie_pointer_arb,
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        RADIX,
-    };
-
-    const POINTERS_SIZE: usize = RADIX / 8;
-    const AFFIX_SIZE: usize = 6;
-    const STEPS_SIZE: usize = 6;
-
-    pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep> {
-        prop_oneof![
-            (
-                <u8>::arbitrary(),
-                vec((<u8>::arbitrary(), trie_pointer_arb()), POINTERS_SIZE)
-            )
-                .prop_map(|(hole_index, indexed_pointers_with_hole)| {
-                    TrieMerkleProofStep::Node {
-                        hole_index,
-                        indexed_pointers_with_hole,
-                    }
-                }),
-            vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
-                TrieMerkleProofStep::Extension {
-                    affix: affix.into(),
-                }
-            })
-        ]
-    }
-
-    pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
-        (
-            key_arb(),
-            stored_value_arb(),
-            vec(trie_merkle_proof_step_arb(), STEPS_SIZE),
-        )
-            .prop_map(|(key, value, proof_steps)| {
-                TrieMerkleProof::new(key, value, proof_steps.into())
-            })
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use proptest::prelude::*;
 
-    use casper_types::bytesrepr;
-
-    use super::gens;
+    use crate::{bytesrepr, gens};
 
     proptest! {
         #[test]

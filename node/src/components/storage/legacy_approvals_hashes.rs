@@ -1,7 +1,8 @@
 use serde::Deserialize;
 
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{BlockHash, DeployApprovalsHash, Key, StoredValue};
+use casper_types::{
+    global_state::TrieMerkleProof, BlockHash, DeployApprovalsHash, Key, StoredValue,
+};
 
 use crate::types::ApprovalsHashes;
 

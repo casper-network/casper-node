@@ -1,10 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casper_storage::global_state::trie::{Pointer, PointerBlock, Trie};
+use casper_storage::global_state::trie::{PointerBlock, Trie};
 use casper_types::{
     account::AccountHash,
     addressable_entity::EntityKindTag,
     bytesrepr::{FromBytes, ToBytes},
+    global_state::Pointer,
     AddressableEntityHash, CLValue, Digest, Key, StoredValue,
 };
 

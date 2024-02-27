@@ -51,6 +51,7 @@ pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
+pub mod global_state;
 mod json_pretty_printer;
 mod key;
 mod motes;

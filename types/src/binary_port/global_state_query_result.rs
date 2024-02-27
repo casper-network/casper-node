@@ -2,9 +2,10 @@
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    StoredValue,
+    global_state::TrieMerkleProof,
+    Key, StoredValue,
 };
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -18,12 +19,12 @@ pub struct GlobalStateQueryResult {
     /// Stored value.
     value: StoredValue,
     /// Proof.
-    merkle_proof: String,
+    merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>,
 }
 
 impl GlobalStateQueryResult {
     /// Creates the global state query result.
-    pub fn new(value: StoredValue, merkle_proof: String) -> Self {
+    pub fn new(value: StoredValue, merkle_proof: Vec<TrieMerkleProof<Key, StoredValue>>) -> Self {
         Self {
             value,
             merkle_proof,
@@ -31,20 +32,34 @@ impl GlobalStateQueryResult {
     }
 
     /// Returns the stored value and the merkle proof.
-    pub fn into_inner(self) -> (StoredValue, String) {
+    pub fn into_inner(self) -> (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) {
         (self.value, self.merkle_proof)
     }
 
     #[cfg(test)]
     pub(crate) fn random_invalid(rng: &mut TestRng) -> Self {
+        use crate::{global_state::TrieMerkleProofStep, CLValue};
+        use rand::Rng;
         // Note: This does NOT create a logically-valid struct. Instance created by this function
         // should be used in `bytesrepr` tests only.
+
+        let mut merkle_proof = vec![];
+        for _ in 0..rng.gen_range(0..10) {
+            let stored_value = StoredValue::CLValue(
+                CLValue::from_t(rng.gen::<i32>()).expect("should create CLValue"),
+            );
+            let steps = (0..rng.gen_range(0..10))
+                .map(|_| TrieMerkleProofStep::random(rng))
+                .collect();
+            merkle_proof.push(TrieMerkleProof::new(rng.gen(), stored_value, steps));
+        }
+
         Self {
             value: StoredValue::ByteCode(ByteCode::new(
                 ByteCodeKind::V1CasperWasm,
                 rng.random_vec(10..20),
             )),
-            merkle_proof: rng.random_string(10..20),
+            merkle_proof,
         }
     }
 }
