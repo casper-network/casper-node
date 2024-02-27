@@ -1,10 +1,12 @@
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr,
     bytesrepr::{Error, FromBytes, ToBytes},
-    testing::TestRng,
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -76,8 +78,8 @@ impl FromBytes for VacancyConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::VacancyConfig;
     use super::*;
+    use crate::VacancyConfig;
 
     #[test]
     fn bytesrepr_roundtrip() {

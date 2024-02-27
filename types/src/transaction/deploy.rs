@@ -1149,13 +1149,9 @@ impl Deploy {
             chain_name,
             payment,
             session,
-            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(sender_public_key))
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(sender_public_key)),
         )
     }
-
-
-
-
 }
 
 impl hash::Hash for Deploy {

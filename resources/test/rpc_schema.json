@@ -384,7 +384,7 @@
                   }
                 ]
               },
-              "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
               "block_height": 10,
               "execution_result": {
                 "Version2": {
@@ -572,7 +572,7 @@
                   ]
                 }
               },
-              "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+              "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
               "block_height": 10,
               "execution_result": {
                 "Version2": {
@@ -876,7 +876,7 @@
             {
               "name": "state_identifier",
               "value": {
-                "BlockHash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "BlockHash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             },
             {
@@ -920,12 +920,14 @@
                         "weight": "789"
                       }
                     ],
-                    "rewards": {}
+                    "rewards": {},
+                    "next_era_gas_price": 1
                   },
                   "timestamp": "2020-11-17T00:39:24.072Z",
                   "era_id": 1,
                   "height": 10,
-                  "protocol_version": "1.0.0"
+                  "protocol_version": "1.0.0",
+                  "current_gas_price": 1
                 }
               },
               "stored_value": {
@@ -1205,7 +1207,7 @@
               "chainspec_name": "casper-example",
               "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
               "last_added_block_info": {
-                "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "timestamp": "2020-11-17T00:39:24.072Z",
                 "era_id": 1,
                 "height": 10,
@@ -1386,7 +1388,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -1397,7 +1399,7 @@
               "block_with_signatures": {
                 "block": {
                   "Version2": {
-                    "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                    "hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
@@ -1425,12 +1427,14 @@
                             "weight": "789"
                           }
                         ],
-                        "rewards": {}
+                        "rewards": {},
+                        "next_era_gas_price": 1
                       },
                       "timestamp": "2020-11-17T00:39:24.072Z",
                       "era_id": 1,
                       "height": 10,
-                      "protocol_version": "1.0.0"
+                      "protocol_version": "1.0.0",
+                      "current_gas_price": 1
                     },
                     "body": {
                       "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
@@ -1461,7 +1465,7 @@
                 "proofs": [
                   {
                     "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                    "signature": "010fff61ef78aa2bc5ba549b287b67c50ce23f828e81633a5c0eb832863c101351738d94ad114a74a33fd5872e9fabe1b6a2042dd2c084a53ec75a5316a87bbf0f"
+                    "signature": "010dae9911fdb2e62b525e13828935b93dcee028670e1479393a0e21f700e868f85fb5d8d90ad7a23e1c3e6aaabbaa3f1fdd0dfa962461c4208d02fd8e398bb90c"
                   }
                 ]
               }
@@ -1832,7 +1836,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -1841,7 +1845,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -2007,7 +2011,7 @@
             {
               "name": "block_identifier",
               "value": {
-                "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
+                "Hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd"
               }
             }
           ],
@@ -2016,7 +2020,7 @@
             "value": {
               "api_version": "2.0.0",
               "era_summary": {
-                "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
+                "block_hash": "6a2dad7a71608f78e9b6b5f97eed60a374e75e70cb8cc925e6681c61c84165bd",
                 "era_id": 42,
                 "stored_value": {
                   "EraInfo": {
@@ -6110,6 +6114,7 @@
         "required": [
           "accumulated_seed",
           "body_hash",
+          "current_gas_price",
           "era_id",
           "height",
           "parent_hash",
@@ -6195,6 +6200,12 @@
                 "$ref": "#/components/schemas/ProtocolVersion"
               }
             ]
+          },
+          "current_gas_price": {
+            "description": "The gas price of the era",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           }
         }
       },
@@ -6204,6 +6215,7 @@
         "required": [
           "equivocators",
           "inactive_validators",
+          "next_era_gas_price",
           "next_era_validator_weights",
           "rewards"
         ],
@@ -6236,6 +6248,11 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/U512"
             }
+          },
+          "next_era_gas_price": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           }
         }
       },

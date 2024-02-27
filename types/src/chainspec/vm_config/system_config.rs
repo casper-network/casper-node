@@ -21,7 +21,6 @@ pub const DEFAULT_INSTALL_UPGRADE_COST: u64 = 500_000_000_000;
 /// Default gas cost for a standard transaction.
 pub const DEFAULT_STANDARD_TRANSACTION_COST: u64 = 50_000_000_000;
 
-
 /// Definition of costs in the system.
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,

@@ -210,8 +210,8 @@ impl UpgradeWatcher {
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
-        where
-            REv: From<UpgradeWatcherAnnouncement> + Send,
+    where
+        REv: From<UpgradeWatcherAnnouncement> + Send,
     {
         if self.state != ComponentState::Initializing {
             return Effects::new();
@@ -221,8 +221,8 @@ impl UpgradeWatcher {
     }
 
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
-        where
-            REv: From<UpgradeWatcherAnnouncement> + Send,
+    where
+        REv: From<UpgradeWatcherAnnouncement> + Send,
     {
         let root_dir = self.root_dir.clone();
         let current_version = self.current_version;
@@ -241,7 +241,7 @@ impl UpgradeWatcher {
                     .await
             }
         }
-            .ignore();
+        .ignore();
 
         effects.extend(
             effect_builder
@@ -269,8 +269,8 @@ impl UpgradeWatcher {
 }
 
 impl<REv> Component<REv> for UpgradeWatcher
-    where
-        REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
+where
+    REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     type Event = Event;
 
@@ -330,8 +330,8 @@ impl<REv> Component<REv> for UpgradeWatcher
     }
 }
 impl<REv> InitializedComponent<REv> for UpgradeWatcher
-    where
-        REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
+where
+    REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -573,7 +573,7 @@ mod tests {
             path,
             toml::to_string_pretty(&chainspec).expect("should encode to toml"),
         )
-            .expect("should install chainspec");
+        .expect("should install chainspec");
         chainspec
     }
 
@@ -643,7 +643,7 @@ mod tests {
             &path_v1_0_0,
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),
         )
-            .expect("should install upgrade point");
+        .expect("should install upgrade point");
         assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if the next version upgrade_point file is corrupt.

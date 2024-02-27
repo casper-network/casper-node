@@ -626,6 +626,7 @@
       "required": [
         "accumulated_seed",
         "body_hash",
+        "current_gas_price",
         "era_id",
         "height",
         "parent_hash",
@@ -711,6 +712,12 @@
               "$ref": "#/definitions/ProtocolVersion"
             }
           ]
+        },
+        "current_gas_price": {
+          "description": "The gas price of the era",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },
@@ -720,6 +727,7 @@
       "required": [
         "equivocators",
         "inactive_validators",
+        "next_era_gas_price",
         "next_era_validator_weights",
         "rewards"
       ],
@@ -752,6 +760,11 @@
           "additionalProperties": {
             "$ref": "#/definitions/U512"
           }
+        },
+        "next_era_gas_price": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },

@@ -968,12 +968,12 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost_value,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
-        DEFAULT_INSTALL_UPGRADE_COST,
-        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()

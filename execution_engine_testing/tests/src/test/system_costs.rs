@@ -183,12 +183,12 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
-        DEFAULT_INSTALL_UPGRADE_COST,
-        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()
@@ -476,12 +476,12 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
-        DEFAULT_INSTALL_UPGRADE_COST,
-        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()
@@ -951,12 +951,12 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     let new_system_config = SystemConfig::new(
         new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_COST,
+        DEFAULT_STANDARD_TRANSACTION_COST,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
         new_standard_payment_costs,
-        DEFAULT_INSTALL_UPGRADE_COST,
-        DEFAULT_STANDARD_TRANSACTION_COST,
     );
 
     let new_engine_config = EngineConfigBuilder::default()

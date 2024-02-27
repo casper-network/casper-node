@@ -190,7 +190,7 @@ impl TransactionV1Body {
         }
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_transfer(rng: &mut TestRng) -> Self {
         let source = rng.gen();
         let target = rng.gen();
@@ -208,7 +208,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_standard(rng: &mut TestRng) -> Self {
         let target = TransactionTarget::Stored {
             id: TransactionInvocationTarget::random(rng),
@@ -222,7 +222,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_install_upgrade(rng: &mut TestRng) -> Self {
         let mut buffer = vec![0u8; rng.gen_range(0..100)];
         rng.fill_bytes(buffer.as_mut());
@@ -239,7 +239,7 @@ impl TransactionV1Body {
         )
     }
 
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     fn random_staking(rng: &mut TestRng) -> Self {
         let source = rng.gen();
         let target = rng.gen();
@@ -258,7 +258,7 @@ impl TransactionV1Body {
     }
 
     /// Returns a random `TransactionV1Body`.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => Self::random_transfer(rng),

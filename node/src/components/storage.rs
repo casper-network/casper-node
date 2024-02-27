@@ -2783,9 +2783,7 @@ impl Storage {
     ) -> Option<(u64, u64)> {
         match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
-                if !utilization.contains_key(&block_height) {
-                    utilization.insert(block_height, transaction_count);
-                }
+                utilization.entry(block_height).or_insert(transaction_count);
 
                 let transaction_count = utilization.values().into_iter().sum();
                 let block_count = utilization.keys().len() as u64;

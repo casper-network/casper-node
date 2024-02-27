@@ -716,13 +716,11 @@ impl TestFixture {
             .expect("must have block header");
 
         let switch_block_height = switch_block_header.height();
-        println!("height {switch_block_height}");
         assert_eq!(era_id, switch_block_header.era_id());
 
         let mut blocks_in_era = 1;
 
         for height in (0..switch_block_height).rev() {
-            println!("{height}");
             let block_header = runner
                 .main_reactor()
                 .storage
@@ -732,14 +730,10 @@ impl TestFixture {
 
             if block_header.era_id() != era_id {
                 break;
-            } else {
-                if !block_header.is_switch_block() {
-                    blocks_in_era += 1;
-                }
+            } else if !block_header.is_switch_block() {
+                blocks_in_era += 1;
             }
         }
-
-        println!("Number of blocks in {era_id} is {blocks_in_era}");
 
         let max_capacity = {
             let capacity_per_block = self
@@ -2678,7 +2672,9 @@ async fn should_raise_gas_price_to_ceiling() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
 
-    fixture.run_until_stored_switch_block_header(ERA_ONE, ONE_MIN).await;
+    fixture
+        .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
+        .await;
 
     let current_era_id = 2u64;
     let max_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
@@ -2687,14 +2683,14 @@ async fn should_raise_gas_price_to_ceiling() {
     // exceed the max total price
     for era in current_era_id..=5 {
         let target_public_key = PublicKey::random(&mut fixture.rng);
-        let mut  native_transfer = Deploy::native_transfer(
+        let mut native_transfer = Deploy::native_transfer(
             fixture.chainspec.network_config.name.clone(),
             alice_public_key.clone(),
             target_public_key,
             None,
             Timestamp::now(),
             TimeDiff::from_seconds(60),
-            max_gas_price as u64
+            max_gas_price as u64,
         );
 
         native_transfer.sign(&alice_secret_key);
@@ -2703,11 +2699,16 @@ async fn should_raise_gas_price_to_ceiling() {
         fixture.inject_transaction(txn).await;
         let era_id = EraId::new(era);
         println!("{era_id}");
-        fixture.run_until_stored_switch_block_header(era_id, ONE_MIN).await;
+        fixture
+            .run_until_stored_switch_block_header(era_id, ONE_MIN)
+            .await;
     }
 
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
-    let actual_gas_price = fixture.highest_complete_block().maybe_current_gas_price().unwrap();
+    let actual_gas_price = fixture
+        .highest_complete_block()
+        .maybe_current_gas_price()
+        .unwrap();
 
     assert_eq!(expected_gas_price, actual_gas_price);
 
@@ -2715,11 +2716,15 @@ async fn should_raise_gas_price_to_ceiling() {
 
     // Run until an arbitrarily far era with no load to ensure that the
     // gas price can reach the floor again.
-    fixture.run_until_stored_switch_block_header(stopping_era, TWO_MIN).await;
+    fixture
+        .run_until_stored_switch_block_header(stopping_era, TWO_MIN)
+        .await;
 
-    let actual_gas_price = fixture.switch_block(stopping_era).header().current_gas_price();
+    let actual_gas_price = fixture
+        .switch_block(stopping_era)
+        .header()
+        .current_gas_price();
     let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
 
     assert_eq!(expected_gas_price, actual_gas_price);
 }
-
