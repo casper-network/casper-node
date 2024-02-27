@@ -129,8 +129,8 @@ impl Distribution<SystemConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
         SystemConfig {
             wasmless_transfer_cost: rng.gen(),
-            install_upgrade_cost: rng.gen(),
-            standard_cost: rng.gen(),
+            install_upgrade_cost: rng.gen_range(0..DEFAULT_INSTALL_UPGRADE_COST),
+            standard_cost: rng.gen_range(0..DEFAULT_STANDARD_TRANSACTION_COST),
             auction_costs: rng.gen(),
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),

@@ -149,14 +149,14 @@ pub(super) async fn exec_or_requeue<REv>(
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
-                    if current_gas_price > max {
+                    if new_gas_price > max {
                         max
                     } else {
                         new_gas_price
                     }
                 } else if era_score < go_down {
                     let new_gas_price = current_gas_price - 1;
-                    if current_gas_price <= min {
+                    if new_gas_price <= min {
                         min
                     } else {
                         new_gas_price
@@ -164,7 +164,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 } else {
                     current_gas_price
                 };
-                info!("Calculated new gas price");
+                info!(%new_gas_price, "Calculated new gas price");
                 Some(new_gas_price)
             }
         }

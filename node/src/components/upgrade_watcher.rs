@@ -360,7 +360,6 @@ struct UpgradePoint {
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
-        println!("{:?}", path);
         let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
         Ok(toml::from_slice(&bytes)?)

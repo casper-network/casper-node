@@ -68,6 +68,7 @@ const ERA_TWO: EraId = EraId::new(2);
 const ERA_THREE: EraId = EraId::new(3);
 const TEN_SECS: Duration = Duration::from_secs(10);
 const ONE_MIN: Duration = Duration::from_secs(60);
+const TWO_MIN: Duration = Duration::from_secs(120);
 
 type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
 
@@ -99,10 +100,10 @@ struct ConfigsOverride {
     max_standard_count: u32,
     max_staking_count: u32,
     max_install_count: u32,
-    max: u8,
-    min: u8,
-    go_up: u64,
-    go_down: u64,
+    max_gas_price: u8,
+    min_gas_price: u8,
+    upper_threshold: u64,
+    lower_threshold: u64,
 }
 
 impl Default for ConfigsOverride {
@@ -122,10 +123,10 @@ impl Default for ConfigsOverride {
             max_standard_count: 100,
             max_staking_count: 200,
             max_install_count: 2,
-            max: 3,
-            min: 1,
-            go_up: 90,
-            go_down: 50,
+            max_gas_price: 3,
+            min_gas_price: 1,
+            upper_threshold: 90,
+            lower_threshold: 50,
         }
     }
 }
@@ -235,10 +236,10 @@ impl TestFixture {
             max_standard_count,
             max_staking_count,
             max_install_count,
-            max,
-            min,
-            go_up,
-            go_down,
+            max_gas_price: max,
+            min_gas_price: min,
+            upper_threshold: go_up,
+            lower_threshold: go_down,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -2577,8 +2578,8 @@ async fn block_vacancy() {
 
     let spec_override = ConfigsOverride {
         minimum_era_height: 2,
-        go_down: 5,
-        go_up: 10,
+        lower_threshold: 5,
+        upper_threshold: 10,
         max_standard_count: 1,
         max_staking_count: 1,
         max_install_count: 1,
@@ -2647,3 +2648,78 @@ async fn block_vacancy() {
     let expected_price = price_for_era_two - 1u8;
     fixture.check_price_for_era(ERA_THREE, expected_price);
 }
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling() {
+    let alice_stake = 200_000_000_000_u64;
+    let bob_stake = 300_000_000_000_u64;
+    let charlie_stake = 300_000_000_000_u64;
+    let initial_stakes = InitialStakes::FromVec(vec![
+        alice_stake.into(),
+        bob_stake.into(),
+        charlie_stake.into(),
+    ]);
+
+    let max_gas_price: u8 = 3;
+
+    let spec_override = ConfigsOverride {
+        minimum_era_height: 1,
+        lower_threshold: 5,
+        upper_threshold: 10,
+        max_standard_count: 1,
+        max_staking_count: 1,
+        max_install_count: 1,
+        max_transfer_count: 1,
+        max_gas_price,
+        ..Default::default()
+    };
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+
+    fixture.run_until_stored_switch_block_header(ERA_ONE, ONE_MIN).await;
+
+    let current_era_id = 2u64;
+    let max_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
+    // Increase the utilization of the chain to above the upper threshold
+    // for a few eras to ensure the gas price reaches the max but does not
+    // exceed the max total price
+    for era in current_era_id..=5 {
+        let target_public_key = PublicKey::random(&mut fixture.rng);
+        let mut  native_transfer = Deploy::native_transfer(
+            fixture.chainspec.network_config.name.clone(),
+            alice_public_key.clone(),
+            target_public_key,
+            None,
+            Timestamp::now(),
+            TimeDiff::from_seconds(60),
+            max_gas_price as u64
+        );
+
+        native_transfer.sign(&alice_secret_key);
+        let txn = Transaction::Deploy(native_transfer);
+
+        fixture.inject_transaction(txn).await;
+        let era_id = EraId::new(era);
+        println!("{era_id}");
+        fixture.run_until_stored_switch_block_header(era_id, ONE_MIN).await;
+    }
+
+    let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
+    let actual_gas_price = fixture.highest_complete_block().maybe_current_gas_price().unwrap();
+
+    assert_eq!(expected_gas_price, actual_gas_price);
+
+    let stopping_era = EraId::new(15);
+
+    // Run until an arbitrarily far era with no load to ensure that the
+    // gas price can reach the floor again.
+    fixture.run_until_stored_switch_block_header(stopping_era, TWO_MIN).await;
+
+    let actual_gas_price = fixture.switch_block(stopping_era).header().current_gas_price();
+    let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
+
+    assert_eq!(expected_gas_price, actual_gas_price);
+}
+
