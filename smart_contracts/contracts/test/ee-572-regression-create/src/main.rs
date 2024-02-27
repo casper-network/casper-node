@@ -41,7 +41,8 @@ pub extern "C" fn call() {
 
         entry_points
     };
-    let (contract_hash, contract_version) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, contract_version) =
+        storage::new_contract(entry_points, None, None, None, None);
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_NAME, Key::contract_entity_key(contract_hash));
 }
