@@ -210,8 +210,8 @@ impl UpgradeWatcher {
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
-    where
-        REv: From<UpgradeWatcherAnnouncement> + Send,
+        where
+            REv: From<UpgradeWatcherAnnouncement> + Send,
     {
         if self.state != ComponentState::Initializing {
             return Effects::new();
@@ -221,8 +221,8 @@ impl UpgradeWatcher {
     }
 
     fn check_for_next_upgrade<REv>(&self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
-    where
-        REv: From<UpgradeWatcherAnnouncement> + Send,
+        where
+            REv: From<UpgradeWatcherAnnouncement> + Send,
     {
         let root_dir = self.root_dir.clone();
         let current_version = self.current_version;
@@ -241,7 +241,7 @@ impl UpgradeWatcher {
                     .await
             }
         }
-        .ignore();
+            .ignore();
 
         effects.extend(
             effect_builder
@@ -269,8 +269,8 @@ impl UpgradeWatcher {
 }
 
 impl<REv> Component<REv> for UpgradeWatcher
-where
-    REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
+    where
+        REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     type Event = Event;
 
@@ -330,8 +330,8 @@ where
     }
 }
 impl<REv> InitializedComponent<REv> for UpgradeWatcher
-where
-    REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
+    where
+        REv: From<Event> + From<UpgradeWatcherAnnouncement> + Send,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -359,20 +359,11 @@ struct UpgradePoint {
 
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
-    fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let bytes = match file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME)) {
-            Ok(bytes) => bytes,
-            Err(error) => panic!("{:?}", error)
-        };
-
-        match toml::from_slice(&bytes) {
-            Ok(ret) => return Ok(ret),
-            Err(error ) => panic!("{:?}", error)
-        }
-
-        //
-        //
-        // Ok(toml::from_slice(&bytes)?)
+    fn from_chainspec_path<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
+        println!("{:?}", path);
+        let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
+            .map_err(Error::LoadUpgradePoint)?;
+        Ok(toml::from_slice(&bytes)?)
     }
 }
 
@@ -444,7 +435,6 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
         Err(_error) => {
-            println!("Foo 3");
             #[cfg(not(test))]
             warn!(dir=%dir.display(), error=%_error, "failed to get a valid version from subdirs");
             return None;
@@ -452,7 +442,6 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     };
 
     if next_version <= current_version {
-        println!("Foo 4");
         return None;
     }
 
@@ -460,14 +449,12 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     let upgrade_point = match UpgradePoint::from_chainspec_path(&subdir) {
         Ok(upgrade_point) => upgrade_point,
         Err(error) => {
-            println!("Foo");
             debug!(subdir=%subdir.display(), %error, "failed to load upgrade point");
             return None;
         }
     };
 
     if upgrade_point.protocol_config.version != next_version {
-        println!("Foo 2");
         warn!(
             upgrade_point_version=%upgrade_point.protocol_config.version,
             subdir_version=%next_version,
@@ -587,7 +574,7 @@ mod tests {
             path,
             toml::to_string_pretty(&chainspec).expect("should encode to toml"),
         )
-        .expect("should install chainspec");
+            .expect("should install chainspec");
         chainspec
     }
 
@@ -657,7 +644,7 @@ mod tests {
             &path_v1_0_0,
             toml::to_string_pretty(&chainspec_v0_9_9).expect("should encode to toml"),
         )
-        .expect("should install upgrade point");
+            .expect("should install upgrade point");
         assert!(maybe_next_point(&current).is_none());
 
         // Check we return `None` if the next version upgrade_point file is corrupt.

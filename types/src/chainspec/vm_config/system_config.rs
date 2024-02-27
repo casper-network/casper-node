@@ -21,6 +21,7 @@ pub const DEFAULT_INSTALL_UPGRADE_COST: u64 = 500_000_000_000;
 /// Default gas cost for a standard transaction.
 pub const DEFAULT_STANDARD_TRANSACTION_COST: u64 = 50_000_000_000;
 
+
 /// Definition of costs in the system.
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
@@ -32,10 +33,10 @@ pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
     wasmless_transfer_cost: u32,
 
-    /// Install/Upgrade cost expressed in gas.
+    /// Install/Upgrader cost expressed in gas.
     install_upgrade_cost: u64,
 
-    /// Cost of a standard deploy/transaction expressed in gas.
+    /// Standard transaction expressed in gas.
     standard_cost: u64,
 
     /// Configuration of auction entrypoint costs.
@@ -78,6 +79,16 @@ impl SystemConfig {
         self.wasmless_transfer_cost
     }
 
+    /// Returns the install/upgrade cost.
+    pub fn install_upgrade_cost(&self) -> u64 {
+        self.install_upgrade_cost
+    }
+
+    /// Returns the standard transaction cost.
+    pub fn standard_transaction_cost(&self) -> u64 {
+        self.standard_cost
+    }
+
     /// Returns the costs of executing auction entry points.
     pub fn auction_costs(&self) -> &AuctionCosts {
         &self.auction_costs
@@ -97,28 +108,18 @@ impl SystemConfig {
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
     }
-
-    /// Returns the cost of an installer/upgrader.
-    pub fn install_upgrade_cost(&self) -> u64 {
-        self.install_upgrade_cost
-    }
-
-    /// Returns the cost of a standard deploy transaction.
-    pub fn standard_transaction_cost(&self) -> u64 {
-        self.standard_cost
-    }
 }
 
 impl Default for SystemConfig {
     fn default() -> Self {
         Self {
             wasmless_transfer_cost: DEFAULT_WASMLESS_TRANSFER_COST,
+            install_upgrade_cost: DEFAULT_INSTALL_UPGRADE_COST,
+            standard_cost: DEFAULT_STANDARD_TRANSACTION_COST,
             auction_costs: AuctionCosts::default(),
             mint_costs: MintCosts::default(),
             handle_payment_costs: HandlePaymentCosts::default(),
             standard_payment_costs: StandardPaymentCosts::default(),
-            install_upgrade_cost: DEFAULT_INSTALL_UPGRADE_COST,
-            standard_cost: DEFAULT_STANDARD_TRANSACTION_COST,
         }
     }
 }
@@ -128,12 +129,12 @@ impl Distribution<SystemConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
         SystemConfig {
             wasmless_transfer_cost: rng.gen(),
+            install_upgrade_cost: rng.gen(),
+            standard_cost: rng.gen(),
             auction_costs: rng.gen(),
             mint_costs: rng.gen(),
             handle_payment_costs: rng.gen(),
             standard_payment_costs: rng.gen(),
-            install_upgrade_cost: rng.gen(),
-            standard_cost: rng.gen(),
         }
     }
 }
@@ -176,12 +177,12 @@ impl FromBytes for SystemConfig {
         Ok((
             SystemConfig::new(
                 wasmless_transfer_cost,
+                install_upgrade_cost,
+                standard_cost,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
-                install_upgrade_cost,
-                standard_cost,
             ),
             rem,
         ))
@@ -214,12 +215,12 @@ pub mod gens {
         ) -> SystemConfig {
             SystemConfig {
                 wasmless_transfer_cost,
+                install_upgrade_cost,
+                standard_cost,
                 auction_costs,
                 mint_costs,
                 handle_payment_costs,
                 standard_payment_costs,
-                install_upgrade_cost,
-                standard_cost,
             }
         }
     }
