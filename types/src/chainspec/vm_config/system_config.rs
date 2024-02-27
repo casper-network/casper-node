@@ -32,6 +32,12 @@ pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
     wasmless_transfer_cost: u32,
 
+    /// Install/Upgrade cost expressed in gas.
+    install_upgrade_cost: u64,
+
+    /// Cost of a standard deploy/transaction expressed in gas.
+    standard_cost: u64,
+
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
 
@@ -43,33 +49,27 @@ pub struct SystemConfig {
 
     /// Configuration of standard payment costs.
     standard_payment_costs: StandardPaymentCosts,
-
-    /// Install/Upgrade cost expressed in gas.
-    install_upgrade_cost: u64,
-
-    /// Cost of a standard deploy/transaction expressed in gas.
-    standard_cost: u64,
 }
 
 impl SystemConfig {
     /// Creates new system config instance.
     pub fn new(
         wasmless_transfer_cost: u32,
+        install_upgrade_cost: u64,
+        standard_cost: u64,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
         standard_payment_costs: StandardPaymentCosts,
-        install_upgrade_cost: u64,
-        standard_cost: u64,
     ) -> Self {
         Self {
             wasmless_transfer_cost,
+            install_upgrade_cost,
+            standard_cost,
             auction_costs,
             mint_costs,
             handle_payment_costs,
             standard_payment_costs,
-            install_upgrade_cost,
-            standard_cost,
         }
     }
 
@@ -143,12 +143,12 @@ impl ToBytes for SystemConfig {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
+        ret.append(&mut self.install_upgrade_cost.to_bytes()?);
+        ret.append(&mut self.standard_cost.to_bytes()?);
         ret.append(&mut self.auction_costs.to_bytes()?);
         ret.append(&mut self.mint_costs.to_bytes()?);
         ret.append(&mut self.handle_payment_costs.to_bytes()?);
         ret.append(&mut self.standard_payment_costs.to_bytes()?);
-        ret.append(&mut self.install_upgrade_cost.to_bytes()?);
-        ret.append(&mut self.standard_cost.to_bytes()?);
 
         Ok(ret)
     }
@@ -167,12 +167,12 @@ impl ToBytes for SystemConfig {
 impl FromBytes for SystemConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(bytes)?;
+        let (install_upgrade_cost, rem) = FromBytes::from_bytes(rem)?;
+        let (standard_cost, rem) = FromBytes::from_bytes(rem)?;
         let (auction_costs, rem) = FromBytes::from_bytes(rem)?;
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
         let (handle_payment_costs, rem) = FromBytes::from_bytes(rem)?;
         let (standard_payment_costs, rem) = FromBytes::from_bytes(rem)?;
-        let (install_upgrade_cost, rem) = FromBytes::from_bytes(rem)?;
-        let (standard_cost, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             SystemConfig::new(
                 wasmless_transfer_cost,
@@ -205,12 +205,12 @@ pub mod gens {
     prop_compose! {
         pub fn system_config_arb()(
             wasmless_transfer_cost in num::u32::ANY,
+            install_upgrade_cost in num::u64::ANY,
+            standard_cost in num::u64::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
-            install_upgrade_cost in num::u64::ANY,
-            standard_cost in num::u64::ANY,
         ) -> SystemConfig {
             SystemConfig {
                 wasmless_transfer_cost,

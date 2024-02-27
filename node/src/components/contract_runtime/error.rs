@@ -9,7 +9,7 @@ use casper_execution_engine::engine_state::{Error as EngineStateError, StepError
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, Digest,  EraId, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,

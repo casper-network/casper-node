@@ -230,7 +230,15 @@ impl TestFixture {
             finders_fee,
             finality_signature_proportion,
             signature_rewards_max_delay,
-            storage_multiplier, max_transfer_count, max_standard_count, max_staking_count, max_install_count, max, min, go_up, go_down,
+            storage_multiplier,
+            max_transfer_count,
+            max_standard_count,
+            max_staking_count,
+            max_install_count,
+            max,
+            min,
+            go_up,
+            go_down,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -251,8 +259,7 @@ impl TestFixture {
         chainspec.transaction_config.block_max_standard_count = max_standard_count;
         chainspec.transaction_config.block_max_staking_count = max_staking_count;
         chainspec.transaction_config.block_max_transfer_count = max_transfer_count;
-        chainspec.transaction_config.block_max_install_upgrade_count =
-            max_install_count;
+        chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
@@ -694,10 +701,16 @@ impl TestFixture {
             .next()
             .expect("must have runner");
 
-        let era_usage = runner.main_reactor().storage.get_utilization_for_era(era_id)
+        let era_usage = runner
+            .main_reactor()
+            .storage
+            .get_utilization_for_era(era_id)
             .expect("must have score a given era");
 
-        let switch_block_header = runner.main_reactor().storage.read_switch_block_header_by_era_id(era_id)
+        let switch_block_header = runner
+            .main_reactor()
+            .storage
+            .read_switch_block_header_by_era_id(era_id)
             .unwrap()
             .expect("must have block header");
 
@@ -709,12 +722,15 @@ impl TestFixture {
 
         for height in (0..switch_block_height).rev() {
             println!("{height}");
-            let block_header = runner.main_reactor().storage.read_block_header_by_height(height, true)
+            let block_header = runner
+                .main_reactor()
+                .storage
+                .read_block_header_by_height(height, true)
                 .unwrap()
                 .expect("must have block header");
 
             if block_header.era_id() != era_id {
-                break
+                break;
             } else {
                 if !block_header.is_switch_block() {
                     blocks_in_era += 1;
@@ -725,7 +741,10 @@ impl TestFixture {
         println!("Number of blocks in {era_id} is {blocks_in_era}");
 
         let max_capacity = {
-            let capacity_per_block = self.chainspec.transaction_config.block_max_install_upgrade_count
+            let capacity_per_block = self
+                .chainspec
+                .transaction_config
+                .block_max_install_upgrade_count
                 + self.chainspec.transaction_config.block_max_standard_count
                 + self.chainspec.transaction_config.block_max_transfer_count
                 + self.chainspec.transaction_config.block_max_staking_count;
@@ -733,11 +752,7 @@ impl TestFixture {
             blocks_in_era * (capacity_per_block as u64)
         };
 
-
-        let era_score = Ratio::new(
-            era_usage * 100,
-            max_capacity
-        );
+        let era_score = Ratio::new(era_usage * 100, max_capacity);
 
         era_score.to_integer()
     }
@@ -2606,26 +2621,24 @@ async fn block_vacancy() {
 
     fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
 
-    let actual_utilization_era_one = fixture
-        .get_score_for_era(ERA_ONE);
+    let actual_utilization_era_one = fixture.get_score_for_era(ERA_ONE);
 
     println!("{actual_utilization_era_one}");
 
-    let expected_price = if actual_utilization_era_one > fixture.chainspec.vacancy_config.upper_threshold {
-        price_for_era_1 + 1
-    } else {
-        price_for_era_1
-    };
+    let expected_price =
+        if actual_utilization_era_one > fixture.chainspec.vacancy_config.upper_threshold {
+            price_for_era_1 + 1
+        } else {
+            price_for_era_1
+        };
 
-    fixture
-        .check_price_for_era(ERA_TWO, expected_price);
+    fixture.check_price_for_era(ERA_TWO, expected_price);
 
     let price_for_era_two = fixture.get_current_era_price();
 
     fixture.run_until_consensus_in_era(ERA_THREE, ONE_MIN).await;
 
-    let actual_utilization_for_era_two = fixture
-        .get_score_for_era(ERA_TWO);
+    let actual_utilization_for_era_two = fixture.get_score_for_era(ERA_TWO);
 
     // Since we don't send any deploys or transactions, this should be zero.
     assert!(actual_utilization_for_era_two.is_zero());
@@ -2634,4 +2647,3 @@ async fn block_vacancy() {
     let expected_price = price_for_era_two - 1u8;
     fixture.check_price_for_era(ERA_THREE, expected_price);
 }
-

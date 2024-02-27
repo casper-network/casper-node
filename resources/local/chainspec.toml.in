@@ -308,7 +308,7 @@ finalize_payment = 10_000
 [system_costs.standard_payment_costs]
 pay = 10_000
 
-[vacancy_config]
+[vacancy]
 upper_threshold = 90
 lower_threshold = 50
 max_gas_price = 3

@@ -1197,8 +1197,8 @@ impl Storage {
                 transaction_count,
                 responder,
             } => {
-                let utilization = self
-                    .get_block_utilization_score(era_id, block_height, transaction_count);
+                let utilization =
+                    self.get_block_utilization_score(era_id, block_height, transaction_count);
 
                 responder.respond(utilization).ignore()
             }
@@ -1284,7 +1284,7 @@ impl Storage {
         match self.utilization_tracker.get_mut(&era_id) {
             Some(block_score) => {
                 block_score.insert(block.height(), transaction_hash_count);
-            },
+            }
             None => {
                 let mut block_score = BTreeMap::new();
                 block_score.insert(block.height(), transaction_hash_count);
@@ -1647,18 +1647,13 @@ impl Storage {
     }
 
     #[cfg(test)]
-    pub fn get_utilization_for_era(
-        &self,
-        era_id: EraId
-    ) -> Option<u64> {
+    pub fn get_utilization_for_era(&self, era_id: EraId) -> Option<u64> {
         let era_utilization = match self.utilization_tracker.get(&era_id) {
             Some(utilization) => utilization,
-            None => return None
+            None => return None,
         };
 
-        let total_utilization: u64 = era_utilization
-            .values()
-            .sum();
+        let total_utilization: u64 = era_utilization.values().sum();
 
         Some(total_utilization)
     }
@@ -2780,7 +2775,12 @@ impl Storage {
         }
     }
 
-    fn get_block_utilization_score(&mut self, era_id: EraId, block_height: u64, transaction_count: u64) -> Option<(u64, u64)> {
+    fn get_block_utilization_score(
+        &mut self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)> {
         match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
                 if !utilization.contains_key(&block_height) {
@@ -2791,9 +2791,8 @@ impl Storage {
                 let block_count = utilization.keys().len() as u64;
 
                 Some((transaction_count, block_count))
-            },
+            }
             None => {
-                println!("In none case for utilization for {era_id} and {block_height}");
                 let mut utilization = BTreeMap::new();
                 utilization.insert(block_height, transaction_count);
 
@@ -2804,7 +2803,6 @@ impl Storage {
             }
         }
     }
-
 }
 
 /// Decodes an item's ID, typically from an incoming request.

@@ -360,9 +360,19 @@ struct UpgradePoint {
 impl UpgradePoint {
     /// Parses a chainspec file at the given path as an `UpgradePoint`.
     fn from_chainspec_path<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
-            .map_err(Error::LoadUpgradePoint)?;
-        Ok(toml::from_slice(&bytes)?)
+        let bytes = match file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME)) {
+            Ok(bytes) => bytes,
+            Err(error) => panic!("{:?}", error)
+        };
+
+        match toml::from_slice(&bytes) {
+            Ok(ret) => return Ok(ret),
+            Err(error ) => panic!("{:?}", error)
+        }
+
+        //
+        //
+        // Ok(toml::from_slice(&bytes)?)
     }
 }
 
@@ -434,6 +444,7 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     let next_version = match next_installed_version(&dir, &current_version) {
         Ok(version) => version,
         Err(_error) => {
+            println!("Foo 3");
             #[cfg(not(test))]
             warn!(dir=%dir.display(), error=%_error, "failed to get a valid version from subdirs");
             return None;
@@ -441,6 +452,7 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     };
 
     if next_version <= current_version {
+        println!("Foo 4");
         return None;
     }
 
@@ -448,12 +460,14 @@ fn next_upgrade(dir: PathBuf, current_version: ProtocolVersion) -> Option<NextUp
     let upgrade_point = match UpgradePoint::from_chainspec_path(&subdir) {
         Ok(upgrade_point) => upgrade_point,
         Err(error) => {
+            println!("Foo");
             debug!(subdir=%subdir.display(), %error, "failed to load upgrade point");
             return None;
         }
     };
 
     if upgrade_point.protocol_config.version != next_version {
+        println!("Foo 2");
         warn!(
             upgrade_point_version=%upgrade_point.protocol_config.version,
             subdir_version=%next_version,
