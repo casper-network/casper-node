@@ -327,6 +327,7 @@ pub enum Error {
     /// assert_eq!(49, Error::TransferToAdministrator as u8);
     /// ```
     TransferToAdministrator = 49,
+    /// Failed to change validator bid public key.
     /// Failed to transfer desired amount into administrators account.
     /// ```
     /// # use casper_types::system::auction::Error;
@@ -336,9 +337,9 @@ pub enum Error {
     /// Failed to transfer validator bid to new public key.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(51, Error::TransferValidatorBid as u8);
+    /// assert_eq!(51, Error::ChangeBidPublicKey as u8);
     /// ```
-    TransferValidatorBid = 51,
+    ChangeBidPublicKey = 51,
 }
 
 impl Display for Error {
@@ -395,7 +396,7 @@ impl Display for Error {
             Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
-            Error::TransferValidatorBid => formatter.write_str("Validator bid transfer error"),
+            Error::ChangeBidPublicKey => formatter.write_str("Change bid public key error"),
         }
     }
 }
@@ -478,7 +479,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
-            d if d == Error::TransferValidatorBid as u8 => Ok(Error::TransferValidatorBid),
+            d if d == Error::ChangeBidPublicKey as u8 => Ok(Error::ChangeBidPublicKey),
             _ => Err(TryFromU8ForError(())),
         }
     }
