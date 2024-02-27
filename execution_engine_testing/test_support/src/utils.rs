@@ -40,10 +40,7 @@ static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
 // The location of compiled Wasm files if compiled from the Rust sources within the casper-node
 // repo, i.e. 'casper-node/target/wasm32-unknown-unknown/release/'.
 static RUST_WORKSPACE_WASM_PATH: Lazy<PathBuf> = Lazy::new(|| {
-    let path = RUST_WORKSPACE_PATH
-        .join("target")
-        .join("wasm32-unknown-unknown")
-        .join("release");
+    let path = Path::new(env!("PATH_TO_WASM_BINARIES"));
     assert!(
         path.exists() || RUST_TOOL_WASM_PATH.exists(),
         "Rust Wasm path {} does not exists",
