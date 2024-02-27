@@ -985,16 +985,15 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            auction::METHOD_TRANSFER_VALIDATOR => (|| {
-                runtime.charge_system_contract_call(auction_costs.transfer_validator)?;
+            auction::METHOD_CHANGE_BID_PUBLIC_KEY => (|| {
+                runtime.charge_system_contract_call(auction_costs.change_bid_public_key)?;
 
-                let validator_public_key =
-                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
-                let new_validator_public_key =
-                    Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
+                let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+                let new_public_key =
+                    Self::get_named_argument(runtime_args, auction::ARG_NEW_PUBLIC_KEY)?;
 
                 runtime
-                    .transfer_validator(validator_public_key, new_validator_public_key)
+                    .change_bid_public_key(public_key, new_public_key)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)

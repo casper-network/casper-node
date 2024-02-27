@@ -329,7 +329,7 @@ where
             }
             Err(Error::DelegatorNotFound) => {
                 // check to see if there are unbond entries for this recipient
-                // (validator + delegator match), and if their are apply the amount
+                // (validator + delegator match), and if there are apply the amount
                 // to the unbond entry with the highest era.
                 let account_hash = delegator_public_key.to_account_hash();
                 match provider.read_unbonds(&account_hash) {

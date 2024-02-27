@@ -10,7 +10,7 @@ use crate::{
     PublicKey, U512,
 };
 
-use super::{ARG_REWARDS_MAP, METHOD_TRANSFER_VALIDATOR};
+use super::{ARG_NEW_PUBLIC_KEY, ARG_REWARDS_MAP, METHOD_CHANGE_BID_PUBLIC_KEY};
 
 /// Creates auction contract entry points.
 pub fn auction_entry_points() -> EntryPoints {
@@ -139,10 +139,10 @@ pub fn auction_entry_points() -> EntryPoints {
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
-        METHOD_TRANSFER_VALIDATOR,
+        METHOD_CHANGE_BID_PUBLIC_KEY,
         vec![
-            Parameter::new(ARG_VALIDATOR, PublicKey::cl_type()),
-            Parameter::new(ARG_NEW_VALIDATOR, PublicKey::cl_type()),
+            Parameter::new(ARG_PUBLIC_KEY, PublicKey::cl_type()),
+            Parameter::new(ARG_NEW_PUBLIC_KEY, PublicKey::cl_type()),
         ],
         CLType::Unit,
         EntryPointAccess::Public,

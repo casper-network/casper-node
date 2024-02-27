@@ -20,8 +20,10 @@ pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
 pub const ARG_DELEGATION_RATE: &str = "delegation_rate";
-/// Named constant for `account_hash`.
+/// Named constant for `public_key`.
 pub const ARG_PUBLIC_KEY: &str = "public_key";
+/// Named constant for `new_public_key`.
+pub const ARG_NEW_PUBLIC_KEY: &str = "new_public_key";
 /// Named constant for `validator`.
 pub const ARG_VALIDATOR: &str = "validator";
 /// Named constant for `delegator`.
@@ -77,8 +79,8 @@ pub const METHOD_DISTRIBUTE: &str = "distribute";
 pub const METHOD_READ_ERA_ID: &str = "read_era_id";
 /// Named constant for method `activate_bid`.
 pub const METHOD_ACTIVATE_BID: &str = "activate_bid";
-/// Named constant for method `transfer_validator`.
-pub const METHOD_TRANSFER_VALIDATOR: &str = "transfer_validator";
+/// Named constant for method `change_bid_public_key`.
+pub const METHOD_CHANGE_BID_PUBLIC_KEY: &str = " change_bid_public_key";
 
 /// Storage for `EraId`.
 pub const ERA_ID_KEY: &str = "era_id";

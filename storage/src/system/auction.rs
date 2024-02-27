@@ -713,39 +713,38 @@ pub trait Auction:
         }
     }
 
-    /// Updates a `ValidatorBid` and all related delegator bids to use a new validator public key.
+    /// Updates a `ValidatorBid` and all related delegator bids to use a new public key.
     ///
-    /// This in effect "transfers" a validator along with its stake and all delegators
+    /// This in effect "transfers" a validator bid along with its stake and all delegators
     /// from one public key to another.
-    /// This method can only be called by the existing validator.
+    /// This method can only be called by the account associated with the current `ValidatorBid`.
     ///
-    /// The arguments are the existing validator's key and the new validator's key.
-    fn transfer_validator(
+    /// The arguments are the existing bids's 'validator_public_key' and the new public key.
+    fn change_bid_public_key(
         &mut self,
-        validator_public_key: PublicKey,
-        new_validator_public_key: PublicKey,
+        public_key: PublicKey,
+        new_public_key: PublicKey,
     ) -> Result<(), Error> {
-        let validator_account_hash =
-            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+        let validator_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
-        // check that the caller is the existing validator
+        // check that the caller is the current bid's owner
         if !self.is_allowed_session_caller(&validator_account_hash) {
             return Err(Error::InvalidContext);
         }
 
-        // verify that a bid for existing validator exists
-        let validator_bid_addr = BidAddr::from(validator_public_key.clone());
+        // verify that a bid for given public key exists
+        let validator_bid_addr = BidAddr::from(public_key.clone());
         let mut validator_bid = read_validator_bid(self, &validator_bid_addr.into())?;
 
-        // verify that a bid for new validator does not exist yet
-        let new_validator_bid_addr = BidAddr::from(new_validator_public_key.clone());
+        // verify that a bid for the new key does not exist yet
+        let new_validator_bid_addr = BidAddr::from(new_public_key.clone());
         if self.read_bid(&new_validator_bid_addr.into())?.is_some() {
-            return Err(Error::TransferValidatorBid);
+            return Err(Error::ChangeBidPublicKey);
         }
 
         debug!("transferring validator bid from {validator_bid_addr} to {new_validator_bid_addr}");
 
-        validator_bid.with_validator_public_key(new_validator_public_key.clone());
+        validator_bid.with_validator_public_key(new_public_key.clone());
         self.write_bid(
             new_validator_bid_addr.into(),
             BidKind::Validator(validator_bid),
@@ -754,18 +753,16 @@ pub trait Auction:
         debug!("pruning validator bid {}", validator_bid_addr);
         self.prune_bid(validator_bid_addr);
 
-        debug!("transferring delegator bids from validator {validator_bid_addr} to {new_validator_bid_addr}");
-        let delegators = read_delegator_bids(self, &validator_public_key)?;
+        debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
+        let delegators = read_delegator_bids(self, &public_key)?;
         for mut delegator in delegators {
             let delegator_public_key = delegator.delegator_public_key().clone();
             let delegator_bid_addr =
-                BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key));
+                BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
 
-            delegator.with_validator_public_key(new_validator_public_key.clone());
-            let new_delegator_bid_addr = BidAddr::new_from_public_keys(
-                &new_validator_public_key,
-                Some(&delegator_public_key),
-            );
+            delegator.with_validator_public_key(new_public_key.clone());
+            let new_delegator_bid_addr =
+                BidAddr::new_from_public_keys(&new_public_key, Some(&delegator_public_key));
 
             self.write_bid(
                 new_delegator_bid_addr.into(),

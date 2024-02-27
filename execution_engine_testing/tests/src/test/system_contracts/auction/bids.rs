@@ -19,6 +19,7 @@ use casper_execution_engine::{
 };
 use casper_storage::data_access_layer::GenesisRequest;
 
+use casper_types::system::auction::ARG_NEW_PUBLIC_KEY;
 use casper_types::{
     self,
     account::AccountHash,
@@ -46,7 +47,7 @@ const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
-const CONTRACT_TRANSFER_VALIDATOR: &str = "transfer_validator.wasm";
+const CONTRACT_CHANGE_BID_PUBLIC_KEY: &str = "change_bid_public_key.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -4327,7 +4328,7 @@ fn should_increase_existing_delegation_when_limit_exceeded() {
 
 #[ignore]
 #[test]
-fn should_fail_transfer_if_conflicting_validator_bid_exists() {
+fn should_fail_bid_public_key_change_if_conflicting_validator_bid_exists() {
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -4421,28 +4422,28 @@ fn should_fail_transfer_if_conflicting_validator_bid_exists() {
 
     builder.advance_eras_by_default_auction_delay();
 
-    let validator_1_transfer_request = ExecuteRequestBuilder::standard(
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_TRANSFER_VALIDATOR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
         runtime_args! {
-            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_NEW_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone()
         },
     )
     .build();
 
-    builder.exec(validator_1_transfer_request).expect_failure();
+    builder.exec(change_bid_public_key_request).expect_failure();
 
     let error = builder.get_error().expect("must get error");
     assert!(matches!(
         error,
         Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::TransferValidatorBid as u8));
+        if auction_error == AuctionError::ChangeBidPublicKey as u8));
 }
 
 #[ignore]
 #[test]
-fn should_transfer_validator_bid() {
+fn should_change_validator_bid_public_key() {
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -4553,18 +4554,18 @@ fn should_transfer_validator_bid() {
         .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
         .is_none());
 
-    let validator_1_transfer_request = ExecuteRequestBuilder::standard(
+    let change_bid_public_key_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_TRANSFER_VALIDATOR,
+        CONTRACT_CHANGE_BID_PUBLIC_KEY,
         runtime_args! {
-            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_NEW_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone()
         },
     )
     .build();
 
     builder
-        .exec(validator_1_transfer_request)
+        .exec(change_bid_public_key_request)
         .commit()
         .expect_success();
 

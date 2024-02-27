@@ -306,7 +306,7 @@ withdraw_validator_reward = 10_000
 read_era_id = 10_000
 activate_bid = 10_000
 redelegate = 2_500_000_000
-transfer_validator = 2_500_000_000
+change_bid_public_key = 2_500_000_000
 
 [system_costs.mint_costs]
 mint = 2_500_000_000

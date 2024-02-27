@@ -342,9 +342,9 @@ pub enum Error {
     /// Failed to transfer validator bid to new public key.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(52, Error::TransferValidatorBid as u8);
+    /// assert_eq!(52, Error::ChangeBidPublicKey as u8);
     /// ```
-    TransferValidatorBid = 52,
+    ChangeBidPublicKey = 52,
 }
 
 impl Display for Error {
@@ -402,7 +402,7 @@ impl Display for Error {
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::MissingPurse => formatter.write_str("Missing purse"),
-            Error::TransferValidatorBid => formatter.write_str("Validator bid transfer error"),
+            Error::ChangeBidPublicKey => formatter.write_str("Change bid public key error"),
         }
     }
 }
@@ -486,7 +486,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
-            d if d == Error::TransferValidatorBid as u8 => Ok(Error::TransferValidatorBid),
+            d if d == Error::ChangeBidPublicKey as u8 => Ok(Error::ChangeBidPublicKey),
             _ => Err(TryFromU8ForError(())),
         }
     }
