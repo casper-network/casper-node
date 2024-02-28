@@ -388,6 +388,7 @@ impl BlockValidationState {
             BlockValidationState::InProgress {
                 appendable_block,
                 missing_transactions,
+                missing_signatures,
                 responders,
                 ..
             } => {
@@ -437,19 +438,20 @@ impl BlockValidationState {
 
                 match add_result {
                     Ok(()) => {
-                        if !missing_transactions.is_empty() {
+                        if !missing_transactions.is_empty() || !missing_signatures.is_empty() {
                             // The appendable block is still valid, but we still have missing
-                            // deploys - nothing further to do here.
+                            // transactions or signatures - nothing further to do here.
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
                                 missing_transactions_len = missing_transactions.len(),
-                                "still missing transactions - block validation incomplete"
+                                missing_signatures_len = missing_signatures.len(),
+                                "still missing transactions or signatures - block validation incomplete"
                             );
                             return vec![];
                         }
                         debug!(
                             block_timestamp = %appendable_block.timestamp(),
-                            "no further missing transactions - block validation complete"
+                            "no further missing transactions or signatures - block validation complete"
                         );
                         let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
