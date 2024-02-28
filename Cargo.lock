@@ -3311,7 +3311,7 @@ dependencies = [
 [[package]]
 name = "juliet"
 version = "0.2.1"
-source = "git+https://github.com/casper-network/juliet?rev=014daa25ef3cf49c199b61008fbc08be7161a1c6#014daa25ef3cf49c199b61008fbc08be7161a1c6"
+source = "git+https://github.com/casper-network/juliet?rev=0fd196a222f549aba45fd3b98e7e90d5a46c6bc8#0fd196a222f549aba45fd3b98e7e90d5a46c6bc8"
 dependencies = [
  "array-init",
  "bimap",
