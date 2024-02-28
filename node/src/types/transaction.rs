@@ -21,7 +21,7 @@ pub(crate) use transaction_footprint::{TransactionExt, TransactionFootprint};
 pub use transaction_hash_with_approvals::TransactionHashWithApprovals;
 pub(crate) use transaction_v1::{
     FinalizedTransactionV1Approvals, TransactionV1Ext, TransactionV1Footprint,
-    TransactionV1HashWithApprovals, TransactionV1OrTransferV1Hash,
+    TransactionV1HashWithApprovals,
 };
 pub(crate) use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 pub(crate) use typed_transaction_hash::TypedTransactionHash;

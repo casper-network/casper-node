@@ -18,7 +18,6 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
         DeployOrTransferHash, NodeId, TransactionFootprint, TransactionHashWithApprovals,
-        TransactionV1OrTransferV1Hash,
     },
 };
 
@@ -146,9 +145,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1(thwa) => DeployOrTransactionHash::from(
-                    TransactionV1OrTransferV1Hash::Transaction(*thwa.transaction_hash()),
-                ),
+                TransactionHashWithApprovals::V1(thwa) => {
+                    DeployOrTransactionHash::from(*thwa.transaction_hash())
+                }
             };
             (dt_hash, dhwa.approvals())
         });
@@ -157,9 +156,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Transfer(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1(thwa) => DeployOrTransactionHash::from(
-                    TransactionV1OrTransferV1Hash::Transfer(*thwa.transaction_hash()),
-                ),
+                TransactionHashWithApprovals::V1(thwa) => {
+                    DeployOrTransactionHash::from(*thwa.transaction_hash())
+                }
             };
             (dt_hash, dhwa.approvals())
         });
@@ -844,9 +843,7 @@ mod tests {
                             panic!("unexpected transfer in transactions");
                         } else {
                             (
-                                DeployOrTransactionHash::V1(
-                                    TransactionV1OrTransferV1Hash::Transaction(*hash),
-                                ),
+                                DeployOrTransactionHash::from(*hash),
                                 TransactionFootprint::from(footprint),
                             )
                         }
@@ -872,9 +869,7 @@ mod tests {
                         let footprint = v1.footprint().unwrap();
                         if footprint.is_transfer() {
                             (
-                                DeployOrTransactionHash::V1(
-                                    TransactionV1OrTransferV1Hash::Transfer(*hash),
-                                ),
+                                DeployOrTransactionHash::from(*hash),
                                 TransactionFootprint::from(footprint),
                             )
                         } else {
@@ -1431,9 +1426,7 @@ mod tests {
             Transaction::Deploy(deploy) => {
                 DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(*deploy.hash()))
             }
-            Transaction::V1(v1) => {
-                DeployOrTransactionHash::V1(TransactionV1OrTransferV1Hash::Transaction(*v1.hash()))
-            }
+            Transaction::V1(v1) => DeployOrTransactionHash::from(*v1.hash()),
         };
         let footprint = transaction.footprint().unwrap();
 
@@ -1490,11 +1483,7 @@ mod tests {
                     DeployOrTransferHash::Deploy(*deploy.hash())
                 })
             }
-            Transaction::V1(v1) => DeployOrTransactionHash::V1(if v1.is_transfer() {
-                TransactionV1OrTransferV1Hash::Transfer(*v1.hash())
-            } else {
-                TransactionV1OrTransferV1Hash::Transaction(*v1.hash())
-            }),
+            Transaction::V1(v1) => DeployOrTransactionHash::from(*v1.hash()),
         };
         let footprint = invalid_transaction.footprint().unwrap();
         let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);

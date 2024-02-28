@@ -50,8 +50,7 @@ pub(crate) use transaction::{
     DeployFootprint, DeployHashWithApprovals, DeployOrTransactionHash, DeployOrTransferHash,
     DeployWithFinalizedApprovals, ExecutionInfo, FinalizedApprovals, FinalizedDeployApprovals,
     FinalizedTransactionV1Approvals, LegacyDeploy, TransactionExt, TransactionFootprint,
-    TransactionV1Footprint, TransactionV1OrTransferV1Hash, TransactionWithFinalizedApprovals,
-    TypedTransactionHash,
+    TransactionV1Footprint, TransactionWithFinalizedApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{

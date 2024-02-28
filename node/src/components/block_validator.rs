@@ -538,19 +538,21 @@ impl BlockValidator {
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                if DeployOrTransactionHash::new(&item) != dt_hash {
-                    warn!(
-                        transaction = %item,
-                        expected_deploy_or_transaction_hash = %dt_hash,
-                        actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
-                        "transaction has incorrect deploy-or-transaction hash"
-                    );
-                    // Hard failure - change state to Invalid.
-                    let responders = self
-                        .validation_states
-                        .values_mut()
-                        .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                    return respond(false, responders);
+                if let Transaction::Deploy(_) = item.as_ref() {
+                    if DeployOrTransactionHash::new(&item) != dt_hash {
+                        warn!(
+                            transaction = %item,
+                            expected_deploy_or_transaction_hash = %dt_hash,
+                            actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
+                            "transaction has incorrect deploy-or-transaction hash"
+                        );
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        return respond(false, responders);
+                    }
                 }
                 let transaction_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
@@ -569,7 +571,6 @@ impl BlockValidator {
                         return respond(false, responders);
                     }
                 };
-
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
                     let responders =
@@ -814,7 +815,7 @@ where
                     DeployOrTransactionHash::V1(dt_hash),
                     TransactionApprovalsHash::V1(approvals_hash),
                 ) => TransactionId::V1 {
-                    transaction_v1_hash: dt_hash.into(),
+                    transaction_v1_hash: dt_hash,
                     approvals_hash,
                 },
                 (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
