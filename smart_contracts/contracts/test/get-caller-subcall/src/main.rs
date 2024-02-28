@@ -53,6 +53,7 @@ pub extern "C" fn call() {
         None,
         Some(HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
+        None,
     );
 
     let subcall_account_hash: AccountHash =
