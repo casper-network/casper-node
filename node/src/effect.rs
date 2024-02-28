@@ -129,8 +129,8 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    EraId, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -864,7 +864,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that the block accumulator has received and stored a new finality signature.
     pub(crate) async fn announce_finality_signature_accepted(
         self,
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
     ) where
         REv: From<BlockAccumulatorAnnouncement>,
     {
@@ -1992,11 +1992,10 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the total supply from the given `root_hash`.
     ///
     /// This operation is read only.
-    pub(crate) async fn get_total_supply(self, state_hash: Digest) -> TotalSupplyResult
+    pub(crate) async fn get_total_supply(self, request: TotalSupplyRequest) -> TotalSupplyResult
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let request = TotalSupplyRequest::new(state_hash);
         self.make_request(
             move |responder| ContractRuntimeRequest::GetTotalSupply { request, responder },
             QueueKind::ContractRuntime,
@@ -2009,12 +2008,11 @@ impl<REv> EffectBuilder<REv> {
     /// This operation is read only.
     pub(crate) async fn get_round_seigniorage_rate(
         self,
-        state_hash: Digest,
+        request: RoundSeigniorageRateRequest,
     ) -> RoundSeigniorageRateResult
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let request = RoundSeigniorageRateRequest::new(state_hash);
         self.make_request(
             move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate { request, responder },
             QueueKind::ContractRuntime,
