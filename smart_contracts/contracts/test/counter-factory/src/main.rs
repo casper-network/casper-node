@@ -105,6 +105,7 @@ fn installer(name: String, initial_value: U512) {
         Some(named_keys),
         Some(PACKAGE_HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
+        None,
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
@@ -157,6 +158,7 @@ pub extern "C" fn call() {
         None,
         Some(PACKAGE_HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
+        None,
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());

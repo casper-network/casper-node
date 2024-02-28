@@ -111,7 +111,7 @@ function _main()
     setup_asset_daemon
 
     setup_asset_chainspec "$COUNT_NODES" \
-                          "1.0.0" \
+                          "2.0.0" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
                           "$PATH_TO_CHAINSPEC" \
                           true

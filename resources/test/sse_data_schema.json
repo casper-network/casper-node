@@ -4731,6 +4731,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Message represented as raw bytes.",
+          "type": "object",
+          "required": [
+            "Bytes"
+          ],
+          "properties": {
+            "Bytes": {
+              "$ref": "#/definitions/Bytes"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
