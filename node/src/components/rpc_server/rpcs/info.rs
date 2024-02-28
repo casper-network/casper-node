@@ -1,6 +1,9 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, str};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str,
+};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -22,10 +25,7 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{
-        DeployWithFinalizedApprovals, ExecutionInfo, GetStatusResult, PeersMap,
-        TransactionWithFinalizedApprovals, VariantMismatch,
-    },
+    types::{ExecutionInfo, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -131,7 +131,7 @@ impl RpcWithParams for GetDeploy {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         let txn_hash = TransactionHash::from(params.deploy_hash);
-        let (txn_with_finalized_approvals, execution_info) = match effect_builder
+        let ((transaction, approvals), execution_info) = match effect_builder
             .get_transaction_and_execution_info_from_storage(txn_hash)
             .await
         {
@@ -146,32 +146,29 @@ impl RpcWithParams for GetDeploy {
             }
         };
 
-        let deploy_with_finalized_approvals = match txn_with_finalized_approvals {
-            TransactionWithFinalizedApprovals::Deploy {
-                deploy,
-                finalized_approvals,
-            } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
-            other => {
+        match transaction {
+            Transaction::Deploy(deploy) => {
+                let deploy = if params.finalized_approvals {
+                    deploy.with_approvals(approvals.unwrap_or(BTreeSet::new()))
+                } else {
+                    deploy
+                };
+
+                Ok(Self::ResponseResult {
+                    api_version,
+                    deploy,
+                    execution_info,
+                })
+            }
+            Transaction::V1(_) => {
                 let message = format!(
-                    "internal error: failed to get {} and execution info from storage: {}",
-                    params.deploy_hash,
-                    VariantMismatch(Box::new((txn_hash, other)))
+                    "retrieved unexpected transaction variant for {}",
+                    params.deploy_hash
                 );
                 error!("{}", message);
-                return Err(Error::new(ErrorCode::VariantMismatch, message));
+                Err(Error::new(ErrorCode::UnexpectedVariant, message))
             }
-        };
-
-        let deploy = if params.finalized_approvals {
-            deploy_with_finalized_approvals.into_naive()
-        } else {
-            deploy_with_finalized_approvals.discard_finalized_approvals()
-        };
-        Ok(Self::ResponseResult {
-            api_version,
-            deploy,
-            execution_info,
-        })
+        }
     }
 }
 
@@ -232,11 +229,11 @@ impl RpcWithParams for GetTransaction {
             .get_transaction_and_execution_info_from_storage(params.transaction_hash)
             .await
         {
-            Some((txn_with_finalized_approvals, execution_info)) => {
+            Some(((transaction, finalized_approvals), execution_info)) => {
                 let transaction = if params.finalized_approvals {
-                    txn_with_finalized_approvals.into_naive()
+                    transaction.with_approvals(finalized_approvals.unwrap_or(BTreeSet::default()))
                 } else {
-                    txn_with_finalized_approvals.discard_finalized_approvals()
+                    transaction
                 };
                 Ok(Self::ResponseResult {
                     api_version,

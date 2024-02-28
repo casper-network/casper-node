@@ -206,32 +206,3 @@ pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
         rng: &mut NodeRng,
     ) -> Effects<Self::Event>;
 }
-
-#[cfg(test)]
-mod tests {
-    use casper_types::testing::TestRng;
-    use rand::Rng;
-
-    #[derive(Debug)]
-    pub(crate) enum TransactionCategory {
-        TransferLegacy,
-        Transfer,
-        StandardLegacy,
-        Standard,
-        InstallUpgrade,
-        Staking,
-    }
-
-    impl TransactionCategory {
-        pub(crate) fn random(rng: &mut TestRng) -> Self {
-            match rng.gen_range(0..6) {
-                0 => TransactionCategory::TransferLegacy,
-                1 => TransactionCategory::Transfer,
-                2 => TransactionCategory::StandardLegacy,
-                3 => TransactionCategory::Standard,
-                4 => TransactionCategory::InstallUpgrade,
-                _ => TransactionCategory::Staking,
-            }
-        }
-    }
-}

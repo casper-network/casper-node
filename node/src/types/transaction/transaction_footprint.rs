@@ -1,85 +1,166 @@
-use casper_types::{Digest, Transaction};
+use casper_types::{
+    bytesrepr::ToBytes, Approval, Chainspec, Digest, Gas, TimeDiff, Timestamp, Transaction,
+    TransactionCategory, TransactionHash,
+};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use tracing::error;
 
-use super::{
-    error::TransactionError, DeployExt, DeployFootprint, TransactionV1Ext, TransactionV1Footprint,
-};
-
-#[derive(Clone, Debug, DataSize, Serialize, Deserialize)]
+#[derive(Clone, Debug, DataSize, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-/// A footprint of a transaction.
-pub(crate) enum TransactionFootprint {
-    /// The legacy, initial version of the deploy (v1).
-    Deploy(DeployFootprint),
-    /// The version 2 of the deploy, aka Transaction.
-    V1(TransactionV1Footprint),
-}
-
-impl From<DeployFootprint> for TransactionFootprint {
-    fn from(value: DeployFootprint) -> Self {
-        Self::Deploy(value)
-    }
-}
-
-impl From<TransactionV1Footprint> for TransactionFootprint {
-    fn from(value: TransactionV1Footprint) -> Self {
-        Self::V1(value)
-    }
+/// The block footprint of a transaction.
+pub(crate) struct TransactionFootprint {
+    /// The identifying hash.
+    pub(crate) transaction_hash: TransactionHash,
+    /// Transaction body hash.
+    pub(crate) body_hash: Digest,
+    /// The estimated gas consumption.
+    pub(crate) gas_limit: Gas,
+    /// The bytesrepr serialized length.
+    pub(crate) size_estimate: usize,
+    /// The transaction category.
+    pub(crate) category: TransactionCategory,
+    /// Timestamp of the transaction.
+    pub(crate) timestamp: Timestamp,
+    /// Time to live for the transaction.
+    pub(crate) ttl: TimeDiff,
+    /// The approvals.
+    pub(crate) approvals: BTreeSet<Approval>,
 }
 
 impl TransactionFootprint {
-    /// Returns `true` if this transaction is a transfer.
-    pub(crate) fn is_transfer(&self) -> bool {
-        match self {
-            TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.is_transfer,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.is_transfer(),
-        }
+    /// Sets approvals.
+    pub(crate) fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
+        self.approvals = approvals;
+        self
     }
 
-    /// Returns `true` if this transaction is standard.
+    /// The approval count, if known.
+    pub(crate) fn approvals_count(&self) -> usize {
+        self.approvals.len()
+    }
+
+    /// Is mint interaction.
+    pub(crate) fn is_mint(&self) -> bool {
+        matches!(self.category, TransactionCategory::Mint)
+    }
+
+    /// Is auction interaction.
+    pub(crate) fn is_auction(&self) -> bool {
+        matches!(self.category, TransactionCategory::Auction)
+    }
+
+    /// Is standard transaction.
     pub(crate) fn is_standard(&self) -> bool {
-        match self {
-            TransactionFootprint::Deploy(deploy_footprint) => !deploy_footprint.is_transfer,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.is_standard(),
-        }
+        matches!(self.category, TransactionCategory::Standard)
     }
 
-    /// Returns `true` if this transaction is install upgrade.
+    /// Is install or upgrade transaction.
     pub(crate) fn is_install_upgrade(&self) -> bool {
-        match self {
-            TransactionFootprint::Deploy(_) => false,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.is_install_upgrade(),
-        }
-    }
-
-    /// Returns `true` if this transaction is staking.
-    pub(crate) fn is_staking(&self) -> bool {
-        match self {
-            TransactionFootprint::Deploy(_) => false,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.is_staking(),
-        }
-    }
-
-    /// Returns body hash.
-    pub(crate) fn body_hash(&self) -> &Digest {
-        match self {
-            TransactionFootprint::Deploy(deploy) => deploy.header.body_hash(),
-            TransactionFootprint::V1(v1) => v1.header.body_hash(),
-        }
+        matches!(self.category, TransactionCategory::InstallUpgrade)
     }
 }
 
 pub(crate) trait TransactionExt {
-    fn footprint(&self) -> Result<TransactionFootprint, TransactionError>;
+    fn footprint(&self, chainspec: &Chainspec) -> Option<TransactionFootprint>;
 }
 
 impl TransactionExt for Transaction {
-    /// Returns the `TransactionFootprint`.
-    fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
-        Ok(match self {
-            Transaction::Deploy(deploy) => deploy.footprint()?.into(),
-            Transaction::V1(v1) => v1.footprint()?.into(),
+    /// Returns the `TransactionFootprint`, if able.
+    fn footprint(&self, chainspec: &Chainspec) -> Option<TransactionFootprint> {
+        let cost_table = &chainspec.system_costs_config;
+
+        // IMPORTANT: block inclusion is always calculated based upon gas price multiple = 1
+        // Do not confuse actual cost with retail cost.
+        let gas_price: Option<u64> = None;
+        let (
+            transaction_hash,
+            body_hash,
+            gas_limit,
+            size_estimate,
+            category,
+            timestamp,
+            ttl,
+            approvals,
+        ) = match self {
+            Transaction::Deploy(deploy) => {
+                let transaction_hash = TransactionHash::Deploy(*deploy.hash());
+                let body_hash = *deploy.header().body_hash();
+                let gas_limit = match deploy.gas_limit(cost_table, gas_price) {
+                    Ok(amount) => amount,
+                    Err(err) => {
+                        error!("{:?}", err);
+                        return None;
+                    }
+                };
+                let size_estimate = deploy.serialized_length();
+                let category = if deploy.is_transfer() {
+                    TransactionCategory::Mint
+                } else {
+                    TransactionCategory::Standard
+                };
+                let timestamp = deploy.header().timestamp();
+                let ttl = deploy.header().ttl();
+                let approvals = self.approvals();
+                (
+                    transaction_hash,
+                    body_hash,
+                    gas_limit,
+                    size_estimate,
+                    category,
+                    timestamp,
+                    ttl,
+                    approvals,
+                )
+            }
+            Transaction::V1(transaction) => {
+                let transaction_hash = TransactionHash::V1(*transaction.hash());
+                let body_hash = *transaction.header().body_hash();
+                let gas_limit = match transaction.gas_limit(cost_table, gas_price) {
+                    Some(amount) => amount,
+                    None => {
+                        error!(
+                            "failed to determine gas limit for transaction {:?}",
+                            transaction_hash
+                        );
+                        return None;
+                    }
+                };
+                let size_estimate = transaction.serialized_length();
+                let category = if transaction.is_native_mint() {
+                    TransactionCategory::Mint
+                } else if transaction.is_native_auction() {
+                    TransactionCategory::Auction
+                } else if transaction.is_install_or_upgrade() {
+                    TransactionCategory::InstallUpgrade
+                } else {
+                    TransactionCategory::Standard
+                };
+                let timestamp = transaction.header().timestamp();
+                let ttl = transaction.header().ttl();
+                let approvals = self.approvals();
+                (
+                    transaction_hash,
+                    body_hash,
+                    gas_limit,
+                    size_estimate,
+                    category,
+                    timestamp,
+                    ttl,
+                    approvals,
+                )
+            }
+        };
+        Some(TransactionFootprint {
+            transaction_hash,
+            body_hash,
+            gas_limit,
+            size_estimate,
+            category,
+            timestamp,
+            ttl,
+            approvals,
         })
     }
 }

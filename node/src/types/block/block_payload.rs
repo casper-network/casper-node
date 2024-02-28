@@ -1,5 +1,6 @@
 use std::{
     cmp::{Ord, PartialOrd},
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
@@ -7,9 +8,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{PublicKey, RewardedSignatures};
-
-use crate::types::{TransactionHashWithApprovals, TypedTransactionHash};
+use casper_types::{Approval, PublicKey, RewardedSignatures, TransactionCategory, TransactionHash};
 
 /// The piece of information that will become the content of a future block (isn't finalized or
 /// executed yet)
@@ -21,10 +20,7 @@ use crate::types::{TransactionHashWithApprovals, TypedTransactionHash};
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
 pub struct BlockPayload {
-    transfer: Vec<TransactionHashWithApprovals>,
-    staking: Vec<TransactionHashWithApprovals>,
-    install_upgrade: Vec<TransactionHashWithApprovals>,
-    standard: Vec<TransactionHashWithApprovals>,
+    transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
     accusations: Vec<PublicKey>,
     rewarded_signatures: RewardedSignatures,
     random_bit: bool,
@@ -32,84 +28,83 @@ pub struct BlockPayload {
 
 impl BlockPayload {
     pub(crate) fn new(
-        transfer: Vec<TransactionHashWithApprovals>,
-        staking: Vec<TransactionHashWithApprovals>,
-        install_upgrade: Vec<TransactionHashWithApprovals>,
-        standard: Vec<TransactionHashWithApprovals>,
+        transactions: BTreeMap<TransactionCategory, Vec<(TransactionHash, BTreeSet<Approval>)>>,
         accusations: Vec<PublicKey>,
         rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> Self {
         BlockPayload {
-            transfer,
-            staking,
-            install_upgrade,
-            standard,
+            transactions,
             accusations,
             rewarded_signatures,
             random_bit,
         }
     }
 
-    /// Returns the hashes and approvals of the transfer transactions within the block.
-    pub fn transfer(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.transfer.iter()
+    /// Returns the hashes and approvals of the mint transactions within the block.
+    pub fn mint(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        let _ = self.transactions.iter().map(|(k, v)| {
+            if *k == TransactionCategory::Mint {
+                ret.extend(v)
+            }
+        });
+        ret.into_iter()
     }
 
-    /// Returns the count of transfer transactions within the block.
-    pub fn transfer_count(&self) -> usize {
-        self.transfer.len()
+    /// Returns the hashes and approvals of the auction transactions within the block.
+    pub fn auction(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        let _ = self.transactions.iter().map(|(k, v)| {
+            if *k == TransactionCategory::Auction {
+                ret.extend(v)
+            }
+        });
+        ret.into_iter()
     }
 
-    /// Returns the hashes and approvals of the non-transfer transactions within the block.
-    pub fn non_transfer(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.standard
-            .iter()
-            .chain(self.staking.iter())
-            .chain(self.install_upgrade.iter())
+    /// Returns the hashes and approvals of the install / upgrade transactions within the block.
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        let _ = self.transactions.iter().map(|(k, v)| {
+            if *k == TransactionCategory::InstallUpgrade {
+                ret.extend(v)
+            }
+        });
+        ret.into_iter()
     }
 
-    /// Returns the count of non-transfer transactions within the block.
-    pub fn non_transfer_count(&self) -> usize {
-        self.staking_count() + self.install_upgrade_count() + self.standard_count()
+    /// Returns the hashes and approvals of the standard transactions within the block.
+    pub fn standard(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = vec![];
+        let _ = self.transactions.iter().map(|(k, v)| {
+            if *k == TransactionCategory::Standard {
+                ret.extend(v)
+            }
+        });
+        ret.into_iter()
     }
 
-    /// Returns the hashes and approvals of the staking transactions within the block.
-    pub fn staking(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.staking.iter()
-    }
-
-    /// Returns the count of staking transactions within the block.
-    pub fn staking_count(&self) -> usize {
-        self.staking.len()
-    }
-
-    /// Returns the hashes and approvals of the installer/upgrader transactions within the block.
-    pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.install_upgrade.iter()
-    }
-
-    /// Returns the count of installer/upgrader transactions within the block.
-    pub fn install_upgrade_count(&self) -> usize {
-        self.install_upgrade.len()
-    }
-
-    /// Returns the hashes and approvals of all other transactions within the block.
-    pub fn standard(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.standard.iter()
-    }
-
-    /// Returns the count of standard transactions within the block.
-    pub fn standard_count(&self) -> usize {
-        self.standard.len()
+    /// Returns count of transactions by category.
+    pub fn count(&self, category: Option<TransactionCategory>) -> usize {
+        match category {
+            None => self.transactions.values().len(),
+            Some(category) => match self.transactions.get(&category) {
+                Some(values) => values.len(),
+                None => 0,
+            },
+        }
     }
 
     /// Returns all of the transaction hashes and approvals within the block.
-    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
-        self.transfer()
-            .chain(self.staking())
-            .chain(self.install_upgrade())
-            .chain(self.standard())
+    pub fn all_transactions(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret: Vec<&(TransactionHash, BTreeSet<Approval>)> = vec![];
+        for v in self.transactions.values() {
+            for val in v {
+                ret.push(val)
+            }
+        }
+        ret.into_iter()
     }
 
     /// Returns the set of validators that are reported as faulty in this block.
@@ -126,38 +121,20 @@ impl BlockPayload {
         &self.rewarded_signatures
     }
 
-    pub(crate) fn typed_transaction_hashes(
-        &self,
-    ) -> impl Iterator<Item = TypedTransactionHash> + '_ {
-        let transfer = self
-            .transfer
-            .iter()
-            .map(|thwa| TypedTransactionHash::Transfer(thwa.transaction_hash()));
-        let staking = self
-            .staking
-            .iter()
-            .map(|thwa| TypedTransactionHash::Staking(thwa.transaction_hash()));
-        let install_upgrade = self
-            .install_upgrade
-            .iter()
-            .map(|thwa| TypedTransactionHash::InstallUpgrade(thwa.transaction_hash()));
-        let standard = self
-            .standard
-            .iter()
-            .map(|thwa| TypedTransactionHash::Standard(thwa.transaction_hash()));
-        transfer
-            .chain(staking)
-            .chain(install_upgrade)
-            .chain(standard)
+    pub(crate) fn all_transaction_hashes(&self) -> impl Iterator<Item = TransactionHash> {
+        let mut ret: Vec<TransactionHash> = vec![];
+        for values in self.transactions.values() {
+            for (transaction_hash, _) in values {
+                ret.push(*transaction_hash);
+            }
+        }
+        ret.into_iter()
     }
 }
 
 impl Display for BlockPayload {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let count = self.transfer.len()
-            + self.staking.len()
-            + self.install_upgrade.len()
-            + self.standard.len();
+        let count = self.count(None);
         write!(formatter, "payload: {} txns", count)?;
         if !self.accusations.is_empty() {
             write!(formatter, ", {} accusations", self.accusations.len())?;

@@ -401,7 +401,7 @@ pub fn execute_finalized_block(
         }
     };
 
-    let approvals_hashes = Box::new(ApprovalsHashes::new_v2(
+    let approvals_hashes = Box::new(ApprovalsHashes::new(
         *block.hash(),
         approvals_hashes,
         proof_of_checksum_registry,

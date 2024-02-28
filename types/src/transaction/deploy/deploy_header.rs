@@ -113,17 +113,14 @@ impl DeployHeader {
         at: Timestamp,
         deploy_hash: &DeployHash,
     ) -> Result<(), DeployConfigFailure> {
-        if self.dependencies.len() > config.deploy_config.max_dependencies as usize {
+        // as of 2.0.0 deploy dependencies are not supported.
+        // a legacy deploy citing dependencies should be rejected
+        if !self.dependencies.is_empty() {
             debug!(
                 %deploy_hash,
-                deploy_header = %self,
-                max_dependencies = %config.deploy_config.max_dependencies,
-                "deploy dependency ceiling exceeded"
+                "deploy dependencies no longer supported"
             );
-            return Err(DeployConfigFailure::ExcessiveDependencies {
-                max_dependencies: config.deploy_config.max_dependencies,
-                got: self.dependencies().len(),
-            });
+            return Err(DeployConfigFailure::DependenciesNoLongerSupported);
         }
 
         if self.ttl() > config.max_ttl {

@@ -31,8 +31,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
-    EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
+    Approval, AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest,
+    DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
 };
 
 use crate::{
@@ -59,14 +60,13 @@ use crate::{
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
-        FinalizedApprovals, FinalizedBlock, InternalEraReport, MetaBlockState, NodeId,
-        TypedTransactionHash, ValidatorMatrix,
+        FinalizedBlock, InternalEraReport, MetaBlockState, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
 
 pub use self::era::Era;
-use crate::{components::consensus::error::CreateNewEraError, types::TransactionHashWithApprovals};
+use crate::components::consensus::error::CreateNewEraError;
 
 use super::{traits::ConsensusNetworkMessage, BlockContext};
 
@@ -1143,11 +1143,8 @@ impl EraSupervisor {
                     }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
-                let finalized_approvals: HashMap<_, _> = proposed_block
-                    .all_transactions()
-                    .cloned()
-                    .map(TransactionHashWithApprovals::into_hash_and_finalized_approvals)
-                    .collect();
+                let finalized_approvals: HashMap<_, _> =
+                    proposed_block.all_transactions().cloned().collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
                         inactive = %DisplayIter::new(&era_report.inactive_validators),
@@ -1380,17 +1377,31 @@ async fn get_transactions<REv>(
 where
     REv: From<StorageRequest>,
 {
-    effect_builder
-        .get_transactions_from_storage(hashes)
-        .await
-        .into_iter()
-        .map(|maybe_transaction| maybe_transaction.map(|transaction| transaction.into_naive()))
-        .collect()
+    let from_storage = effect_builder.get_transactions_from_storage(hashes).await;
+
+    let mut ret = vec![];
+    for item in from_storage {
+        match item {
+            Some((transaction, Some(approvals))) => {
+                ret.push(transaction.with_approvals(approvals));
+            }
+            Some((transaction, None)) => {
+                ret.push(transaction);
+            }
+            None => continue,
+        }
+    }
+
+    if ret.is_empty() {
+        None
+    } else {
+        Some(ret)
+    }
 }
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<TransactionHash, FinalizedApprovals>,
+    finalized_approvals: HashMap<TransactionHash, BTreeSet<Approval>>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
@@ -1453,7 +1464,7 @@ where
             proposed_block
                 .value()
                 .all_transactions()
-                .map(|thwa| thwa.transaction_hash())
+                .map(|(x, _)| *x)
                 .collect(),
         )
         .await;
@@ -1496,12 +1507,12 @@ impl ProposedBlock<ClContext> {
     /// If this block contains a transaction that's also present in an ancestor, this returns the
     /// transaction hash, otherwise `None`.
     fn contains_replay(&self) -> Option<TransactionHash> {
-        let block_txns_set: BTreeSet<TypedTransactionHash> =
-            self.value().typed_transaction_hashes().collect();
+        let block_txns_set: BTreeSet<TransactionHash> =
+            self.value().all_transaction_hashes().collect();
         self.context()
             .ancestor_values()
             .iter()
-            .flat_map(|ancestor| ancestor.typed_transaction_hashes())
+            .flat_map(|ancestor| ancestor.all_transaction_hashes())
             .find(|typed_txn_hash| block_txns_set.contains(typed_txn_hash))
             .map(TransactionHash::from)
     }

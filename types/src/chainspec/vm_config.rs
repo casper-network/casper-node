@@ -36,5 +36,5 @@ pub use opcode_costs::{
 };
 pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
-pub use system_config::{SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST};
+pub use system_config::SystemConfig;
 pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

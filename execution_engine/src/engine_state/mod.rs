@@ -400,7 +400,7 @@ where
             self.config.allow_unrestricted_transfers,
         );
         let wasmless_transfer_gas = Gas::new(U512::from(
-            self.config().system_config().wasmless_transfer_cost(),
+            self.config().system_config().mint_costs().transfer,
         ));
         let transfer_req = TransferRequest::with_runtime_args(
             transfer_config,

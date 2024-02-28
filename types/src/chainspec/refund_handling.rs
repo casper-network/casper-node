@@ -32,6 +32,14 @@ pub enum RefundHandling {
     },
 }
 
+impl Default for RefundHandling {
+    fn default() -> Self {
+        RefundHandling::Refund {
+            refund_ratio: Ratio::new(99, 100),
+        }
+    }
+}
+
 impl ToBytes for RefundHandling {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;

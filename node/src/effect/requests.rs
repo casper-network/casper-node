@@ -4,7 +4,7 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
     sync::Arc,
@@ -26,10 +26,10 @@ use casper_storage::data_access_layer::{
 use casper_types::{
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    URef,
+    Approval, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
+    DeployHash, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, URef,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -53,8 +53,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals,
+        ExecutableBlock, ExecutionInfo, LegacyDeploy, MetaBlockState, NodeId, SignedBlock,
+        StatusFeed,
     },
     utils::Source,
 };
@@ -363,7 +363,8 @@ pub(crate) enum StorageRequest {
     /// Retrieve transaction with given hashes.
     GetTransactions {
         transaction_hashes: Vec<TransactionHash>,
-        responder: Responder<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>>,
+        #[allow(clippy::type_complexity)]
+        responder: Responder<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -408,7 +409,13 @@ pub(crate) enum StorageRequest {
     },
     GetTransactionAndExecutionInfo {
         transaction_hash: TransactionHash,
-        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
+        #[allow(clippy::type_complexity)]
+        responder: Responder<
+            Option<(
+                (Transaction, Option<BTreeSet<Approval>>),
+                Option<ExecutionInfo>,
+            )>,
+        >,
     },
     /// Retrieve block and its signatures by its hash.
     GetSignedBlockByHash {
@@ -497,7 +504,7 @@ pub(crate) enum StorageRequest {
         /// The transaction hash to store the finalized approvals for.
         transaction_hash: TransactionHash,
         /// The set of finalized approvals.
-        finalized_approvals: FinalizedApprovals,
+        finalized_approvals: BTreeSet<Approval>,
         /// Responder, responded to once the approvals are written.  If true, new approvals were
         /// written.
         responder: Responder<bool>,

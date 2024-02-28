@@ -300,7 +300,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-          "amount" => U512::from(chainspec.system_costs_config.wasmless_transfer_cost()),
+          "amount" => U512::from(chainspec.system_costs_config.wasmless_mint_cost()),
         },
     };
 

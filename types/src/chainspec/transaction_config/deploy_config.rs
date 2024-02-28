@@ -36,7 +36,7 @@ impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
-        let max_dependencies = rng.gen();
+        let max_dependencies = 0;
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
 
@@ -54,7 +54,7 @@ impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
             max_payment_cost: Motes::new(U512::from(DEFAULT_MAX_PAYMENT_MOTES)),
-            max_dependencies: 10,
+            max_dependencies: 0,
             payment_args_max_length: 1024,
             session_args_max_length: 1024,
         }

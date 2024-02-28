@@ -10,22 +10,19 @@
 //! Serialization errors are unified into a generic, type erased `std` error to allow for easy
 //! interchange of the serialization format if desired.
 
-use std::any::TypeId;
+use std::{any::TypeId, collections::BTreeSet};
 
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::{
-    storage::deploy_metadata_v1::DeployMetadataV1,
-    types::{ApprovalsHashes, FinalizedApprovals},
-};
+use crate::{storage::deploy_metadata_v1::DeployMetadataV1, types::ApprovalsHashes};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     execution::ExecutionResult,
     system::auction::UnbondingPurse,
-    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
+    Approval, BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
@@ -310,8 +307,8 @@ pub(super) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T
                     "Deploy".to_string()
                 } else if TypeId::of::<ApprovalsHashes>() == TypeId::of::<T>() {
                     "ApprovalsHashes".to_string()
-                } else if TypeId::of::<FinalizedApprovals>() == TypeId::of::<T>() {
-                    "FinalizedApprovals".to_string()
+                } else if TypeId::of::<BTreeSet<Approval>>() == TypeId::of::<T>() {
+                    "BTreeSet<Approval>".to_string()
                 } else if TypeId::of::<ExecutionResult>() == TypeId::of::<T>() {
                     "ExecutionResult".to_string()
                 } else if TypeId::of::<Vec<Transfer>>() == TypeId::of::<T>() {

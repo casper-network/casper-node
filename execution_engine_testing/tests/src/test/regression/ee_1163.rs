@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_MINT_COST, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
@@ -26,7 +26,7 @@ fn should_charge_for_user_error(
     builder: &mut LmdbWasmTestBuilder,
     request: ExecuteRequest,
 ) -> Error {
-    let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let transfer_cost = Gas::from(DEFAULT_WASMLESS_MINT_COST);
     let transfer_cost_motes =
         Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
 
@@ -81,7 +81,7 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
     let id: Option<u64> = None;
 
     let create_account_request = {
-        let transfer_amount = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST) + U512::one());
+        let transfer_amount = Motes::new(U512::from(DEFAULT_WASMLESS_MINT_COST) + U512::one());
 
         let transfer_args = runtime_args! {
 
@@ -125,7 +125,7 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
 #[test]
 fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     // implies 1:1 gas/motes conversion rate regardless of gas price
-    let transfer_cost_motes = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    let transfer_cost_motes = Motes::new(U512::from(DEFAULT_WASMLESS_MINT_COST));
 
     let transfer_amount = Motes::new(U512::one());
 

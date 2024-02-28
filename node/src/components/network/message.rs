@@ -532,8 +532,8 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .max(1) as i64,
             "max_transaction_size" => self.chainspec.transaction_config.max_transaction_size as i64,
             "approvals_hashes" => {
-                (self.chainspec.transaction_config.block_max_transfer_count
-                    + self.chainspec.transaction_config.block_max_staking_count
+                (self.chainspec.transaction_config.block_max_mint_count
+                    + self.chainspec.transaction_config.block_max_auction_count
                     + self
                         .chainspec
                         .transaction_config
@@ -542,10 +542,10 @@ impl<'a> NetworkMessageEstimator<'a> {
                     as i64
             }
             "max_transfers_per_block" => {
-                self.chainspec.transaction_config.block_max_transfer_count as i64
+                self.chainspec.transaction_config.block_max_mint_count as i64
             }
             "max_staking_transactions_per_block" => {
-                self.chainspec.transaction_config.block_max_staking_count as i64
+                self.chainspec.transaction_config.block_max_auction_count as i64
             }
             "max_install_upgrade_transactions_per_block" => {
                 self.chainspec
@@ -556,8 +556,8 @@ impl<'a> NetworkMessageEstimator<'a> {
                 self.chainspec.transaction_config.block_max_standard_count as i64
             }
             "average_approvals_per_transaction_in_block" => {
-                let max_total_txns = (self.chainspec.transaction_config.block_max_transfer_count
-                    + self.chainspec.transaction_config.block_max_staking_count
+                let max_total_txns = (self.chainspec.transaction_config.block_max_mint_count
+                    + self.chainspec.transaction_config.block_max_auction_count
                     + self
                         .chainspec
                         .transaction_config

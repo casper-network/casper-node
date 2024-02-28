@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{boxed::Box, string::String};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display, Formatter},
@@ -87,8 +87,8 @@ pub enum TransactionV1ConfigFailure {
     ExceedsBlockGasLimit {
         /// Configured block gas limit.
         block_gas_limit: u64,
-        /// The payment amount received.
-        got: u64,
+        /// The transaction's calculated gas limit.
+        got: Box<U512>,
     },
 
     /// Missing a required runtime arg.
@@ -293,22 +293,6 @@ impl Display for ExcessiveSizeErrorV1 {
 #[cfg(feature = "std")]
 impl StdError for ExcessiveSizeErrorV1 {}
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum CategorizationError {
-    NativeTargetWithCustomEntryPoint,
-}
-
-impl Display for CategorizationError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            CategorizationError::NativeTargetWithCustomEntryPoint => {
-                write!(formatter, "native target with custom entry point")
-            }
-        }
-    }
-}
-
 /// Errors other than validation failures relating to Transactions.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -321,9 +305,6 @@ pub enum ErrorV1 {
 
     /// Unable to calculate payment.
     InvalidPayment,
-
-    /// Transaction is malformed and cannot be categorized.
-    CategorizationError(CategorizationError),
 }
 
 impl From<serde_json::Error> for ErrorV1 {
@@ -338,12 +319,6 @@ impl From<DecodeFromJsonErrorV1> for ErrorV1 {
     }
 }
 
-impl From<CategorizationError> for ErrorV1 {
-    fn from(error: CategorizationError) -> Self {
-        ErrorV1::CategorizationError(error)
-    }
-}
-
 impl Display for ErrorV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
@@ -354,9 +329,6 @@ impl Display for ErrorV1 {
                 write!(formatter, "decoding from json: {}", error)
             }
             ErrorV1::InvalidPayment => write!(formatter, "invalid payment"),
-            ErrorV1::CategorizationError(error) => {
-                write!(formatter, "categorization error: {}", error)
-            }
         }
     }
 }
@@ -368,7 +340,6 @@ impl StdError for ErrorV1 {
             ErrorV1::EncodeToJson(error) => Some(error),
             ErrorV1::DecodeFromJson(error) => Some(error),
             ErrorV1::InvalidPayment => None,
-            ErrorV1::CategorizationError(_) => None,
         }
     }
 }

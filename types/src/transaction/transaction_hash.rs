@@ -12,6 +12,11 @@ use super::TransactionV1;
 use super::{DeployHash, TransactionV1Hash};
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
@@ -26,6 +31,18 @@ pub enum TransactionHash {
     /// A version 1 transaction hash.
     #[serde(rename = "Version1")]
     V1(TransactionV1Hash),
+}
+
+impl TransactionHash {
+    /// Returns a random `TransactionV1Hash`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen() {
+            TransactionHash::Deploy(DeployHash::random(rng))
+        } else {
+            TransactionHash::V1(TransactionV1Hash::random(rng))
+        }
+    }
 }
 
 impl From<DeployHash> for TransactionHash {
@@ -57,6 +74,15 @@ impl Display for TransactionHash {
         match self {
             TransactionHash::Deploy(hash) => Display::fmt(hash, formatter),
             TransactionHash::V1(hash) => Display::fmt(hash, formatter),
+        }
+    }
+}
+
+impl AsRef<[u8]> for TransactionHash {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            TransactionHash::Deploy(hash) => hash.as_ref(),
+            TransactionHash::V1(hash) => hash.as_ref(),
         }
     }
 }

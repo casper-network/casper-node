@@ -5,7 +5,7 @@ use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
     EntityAddr, FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    DEFAULT_WASMLESS_MINT_COST, U512,
 };
 use num_rational::Ratio;
 use num_traits::{One, Zero};
@@ -156,7 +156,7 @@ fn test_burning_fees(
         FeeHandling::Burn => {
             assert_eq!(
                 total_supply_before - total_supply_after,
-                U512::from(DEFAULT_WASMLESS_TRANSFER_COST), // This includes fees
+                U512::from(DEFAULT_WASMLESS_MINT_COST), // This includes fees
                 "total supply should be burned exactly by the amount of calculated fees"
             );
         }

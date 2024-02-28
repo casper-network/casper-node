@@ -1,6 +1,4 @@
 mod errors_v1;
-mod transaction_v1_approval;
-mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
@@ -27,17 +25,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use self::errors_v1::CategorizationError;
-
 #[cfg(any(feature = "std", test))]
 use super::InitiatorAddrAndSecretKey;
 use super::{
-    InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionScheduling, TransactionTarget,
+    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
+    TransactionScheduling, TransactionTarget,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 #[cfg(any(feature = "std", test))]
-use crate::TransactionConfig;
+use crate::{Gas, Motes, TransactionConfig, U512};
+
+#[cfg(any(feature = "std", test))]
+use crate::SystemConfig;
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
@@ -47,12 +48,10 @@ pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
 };
-pub use transaction_v1_approval::TransactionV1Approval;
-pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
-pub use transaction_v1_category::TransactionV1Category;
+pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -79,7 +78,7 @@ pub struct TransactionV1 {
     hash: TransactionV1Hash,
     header: TransactionV1Header,
     body: TransactionV1Body,
-    approvals: BTreeSet<TransactionV1Approval>,
+    approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -98,7 +97,6 @@ impl TransactionV1 {
         ttl: TimeDiff,
         body: TransactionV1Body,
         pricing_mode: PricingMode,
-        payment_amount: Option<u64>,
         initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
     ) -> TransactionV1 {
         let initiator_addr = initiator_addr_and_secret_key.initiator_addr();
@@ -112,7 +110,6 @@ impl TransactionV1 {
             ttl,
             body_hash,
             pricing_mode,
-            payment_amount,
             initiator_addr,
         );
 
@@ -164,11 +161,6 @@ impl TransactionV1 {
         self.header.pricing_mode()
     }
 
-    /// Returns the payment amount for the transaction.
-    pub fn payment_amount(&self) -> Option<u64> {
-        self.header.payment_amount()
-    }
-
     /// Returns the address of the initiator of the transaction.
     pub fn initiator_addr(&self) -> &InitiatorAddr {
         self.header.initiator_addr()
@@ -209,20 +201,98 @@ impl TransactionV1 {
         &self.body
     }
 
+    /// This transaction is a native mint interaction.
+    pub fn is_native_mint(&self) -> bool {
+        self.body().is_native_mint()
+    }
+
+    /// This transaction is a native auction interaction.
+    pub fn is_native_auction(&self) -> bool {
+        self.body().is_native_auction()
+    }
+
+    /// This transaction is a smart contract installer or upgrader.
+    pub fn is_install_or_upgrade(&self) -> bool {
+        self.body().is_install_or_upgrade()
+    }
+
+    /// This transaction goes into the misc / standard category.
+    pub fn is_standard(&self) -> bool {
+        self.body().is_standard()
+    }
+
+    /// Returns the gas limit for this transaction.
+    #[cfg(any(feature = "std", test))]
+    pub fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u64>) -> Option<Gas> {
+        match self.header().pricing_mode() {
+            PricingMode::Classic {
+                payment_amount,
+                gas_price: user_specified_price,
+            } => {
+                let actual_price = match gas_price {
+                    Some(system_specified_price) => {
+                        // take the higher of the two possible prices
+                        (*user_specified_price).max(system_specified_price)
+                    }
+                    None => *user_specified_price,
+                };
+                let motes = Motes::new(U512::from(*payment_amount));
+                Gas::from_motes(motes, actual_price)
+            }
+            PricingMode::Fixed { .. } => {
+                // if gas price is not provided, assume price == 1
+                let gas_price = gas_price.unwrap_or(1);
+                let cost = {
+                    if self.is_native_mint() {
+                        // Because we currently only support one native mint interaction,
+                        // native transfer, we can short circuit to return that value.
+                        // However if other direct mint interactions are supported
+                        // in the future (such as the upcoming burn feature),
+                        // this logic will need to be expanded to self.mint_costs().field?
+                        // for the value for each verb...see how auction is set up below.
+                        costs.mint_costs().transfer
+                    } else if self.is_native_auction() {
+                        match self.body().entry_point() {
+                            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
+                                unreachable!("this must be programmer error");
+                            }
+                            TransactionEntryPoint::AddBid => costs.auction_costs().add_bid,
+                            TransactionEntryPoint::WithdrawBid => {
+                                costs.auction_costs().withdraw_bid
+                            }
+                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
+                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
+                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
+                        }
+                    } else if self.is_install_or_upgrade() {
+                        costs.install_upgrade_limit()
+                    } else {
+                        costs.standard_transaction_limit()
+                    }
+                };
+                Gas::from_motes(Motes::new(U512::from(cost)), gas_price)
+            }
+            PricingMode::Reserved { paid_amount, .. } => {
+                // prepaid, if receipt is legit (future use, not currently implemented)
+                Gas::from_motes(Motes::new(U512::from(paid_amount)), 1)
+            }
+        }
+    }
+
     /// Returns the approvals for this transaction.
-    pub fn approvals(&self) -> &BTreeSet<TransactionV1Approval> {
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
     }
 
     /// Adds a signature of this transaction's hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
-        let approval = TransactionV1Approval::create(&self.hash, secret_key);
+        let approval = Approval::create(&self.hash.into(), secret_key);
         self.approvals.insert(approval);
     }
 
-    /// Returns the `TransactionV1ApprovalsHash` of this transaction's approvals.
-    pub fn compute_approvals_hash(&self) -> Result<TransactionV1ApprovalsHash, bytesrepr::Error> {
-        TransactionV1ApprovalsHash::compute(&self.approvals)
+    /// Returns the `ApprovalsHash` of this transaction's approvals.
+    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
+        ApprovalsHash::compute(&self.approvals)
     }
 
     /// Returns `true` if the serialized size of the transaction is not greater than
@@ -307,12 +377,13 @@ impl TransactionV1 {
     pub fn is_config_compliant(
         &self,
         chain_name: &str,
-        config: &TransactionConfig,
+        cost_table: &SystemConfig,
+        transaction_config: &TransactionConfig,
         max_associated_keys: u32,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), TransactionV1ConfigFailure> {
-        self.is_valid_size(config.max_transaction_size)?;
+        self.is_valid_size(transaction_config.max_transaction_size)?;
 
         let header = self.header();
         if header.chain_name() != chain_name {
@@ -328,7 +399,7 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
+        header.is_valid(transaction_config, timestamp_leeway, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -343,21 +414,22 @@ impl TransactionV1 {
             });
         }
 
-        if let Some(payment) = self.payment_amount() {
-            if payment > config.block_gas_limit {
+        if let Some(gas_limit) = self.gas_limit(cost_table, None) {
+            let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
+            if gas_limit > block_gas_limit {
                 debug!(
-                    amount = %payment,
-                    block_gas_limit = %config.block_gas_limit,
-                    "payment amount exceeds block gas limit"
+                    amount = %gas_limit,
+                    %block_gas_limit,
+                    "transaction gas limit exceeds block gas limit"
                 );
                 return Err(TransactionV1ConfigFailure::ExceedsBlockGasLimit {
-                    block_gas_limit: config.block_gas_limit,
-                    got: payment,
+                    block_gas_limit: transaction_config.block_gas_limit,
+                    got: Box::new(gas_limit.value()),
                 });
             }
         }
 
-        self.body.is_valid(config)
+        self.body.is_valid(transaction_config)
     }
 
     // This method is not intended to be used by third party crates.
@@ -365,7 +437,7 @@ impl TransactionV1 {
     // It is required to allow finalized approvals to be injected after reading a transaction from
     // storage.
     #[doc(hidden)]
-    pub fn with_approvals(mut self, approvals: BTreeSet<TransactionV1Approval>) -> Self {
+    pub fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
         self.approvals = approvals;
         self
     }
@@ -391,15 +463,15 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Transfer,
+            &TransactionCategory::Mint,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert!(matches!(
-            transaction.category(),
-            Ok(TransactionV1Category::Transfer)
+            transaction.transaction_category(),
+            TransactionCategory::Mint
         ));
         transaction
     }
@@ -416,15 +488,15 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Standard,
+            &TransactionCategory::Standard,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert!(matches!(
-            transaction.category(),
-            Ok(TransactionV1Category::Standard)
+            transaction.transaction_category(),
+            TransactionCategory::Standard
         ));
         transaction
     }
@@ -441,15 +513,15 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::InstallUpgrade,
+            &TransactionCategory::InstallUpgrade,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert!(matches!(
-            transaction.category(),
-            Ok(TransactionV1Category::InstallUpgrade)
+            transaction.transaction_category(),
+            TransactionCategory::InstallUpgrade
         ));
         transaction
     }
@@ -466,15 +538,15 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Staking,
+            &TransactionCategory::Auction,
             timestamp,
             ttl,
         )
         .build()
         .unwrap();
         assert!(matches!(
-            transaction.category(),
-            Ok(TransactionV1Category::Staking)
+            transaction.transaction_category(),
+            TransactionCategory::Auction
         ));
         transaction
     }
@@ -488,42 +560,32 @@ impl TransactionV1 {
 
     /// Used by the `TestTransactionV1Builder` to inject invalid approvals for testing purposes.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub(super) fn apply_approvals(&mut self, approvals: Vec<TransactionV1Approval>) {
+    pub(super) fn apply_approvals(&mut self, approvals: Vec<Approval>) {
         self.approvals.extend(approvals);
     }
 
-    /// Returns `true` if the transaction is a transfer.
-    pub fn is_transfer(&self) -> bool {
-        matches!(self.category(), Ok(TransactionV1Category::Transfer))
-    }
-
     /// Returns transaction category.
-    pub fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
-        let body = self.body();
-        let target = body.target();
-        let entry_point = body.entry_point();
-
-        Ok(match target {
-            TransactionTarget::Native if matches!(entry_point, TransactionEntryPoint::Transfer) => {
-                TransactionV1Category::Transfer
-            }
-            TransactionTarget::Native
-                if matches!(entry_point, TransactionEntryPoint::Custom(_)) =>
-            {
-                return Err(CategorizationError::NativeTargetWithCustomEntryPoint);
-            }
-            TransactionTarget::Native => TransactionV1Category::Staking,
-            TransactionTarget::Stored { .. } => TransactionV1Category::Standard,
-            TransactionTarget::Session { kind, .. }
-                if matches!(
-                    kind,
-                    TransactionSessionKind::Standard | TransactionSessionKind::Isolated
-                ) =>
-            {
-                TransactionV1Category::Standard
-            }
-            TransactionTarget::Session { .. } => TransactionV1Category::InstallUpgrade,
-        })
+    pub fn transaction_category(&self) -> TransactionCategory {
+        match self.body().target() {
+            TransactionTarget::Native => match self.body().entry_point() {
+                TransactionEntryPoint::Custom(_) => TransactionCategory::Standard,
+                TransactionEntryPoint::Transfer => TransactionCategory::Mint,
+                TransactionEntryPoint::AddBid
+                | TransactionEntryPoint::WithdrawBid
+                | TransactionEntryPoint::Delegate
+                | TransactionEntryPoint::Undelegate
+                | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,
+            },
+            TransactionTarget::Stored { .. } => TransactionCategory::Standard,
+            TransactionTarget::Session { kind, .. } => match kind {
+                TransactionSessionKind::Isolated | TransactionSessionKind::Standard => {
+                    TransactionCategory::Standard
+                }
+                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => {
+                    TransactionCategory::InstallUpgrade
+                }
+            },
+        }
     }
 }
 
@@ -614,7 +676,7 @@ impl FromBytes for TransactionV1 {
         let (hash, remainder) = TransactionV1Hash::from_bytes(bytes)?;
         let (header, remainder) = TransactionV1Header::from_bytes(remainder)?;
         let (body, remainder) = TransactionV1Body::from_bytes(remainder)?;
-        let (approvals, remainder) = BTreeSet::<TransactionV1Approval>::from_bytes(remainder)?;
+        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
         let transaction = TransactionV1 {
             hash,
             header,
@@ -790,12 +852,13 @@ mod tests {
             .with_chain_name(chain_name)
             .build()
             .unwrap();
-
+        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
         let current_timestamp = transaction.timestamp();
         transaction
             .is_config_compliant(
                 chain_name,
+                &cost_table,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -809,6 +872,7 @@ mod tests {
         let rng = &mut TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2";
+        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
 
         let transaction = TransactionV1Builder::new_random(rng)
@@ -825,6 +889,7 @@ mod tests {
         assert_eq!(
             transaction.is_config_compliant(
                 expected_chain_name,
+                &cost_table,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -842,6 +907,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_ttl() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
         let ttl = transaction_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
         let transaction = TransactionV1Builder::new_random(rng)
@@ -859,6 +925,7 @@ mod tests {
         assert_eq!(
             transaction.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -876,6 +943,7 @@ mod tests {
     fn not_acceptable_due_to_timestamp_in_future() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
         let leeway = TimeDiff::from_seconds(2);
 
@@ -894,6 +962,7 @@ mod tests {
         assert_eq!(
             transaction.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
                 leeway,
@@ -911,6 +980,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_approvals() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
         let mut transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
@@ -931,6 +1001,7 @@ mod tests {
         assert_eq!(
             transaction.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),

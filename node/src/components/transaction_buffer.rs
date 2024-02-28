@@ -5,10 +5,11 @@ mod metrics;
 mod tests;
 
 use std::{
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{btree_map, BTreeMap, HashMap, HashSet, VecDeque},
     convert::TryInto,
     iter::FromIterator,
     mem,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -19,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Digest, DisplayIter, Timestamp, Transaction, TransactionApproval,
-    TransactionConfig, TransactionHash, TransactionId, TransactionV1Category,
+    Block, BlockV2, Chainspec, Digest, DisplayIter, Timestamp, Transaction, TransactionCategory,
+    TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -45,25 +46,22 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
-use crate::types::TransactionHashWithApprovals;
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
-
-type FootprintAndApprovals = (TransactionFootprint, BTreeSet<TransactionApproval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct TransactionBuffer {
     state: ComponentState,
     cfg: Config,
-    transaction_config: TransactionConfig,
+    chainspec: Arc<Chainspec>,
     // Keeps track of all transactions the buffer is currently aware of.
     //
     // `hold` and `dead` are used to filter it on demand as necessary.
     //
     // The timestamp is the time when the transaction expires.
     // Expired items are removed via a self-perpetuating expire event.
-    buffer: HashMap<TransactionHash, (Timestamp, Option<FootprintAndApprovals>)>,
+    buffer: HashMap<TransactionHash, (Timestamp, Option<TransactionFootprint>)>,
     // When a maybe-block is in flight, we pause inclusion of the transactions within it in other
     // proposed blocks. If the maybe-block becomes an actual block the transaction hashes will get
     // put to self.dead, otherwise, the hold will be released and the transactions will become
@@ -78,14 +76,14 @@ pub(crate) struct TransactionBuffer {
 impl TransactionBuffer {
     /// Create a transaction buffer.
     pub(crate) fn new(
-        transaction_config: TransactionConfig,
+        chainspec: Arc<Chainspec>,
         cfg: Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(TransactionBuffer {
             state: ComponentState::Uninitialized,
             cfg,
-            transaction_config,
+            chainspec,
             buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
@@ -230,19 +228,18 @@ impl TransactionBuffer {
             info!(%transaction_hash, "TransactionBuffer: attempt to register already held transaction");
             return;
         }
-        let footprint = match transaction.footprint() {
-            Ok(footprint) => footprint,
-            Err(err) => {
-                error!(%transaction_hash, %err, "TransactionBuffer: transaction footprint exceeds tolerances");
+        let footprint = match transaction.footprint(&self.chainspec) {
+            Some(footprint) => footprint,
+            None => {
+                error!(%transaction_hash, "TransactionBuffer: unable to created transaction footprint");
                 return;
             }
         };
         let expiry_time = transaction.expires();
-        let approvals = transaction.approvals();
-        match self.buffer.insert(
-            transaction_hash,
-            (expiry_time, Some((footprint, approvals))),
-        ) {
+        match self
+            .buffer
+            .insert(transaction_hash, (expiry_time, Some(footprint)))
+        {
             Some(prev) => {
                 warn!(%transaction_hash, ?prev, "TransactionBuffer: transaction upserted");
             }
@@ -262,7 +259,7 @@ impl TransactionBuffer {
                 proposed_block
                     .value()
                     .all_transactions()
-                    .map(|transaction| transaction.transaction_hash()),
+                    .map(|(transaction_hash, _)| *transaction_hash),
             );
         } else {
             debug!(%timestamp, "TransactionBuffer: new hold timestamp inserted");
@@ -272,7 +269,7 @@ impl TransactionBuffer {
                     proposed_block
                         .value()
                         .all_transactions()
-                        .map(|transaction| transaction.transaction_hash()),
+                        .map(|(transaction_hash, _)| *transaction_hash),
                 ),
             );
         }
@@ -291,7 +288,7 @@ impl TransactionBuffer {
         timestamp: Timestamp,
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
     ) {
-        let expiry_timestamp = timestamp.saturating_add(self.transaction_config.max_ttl);
+        let expiry_timestamp = timestamp.saturating_add(self.chainspec.transaction_config.max_ttl);
 
         for transaction_hash in transaction_hashes {
             if !self.buffer.contains_key(transaction_hash) {
@@ -349,54 +346,47 @@ impl TransactionBuffer {
     }
 
     /// Returns eligible transactions that are buffered and not held or dead.
-    fn proposable(&self) -> Vec<(TransactionHashWithApprovals, TransactionFootprint)> {
+    fn proposable(&self) -> Vec<(TransactionHash, TransactionFootprint)> {
         debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
             .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
             .filter(|(th, _)| !self.dead.contains(th))
             .filter_map(|(th, (_, maybe_data))| {
-                maybe_data.as_ref().map(|(footprint, approvals)| {
-                    (
-                        TransactionHashWithApprovals::new_from_hash_and_approvals(th, approvals),
-                        footprint.clone(),
-                    )
-                })
+                maybe_data
+                    .as_ref()
+                    .map(|footprint| (*th, footprint.clone()))
             })
             .collect()
     }
 
-    fn buckets(
-        &mut self,
-    ) -> HashMap<Digest, Vec<(TransactionHashWithApprovals, TransactionFootprint)>> {
+    fn buckets(&mut self) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
         let proposable = self.proposable();
 
-        let mut buckets: HashMap<
-            Digest,
-            Vec<(TransactionHashWithApprovals, TransactionFootprint)>,
-        > = HashMap::new();
+        let mut buckets: HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> =
+            HashMap::new();
 
-        for (with_approvals, footprint) in proposable {
-            let body_hash = *footprint.body_hash();
+        for (transaction_hash, footprint) in proposable {
+            let body_hash = footprint.body_hash;
             buckets
                 .entry(body_hash)
-                .and_modify(|vec| vec.push((with_approvals.clone(), footprint.clone())))
-                .or_insert(vec![(with_approvals, footprint)]);
+                .and_modify(|vec| vec.push((transaction_hash, footprint.clone())))
+                .or_insert(vec![(transaction_hash, footprint)]);
         }
         buckets
     }
 
     /// Returns a right-sized payload of transactions that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
+        let mut ret = AppendableBlock::new(self.chainspec.transaction_config, timestamp);
         let mut holds = HashSet::new();
 
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
         // proper limiter.
-        let mut have_hit_transfer_limit = false;
+        let mut have_hit_mint_limit = false;
         let mut have_hit_standard_limit = false;
         let mut have_hit_install_upgrade_limit = false;
-        let mut have_hit_staking_limit = false;
+        let mut have_hit_auction_limit = false;
 
         let mut buckets = self.buckets();
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
@@ -416,7 +406,7 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((with_approvals, footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+            let Some((transaction_hash,footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
             else {
                 continue;
             };
@@ -424,7 +414,8 @@ impl TransactionBuffer {
             // bucket wasn't empty - push the hash back into the queue to be processed again on the
             // next pass
             body_hashes_queue.push_back(body_hash);
-            if footprint.is_transfer() && have_hit_transfer_limit {
+
+            if footprint.is_mint() && have_hit_mint_limit {
                 continue;
             }
             if footprint.is_standard() && have_hit_standard_limit {
@@ -433,13 +424,13 @@ impl TransactionBuffer {
             if footprint.is_install_upgrade() && have_hit_install_upgrade_limit {
                 continue;
             }
-            if footprint.is_staking() && have_hit_staking_limit {
+            if footprint.is_auction() && have_hit_auction_limit {
                 continue;
             }
 
-            let transaction_hash = with_approvals.transaction_hash();
-            let has_multiple_approvals = with_approvals.approvals().len() > 1;
-            match ret.add(with_approvals, &footprint) {
+            // let transaction_hash = with_approvals.transaction_hash();
+            let has_multiple_approvals = footprint.approvals.len() > 1;
+            match ret.add_transaction(footprint.clone()) {
                 Ok(_) => {
                     debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
                     holds.insert(transaction_hash);
@@ -463,71 +454,25 @@ impl TransactionBuffer {
                             );
                             self.dead.insert(transaction_hash);
                         }
-                        AddError::InvalidDeploy => {
-                            // It should not generally be possible for an invalid deploy to get
-                            // buffered in the first place, thus this should be unreachable.  There
-                            // is a small potential for a slightly future-dated deploy to be
-                            // accepted (if within `timestamp_leeway`) and still be future-dated by
-                            // the time we try and add it to a proposed block here.
-                            warn!(
-                                ?transaction_hash,
-                                "TransactionBuffer: invalid deploy in transaction buffer"
-                            );
-                            self.dead.insert(transaction_hash);
-                        }
-                        AddError::InvalidTransaction => {
-                            // It should not generally be possible for an invalid transaction to get
-                            // buffered in the first place, thus this should be unreachable.  There
-                            // is a small potential for a slightly future-dated transaction to be
-                            // accepted (if within `timestamp_leeway`) and still be future-dated by
-                            // the time we try and add it to a proposed block here.
-                            warn!(
-                                ?transaction_hash,
-                                "TransactionBuffer: invalid transaction in transaction buffer"
-                            );
-                            self.dead.insert(transaction_hash);
-                        }
-                        AddError::TransferCount => {
-                            have_hit_transfer_limit = true;
-                            if have_hit_standard_limit
-                                && have_hit_staking_limit
-                                && have_hit_install_upgrade_limit
-                                && have_hit_transfer_limit
-                            {
-                                info!(
-                                    ?transaction_hash,
-                                    "TransactionBuffer: block fully saturated"
-                                );
-                                break;
-                            }
-                        }
-                        AddError::DeployCount => {
-                            have_hit_standard_limit = true;
-                            if have_hit_standard_limit
-                                && have_hit_staking_limit
-                                && have_hit_install_upgrade_limit
-                                && have_hit_transfer_limit
-                            {
-                                info!(
-                                    ?transaction_hash,
-                                    "TransactionBuffer: block fully saturated"
-                                );
-                                break;
-                            }
-                        }
-                        AddError::TransactionCount(category) => {
+                        AddError::Count(category) => {
                             match category {
-                                TransactionV1Category::InstallUpgrade => {
-                                    have_hit_install_upgrade_limit = true
+                                TransactionCategory::Mint => {
+                                    have_hit_mint_limit = true;
                                 }
-                                TransactionV1Category::Standard => have_hit_standard_limit = true,
-                                TransactionV1Category::Staking => have_hit_staking_limit = true,
-                                TransactionV1Category::Transfer => have_hit_transfer_limit = true,
-                            };
+                                TransactionCategory::Auction => {
+                                    have_hit_auction_limit = true;
+                                }
+                                TransactionCategory::Standard => {
+                                    have_hit_standard_limit = true;
+                                }
+                                TransactionCategory::InstallUpgrade => {
+                                    have_hit_install_upgrade_limit = true;
+                                }
+                            }
                             if have_hit_standard_limit
-                                && have_hit_staking_limit
+                                && have_hit_auction_limit
                                 && have_hit_install_upgrade_limit
-                                && have_hit_transfer_limit
+                                && have_hit_mint_limit
                             {
                                 info!(
                                     ?transaction_hash,
@@ -551,6 +496,21 @@ impl TransactionBuffer {
                         AddError::VariantMismatch(mismatch) => {
                             error!(?transaction_hash, %mismatch,
                                 "TransactionBuffer: data mismatch when adding transaction"
+                            );
+                            // keep iterating
+                        }
+                        AddError::ExcessiveTtl => {
+                            error!(
+                                ?transaction_hash,
+                                "TransactionBuffer: skipping transaction with excessive ttl"
+                            );
+                            // keep iterating
+                        }
+                        AddError::FutureDatedDeploy => {
+                            error!(
+                                ?transaction_hash,
+                                %footprint.timestamp,
+                                "TransactionBuffer: skipping transaction with future dated deploy"
                             );
                             // keep iterating
                         }

@@ -32,13 +32,13 @@ fn get_appendable_block(
 
     // now check how many transfers were added in the block; should not exceed the config limits.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
-    assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit);
+    assert!(appendable_block.transaction_hashes().len() <= transaction_limit);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         transaction_buffer,
         transactions.len(),
         0,
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
     );
 }
 
@@ -316,18 +316,18 @@ fn get_proposable_transactions() {
             &transaction_buffer,
             transactions.len() + block_transactions.len(),
             block_transactions.len(),
-            appendable_block.transaction_and_transfer_set().len(),
+            appendable_block.transaction_hashes().len(),
         );
 
         // Check that held blocks are not proposable
         let proposable = transaction_buffer.proposable();
         assert_eq!(
             proposable.len(),
-            transactions.len() - appendable_block.transaction_and_transfer_set().len()
+            transactions.len() - appendable_block.transaction_hashes().len()
         );
         for transaction in proposable.iter() {
             assert!(!appendable_block
-                .transaction_and_transfer_set()
+                .transaction_hashes()
                 .contains(&transaction.0.transaction_hash()));
         }
     }
@@ -337,8 +337,8 @@ fn get_proposable_transactions() {
 fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: 200,
-        block_max_staking_count: 0,
+        block_max_mint_count: 200,
+        block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
@@ -356,7 +356,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
             &mut rng,
             &mut transaction_buffer,
             std::iter::repeat_with(|| category),
-            transaction_config.block_max_transfer_count as usize + 50,
+            transaction_config.block_max_mint_count as usize + 50,
         );
     }
 }
@@ -365,8 +365,8 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
 fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: 200,
-        block_max_staking_count: 0,
+        block_max_mint_count: 200,
+        block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
@@ -385,7 +385,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         ]
         .iter()
         .cycle(),
-        transaction_config.block_max_transfer_count as usize + 50,
+        transaction_config.block_max_mint_count as usize + 50,
     );
 }
 
@@ -393,8 +393,8 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
 fn get_appendable_block_when_standards_are_of_one_category() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: 200,
-        block_max_staking_count: 0,
+        block_max_mint_count: 200,
+        block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
@@ -420,8 +420,8 @@ fn get_appendable_block_when_standards_are_of_one_category() {
 fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: 200,
-        block_max_staking_count: 0,
+        block_max_mint_count: 200,
+        block_max_auction_count: 0,
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
@@ -454,8 +454,8 @@ fn block_fully_saturated() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -501,7 +501,7 @@ fn block_fully_saturated() {
     // Ensure that only 'total_allowed' transactions are proposed.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert_eq!(
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
         total_allowed as usize
     );
 
@@ -511,7 +511,7 @@ fn block_fully_saturated() {
     let mut proposed_install_upgrades = 0;
     let mut proposed_standards = 0;
     appendable_block
-        .transaction_and_transfer_set()
+        .transaction_hashes()
         .iter()
         .for_each(|transaction_hash| {
             if transfers_hashes.contains(transaction_hash) {
@@ -544,8 +544,8 @@ fn block_not_fully_saturated() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -597,7 +597,7 @@ fn block_not_fully_saturated() {
 
     // Ensure that not more than 'total_allowed' transactions are proposed.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
-    assert!(appendable_block.transaction_and_transfer_set().len() <= total_allowed as usize);
+    assert!(appendable_block.transaction_hashes().len() <= total_allowed as usize);
 
     // Assert the number of proposed transaction types, block should not be fully saturated.
     let mut proposed_transfers = 0;
@@ -605,7 +605,7 @@ fn block_not_fully_saturated() {
     let mut proposed_install_upgrades = 0;
     let mut proposed_standards = 0;
     appendable_block
-        .transaction_and_transfer_set()
+        .transaction_hashes()
         .iter()
         .for_each(|transaction_hash| {
             if transfers_hashes.contains(transaction_hash) {
@@ -638,8 +638,8 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -666,7 +666,7 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
     // "transfers" bucket is still available.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert_eq!(
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
     );
 
@@ -692,8 +692,8 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -720,7 +720,7 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
     // "stakings" bucket is still available.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert_eq!(
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
     );
 
@@ -746,8 +746,8 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -774,7 +774,7 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
     // "install_upgrades" bucket is still available.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert_eq!(
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
     );
 
@@ -800,8 +800,8 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
     let total_allowed = max_transfers + max_staking + max_install_upgrade + max_standard;
 
     let transaction_config = TransactionConfig {
-        block_max_transfer_count: max_transfers,
-        block_max_staking_count: max_staking,
+        block_max_mint_count: max_transfers,
+        block_max_auction_count: max_staking,
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
@@ -828,7 +828,7 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
     // "standards" bucket is still available.
     let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
     assert_eq!(
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
     );
 
@@ -847,7 +847,7 @@ fn assert_bucket(
 ) {
     let mut proposed = 0;
     appendable_block
-        .transaction_and_transfer_set()
+        .transaction_hashes()
         .iter()
         .for_each(|transaction_hash| {
             if hashes_in_non_saturated_bucket.contains(transaction_hash) {
@@ -975,7 +975,7 @@ fn register_transactions_and_blocks() {
         &transaction_buffer,
         block_transaction.len() + valid_transactions.len(),
         block_transaction.len(),
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
     );
 
     // try to register held transactions again.
@@ -984,7 +984,7 @@ fn register_transactions_and_blocks() {
         .cloned()
         .filter(|transaction| {
             appendable_block
-                .transaction_and_transfer_set()
+                .transaction_hashes()
                 .contains(&transaction.hash())
         })
         .peekable();
@@ -994,7 +994,7 @@ fn register_transactions_and_blocks() {
         &transaction_buffer,
         block_transaction.len() + valid_transactions.len(),
         block_transaction.len(),
-        appendable_block.transaction_and_transfer_set().len(),
+        appendable_block.transaction_hashes().len(),
     );
 
     // test if transactions held for proposed blocks which did not get finalized in time

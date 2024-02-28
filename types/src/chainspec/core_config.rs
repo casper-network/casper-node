@@ -23,7 +23,7 @@ use crate::{
 use super::{fee_handling::FeeHandling, refund_handling::RefundHandling};
 
 /// Configuration values associated with the core protocol.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -380,6 +380,12 @@ pub enum ConsensusProtocolName {
     Zug,
 }
 
+impl Default for ConsensusProtocolName {
+    fn default() -> Self {
+        ConsensusProtocolName::Zug
+    }
+}
+
 impl Serialize for ConsensusProtocolName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -466,6 +472,12 @@ impl Serialize for LegacyRequiredFinality {
             LegacyRequiredFinality::Any => "Any",
         }
         .serialize(serializer)
+    }
+}
+
+impl Default for LegacyRequiredFinality {
+    fn default() -> Self {
+        LegacyRequiredFinality::Any
     }
 }
 

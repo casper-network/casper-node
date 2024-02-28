@@ -45,11 +45,9 @@ mod object_pool;
 mod tests;
 mod versioned_databases;
 
-#[cfg(test)]
-use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -75,10 +73,10 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DeployApprovalsHash,
+    Approval, ApprovalsHash, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2,
     DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader,
-    StoredValue, Timestamp, Transaction, TransactionApprovalsHash, TransactionHash,
-    TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    StoredValue, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    Transfer,
 };
 
 use crate::{
@@ -97,8 +95,8 @@ use crate::{
     types::{
         ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap,
-        SyncLeapIdentifier, TransactionWithFinalizedApprovals, VariantMismatch,
+        LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap, SyncLeapIdentifier,
+        VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -178,7 +176,8 @@ pub struct Storage {
     #[data_size(skip)]
     state_store_db: Database,
     /// The finalized transaction approvals databases.
-    finalized_transaction_approvals_dbs: VersionedDatabases<TransactionHash, FinalizedApprovals>,
+    #[data_size(skip)]
+    finalized_approvals_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
@@ -340,8 +339,8 @@ impl Storage {
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let block_body_dbs =
             VersionedDatabases::<_, BlockBody>::new(&env, "block_body", "block_body_v2")?;
-        let finalized_transaction_approvals_dbs =
-            VersionedDatabases::new(&env, "finalized_approvals", "versioned_finalized_approvals")?;
+        let finalized_approvals_db =
+            env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
@@ -447,7 +446,16 @@ impl Storage {
             .collect();
         initialize_block_body_dbs(&env, block_body_dbs, deleted_block_body_hashes)?;
         initialize_block_metadata_db(&env, block_metadata_db, deleted_block_hashes)?;
-        initialize_execution_result_dbs(&env, execution_result_dbs, deleted_transaction_hashes)?;
+        initialize_execution_result_dbs(
+            &env,
+            execution_result_dbs,
+            deleted_transaction_hashes.clone(),
+        )?;
+        initialize_finalized_approvals_db(
+            &env,
+            finalized_approvals_db,
+            deleted_transaction_hashes,
+        )?;
 
         let metrics = registry.map(Metrics::new).transpose()?;
 
@@ -462,7 +470,7 @@ impl Storage {
             execution_result_dbs,
             transfer_db,
             state_store_db,
-            finalized_transaction_approvals_dbs,
+            finalized_approvals_db,
             block_height_index,
             switch_block_era_id_index,
             transaction_hash_index,
@@ -843,8 +851,11 @@ impl Storage {
                     &transaction_id.transaction_hash(),
                 )? {
                     None => None,
-                    Some(transaction_with_finalized_approvals) => {
-                        let transaction = transaction_with_finalized_approvals.into_naive();
+                    Some((transaction, finalized_approvals)) => {
+                        let transaction = match finalized_approvals {
+                            Some(approvals) => transaction.with_approvals(approvals),
+                            None => transaction,
+                        };
                         (transaction.fetch_id() == transaction_id).then_some(transaction)
                     }
                 };
@@ -1731,14 +1742,16 @@ impl Storage {
             return Ok(None);
         };
 
-        Ok(self
-            .get_transactions_with_finalized_approvals(&mut txn, block.all_transactions())?
-            .into_iter()
-            .map(|maybe_transaction| {
-                maybe_transaction.map(TransactionWithFinalizedApprovals::into_naive)
-            })
-            .collect::<Option<Vec<Transaction>>>()
-            .map(|transactions| (block, transactions)))
+        let mut transactions = vec![];
+        for (transaction, _) in (self
+            .get_transactions_with_finalized_approvals(&mut txn, block.all_transactions())?)
+        .into_iter()
+        .flatten()
+        {
+            transactions.push(transaction)
+        }
+
+        Ok(Some((block, transactions)))
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -2115,11 +2128,13 @@ impl Storage {
     }
 
     /// Retrieves a set of transactions, along with their potential finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a, Tx: LmdbTransaction>(
         &self,
         txn: &mut Tx,
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
-    ) -> Result<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>, FatalStorageError> {
+    ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
+    {
         transaction_hashes
             .map(|transaction_hash| {
                 self.get_transaction_with_finalized_approvals(txn, transaction_hash)
@@ -2128,41 +2143,19 @@ impl Storage {
     }
 
     /// Retrieves a single transaction along with its finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transaction_with_finalized_approvals<Tx: LmdbTransaction>(
         &self,
         txn: &mut Tx,
         transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, FatalStorageError> {
+    ) -> Result<Option<(Transaction, Option<BTreeSet<Approval>>)>, FatalStorageError> {
         let transaction = match self.transaction_dbs.get(txn, transaction_hash)? {
             Some(transaction) => transaction,
             None => return Ok(None),
         };
-        let finalized_approvals = self
-            .finalized_transaction_approvals_dbs
-            .get(txn, transaction_hash)?;
+        let finalized_approvals = txn.get_value(self.finalized_approvals_db, transaction_hash)?;
 
-        let ret = match (transaction, finalized_approvals) {
-            (
-                Transaction::Deploy(deploy),
-                Some(FinalizedApprovals::Deploy(finalized_approvals)),
-            ) => TransactionWithFinalizedApprovals::new_deploy(deploy, Some(finalized_approvals)),
-            (Transaction::Deploy(deploy), None) => {
-                TransactionWithFinalizedApprovals::new_deploy(deploy, None)
-            }
-            (Transaction::V1(transaction), Some(FinalizedApprovals::V1(finalized_approvals))) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, Some(finalized_approvals))
-            }
-            (Transaction::V1(transaction), None) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, None)
-            }
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new(mismatch));
-                error!(%mismatch, "failed getting transaction with finalized approvals");
-                return Err(FatalStorageError::from(mismatch));
-            }
-        };
-
-        Ok(Some(ret))
+        Ok(Some((transaction, finalized_approvals)))
     }
 
     /// Retrieves successful transfers associated with block.
@@ -2254,7 +2247,7 @@ impl Storage {
     fn store_finalized_approvals(
         &self,
         transaction_hash: &TransactionHash,
-        finalized_approvals: &FinalizedApprovals,
+        finalized_approvals: &BTreeSet<Approval>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let original_transaction = self
@@ -2266,39 +2259,28 @@ impl Storage {
                 }
             })?;
 
+        // TODO: doesn't the transaction record include its approvals? why are we storing
+        // them again separately in a different db?
+
         // Only store the finalized approvals if they are different from the original ones.
-        let maybe_existing_finalized_approvals = self
-            .finalized_transaction_approvals_dbs
-            .get(&mut txn, transaction_hash)?;
+        let maybe_existing_finalized_approvals =
+            txn.get_value(self.finalized_approvals_db, transaction_hash)?;
         if maybe_existing_finalized_approvals.as_ref() == Some(finalized_approvals) {
             return Ok(false);
         }
 
-        let should_store = match (original_transaction, finalized_approvals) {
-            (
-                Transaction::Deploy(original_deploy),
-                FinalizedApprovals::Deploy(finalzd_approvals),
-            ) => original_deploy.approvals() != finalzd_approvals.inner(),
-            (Transaction::V1(original_transaction), FinalizedApprovals::V1(finalzd_approvals)) => {
-                original_transaction.approvals() != finalzd_approvals.inner()
-            }
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new((mismatch.0, mismatch.1.clone())));
-                error!(%mismatch, "failed storing finalized approvals");
-                return Err(FatalStorageError::from(mismatch));
-            }
-        };
-
-        if should_store {
-            let _ = self.finalized_transaction_approvals_dbs.put(
-                &mut txn,
+        let original_approvals = original_transaction.approvals();
+        if &original_approvals != finalized_approvals {
+            let _ = txn.put_value(
+                self.finalized_approvals_db,
                 transaction_hash,
                 finalized_approvals,
                 true,
             )?;
             txn.commit()?;
+            return Ok(true);
         }
-        Ok(should_store)
+        Ok(false)
     }
 
     /// Retrieves a deploy from the deploy store by deploy hash.
@@ -2310,8 +2292,12 @@ impl Storage {
         let mut txn = self.env.begin_ro_txn()?;
         let transaction =
             match self.get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)? {
-                Some(transaction_with_finalized_approvals) => {
-                    transaction_with_finalized_approvals.into_naive()
+                Some((trx, finalized_approvals)) => {
+                    if let Some(approvals) = finalized_approvals {
+                        trx.with_approvals(approvals)
+                    } else {
+                        trx
+                    }
                 }
                 None => return Ok(None),
             };
@@ -2342,53 +2328,42 @@ impl Storage {
             Some(transaction) => transaction,
         };
 
-        let finalized_approvals = match self
-            .finalized_transaction_approvals_dbs
-            .get(&mut txn, &transaction_hash)?
-        {
-            None => return Ok(None),
-            Some(approvals) => approvals,
-        };
+        let finalized_approvals =
+            match txn.get_value(self.finalized_approvals_db, &transaction_hash)? {
+                None => return Ok(None),
+                Some(approvals) => approvals,
+            };
 
         match (
             transaction_id.approvals_hash(),
             finalized_approvals,
             transaction,
         ) {
-            (
-                TransactionApprovalsHash::Deploy(approvals_hash),
-                FinalizedApprovals::Deploy(approvals),
-                Transaction::Deploy(deploy),
-            ) => match DeployApprovalsHash::compute(approvals.inner()) {
-                Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
-                    let deploy = deploy.with_approvals(approvals.into_inner());
-                    Ok(Some(Transaction::from(deploy)))
+            (approvals_hash, finalized_approvals, Transaction::Deploy(deploy)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                        let deploy = deploy.with_approvals(finalized_approvals);
+                        Ok(Some(Transaction::from(deploy)))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized deploy approvals hash");
+                        Err(LmdbExtError::Other(Box::new(BytesreprError(error))).into())
+                    }
                 }
-                Ok(_computed_approvals_hash) => Ok(None),
-                Err(error) => {
-                    error!(%error, "failed to calculate finalized deploy approvals hash");
-                    Err(LmdbExtError::Other(Box::new(BytesreprError(error))).into())
+            }
+            (approvals_hash, finalized_approvals, Transaction::V1(transaction_v1)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                        let transaction_v1 = transaction_v1.with_approvals(finalized_approvals);
+                        Ok(Some(Transaction::from(transaction_v1)))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized transaction approvals hash");
+                        Err(LmdbExtError::Other(Box::new(BytesreprError(error))).into())
+                    }
                 }
-            },
-            (
-                TransactionApprovalsHash::V1(approvals_hash),
-                FinalizedApprovals::V1(approvals),
-                Transaction::V1(transaction_v1),
-            ) => match TransactionV1ApprovalsHash::compute(approvals.inner()) {
-                Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
-                    let transaction_v1 = transaction_v1.with_approvals(approvals.into_inner());
-                    Ok(Some(Transaction::from(transaction_v1)))
-                }
-                Ok(_computed_approvals_hash) => Ok(None),
-                Err(error) => {
-                    error!(%error, "failed to calculate finalized transaction approvals hash");
-                    Err(LmdbExtError::Other(Box::new(BytesreprError(error))).into())
-                }
-            },
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new(mismatch));
-                error!(%mismatch, "failed getting transaction by ID");
-                Err(FatalStorageError::from(mismatch))
             }
         }
     }
@@ -2792,7 +2767,7 @@ impl Storage {
     pub(crate) fn get_transaction_with_finalized_approvals_by_hash(
         &self,
         transaction_hash: &TransactionHash,
-    ) -> Option<TransactionWithFinalizedApprovals> {
+    ) -> Option<(Transaction, Option<BTreeSet<Approval>>)> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -2884,6 +2859,29 @@ fn initialize_block_metadata_db(
     }
     txn.commit()?;
     info!("block metadata database initialized");
+    Ok(())
+}
+
+/// Purges stale entries from the execution result databases.
+fn initialize_finalized_approvals_db(
+    env: &Environment,
+    finalized_approvals_db: Database,
+    deleted_transaction_hashes: HashSet<TransactionHash>,
+) -> Result<(), LmdbExtError> {
+    let finalized_approvals_count_to_be_deleted = deleted_transaction_hashes.len();
+    info!(
+        finalized_approvals_count_to_be_deleted,
+        "initializing finalized approvals database"
+    );
+    let mut txn = env.begin_rw_txn()?;
+    for hash in deleted_transaction_hashes {
+        match txn.del(finalized_approvals_db, &hash, None) {
+            Ok(()) | Err(lmdb::Error::NotFound) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    txn.commit()?;
+    info!("finalized approvals database initialized");
     Ok(())
 }
 

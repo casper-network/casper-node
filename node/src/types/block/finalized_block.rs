@@ -1,6 +1,6 @@
 use std::{
     cmp::{Ord, PartialOrd},
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
@@ -12,14 +12,15 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use casper_types::Transaction;
 use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, SingleBlockRewardedSignatures,
-    Timestamp, TransactionHash, TransactionV1Approval, TransactionV1Hash,
+    Approval, BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey,
+    SingleBlockRewardedSignatures, Timestamp, TransactionCategory, TransactionHash,
+    TransactionV1Hash,
 };
 #[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
-use crate::{rpcs::docs::DocExample, types::TransactionHashWithApprovals};
+use crate::rpcs::docs::DocExample;
 
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let validator_set = {
@@ -39,20 +40,15 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
         )]);
     let secret_key = SecretKey::example();
     let hash = TransactionV1Hash::from_raw([19; 32]);
-    let approval = TransactionV1Approval::create(&hash, secret_key);
+    let transaction_hash = hash.into();
+    let approval = Approval::create(&transaction_hash, secret_key);
     let mut approvals = BTreeSet::new();
     approvals.insert(approval);
-    let transfer = TransactionHashWithApprovals::new_v1(hash, approvals);
+    let transfer = (transaction_hash, approvals);
+    let mut transactions = BTreeMap::new();
+    transactions.insert(TransactionCategory::Mint, vec![transfer]);
     let random_bit = true;
-    let block_payload = BlockPayload::new(
-        vec![transfer],
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        rewarded_signatures,
-        random_bit,
-    );
+    let block_payload = BlockPayload::new(transactions, vec![], rewarded_signatures, random_bit);
     let era_report = Some(InternalEraReport::doc_example().clone());
     let timestamp = *Timestamp::doc_example();
     let era_id = EraId::from(1);
@@ -121,22 +117,14 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            transfer: block_payload
-                .transfer()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
-            staking: block_payload
-                .staking()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
+            transfer: block_payload.mint().map(|(x, _)| x).copied().collect(),
+            staking: block_payload.auction().map(|(x, _)| x).copied().collect(),
             install_upgrade: block_payload
                 .install_upgrade()
-                .map(TransactionHashWithApprovals::transaction_hash)
+                .map(|(x, _)| x)
+                .copied()
                 .collect(),
-            standard: block_payload
-                .standard()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
+            standard: block_payload.standard().map(|(x, _)| x).copied().collect(),
             rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit(),
@@ -188,30 +176,16 @@ impl FinalizedBlock {
         timestamp: Timestamp,
         txns_iter: I,
     ) -> Self {
-        use std::iter;
-
-        let mut txns = txns_iter
-            .into_iter()
-            .map(TransactionHashWithApprovals::from)
-            .collect::<Vec<_>>();
-        if txns.is_empty() {
-            let count = rng.gen_range(0..11);
-            txns.extend(
-                iter::repeat_with(|| TransactionHashWithApprovals::from(&Transaction::random(rng)))
-                    .take(count),
-            );
+        let mut transactions = BTreeMap::new();
+        let mut standard = vec![];
+        for transaction in txns_iter {
+            standard.push((transaction.hash(), BTreeSet::new()));
         }
+        transactions.insert(TransactionCategory::Standard, standard);
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
-        let block_payload = BlockPayload::new(
-            txns,
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            rewarded_signatures,
-            random_bit,
-        );
+        let block_payload =
+            BlockPayload::new(transactions, vec![], rewarded_signatures, random_bit);
 
         let era_report = if is_switch {
             Some(InternalEraReport::random(rng))

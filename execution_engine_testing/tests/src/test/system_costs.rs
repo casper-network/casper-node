@@ -19,7 +19,7 @@ use casper_types::{
     HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
     MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
     StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_MINT_COST,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -169,7 +169,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_MINT_COST;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
@@ -459,7 +459,7 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
+    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_MINT_COST;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {

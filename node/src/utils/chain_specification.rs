@@ -130,8 +130,8 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
     // The total number of transactions should not exceed the number of approvals because each
     // transaction needs at least one approval to be valid.
     if let Some(total_txn_slots) = transaction_config
-        .block_max_transfer_count
-        .checked_add(transaction_config.block_max_staking_count)
+        .block_max_mint_count
+        .checked_add(transaction_config.block_max_auction_count)
         .and_then(|total| total.checked_add(transaction_config.block_max_install_upgrade_count))
         .and_then(|total| total.checked_add(transaction_config.block_max_standard_count))
     {
@@ -385,8 +385,8 @@ mod tests {
     fn should_have_valid_transaction_counts() {
         let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 1,
+            block_max_mint_count: 100,
+            block_max_auction_count: 1,
             ..Default::default()
         };
         assert!(
@@ -397,8 +397,8 @@ mod tests {
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 50,
+            block_max_mint_count: 100,
+            block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
             block_max_standard_count: 25,
             ..Default::default()
@@ -410,8 +410,8 @@ mod tests {
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 50,
+            block_max_mint_count: 100,
+            block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
             block_max_standard_count: 24,
             ..Default::default()
@@ -624,7 +624,7 @@ mod tests {
         );
         assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
         assert_eq!(spec.transaction_config.max_block_size, 12);
-        assert_eq!(spec.transaction_config.block_max_transfer_count, 125);
+        assert_eq!(spec.transaction_config.block_max_mint_count, 125);
         assert_eq!(spec.transaction_config.block_gas_limit, 13);
 
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);

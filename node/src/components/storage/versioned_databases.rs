@@ -24,7 +24,7 @@ use super::{
     lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
     DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
 };
-use crate::types::{ApprovalsHashes, FinalizedApprovals, FinalizedDeployApprovals};
+use crate::types::ApprovalsHashes;
 
 pub(super) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;
@@ -81,10 +81,6 @@ impl VersionedValue for ApprovalsHashes {
 
 impl VersionedValue for ExecutionResult {
     type Legacy = DeployMetadataV1;
-}
-
-impl VersionedValue for FinalizedApprovals {
-    type Legacy = FinalizedDeployApprovals;
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the

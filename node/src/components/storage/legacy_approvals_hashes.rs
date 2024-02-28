@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{BlockHash, DeployApprovalsHash, Key, StoredValue};
+use casper_types::{ApprovalsHash, BlockHash, Key, StoredValue};
 
 use crate::types::ApprovalsHashes;
 
@@ -9,7 +9,7 @@ use crate::types::ApprovalsHashes;
 #[derive(Deserialize)]
 pub(super) struct LegacyApprovalsHashes {
     block_hash: BlockHash,
-    approvals_hashes: Vec<DeployApprovalsHash>,
+    approvals_hashes: Vec<ApprovalsHash>,
     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
 }
 
@@ -21,6 +21,6 @@ impl From<LegacyApprovalsHashes> for ApprovalsHashes {
             merkle_proof_approvals,
         }: LegacyApprovalsHashes,
     ) -> Self {
-        ApprovalsHashes::new_v1(block_hash, approvals_hashes, merkle_proof_approvals)
+        ApprovalsHashes::new(block_hash, approvals_hashes, merkle_proof_approvals)
     }
 }

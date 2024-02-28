@@ -5,8 +5,8 @@
 //!
 //! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
 //! where `Ev` is the event's type, as every effect must have its return value either wrapped in an
-//! event through [`EffectExt::event`](crate::effect::EffectExt::event) or ignored using
-//! [`EffectExt::ignore`](crate::effect::EffectExt::ignore). As an example, the
+//! event through [`EffectExt::event`](EffectExt::event) or ignored using
+//! [`EffectExt::ignore`](EffectExt::ignore). As an example, the
 //! [`handle_event`](crate::components::Component::handle_event) function of a component always
 //! returns `Effect<Self::Event>`.
 //!
@@ -34,7 +34,7 @@
 //!
 //!   Component events are also created from the return values of effects: While effects do not
 //!   return events themselves when called, their return values are turned first into component
-//!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
+//!   events through the [`event`](EffectExt) method. In a second step, inside the
 //!   reactors routing code, `wrap_effect` will then convert from component to reactor event.
 //!
 //! # Using effects
@@ -98,7 +98,7 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
@@ -128,9 +128,9 @@ use casper_types::{
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    Approval, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -153,8 +153,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
+        ExecutableBlock, ExecutionInfo, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
+        NodeId, SignedBlock,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1464,7 +1464,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transactions_from_storage(
         self,
         transaction_hashes: Vec<TransactionHash>,
-    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
+    ) -> SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1562,7 +1562,10 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transaction_and_execution_info_from_storage(
         self,
         transaction_hash: TransactionHash,
-    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
+    ) -> Option<(
+        (Transaction, Option<BTreeSet<Approval>>),
+        Option<ExecutionInfo>,
+    )>
     where
         REv: From<StorageRequest>,
     {
@@ -2188,7 +2191,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn store_finalized_approvals(
         self,
         transaction_hash: TransactionHash,
-        finalized_approvals: FinalizedApprovals,
+        finalized_approvals: BTreeSet<Approval>,
     ) -> bool
     where
         REv: From<StorageRequest>,

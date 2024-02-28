@@ -9,7 +9,7 @@ use std::{
 use datasize::DataSize;
 use tracing::debug;
 
-use casper_types::{TransactionApprovalsHash, TransactionHash, TransactionId};
+use casper_types::{TransactionHash, TransactionId};
 
 use crate::types::ApprovalsHashes;
 
@@ -19,7 +19,6 @@ use super::block_acquisition::Acceptance;
 pub(crate) enum Error {
     AcquisitionByIdNotPossible,
     EncounteredNonVacantTransactionState,
-    TransactionTypeMismatch,
 }
 
 impl Display for Error {
@@ -28,9 +27,6 @@ impl Display for Error {
             Error::AcquisitionByIdNotPossible => write!(f, "acquisition by id is not possible"),
             Error::EncounteredNonVacantTransactionState => {
                 write!(f, "encountered non vacant transaction state")
-            }
-            Error::TransactionTypeMismatch => {
-                write!(f, "transaction type mismatch")
             }
         }
     }
@@ -86,15 +82,12 @@ impl TransactionAcquisition {
                         return Err(Error::EncounteredNonVacantTransactionState);
                     };
                     let txn_id = match (transaction_hash, approvals_hash) {
-                        (
-                            TransactionHash::Deploy(deploy_hash),
-                            TransactionApprovalsHash::Deploy(deploy_approvals_hash),
-                        ) => TransactionId::new_deploy(deploy_hash, deploy_approvals_hash),
-                        (
-                            TransactionHash::V1(transaction_v1_hash),
-                            TransactionApprovalsHash::V1(txn_v1_approvals_hash),
-                        ) => TransactionId::new_v1(transaction_v1_hash, txn_v1_approvals_hash),
-                        _ => return Err(Error::TransactionTypeMismatch),
+                        (TransactionHash::Deploy(deploy_hash), deploy_approvals_hash) => {
+                            TransactionId::new(deploy_hash.into(), deploy_approvals_hash)
+                        }
+                        (TransactionHash::V1(transaction_v1_hash), txn_v1_approvals_hash) => {
+                            TransactionId::new(transaction_v1_hash.into(), txn_v1_approvals_hash)
+                        }
                     };
                     new_txn_ids.push((txn_id, TransactionState::Vacant));
                 }
