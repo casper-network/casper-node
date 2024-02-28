@@ -129,8 +129,9 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    EraId, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
 use crate::{
@@ -151,13 +152,14 @@ use crate::{
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
+        appendable_block::AppendableBlock, AvailableBlockRange, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
+        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
+use casper_storage::block_store::types::ApprovalsHashes;
+
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,

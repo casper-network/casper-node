@@ -1,15 +1,34 @@
 use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
+use casper_storage::block_store::types::{ApprovalsHashes, ApprovalsHashesValidationError};
 use futures::FutureExt;
 
-use casper_types::BlockHash;
+use casper_types::{Block, BlockHash};
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, FetchItem, Fetcher, ItemFetcher, ItemHandle, StoringState, Tag,
+    },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{ApprovalsHashes, NodeId},
+    types::NodeId,
 };
+
+impl FetchItem for ApprovalsHashes {
+    type Id = BlockHash;
+    type ValidationError = ApprovalsHashesValidationError;
+    type ValidationMetadata = Block;
+
+    const TAG: Tag = Tag::ApprovalsHashes;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.block_hash()
+    }
+
+    fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
+        self.verify(block)
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<ApprovalsHashes> for Fetcher<ApprovalsHashes> {

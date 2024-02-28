@@ -16,9 +16,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
     AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
-    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
-    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction, TransactionConfig,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
+    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedApprovals,
+    InitiatorAddr, Key, PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction,
+    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{
@@ -29,7 +29,6 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::FinalizedApprovals,
     utils::Source,
     NodeRng,
 };
