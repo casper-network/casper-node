@@ -125,7 +125,7 @@ impl BlockValidationState {
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
         let transaction_count = block.non_transfer_count() + block.transfer_count();
-        if transaction_count == 0 {
+        if transaction_count == 0 && missing_signatures.is_empty() {
             let state = BlockValidationState::Valid(block.timestamp());
             return (state, Some(responder));
         }

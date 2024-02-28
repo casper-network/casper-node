@@ -1197,6 +1197,27 @@ async fn should_fail_if_unable_to_fetch_signature() {
 }
 
 #[tokio::test]
+async fn should_fail_if_unable_to_fetch_signature_for_block_without_transactions() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+
+    // No transactions in the block.
+    let context = ValidationContext::new()
+        .with_num_validators(&mut rng, 3)
+        .with_past_blocks(&mut rng, 0, 5, 0.into());
+
+    let validators = context.get_validators();
+    let mut signing_validators = context.get_validators();
+    let _ = signing_validators.pop(); // one validator will be missing from the set that signed
+
+    let mut context = context
+        .with_signatures_for_block(3, 5, &signing_validators)
+        .include_signatures(3, 5, &validators);
+
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+}
+
+#[tokio::test]
 async fn should_validate_with_delayed_block() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
