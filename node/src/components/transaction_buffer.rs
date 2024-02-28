@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockV2, Digest, DisplayIter, Timestamp, Transaction, TransactionApproval,
-    TransactionConfig, TransactionHash, TransactionId, TransactionV1Category,
+    TransactionCategory, TransactionConfig, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -38,7 +38,7 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        FinalizedBlock, TransactionExt, TransactionFootprint,
+        FinalizedBlock, Footprint, TransactionExt,
     },
     NodeRng,
 };
@@ -50,7 +50,7 @@ use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
 
-type FootprintAndApprovals = (TransactionFootprint, BTreeSet<TransactionApproval>);
+type FootprintAndApprovals = (Footprint, BTreeSet<TransactionApproval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct TransactionBuffer {
@@ -349,7 +349,7 @@ impl TransactionBuffer {
     }
 
     /// Returns eligible transactions that are buffered and not held or dead.
-    fn proposable(&self) -> Vec<(TransactionHashWithApprovals, TransactionFootprint)> {
+    fn proposable(&self) -> Vec<(TransactionHashWithApprovals, Footprint)> {
         debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
@@ -366,15 +366,11 @@ impl TransactionBuffer {
             .collect()
     }
 
-    fn buckets(
-        &mut self,
-    ) -> HashMap<Digest, Vec<(TransactionHashWithApprovals, TransactionFootprint)>> {
+    fn buckets(&mut self) -> HashMap<Digest, Vec<(TransactionHashWithApprovals, Footprint)>> {
         let proposable = self.proposable();
 
-        let mut buckets: HashMap<
-            Digest,
-            Vec<(TransactionHashWithApprovals, TransactionFootprint)>,
-        > = HashMap::new();
+        let mut buckets: HashMap<Digest, Vec<(TransactionHashWithApprovals, Footprint)>> =
+            HashMap::new();
 
         for (with_approvals, footprint) in proposable {
             let body_hash = *footprint.body_hash();
@@ -517,12 +513,12 @@ impl TransactionBuffer {
                         }
                         AddError::TransactionCount(category) => {
                             match category {
-                                TransactionV1Category::InstallUpgrade => {
+                                TransactionCategory::InstallUpgrade => {
                                     have_hit_install_upgrade_limit = true
                                 }
-                                TransactionV1Category::Standard => have_hit_standard_limit = true,
-                                TransactionV1Category::Staking => have_hit_staking_limit = true,
-                                TransactionV1Category::Transfer => have_hit_transfer_limit = true,
+                                TransactionCategory::Standard => have_hit_standard_limit = true,
+                                TransactionCategory::Staking => have_hit_staking_limit = true,
+                                TransactionCategory::Transfer => have_hit_transfer_limit = true,
                             };
                             if have_hit_standard_limit
                                 && have_hit_staking_limit

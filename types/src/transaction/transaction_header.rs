@@ -8,8 +8,14 @@ use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "std", test))]
+use crate::{TimeDiff, TransactionConfig, TransactionHash};
+
 use super::{DeployHeader, TransactionV1Header};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest, Timestamp,
+};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -29,6 +35,43 @@ pub enum TransactionHeader {
     /// A version 1 transaction header.
     #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1Header),
+}
+
+impl TransactionHeader {
+    /// Returns the body hash of the transaction.
+    pub fn body_hash(&self) -> &Digest {
+        match self {
+            TransactionHeader::Deploy(header) => header.body_hash(),
+            TransactionHeader::V1(header) => header.body_hash(),
+        }
+    }
+
+    /// Returns `true` if the `Transaction` has expired.
+    pub fn expired(&self, current_time: Timestamp) -> bool {
+        match self {
+            TransactionHeader::Deploy(header) => header.expired(current_time),
+            TransactionHeader::V1(header) => header.expired(current_time),
+        }
+    }
+
+    /// Returns `true` if the `Transaction` is valid.
+    #[cfg(any(feature = "std", test))]
+    pub fn is_valid(
+        &self,
+        config: &TransactionConfig,
+        timestamp_leeway: TimeDiff,
+        at: Timestamp,
+        transaction_hash: &TransactionHash,
+    ) -> bool {
+        match self {
+            TransactionHeader::Deploy(header) => header
+                .is_valid(config, timestamp_leeway, at, transaction_hash)
+                .is_ok(),
+            TransactionHeader::V1(header) => header
+                .is_valid(config, timestamp_leeway, at, transaction_hash)
+                .is_ok(),
+        }
+    }
 }
 
 impl From<DeployHeader> for TransactionHeader {

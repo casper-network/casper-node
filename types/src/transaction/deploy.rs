@@ -391,7 +391,7 @@ impl Deploy {
             });
         }
 
-        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash.into())?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(

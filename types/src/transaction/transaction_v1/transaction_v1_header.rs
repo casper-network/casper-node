@@ -21,7 +21,7 @@ use crate::{
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{TransactionConfig, TransactionV1ConfigFailure, TransactionV1Hash};
+use crate::{TransactionConfig, TransactionHash, TransactionV1ConfigFailure, TransactionV1Hash};
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -127,7 +127,7 @@ impl TransactionV1Header {
         config: &TransactionConfig,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
-        transaction_hash: &TransactionV1Hash,
+        transaction_hash: &TransactionHash,
     ) -> Result<(), TransactionV1ConfigFailure> {
         if self.ttl() > config.max_ttl {
             debug!(

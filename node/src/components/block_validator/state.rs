@@ -17,7 +17,7 @@ use crate::{
     effect::Responder,
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
-        DeployOrTransferHash, NodeId, TransactionFootprint, TransactionHashWithApprovals,
+        DeployOrTransferHash, Footprint, NodeId, TransactionHashWithApprovals,
     },
 };
 
@@ -382,7 +382,7 @@ impl BlockValidationState {
     pub(super) fn try_add_transaction_footprint(
         &mut self,
         dt_hash: &DeployOrTransactionHash,
-        footprint: &TransactionFootprint,
+        footprint: &Footprint,
     ) -> Vec<Responder<bool>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
@@ -414,26 +414,14 @@ impl BlockValidationState {
                             approvals,
                         },
                     ) => {
-                        let TransactionFootprint::Deploy(deploy_footprint) = footprint else {
-                            error!(%dt_hash, "legacy deploy with transaction V1 footprint");
-                            return vec![];
-                        };
                         let dhwa = DeployHashWithApprovals::new(deploy_hash, approvals);
-                        appendable_block.add_deploy(dhwa, deploy_footprint)
+                        appendable_block.add_deploy(dhwa, footprint)
                     }
                     (
                         DeployOrTransactionHash::V1(_),
                         TransactionHashWithApprovals::V1(transaction_v1_hash_with_approvals),
-                    ) => {
-                        let TransactionFootprint::V1(transaction_v1_footprint) = footprint else {
-                            error!(%dt_hash, "transaction v1 with legacy deploy footprint");
-                            return vec![];
-                        };
-                        appendable_block.add_transaction_v1(
-                            transaction_v1_hash_with_approvals,
-                            transaction_v1_footprint,
-                        )
-                    }
+                    ) => appendable_block
+                        .add_transaction_v1(transaction_v1_hash_with_approvals, footprint),
                     (DeployOrTransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
                         error!(%dt_hash, "legacy deploy with transaction V1 approvals");
                         return vec![];
@@ -817,7 +805,7 @@ mod tests {
             transactions_for_block
         }
 
-        fn footprints(&self) -> Vec<(DeployOrTransactionHash, TransactionFootprint)> {
+        fn footprints(&self) -> Vec<(DeployOrTransactionHash, Footprint)> {
             self.standard
                 .iter()
                 .chain(self.staking.iter().chain(self.install_upgrade.iter()))
@@ -825,14 +813,14 @@ mod tests {
                     Transaction::Deploy(deploy) => {
                         let hash = deploy.hash();
                         let footprint = deploy.footprint().unwrap();
-                        if footprint.is_transfer {
+                        if footprint.is_transfer() {
                             panic!("unexpected transfer in transactions");
                         } else {
                             (
                                 DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(
                                     *hash,
                                 )),
-                                TransactionFootprint::from(footprint),
+                                footprint,
                             )
                         }
                     }
@@ -842,10 +830,7 @@ mod tests {
                         if footprint.is_transfer() {
                             panic!("unexpected transfer in transactions");
                         } else {
-                            (
-                                DeployOrTransactionHash::from(*hash),
-                                TransactionFootprint::from(footprint),
-                            )
+                            (DeployOrTransactionHash::from(*hash), footprint)
                         }
                     }
                 })
@@ -853,12 +838,12 @@ mod tests {
                     Transaction::Deploy(deploy) => {
                         let hash = deploy.hash();
                         let footprint = deploy.footprint().unwrap();
-                        if footprint.is_transfer {
+                        if footprint.is_transfer() {
                             (
                                 DeployOrTransactionHash::Deploy(DeployOrTransferHash::Transfer(
                                     *hash,
                                 )),
-                                TransactionFootprint::from(footprint),
+                                footprint,
                             )
                         } else {
                             panic!("unexpected transaction in transfers");
@@ -868,10 +853,7 @@ mod tests {
                         let hash = v1.hash();
                         let footprint = v1.footprint().unwrap();
                         if footprint.is_transfer() {
-                            (
-                                DeployOrTransactionHash::from(*hash),
-                                TransactionFootprint::from(footprint),
-                            )
+                            (DeployOrTransactionHash::from(*hash), footprint)
                         } else {
                             panic!("unexpected transaction in transfers");
                         }

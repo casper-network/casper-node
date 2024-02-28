@@ -27,8 +27,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use self::errors_v1::CategorizationError;
-
 #[cfg(any(feature = "std", test))]
 use super::InitiatorAddrAndSecretKey;
 use super::{
@@ -44,15 +42,16 @@ use crate::{
     TransactionSessionKind,
 };
 pub use errors_v1::{
-    DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
-    ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
+    CategorizationError, DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError,
+    ErrorV1 as TransactionV1Error, ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
+    TransactionV1ConfigFailure,
 };
 pub use transaction_v1_approval::TransactionV1Approval;
 pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
-pub use transaction_v1_category::TransactionV1Category;
+pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -328,7 +327,7 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash.into())?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -391,7 +390,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Transfer,
+            &TransactionCategory::Transfer,
             timestamp,
             ttl,
         )
@@ -399,7 +398,7 @@ impl TransactionV1 {
         .unwrap();
         assert!(matches!(
             transaction.category(),
-            Ok(TransactionV1Category::Transfer)
+            Ok(TransactionCategory::Transfer)
         ));
         transaction
     }
@@ -416,7 +415,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Standard,
+            &TransactionCategory::Standard,
             timestamp,
             ttl,
         )
@@ -424,7 +423,7 @@ impl TransactionV1 {
         .unwrap();
         assert!(matches!(
             transaction.category(),
-            Ok(TransactionV1Category::Standard)
+            Ok(TransactionCategory::Standard)
         ));
         transaction
     }
@@ -441,7 +440,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::InstallUpgrade,
+            &TransactionCategory::InstallUpgrade,
             timestamp,
             ttl,
         )
@@ -449,7 +448,7 @@ impl TransactionV1 {
         .unwrap();
         assert!(matches!(
             transaction.category(),
-            Ok(TransactionV1Category::InstallUpgrade)
+            Ok(TransactionCategory::InstallUpgrade)
         ));
         transaction
     }
@@ -466,7 +465,7 @@ impl TransactionV1 {
     ) -> Self {
         let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
-            &TransactionV1Category::Staking,
+            &TransactionCategory::Staking,
             timestamp,
             ttl,
         )
@@ -474,7 +473,7 @@ impl TransactionV1 {
         .unwrap();
         assert!(matches!(
             transaction.category(),
-            Ok(TransactionV1Category::Staking)
+            Ok(TransactionCategory::Staking)
         ));
         transaction
     }
@@ -493,31 +492,31 @@ impl TransactionV1 {
     }
 
     /// Returns transaction category.
-    pub fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
+    pub fn category(&self) -> Result<TransactionCategory, CategorizationError> {
         let body = self.body();
         let target = body.target();
         let entry_point = body.entry_point();
 
         Ok(match target {
             TransactionTarget::Native if matches!(entry_point, TransactionEntryPoint::Transfer) => {
-                TransactionV1Category::Transfer
+                TransactionCategory::Transfer
             }
             TransactionTarget::Native
                 if matches!(entry_point, TransactionEntryPoint::Custom(_)) =>
             {
                 return Err(CategorizationError::NativeTargetWithCustomEntryPoint);
             }
-            TransactionTarget::Native => TransactionV1Category::Staking,
-            TransactionTarget::Stored { .. } => TransactionV1Category::Standard,
+            TransactionTarget::Native => TransactionCategory::Staking,
+            TransactionTarget::Stored { .. } => TransactionCategory::Standard,
             TransactionTarget::Session { kind, .. }
                 if matches!(
                     kind,
                     TransactionSessionKind::Standard | TransactionSessionKind::Isolated
                 ) =>
             {
-                TransactionV1Category::Standard
+                TransactionCategory::Standard
             }
-            TransactionTarget::Session { .. } => TransactionV1Category::InstallUpgrade,
+            TransactionTarget::Session { .. } => TransactionCategory::InstallUpgrade,
         })
     }
 }

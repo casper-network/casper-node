@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "Session kind of a Transaction.")
+    schemars(description = "Category of a Transaction.")
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-pub enum TransactionV1Category {
+pub enum TransactionCategory {
     /// Install or Upgrade.
     InstallUpgrade,
     /// Standard transaction.
@@ -27,13 +27,13 @@ pub enum TransactionV1Category {
     Transfer,
 }
 
-impl fmt::Display for TransactionV1Category {
+impl fmt::Display for TransactionCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionV1Category::InstallUpgrade => write!(f, "InstallUpgrade"),
-            TransactionV1Category::Standard => write!(f, "Standard"),
-            TransactionV1Category::Staking => write!(f, "Staking"),
-            TransactionV1Category::Transfer => write!(f, "Transfer"),
+            TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
+            TransactionCategory::Standard => write!(f, "Standard"),
+            TransactionCategory::Staking => write!(f, "Staking"),
+            TransactionCategory::Transfer => write!(f, "Transfer"),
         }
     }
 }

@@ -9,13 +9,13 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig, TransactionHash,
-    TransactionV1Category,
+    Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionCategory,
+    TransactionConfig, TransactionHash,
 };
 
 use super::{
     transaction::{DeployHashWithApprovals, TransactionV1HashWithApprovals},
-    BlockPayload, DeployFootprint, TransactionFootprint, TransactionV1Footprint, VariantMismatch,
+    BlockPayload, Footprint, VariantMismatch,
 };
 use crate::types::TransactionHashWithApprovals;
 
@@ -28,7 +28,7 @@ pub(crate) enum AddError {
     #[error("would exceed maximum deploy count per block")]
     DeployCount,
     #[error("would exceed maximum transaction ({0}) count per block")]
-    TransactionCount(TransactionV1Category),
+    TransactionCount(TransactionCategory),
     #[error("would exceed maximum approval count per block")]
     ApprovalCount,
     #[error("would exceed maximum gas per block")]
@@ -51,7 +51,7 @@ pub(crate) enum AddError {
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
-    transactions: Vec<(TransactionHashWithApprovals, TransactionV1Category)>,
+    transactions: Vec<(TransactionHashWithApprovals, TransactionCategory)>,
     transaction_hashes: HashSet<TransactionHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
@@ -78,31 +78,21 @@ impl AppendableBlock {
     pub(crate) fn add(
         &mut self,
         transaction_hash_with_approvals: TransactionHashWithApprovals,
-        footprint: &TransactionFootprint,
+        footprint: &Footprint,
     ) -> Result<(), AddError> {
-        match (transaction_hash_with_approvals, footprint) {
-            (
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                },
-                TransactionFootprint::Deploy(deploy_footprint),
-            ) => {
+        match transaction_hash_with_approvals {
+            TransactionHashWithApprovals::Deploy {
+                deploy_hash,
+                approvals,
+            } => {
                 let dhwa = DeployHashWithApprovals::new(deploy_hash, approvals);
                 if footprint.is_transfer() {
-                    self.add_transfer(dhwa, deploy_footprint)
+                    self.add_transfer(dhwa, footprint)
                 } else {
-                    self.add_deploy(dhwa, deploy_footprint)
+                    self.add_deploy(dhwa, footprint)
                 }
             }
-            (
-                TransactionHashWithApprovals::V1(thwa),
-                TransactionFootprint::V1(transaction_footprint),
-            ) => self.add_transaction_v1(thwa, transaction_footprint),
-            (thwa, footprint) => {
-                let mismatch = VariantMismatch(Box::new((thwa, footprint.clone())));
-                Err(AddError::from(mismatch))
-            }
+            TransactionHashWithApprovals::V1(thwa) => self.add_transaction_v1(thwa, footprint),
         }
     }
 
@@ -114,7 +104,7 @@ impl AppendableBlock {
     pub(crate) fn add_transfer(
         &mut self,
         transfer: DeployHashWithApprovals,
-        footprint: &DeployFootprint,
+        footprint: &Footprint,
     ) -> Result<(), AddError> {
         if self
             .transaction_hashes
@@ -125,16 +115,12 @@ impl AppendableBlock {
         if footprint.header.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
-        if footprint
-            .header
-            .is_valid(
-                &self.transaction_config,
-                NO_LEEWAY,
-                self.timestamp,
-                transfer.deploy_hash(),
-            )
-            .is_err()
-        {
+        if !footprint.header.is_valid(
+            &self.transaction_config,
+            NO_LEEWAY,
+            self.timestamp,
+            &TransactionHash::from(transfer.deploy_hash()),
+        ) {
             return Err(AddError::InvalidDeploy);
         }
         if self.has_max_transfer_count() {
@@ -148,7 +134,7 @@ impl AppendableBlock {
         self.total_approvals += transfer.approvals().len();
         self.transactions.push((
             TransactionHashWithApprovals::from(transfer),
-            TransactionV1Category::Transfer,
+            TransactionCategory::Transfer,
         ));
         Ok(())
     }
@@ -161,7 +147,7 @@ impl AppendableBlock {
     pub(crate) fn add_deploy(
         &mut self,
         deploy: DeployHashWithApprovals,
-        footprint: &DeployFootprint,
+        footprint: &Footprint,
     ) -> Result<(), AddError> {
         if self
             .transaction_hashes
@@ -172,16 +158,12 @@ impl AppendableBlock {
         if footprint.header.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
-        if footprint
-            .header
-            .is_valid(
-                &self.transaction_config,
-                NO_LEEWAY,
-                self.timestamp,
-                deploy.deploy_hash(),
-            )
-            .is_err()
-        {
+        if !footprint.header.is_valid(
+            &self.transaction_config,
+            NO_LEEWAY,
+            self.timestamp,
+            &TransactionHash::from(deploy.deploy_hash()),
+        ) {
             return Err(AddError::InvalidDeploy);
         }
         if self.has_max_standard_count() {
@@ -210,7 +192,7 @@ impl AppendableBlock {
         self.transaction_hashes
             .insert(TransactionHash::from(deploy.deploy_hash()));
         self.transactions
-            .push((deploy.into(), TransactionV1Category::Standard));
+            .push((deploy.into(), TransactionCategory::Standard));
         Ok(())
     }
 
@@ -219,7 +201,7 @@ impl AppendableBlock {
     pub(crate) fn add_transaction_v1(
         &mut self,
         transaction: TransactionV1HashWithApprovals,
-        footprint: &TransactionV1Footprint,
+        footprint: &Footprint,
     ) -> Result<(), AddError> {
         if self
             .transaction_hashes
@@ -230,16 +212,12 @@ impl AppendableBlock {
         if footprint.header.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
-        if footprint
-            .header
-            .is_valid(
-                &self.transaction_config,
-                NO_LEEWAY,
-                self.timestamp,
-                transaction.transaction_hash(),
-            )
-            .is_err()
-        {
+        if !footprint.header.is_valid(
+            &self.transaction_config,
+            NO_LEEWAY,
+            self.timestamp,
+            &TransactionHash::from(transaction.transaction_hash()),
+        ) {
             return Err(AddError::InvalidTransaction);
         }
 
@@ -288,25 +266,25 @@ impl AppendableBlock {
 
         let transfers = transactions
             .iter()
-            .filter(|(_, c)| c == &TransactionV1Category::Transfer)
+            .filter(|(_, c)| c == &TransactionCategory::Transfer)
             .map(|(t, _)| t.clone())
             .collect();
 
         let staking = transactions
             .iter()
-            .filter(|(_, c)| c == &TransactionV1Category::Staking)
+            .filter(|(_, c)| c == &TransactionCategory::Staking)
             .map(|(t, _)| t.clone())
             .collect();
 
         let install_upgrade = transactions
             .iter()
-            .filter(|(_, c)| c == &TransactionV1Category::InstallUpgrade)
+            .filter(|(_, c)| c == &TransactionCategory::InstallUpgrade)
             .map(|(t, _)| t.clone())
             .collect();
 
         let standard = transactions
             .iter()
-            .filter(|(_, c)| c == &TransactionV1Category::Standard)
+            .filter(|(_, c)| c == &TransactionCategory::Standard)
             .map(|(t, _)| t.clone())
             .collect();
 
@@ -325,7 +303,7 @@ impl AppendableBlock {
         self.timestamp
     }
 
-    fn category_count(&self, category: &TransactionV1Category) -> usize {
+    fn category_count(&self, category: &TransactionCategory) -> usize {
         self.transactions
             .iter()
             .filter(|(_t, c)| c == category)
@@ -339,7 +317,7 @@ impl AppendableBlock {
             .sum()
     }
 
-    fn category_approval_count(&self, category: &TransactionV1Category) -> usize {
+    fn category_approval_count(&self, category: &TransactionCategory) -> usize {
         self.transactions
             .iter()
             .filter(|(_t, c)| c == category)
@@ -350,14 +328,14 @@ impl AppendableBlock {
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {
-        self.category_count(&TransactionV1Category::Transfer)
+        self.category_count(&TransactionCategory::Transfer)
             == self.transaction_config.block_max_transfer_count as usize
     }
 
     /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
     /// more transactions can be added to this block.
     fn has_max_standard_count(&self) -> bool {
-        self.category_count(&TransactionV1Category::Standard)
+        self.category_count(&TransactionCategory::Standard)
             == self.transaction_config.block_max_standard_count as usize
     }
 
@@ -369,31 +347,31 @@ impl AppendableBlock {
         let remaining_approval_slots =
             self.transaction_config.block_max_approval_count as usize - self.total_approvals;
         let remaining_transaction_slots = self.transaction_config.block_max_transfer_count as usize
-            - self.category_count(&TransactionV1Category::Transfer)
+            - self.category_count(&TransactionCategory::Transfer)
             + self.transaction_config.block_max_standard_count as usize
-            - self.category_count(&TransactionV1Category::Standard)
+            - self.category_count(&TransactionCategory::Standard)
             + self.transaction_config.block_max_staking_count as usize
-            - self.category_count(&TransactionV1Category::Staking)
+            - self.category_count(&TransactionCategory::Staking)
             + self.transaction_config.block_max_install_upgrade_count as usize
-            - self.category_count(&TransactionV1Category::InstallUpgrade);
+            - self.category_count(&TransactionCategory::InstallUpgrade);
 
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_transaction_slots + 1
     }
 
-    fn has_max_category_count(&self, category: &TransactionV1Category) -> bool {
+    fn has_max_category_count(&self, category: &TransactionCategory) -> bool {
         let category_count = self.category_count(category);
         match category {
-            TransactionV1Category::InstallUpgrade => {
+            TransactionCategory::InstallUpgrade => {
                 category_count == self.transaction_config.block_max_install_upgrade_count as usize
             }
-            TransactionV1Category::Staking => {
+            TransactionCategory::Staking => {
                 category_count == self.transaction_config.block_max_staking_count as usize
             }
-            TransactionV1Category::Standard => {
+            TransactionCategory::Standard => {
                 category_count == self.transaction_config.block_max_standard_count as usize
             }
-            TransactionV1Category::Transfer => {
+            TransactionCategory::Transfer => {
                 category_count == self.transaction_config.block_max_transfer_count as usize
             }
         }
@@ -402,17 +380,16 @@ impl AppendableBlock {
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let standard_count = self.category_count(&TransactionV1Category::Standard);
-        let standard_approvals_count =
-            self.category_approval_count(&TransactionV1Category::Standard);
-        let transfers_count = self.category_count(&TransactionV1Category::Transfer);
+        let standard_count = self.category_count(&TransactionCategory::Standard);
+        let standard_approvals_count = self.category_approval_count(&TransactionCategory::Standard);
+        let transfers_count = self.category_count(&TransactionCategory::Transfer);
         let transfers_approvals_count =
-            self.category_approval_count(&TransactionV1Category::Transfer);
-        let staking_count = self.category_count(&TransactionV1Category::Staking);
-        let staking_approvals_count = self.category_approval_count(&TransactionV1Category::Staking);
-        let install_upgrade_count = self.category_count(&TransactionV1Category::InstallUpgrade);
+            self.category_approval_count(&TransactionCategory::Transfer);
+        let staking_count = self.category_count(&TransactionCategory::Staking);
+        let staking_approvals_count = self.category_approval_count(&TransactionCategory::Staking);
+        let install_upgrade_count = self.category_count(&TransactionCategory::InstallUpgrade);
         let install_upgrade_approvals_count =
-            self.category_approval_count(&TransactionV1Category::InstallUpgrade);
+            self.category_approval_count(&TransactionCategory::InstallUpgrade);
         let total_count = self.transactions.len();
         let total_approvals_count = self.total_approval_count();
 

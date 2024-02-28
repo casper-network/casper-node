@@ -295,7 +295,9 @@ impl StdError for ExcessiveSizeErrorV1 {}
 
 #[derive(Debug)]
 #[non_exhaustive]
+/// Error returned when a transaction cannot be categorized.
 pub enum CategorizationError {
+    /// A native target with a custom entry point is not allowed.
     NativeTargetWithCustomEntryPoint,
 }
 
@@ -305,6 +307,15 @@ impl Display for CategorizationError {
             CategorizationError::NativeTargetWithCustomEntryPoint => {
                 write!(formatter, "native target with custom entry point")
             }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for CategorizationError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            CategorizationError::NativeTargetWithCustomEntryPoint => None,
         }
     }
 }

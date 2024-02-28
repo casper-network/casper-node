@@ -19,7 +19,7 @@ use crate::{
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{
-    testing::TestRng, TransactionConfig, TransactionV1Approval, TransactionV1Category,
+    testing::TestRng, TransactionCategory, TransactionConfig, TransactionV1Approval,
     TransactionV1Hash,
 };
 pub use error::TransactionV1BuilderError;
@@ -295,7 +295,7 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(any(feature = "testing", test))]
     pub fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
-        category: &TransactionV1Category,
+        category: &TransactionCategory,
         timestamp: Option<Timestamp>,
         ttl: Option<TimeDiff>,
     ) -> Self {

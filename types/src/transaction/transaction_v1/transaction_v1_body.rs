@@ -23,8 +23,8 @@ use super::{TransactionConfig, TransactionV1ConfigFailure};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
-    bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind, TransactionV1Category,
+    bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionCategory,
+    TransactionInvocationTarget, TransactionRuntime, TransactionSessionKind,
 };
 
 /// The body of a [`TransactionV1`].
@@ -175,12 +175,12 @@ impl TransactionV1Body {
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_of_category(rng: &mut TestRng, category: &TransactionV1Category) -> Self {
+    pub fn random_of_category(rng: &mut TestRng, category: &TransactionCategory) -> Self {
         match category {
-            TransactionV1Category::InstallUpgrade => Self::random_install_upgrade(rng),
-            TransactionV1Category::Standard => Self::random_standard(rng),
-            TransactionV1Category::Staking => Self::random_staking(rng),
-            TransactionV1Category::Transfer => Self::random_transfer(rng),
+            TransactionCategory::InstallUpgrade => Self::random_install_upgrade(rng),
+            TransactionCategory::Standard => Self::random_standard(rng),
+            TransactionCategory::Staking => Self::random_staking(rng),
+            TransactionCategory::Transfer => Self::random_transfer(rng),
         }
     }
 
