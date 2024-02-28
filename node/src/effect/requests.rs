@@ -390,6 +390,7 @@ pub(crate) enum StorageRequest {
     },
     GetTransactionByHash {
         transaction_hash: TransactionHash,
+        with_finalized_approvals: bool,
         responder: Responder<Option<Transaction>>,
     },
     GetTransactionExecutionInfo {

@@ -902,17 +902,22 @@ impl Storage {
             }
             StorageRequest::GetTransactionByHash {
                 transaction_hash,
+                with_finalized_approvals,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
-                let maybe_transaction = match self
-                    .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
-                {
-                    None => None,
-                    Some(transaction_with_finalized_approvals) => {
-                        let transaction = transaction_with_finalized_approvals.into_naive();
-                        (transaction.hash() == transaction_hash).then_some(transaction)
+                let maybe_transaction = if with_finalized_approvals {
+                    match self
+                        .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
+                    {
+                        None => None,
+                        Some(transaction_with_finalized_approvals) => {
+                            let transaction = transaction_with_finalized_approvals.into_naive();
+                            (transaction.hash() == transaction_hash).then_some(transaction)
+                        }
                     }
+                } else {
+                    self.transaction_dbs.get(&mut txn, &transaction_hash)?
                 };
                 responder.respond(maybe_transaction).ignore()
             }

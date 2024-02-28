@@ -1552,6 +1552,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transaction_by_hash_from_storage(
         self,
         transaction_hash: TransactionHash,
+        with_finalized_approvals: bool,
     ) -> Option<Transaction>
     where
         REv: From<StorageRequest>,
@@ -1559,6 +1560,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetTransactionByHash {
                 transaction_hash,
+                with_finalized_approvals,
                 responder,
             },
             QueueKind::FromStorage,

@@ -531,8 +531,11 @@ where
                 protocol_version,
             )
         }
-        InformationRequest::Transaction(hash) => {
-            let Some(transaction) = effect_builder.get_transaction_by_hash_from_storage(hash).await else {
+        InformationRequest::Transaction {
+            hash,
+            with_finalized_approvals,
+        } => {
+            let Some(transaction) = effect_builder.get_transaction_by_hash_from_storage(hash, with_finalized_approvals).await else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             let execution_info = effect_builder

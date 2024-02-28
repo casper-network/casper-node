@@ -21,7 +21,12 @@ pub enum InformationRequest {
     /// Returns the signed block by an identifier, no identifier indicates the latest block.
     SignedBlock(Option<BlockIdentifier>),
     /// Returns a transaction with approvals and execution info for a given hash.
-    Transaction(TransactionHash),
+    Transaction {
+        /// Hash of the transaction to retrieve.
+        hash: TransactionHash,
+        /// Whether to return the deploy with the finalized approvals substituted.
+        with_finalized_approvals: bool,
+    },
     /// Returns connected peers.
     Peers,
     /// Returns node uptime.
@@ -54,7 +59,7 @@ impl InformationRequest {
         match self {
             InformationRequest::BlockHeader(_) => InformationRequestTag::BlockHeader,
             InformationRequest::SignedBlock(_) => InformationRequestTag::SignedBlock,
-            InformationRequest::Transaction(_) => InformationRequestTag::Transaction,
+            InformationRequest::Transaction { .. } => InformationRequestTag::Transaction,
             InformationRequest::Peers => InformationRequestTag::Peers,
             InformationRequest::Uptime => InformationRequestTag::Uptime,
             InformationRequest::LastProgress => InformationRequestTag::LastProgress,
@@ -91,9 +96,10 @@ impl InformationRequest {
                     InformationRequest::SignedBlock(Some(BlockIdentifier::random(rng)))
                 }
             }
-            InformationRequestTag::Transaction => {
-                InformationRequest::Transaction(TransactionHash::random(rng))
-            }
+            InformationRequestTag::Transaction => InformationRequest::Transaction {
+                hash: TransactionHash::random(rng),
+                with_finalized_approvals: rng.gen(),
+            },
             InformationRequestTag::Peers => InformationRequest::Peers,
             InformationRequestTag::Uptime => InformationRequest::Uptime,
             InformationRequestTag::LastProgress => InformationRequest::LastProgress,
@@ -129,8 +135,12 @@ impl ToBytes for InformationRequest {
             InformationRequest::SignedBlock(block_identifier) => {
                 block_identifier.write_bytes(writer)
             }
-            InformationRequest::Transaction(transaction_hash) => {
-                transaction_hash.write_bytes(writer)
+            InformationRequest::Transaction {
+                hash,
+                with_finalized_approvals,
+            } => {
+                hash.write_bytes(writer)?;
+                with_finalized_approvals.write_bytes(writer)
             }
             InformationRequest::Peers
             | InformationRequest::Uptime
@@ -155,9 +165,10 @@ impl ToBytes for InformationRequest {
             InformationRequest::SignedBlock(block_identifier) => {
                 block_identifier.serialized_length()
             }
-            InformationRequest::Transaction(transaction_hash) => {
-                transaction_hash.serialized_length()
-            }
+            InformationRequest::Transaction {
+                hash,
+                with_finalized_approvals,
+            } => hash.serialized_length() + with_finalized_approvals.serialized_length(),
             InformationRequest::Peers
             | InformationRequest::Uptime
             | InformationRequest::LastProgress
@@ -188,8 +199,15 @@ impl TryFrom<(InformationRequestTag, &[u8])> for InformationRequest {
                 (InformationRequest::SignedBlock(block_identifier), remainder)
             }
             InformationRequestTag::Transaction => {
-                let (transaction_hash, remainder) = FromBytes::from_bytes(key_bytes)?;
-                (InformationRequest::Transaction(transaction_hash), remainder)
+                let (hash, remainder) = FromBytes::from_bytes(key_bytes)?;
+                let (with_finalized_approvals, remainder) = FromBytes::from_bytes(remainder)?;
+                (
+                    InformationRequest::Transaction {
+                        hash,
+                        with_finalized_approvals,
+                    },
+                    remainder,
+                )
             }
             InformationRequestTag::Peers => (InformationRequest::Peers, key_bytes),
             InformationRequestTag::Uptime => (InformationRequest::Uptime, key_bytes),
