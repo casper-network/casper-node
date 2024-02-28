@@ -6,7 +6,7 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     string::{String, ToString},
     vec::Vec,
 };
@@ -223,7 +223,12 @@ fn install_version_1(package_hash: PackageHash) {
     let contract_named_keys = NamedKeys::new();
 
     let entry_points = create_entry_points_1();
-    storage::add_contract_version(package_hash, entry_points, contract_named_keys);
+    storage::add_contract_version(
+        package_hash,
+        entry_points,
+        contract_named_keys,
+        BTreeMap::new(),
+    );
 }
 
 #[no_mangle]

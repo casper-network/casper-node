@@ -3,7 +3,11 @@
 
 #[macro_use]
 extern crate alloc;
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -24,6 +28,7 @@ const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 const MESSAGE_EMITTER_INITIALIZED: &str = "message_emitter_initialized";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 const ARG_NUM_MESSAGES_TO_EMIT: &str = "num_messages_to_emit";
+const ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT: &str = "register_default_topic_with_init";
 const ARG_TOPIC_NAME: &str = "topic_name";
 const PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
 const ACCESS_KEY_NAME: &str = "messages_emitter_access";
@@ -77,6 +82,9 @@ pub extern "C" fn init() {
 
 #[no_mangle]
 pub extern "C" fn call() {
+    let register_topic_with_init: bool =
+        runtime::get_named_arg(ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT);
+
     let mut emitter_entry_points = EntryPoints::new();
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_INIT,
@@ -107,17 +115,33 @@ pub extern "C" fn call() {
         EntryPointType::AddressableEntity,
     ));
 
-    let (stored_contract_hash, _contract_version) = storage::new_contract(
-        emitter_entry_points,
-        Some(NamedKeys::new()),
-        Some(PACKAGE_HASH_KEY_NAME.into()),
-        Some(ACCESS_KEY_NAME.into()),
-    );
+    if register_topic_with_init {
+        let (stored_contract_hash, _contract_version) = storage::new_contract(
+            emitter_entry_points,
+            Some(NamedKeys::new()),
+            Some(PACKAGE_HASH_KEY_NAME.into()),
+            Some(ACCESS_KEY_NAME.into()),
+            None,
+        );
 
-    // Call contract to initialize it
-    runtime::call_contract::<()>(
-        stored_contract_hash,
-        ENTRY_POINT_INIT,
-        RuntimeArgs::default(),
-    );
+        // Call contract to initialize it and register the default topic.
+        runtime::call_contract::<()>(
+            stored_contract_hash,
+            ENTRY_POINT_INIT,
+            RuntimeArgs::default(),
+        );
+    } else {
+        let new_topics = BTreeMap::from([(
+            MESSAGE_EMITTER_GENERIC_TOPIC.to_string(),
+            MessageTopicOperation::Add,
+        )]);
+        // Register the default topic on contract creation and not through the initializer.
+        let (_stored_contract_hash, _contract_version) = storage::new_contract(
+            emitter_entry_points,
+            Some(NamedKeys::new()),
+            Some(PACKAGE_HASH_KEY_NAME.into()),
+            Some(ACCESS_KEY_NAME.into()),
+            Some(new_topics),
+        );
+    }
 }

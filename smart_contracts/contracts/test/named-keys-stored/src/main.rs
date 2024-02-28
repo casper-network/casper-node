@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
+use alloc::{collections::BTreeMap, string::ToString};
 
 use casper_contract::{
     self,
@@ -188,8 +188,12 @@ pub extern "C" fn call() {
         named_keys
     };
 
-    let (contract_hash, contract_version) =
-        storage::add_contract_version(contract_package_hash, entry_points, named_keys);
+    let (contract_hash, contract_version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        BTreeMap::new(),
+    );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_PACKAGE_HASH_NAME, contract_package_hash.into());

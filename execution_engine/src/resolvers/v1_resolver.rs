@@ -161,7 +161,7 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 FunctionIndex::CreateContractUserGroup.into(),
             ),
             "casper_add_package_version" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 9][..], Some(ValueType::I32)),
+                Signature::new(&[ValueType::I32; 11][..], Some(ValueType::I32)),
                 FunctionIndex::AddPackageVersion.into(),
             ),
             "casper_disable_contract_version" => FuncInstance::alloc_host(

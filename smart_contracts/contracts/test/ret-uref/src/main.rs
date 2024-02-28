@@ -75,6 +75,6 @@ pub extern "C" fn call() {
         entry_points.add_entry_point(insert_uref_entrypoint);
         entry_points
     };
-    let (contract_hash, _) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, _) = storage::new_contract(entry_points, None, None, None, None);
     runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

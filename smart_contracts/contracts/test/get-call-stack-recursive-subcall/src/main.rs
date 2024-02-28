@@ -59,6 +59,7 @@ pub extern "C" fn call() {
         None,
         Some(CONTRACT_PACKAGE_NAME.to_string()),
         Some(PACKAGE_ACCESS_KEY_NAME.to_string()),
+        None,
     );
 
     runtime::put_key(CONTRACT_NAME, Key::contract_entity_key(contract_hash));
