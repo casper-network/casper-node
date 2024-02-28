@@ -9,8 +9,8 @@
             "branch": "main"
         },
         "event-sidecar": {
-            "github_repo_url": "https://github.com/zajko/event-sidecar",
-            "branch": "moving_sidecar_rpc_to_sidecar"
+            "github_repo_url": "https://github.com/CasperLabs/event-sidecar",
+            "branch": "feat-2.0"
         }
     },
     "nctl_upgrade_tests": {
