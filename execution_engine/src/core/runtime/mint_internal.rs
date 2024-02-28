@@ -191,9 +191,9 @@ where
 {
     /// Burns native tokens.
     fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
-        let key = Key::Balance(purse.addr());
-        self.context.validate_writeable(&key).map_err(|_| Error::InvalidAccessRights)?;
-        self.context.validate_key(&key).map_err(|_| Error::InvalidURef)?;
+        let purse_key = Key::URef(purse);
+        self.context.validate_writeable(&purse_key).map_err(|_| Error::InvalidAccessRights)?;
+        self.context.validate_key(&purse_key).map_err(|_| Error::InvalidURef)?;
 
         let source_balance: U512 = match self.read_balance(purse)? {
             Some(source_balance) => source_balance,
@@ -205,7 +205,8 @@ where
             None => U512::zero()
         };
 
-        // source_balance is >= than new_balance
+        // source_balance is >= than new_balance 
+        // this should block user from reducing totaly supply beyond what they own
         let burned_amount = source_balance - new_balance;
 
         self.write_balance(purse, new_balance)?;
