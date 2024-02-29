@@ -269,11 +269,9 @@ impl Message {
 
     /// Returns the checksum of the message.
     pub fn checksum(&self) -> Result<MessageChecksum, bytesrepr::Error> {
-        let mut payload_bytes = self.message.to_bytes()?;
-        let mut block_index_bytes = self.block_index.to_bytes()?;
-        block_index_bytes.append(&mut payload_bytes);
+        let input = (&self.block_index, &self.message).to_bytes()?;
+        let checksum = crypto::blake2b(input);
 
-        let checksum = crypto::blake2b(block_index_bytes);
         Ok(MessageChecksum(checksum))
     }
 }

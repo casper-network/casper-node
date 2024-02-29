@@ -1373,7 +1373,7 @@ fn please_add_to_distribution_impl(key: Key) {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=18) {
+        match rng.gen_range(0..=21) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1394,6 +1394,7 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
+            20 => Key::NamedKey(rng.gen()),
             21 => Key::BlockMessageCount(BlockTime::new(rng.gen())),
             _ => unreachable!(),
         }
@@ -1605,6 +1606,7 @@ mod tests {
         EntityAddr::new_contract_entity_addr([42; 32]),
         [43; 32],
     ));
+    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount(BlockTime::new(100));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1633,6 +1635,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        BLOCK_MESSAGE_COUNT,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -1808,6 +1811,11 @@ mod tests {
                 "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
+        );
+
+        assert_eq!(
+            format!("{}", BLOCK_MESSAGE_COUNT),
+            format!("Key::BlockMessageCount(100)")
         )
     }
 
@@ -2162,5 +2170,6 @@ mod tests {
             nines.into(),
             1,
         )));
+        round_trip(&Key::BlockMessageCount(BlockTime::new(0)));
     }
 }

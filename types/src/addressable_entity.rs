@@ -1206,6 +1206,16 @@ impl Debug for NamedKeyAddr {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl Distribution<NamedKeyAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NamedKeyAddr {
+        NamedKeyAddr {
+            base_addr: rng.gen(),
+            string_bytes: rng.gen(),
+        }
+    }
+}
+
 /// A NamedKey value.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

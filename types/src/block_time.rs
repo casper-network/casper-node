@@ -21,7 +21,7 @@ pub struct BlockTime(u64);
 
 impl BlockTime {
     /// Constructs a `BlockTime`.
-    pub fn new(value: u64) -> Self {
+    pub const fn new(value: u64) -> Self {
         BlockTime(value)
     }
 
