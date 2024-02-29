@@ -191,7 +191,7 @@ pub use transaction::{
     TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
     TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
     TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransferTarget,
+    TransactionWithFinalizedApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

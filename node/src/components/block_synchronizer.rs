@@ -25,7 +25,9 @@ use futures::FutureExt;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_storage::data_access_layer::ExecutionResultsChecksumResult;
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::ExecutionResultsChecksumResult,
+};
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, BlockSyncStatus, BlockSynchronizerStatus,
     Chainspec, FinalitySignature, FinalitySignatureId, Timestamp, Transaction,
@@ -50,9 +52,9 @@ use crate::{
     },
     reactor::{self, main_reactor::MainEvent},
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
-        NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, BlockExecutionResultsOrChunk,
+        ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap,
+        SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };

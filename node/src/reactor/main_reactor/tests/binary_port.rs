@@ -9,7 +9,7 @@ use casper_types::{
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
-    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
     ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers,
     ProtocolVersion, ReactorState, SecretKey, SignedBlock, StoredValue, Transaction,
     TransactionV1Builder, Transfer,
@@ -38,7 +38,7 @@ const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
 struct TestData {
     rng: TestRng,
     chainspec_raw_bytes: ChainspecRawBytes,
-    highest_block: SignedBlock,
+    highest_block: Block,
     secret_signing_key: Arc<SecretKey>,
 }
 
@@ -102,7 +102,7 @@ async fn setup() -> (
                 .inner()
                 .inner()
                 .storage()
-                .get_highest_signed_block(true)
+                .read_highest_block()
         })
         .expect("should have highest block");
 
@@ -214,8 +214,8 @@ async fn binary_port_component() {
     ) = setup().await;
 
     let test_cases = &[
-        block_header_info(*highest_block.block().hash()),
-        signed_block_info(*highest_block.block().hash()),
+        block_header_info(*highest_block.hash()),
+        signed_block_info(*highest_block.hash()),
         peers(),
         uptime(),
         last_progress(),
@@ -228,12 +228,12 @@ async fn binary_port_component() {
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
         node_status(),
-        get_block_header(highest_block.block().clone_header()),
-        get_block_transfers(highest_block.block().clone_header()),
-        get_era_summary(*highest_block.block().state_root_hash()),
-        get_all_bids(*highest_block.block().state_root_hash()),
-        get_trie(*highest_block.block().state_root_hash()),
-        try_spec_exec_invalid(&mut rng, highest_block.block().clone_header()),
+        get_block_header(highest_block.clone_header()),
+        get_block_transfers(highest_block.clone_header()),
+        get_era_summary(*highest_block.state_root_hash()),
+        get_all_bids(*highest_block.state_root_hash()),
+        get_trie(*highest_block.state_root_hash()),
+        try_spec_exec_invalid(&mut rng, highest_block.clone_header()),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
     ];

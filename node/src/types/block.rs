@@ -12,7 +12,6 @@ use casper_types::{
     Digest, FinalitySignature, SingleBlockRewardedSignatures, TransactionId,
 };
 
-pub(crate) use approvals_hashes::ApprovalsHashes;
 pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
 pub use block_payload::BlockPayload;

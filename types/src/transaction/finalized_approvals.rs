@@ -21,14 +21,14 @@ const V1_TAG: u8 = 1;
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum FinalizedApprovals {
-    /// Approvals for a Deploy.
+    /// Finalized approvals for deploys.
     Deploy(FinalizedDeployApprovals),
-    /// Approvals for a TransactionV1.
+    /// Finalized approvals for v1 transactions.
     V1(FinalizedTransactionV1Approvals),
 }
 
 impl FinalizedApprovals {
-    /// Creates a new set of finalized approvals from a transaction.
+    /// Creates a new finalized approvals set.
     pub fn new(transaction: &Transaction) -> Self {
         match transaction {
             Transaction::Deploy(deploy) => {

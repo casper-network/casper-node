@@ -1,9 +1,11 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    Deploy, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, Transaction, TransactionV1,
-};
+use crate::{Deploy, Transaction, TransactionV1};
+
+use super::{deploy::FinalizedDeployApprovals, transaction_v1::FinalizedTransactionV1Approvals};
 
 /// A transaction combined with a potential set of finalized approvals.
 ///
@@ -16,20 +18,29 @@ use casper_types::{
 /// approvals to the local node, while a second set of approvals makes it to the proposing node. The
 /// local node has to adhere to the proposer's approvals to be guaranteed to obtain the same
 /// outcome.
-#[derive(DataSize, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub(crate) enum TransactionWithFinalizedApprovals {
+#[derive(Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
+pub enum TransactionWithFinalizedApprovals {
+    /// A deploy combined with a potential set of finalized approvals.
     Deploy {
+        /// The deploy.
         deploy: Deploy,
+        /// The set of finalized approvals if they exist.
         finalized_approvals: Option<FinalizedDeployApprovals>,
     },
+    /// A v1 transaction combined with a potential set of finalized approvals.
     V1 {
+        /// The Transaction.
         transaction: TransactionV1,
+        /// The set of finalized approvals if they exist.
         finalized_approvals: Option<FinalizedTransactionV1Approvals>,
     },
 }
 
 impl TransactionWithFinalizedApprovals {
-    pub(crate) fn new_deploy(
+    /// Creates a [`TransactionWithFinalizedApprovals`] for a [`Deploy`]
+    pub fn new_deploy(
         deploy: Deploy,
         finalized_approvals: Option<FinalizedDeployApprovals>,
     ) -> Self {
@@ -39,7 +50,8 @@ impl TransactionWithFinalizedApprovals {
         }
     }
 
-    pub(crate) fn new_v1(
+    /// Creates a [`TransactionWithFinalizedApprovals`] for a [`TransactionV1`]
+    pub fn new_v1(
         transaction: TransactionV1,
         finalized_approvals: Option<FinalizedTransactionV1Approvals>,
     ) -> Self {
@@ -51,7 +63,7 @@ impl TransactionWithFinalizedApprovals {
 
     /// Creates a transaction by potentially substituting the approvals with the finalized
     /// approvals.
-    pub(crate) fn into_naive(self) -> Transaction {
+    pub fn into_naive(self) -> Transaction {
         match self {
             TransactionWithFinalizedApprovals::Deploy {
                 mut deploy,
@@ -70,6 +82,16 @@ impl TransactionWithFinalizedApprovals {
                     transaction = transaction.with_approvals(finalized_approvals.into_inner());
                 }
                 Transaction::from(transaction)
+            }
+        }
+    }
+
+    /// Extracts the original transaction by discarding the finalized approvals.
+    pub fn discard_finalized_approvals(self) -> Transaction {
+        match self {
+            TransactionWithFinalizedApprovals::Deploy { deploy, .. } => Transaction::Deploy(deploy),
+            TransactionWithFinalizedApprovals::V1 { transaction, .. } => {
+                Transaction::V1(transaction)
             }
         }
     }

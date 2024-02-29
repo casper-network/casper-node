@@ -23,7 +23,7 @@ use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
 pub(crate) use block::{
-    compute_approvals_checksum, create_single_block_rewarded_signatures, ApprovalsHashes,
+    compute_approvals_checksum, create_single_block_rewarded_signatures,
     BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
     MetaBlockMergeError, MetaBlockState,
 };
@@ -38,7 +38,7 @@ pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub(crate) use transaction::{
     DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, TransactionHashWithApprovals,
-    TransactionWithFinalizedApprovals, TypedTransactionHash,
+    TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{

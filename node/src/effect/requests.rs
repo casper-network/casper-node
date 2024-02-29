@@ -33,7 +33,7 @@ use casper_types::{
     BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade, ProtocolVersion,
     PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer,
+    TransactionId, TransactionWithFinalizedApprovals, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -52,12 +52,13 @@ use crate::{
     },
     contract_runtime::SpeculativeExecutionState,
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
+        appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed, TransactionWithFinalizedApprovals,
+        MetaBlockState, NodeId, StatusFeed,
     },
     utils::Source,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 129);
@@ -388,14 +389,10 @@ pub(crate) enum StorageRequest {
         transaction_id: TransactionId,
         responder: Responder<bool>,
     },
-    GetTransactionByHash {
+    GetTransactionAndExecutionInfo {
         transaction_hash: TransactionHash,
         with_finalized_approvals: bool,
-        responder: Responder<Option<Transaction>>,
-    },
-    GetTransactionExecutionInfo {
-        transaction_hash: TransactionHash,
-        responder: Responder<Option<ExecutionInfo>>,
+        responder: Responder<Option<(Transaction, Option<ExecutionInfo>)>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -558,15 +555,14 @@ impl Display for StorageRequest {
             StorageRequest::GetTransaction { transaction_id, .. } => {
                 write!(formatter, "get transaction {}", transaction_id)
             }
-            StorageRequest::GetTransactionByHash {
+            StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash, ..
             } => {
-                write!(formatter, "get transaction by hash {}", transaction_hash)
-            }
-            StorageRequest::GetTransactionExecutionInfo {
-                transaction_hash, ..
-            } => {
-                write!(formatter, "get execution info for {}", transaction_hash)
+                write!(
+                    formatter,
+                    "get transaction and exec info {}",
+                    transaction_hash
+                )
             }
             StorageRequest::IsTransactionStored { transaction_id, .. } => {
                 write!(formatter, "is transaction {} stored", transaction_id)

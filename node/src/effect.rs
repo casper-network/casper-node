@@ -136,7 +136,7 @@ use casper_types::{
     BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
     FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade,
     ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    TransactionHeader, TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
 use crate::{
@@ -156,12 +156,14 @@ use crate::{
     failpoints::FailpointActivation,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
+        appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionWithFinalizedApprovals,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
+use casper_storage::block_store::types::ApprovalsHashes;
+
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
@@ -1548,37 +1550,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction from storage by TransactionHash.
-    pub(crate) async fn get_transaction_by_hash_from_storage(
+    /// Gets the requested transaction and its execution info from storage by TransactionHash.
+    pub(crate) async fn get_transaction_and_exec_info_from_storage(
         self,
         transaction_hash: TransactionHash,
         with_finalized_approvals: bool,
-    ) -> Option<Transaction>
+    ) -> Option<(Transaction, Option<ExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetTransactionByHash {
+            |responder| StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash,
                 with_finalized_approvals,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets execution info for the requested transaction from storage by TransactionHash.
-    pub(crate) async fn get_transaction_execution_info_from_storage(
-        self,
-        transaction_hash: TransactionHash,
-    ) -> Option<ExecutionInfo>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetTransactionExecutionInfo {
-                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,

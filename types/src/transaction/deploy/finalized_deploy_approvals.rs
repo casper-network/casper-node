@@ -23,7 +23,7 @@ impl FinalizedDeployApprovals {
         Self(approvals)
     }
 
-    /// Returns the inner `BTreeSet` of approvals.
+    /// Returns a reference to the inner BTreeSet where the deploy approvals are stored.
     pub fn inner(&self) -> &BTreeSet<DeployApproval> {
         &self.0
     }

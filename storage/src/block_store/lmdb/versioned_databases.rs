@@ -1,9 +1,6 @@
-#[cfg(test)]
-use std::{cmp::Ord, collections::BTreeSet};
-
 use datasize::DataSize;
 use lmdb::{
-    Cursor, Database, DatabaseFlags, Environment, RoTransaction, RwCursor, RwTransaction,
+    Cursor, Database, DatabaseFlags, Environment, RwCursor, RwTransaction,
     Transaction as LmdbTransaction,
 };
 use serde::de::DeserializeOwned;
@@ -11,8 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 
-#[cfg(test)]
-use casper_types::bytesrepr;
 use casper_types::{
     binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
@@ -22,19 +17,19 @@ use casper_types::{
     Transaction, TransactionHash,
 };
 
-use super::{
-    lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
-    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes, RawDataAccess,
+use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
+use crate::block_store::{
+    error::BlockStoreError,
+    types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
 };
-use crate::types::ApprovalsHashes;
 
-pub(super) trait VersionedKey: ToBytes {
+pub(crate) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;
 
     fn legacy_key(&self) -> Option<&Self::Legacy>;
 }
 
-pub(super) trait VersionedValue: ToBytes + FromBytes {
+pub(crate) trait VersionedValue: ToBytes + FromBytes {
     type Legacy: 'static + DeserializeOwned + Into<Self>;
 }
 
@@ -93,20 +88,6 @@ impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
 }
 
-impl<K, V> RawDataAccess for VersionedDatabases<K, V>
-where
-    K: VersionedKey,
-    V: VersionedValue,
-{
-    fn get_raw_bytes(
-        &self,
-        txn: &RoTransaction,
-        key: &[u8],
-    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
-        self.get_raw(txn, key)
-    }
-}
-
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the
 /// new versioned, future-proof form of the data.
 ///
@@ -118,15 +99,15 @@ where
 /// will be a duplicated entry in the `legacy` and `current` DBs.  This should not be a common
 /// occurrence though.
 #[derive(Eq, PartialEq, DataSize, Debug)]
-pub(super) struct VersionedDatabases<K, V> {
+pub(crate) struct VersionedDatabases<K, V> {
     /// Legacy form of the data, with the key as `K::Legacy` type (converted to bytes using
     /// `AsRef<[u8]>`) and the value bincode-encoded.
     #[data_size(skip)]
-    legacy: Database,
+    pub legacy: Database,
     /// Current form of the data, with the key as `K` bytesrepr-encoded and the value as `V` also
     /// bytesrepr-encoded.
     #[data_size(skip)]
-    current: Database,
+    pub current: Database,
     _phantom: PhantomData<(K, V)>,
 }
 
@@ -167,7 +148,7 @@ where
 
     pub(super) fn get<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
         if let Some(value) = txn.get_value_bytesrepr(self.current, key)? {
@@ -184,9 +165,9 @@ where
             .map(Into::into))
     }
 
-    pub(super) fn get_raw(
+    pub(super) fn get_raw<Tx: LmdbTransaction>(
         &self,
-        txn: &RoTransaction,
+        txn: &Tx,
         key: &[u8],
     ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
         let value = txn.get(self.current, &key);
@@ -206,7 +187,7 @@ where
 
     pub(super) fn exists<Tx: LmdbTransaction>(
         &self,
-        txn: &mut Tx,
+        txn: &Tx,
         key: &K,
     ) -> Result<bool, LmdbExtError> {
         if txn.value_exists_bytesrepr(self.current, key)? {
@@ -257,14 +238,18 @@ where
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
-    ) -> Result<(), FatalStorageError>
+    ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), FatalStorageError>,
+        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
     {
-        let mut cursor = txn.open_rw_cursor(self.current)?;
+        let mut cursor = txn
+            .open_rw_cursor(self.current)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) = row?;
-            let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)?;
+            let (_, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             f(&mut cursor, value)?;
         }
         Ok(())
@@ -276,14 +261,18 @@ where
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
-    ) -> Result<(), FatalStorageError>
+    ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), FatalStorageError>,
+        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
     {
-        let mut cursor = txn.open_rw_cursor(self.legacy)?;
+        let mut cursor = txn
+            .open_rw_cursor(self.legacy)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) = row?;
-            let value: V::Legacy = lmdb_ext::deserialize(raw_val)?;
+            let (_, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            let value: V::Legacy = lmdb_ext::deserialize(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             f(&mut cursor, value.into())?;
         }
         Ok(())
@@ -304,29 +293,11 @@ where
         txn.put_value(self.legacy, legacy_key, legacy_value, overwrite)
             .expect("should put legacy value")
     }
-
-    /// Returns the keys from the `current` database only.
-    #[cfg(test)]
-    pub(super) fn keys<Tx: LmdbTransaction>(&self, txn: &Tx) -> BTreeSet<K>
-    where
-        K: Ord + FromBytes,
-    {
-        let mut cursor = txn
-            .open_ro_cursor(self.current)
-            .expect("should create cursor");
-
-        cursor
-            .iter()
-            .map(Result::unwrap)
-            .map(|(raw_key, _)| {
-                bytesrepr::deserialize(raw_key.to_vec()).expect("malformed key in DB")
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::block_store::lmdb::lmdb_block_store::new_environment;
     use lmdb::WriteFlags;
     use std::collections::HashMap;
 
@@ -349,7 +320,7 @@ mod tests {
         fn new() -> Fixture {
             let rng = TestRng::new();
             let data_dir = TempDir::new().expect("should create temp dir");
-            let env = super::super::new_environment(1024 * 1024, data_dir.path()).unwrap();
+            let env = new_environment(1024 * 1024, data_dir.path()).unwrap();
             let dbs = VersionedDatabases::new(&env, "legacy", "current").unwrap();
             let mut fixture = Fixture {
                 rng,
@@ -416,24 +387,24 @@ mod tests {
         txn.commit().unwrap();
 
         // Should get the deploy.
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         assert_eq!(
             fixture
                 .dbs
-                .get(&mut txn, &TransactionHash::from(*deploy_hash))
+                .get(&txn, &TransactionHash::from(*deploy_hash))
                 .unwrap(),
             Some(Transaction::from(deploy.clone()))
         );
 
         // Should get the random transaction.
         assert_eq!(
-            fixture.dbs.get(&mut txn, transaction_hash).unwrap(),
+            fixture.dbs.get(&txn, transaction_hash).unwrap(),
             Some(transaction.clone())
         );
 
         // Should return `Ok(None)` for non-existent data.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
-        assert!(fixture.dbs.get(&mut txn, &random_hash).unwrap().is_none());
+        assert!(fixture.dbs.get(&txn, &random_hash).unwrap().is_none());
     }
 
     #[test]
@@ -452,18 +423,18 @@ mod tests {
         txn.commit().unwrap();
 
         // The deploy should exist.
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         assert!(fixture
             .dbs
-            .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+            .exists(&txn, &TransactionHash::from(*deploy_hash))
             .unwrap());
 
         // The random transaction should exist.
-        assert!(fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+        assert!(fixture.dbs.exists(&txn, transaction_hash).unwrap());
 
         // Random data should not exist.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
-        assert!(!fixture.dbs.exists(&mut txn, &random_hash).unwrap());
+        assert!(!fixture.dbs.exists(&txn, &random_hash).unwrap());
     }
 
     #[test]
@@ -500,12 +471,12 @@ mod tests {
             .unwrap();
         assert!(!fixture
             .dbs
-            .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+            .exists(&txn, &TransactionHash::from(*deploy_hash))
             .unwrap());
 
         // Should delete the random transaction.
         fixture.dbs.delete(&mut txn, transaction_hash).unwrap();
-        assert!(!fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+        assert!(!fixture.dbs.exists(&txn, transaction_hash).unwrap());
 
         // Should report success when attempting to delete non-existent data.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
@@ -542,9 +513,9 @@ mod tests {
 
         // Ensure all values were visited and the DB doesn't contain them any more.
         assert_eq!(visited, fixture.random_transactions);
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         for transaction_hash in fixture.random_transactions.keys() {
-            assert!(!fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
+            assert!(!fixture.dbs.exists(&txn, transaction_hash).unwrap());
         }
 
         // Ensure a second run is a no-op.
@@ -590,11 +561,11 @@ mod tests {
 
         // Ensure all values were visited and the DB doesn't contain them any more.
         assert_eq!(visited, fixture.legacy_transactions);
-        let mut txn = fixture.env.begin_ro_txn().unwrap();
+        let txn = fixture.env.begin_ro_txn().unwrap();
         for deploy_hash in fixture.legacy_transactions.keys() {
             assert!(!fixture
                 .dbs
-                .exists(&mut txn, &TransactionHash::from(*deploy_hash))
+                .exists(&txn, &TransactionHash::from(*deploy_hash))
                 .unwrap());
         }
 

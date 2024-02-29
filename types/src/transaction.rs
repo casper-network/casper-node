@@ -19,6 +19,7 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transaction_with_finalized_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
@@ -78,6 +79,7 @@ pub use transaction_v1::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;

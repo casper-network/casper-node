@@ -86,14 +86,12 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     failpoints::FailpointActivation,
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap,
-        TrieOrChunk,
-    },
+    types::{BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk},
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
     NodeRng, TERMINATION_REQUESTED,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 pub(crate) use queue_kind::QueueKind;
 
 /// Default threshold for when an event is considered slow.  Can be overridden by setting the env
