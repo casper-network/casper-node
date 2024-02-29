@@ -179,4 +179,4 @@ done
 
 _main "${STAGE_ID:-1}" \
       "${STAGE_SOURCE:-"local"}" \
-      "${PROTOCOL_VERSION:-"1_0_0"}"
+      "${PROTOCOL_VERSION:-"2_0_0"}"
