@@ -14,7 +14,7 @@ use tempfile::TempDir;
 const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
-const CONTRACT_BURN: &str = "burn.wasm";
+const CONTRACT_BURN: &str = "named_purse_burn.wasm";
 const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
 
 const ARG_AMOUNT: &str = "amount";
