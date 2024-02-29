@@ -60,23 +60,19 @@ impl CEP18 for TokenContract {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, thread::current};
-
-    use crate::{security_badge::SecurityBadge, traits::CEP18Ext};
+    use crate::{error::Cep18Error, security_badge::SecurityBadge};
 
     use super::*;
 
     use casper_sdk::{
         host::{
             self,
-            native::{current_environment, with_current_environment, Environment, DEFAULT_ADDRESS},
+            native::{current_environment, Environment, DEFAULT_ADDRESS},
         },
         types::Address,
-        ContractHandle, ContractRef,
+        Contract,
     };
 
-    // use traits::CEP18Ref;
-    use casper_macros;
     const ALICE: Address = [1; 32];
     const BOB: Address = [2; 32];
 
