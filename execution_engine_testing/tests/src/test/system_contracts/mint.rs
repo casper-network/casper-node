@@ -24,141 +24,11 @@ const ARG_TOTAL_PURSES: &str = "total_purses";
 const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_PURSE: &str = "purse";
 
-// #[ignore]
-// #[test]
-// fn should_burn_tokens_from_provided_purse() {
-//     let data_dir = TempDir::new().expect("should create temp dir");
-//     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
-//     let purse_amount = U512::from(5000000000u64);
-//     let total_purses = 2u64;
-//     let source = DEFAULT_ACCOUNT_ADDR.clone();
-
-//     let delegator_keys = auction::generate_public_keys(1);
-//     let validator_keys = auction::generate_public_keys(1);
-
-//     auction::run_genesis_and_create_initial_accounts(
-//         &mut builder,
-//         &validator_keys,
-//         delegator_keys
-//             .iter()
-//             .map(|public_key| public_key.to_account_hash())
-//             .collect::<Vec<_>>(),
-//         U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
-//     );
-
-
-//     let exec_request = ExecuteRequestBuilder::standard(
-//         source,
-//         CONTRACT_CREATE_PURSES,
-//         runtime_args! {
-//             ARG_AMOUNT => U512::from(total_purses) * purse_amount,
-//             ARG_TOTAL_PURSES => total_purses,
-//             ARG_SEED_AMOUNT => purse_amount
-//         },
-//     )
-//     .build();
-
-//     builder.exec(exec_request).expect_success().commit();
-
-//     // Return created purses for given account by filtering named keys
-//     let query_result = builder
-//         .query(None, Key::Account(source), &[])
-//         .expect("should query target");
-//     let account = query_result
-//         .as_account()
-//         .unwrap_or_else(|| panic!("result should be account but received {:?}", query_result));
-
-//     let urefs: Vec<URef> = (0..total_purses)
-//         .map(|index| {
-//             let purse_lookup_key = format!("purse:{}", index);
-//             let purse_uref = account
-//                 .named_keys()
-//                 .get(&purse_lookup_key)
-//                 .and_then(Key::as_uref)
-//                 .unwrap_or_else(|| panic!("should get named key {} as uref", purse_lookup_key));
-//             *purse_uref
-//         })
-//         .collect();
-
-//     assert_eq!(urefs.len(), 2);
-
-//     for uref in &urefs {
-//         let balance = builder
-//             .get_purse_balance_result(uref.clone())
-//             .motes()
-//             .cloned()
-//             .unwrap();
-
-//         assert_eq!(balance, purse_amount);
-//     }
-
-//     let total_supply_before_burning: U512 =
-//         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
-
-//     {
-//         let exec_request = ExecuteRequestBuilder::standard(
-//             source,
-//             CONTRACT_BURN,
-//             runtime_args! {
-//                 ARG_PURSE => urefs[0].clone(),
-//                 ARG_AMOUNT => purse_amount,
-//             },
-//         )
-//         .build();
-
-//         builder.exec(exec_request).expect_success().commit();
-
-//         assert_eq!(
-//             builder
-//                 .get_purse_balance_result(urefs[0].clone())
-//                 .motes()
-//                 .cloned()
-//                 .unwrap(),
-//             U512::zero()
-//         );
-//     }
-
-//     {
-//         let exec_request = ExecuteRequestBuilder::standard(
-//             source,
-//             CONTRACT_BURN,
-//             runtime_args! {
-//                 ARG_PURSE => urefs[1].clone(),
-//                 ARG_AMOUNT => purse_amount / 2
-//             },
-//         )
-//         .build();
-
-//         builder.exec(exec_request).expect_success().commit();
-
-//         assert_eq!(
-//             builder
-//                 .get_purse_balance_result(urefs[1].clone())
-//                 .motes()
-//                 .cloned()
-//                 .unwrap(),
-//             purse_amount / 2
-//         );
-//     }
-
-//     let total_supply_after_burning: U512 =
-//         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
-
-//     let total_supply_difference = total_supply_before_burning - total_supply_after_burning;
-
-//     assert_eq!(
-//         total_supply_difference,
-//         U512::from(total_purses) * purse_amount
-//     );
-// }
-
 #[ignore]
 #[test]
 fn should_burn_tokens_from_provided_purse() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
-    let purse_amount = U512::from(5000000000u64);
-    let total_purses = 2u64;
     let source = DEFAULT_ACCOUNT_ADDR.clone();
 
     let delegator_keys = auction::generate_public_keys(1);
@@ -177,13 +47,7 @@ fn should_burn_tokens_from_provided_purse() {
     let purse_name = "purse";
     let purse_amount = U512::from(10_000_000_000u64);
 
-    // let source_account: Account = Account::create(
-    //     source,
-    //     NamedKeys::new(),
-    //     URef::new([0; 32], AccessRights::READ_ADD_WRITE)
-    // );
-
-    // CONTRACT_TRANSFER_TO_NAMED_PURSE:
+    // Create purse and transfer tokens to it
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_TRANSFER_TO_NAMED_PURSE,
@@ -211,5 +75,55 @@ fn should_burn_tokens_from_provided_purse() {
             .cloned()
             .unwrap(),
         purse_amount
+    );
+
+    // Burn part of tokens in a purse
+    let num_of_tokens_to_burn = U512::from(2_000_000_000u64);
+    let num_of_tokens_after_burn = U512::from(8_000_000_000u64);
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        source,
+        CONTRACT_BURN,
+        runtime_args! {
+            ARG_PURSE_NAME => purse_name.clone(),
+            ARG_AMOUNT => num_of_tokens_to_burn,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    assert_eq!(
+        builder
+            .get_purse_balance_result(purse_uref.clone())
+            .motes()
+            .cloned()
+            .unwrap(),
+        num_of_tokens_after_burn
+    );
+
+    // Burn rest of tokens in a purse
+    let num_of_tokens_to_burn = U512::from(8_000_000_000u64);
+    let num_of_tokens_after_burn = U512::zero();
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        source,
+        CONTRACT_BURN,
+        runtime_args! {
+            ARG_PURSE_NAME => purse_name.clone(),
+            ARG_AMOUNT => num_of_tokens_to_burn,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    assert_eq!(
+        builder
+            .get_purse_balance_result(purse_uref.clone())
+            .motes()
+            .cloned()
+            .unwrap(),
+        num_of_tokens_after_burn
     );
 }
