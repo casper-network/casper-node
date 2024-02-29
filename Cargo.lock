@@ -3631,6 +3631,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "main-purse-burn"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [

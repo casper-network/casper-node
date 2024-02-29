@@ -1,28 +1,18 @@
 use casper_engine_test_support::{
     auction, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
 };
-use casper_types::{
-    runtime_args, system::mint::TOTAL_SUPPLY_KEY, Key, RuntimeArgs, URef,
-    U512,
-    account::Account,
-    contracts::NamedKeys,
-    AccessRights,
-};
+use casper_types::{runtime_args, RuntimeArgs, URef, U512};
 
 use tempfile::TempDir;
 
 const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 
-const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
 const CONTRACT_BURN: &str = "named_purse_burn.wasm";
 const CONTRACT_TRANSFER_TO_NAMED_PURSE: &str = "transfer_to_named_purse.wasm";
 
 const ARG_AMOUNT: &str = "amount";
-const ARG_SEED_AMOUNT: &str = "seed_amount";
-const ARG_TOTAL_PURSES: &str = "total_purses";
 
 const ARG_PURSE_NAME: &str = "purse_name";
-const ARG_PURSE: &str = "purse";
 
 #[ignore]
 #[test]
@@ -86,7 +76,7 @@ fn should_burn_tokens_from_provided_purse() {
         source,
         CONTRACT_BURN,
         runtime_args! {
-            ARG_PURSE_NAME => purse_name.clone(),
+            ARG_PURSE_NAME => purse_name,
             ARG_AMOUNT => num_of_tokens_to_burn,
         },
     )
@@ -111,7 +101,7 @@ fn should_burn_tokens_from_provided_purse() {
         source,
         CONTRACT_BURN,
         runtime_args! {
-            ARG_PURSE_NAME => purse_name.clone(),
+            ARG_PURSE_NAME => purse_name,
             ARG_AMOUNT => num_of_tokens_to_burn,
         },
     )
@@ -131,10 +121,7 @@ fn should_burn_tokens_from_provided_purse() {
     let supply_after_burns = builder.total_supply(None);
     let expected_supply_after_burns = initial_supply - U512::from(10_000_000_000u64);
 
-    assert_eq!(
-        supply_after_burns,
-        expected_supply_after_burns
-    );
+    assert_eq!(supply_after_burns, expected_supply_after_burns);
 }
 
 #[ignore]
@@ -193,13 +180,13 @@ fn should_not_burn_excess_tokens() {
 
     // Try to burn more then in a purse
     let num_of_tokens_to_burn = U512::MAX;
-    let num_of_tokens_after_burn = U512::from(8_000_000_000u64);
+    let num_of_tokens_after_burn = U512::zero();
 
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_BURN,
         runtime_args! {
-            ARG_PURSE_NAME => purse_name.clone(),
+            ARG_PURSE_NAME => purse_name,
             ARG_AMOUNT => num_of_tokens_to_burn,
         },
     )
@@ -213,14 +200,11 @@ fn should_not_burn_excess_tokens() {
             .motes()
             .cloned()
             .unwrap(),
-        U512::zero()
+        num_of_tokens_after_burn,
     );
 
     let supply_after_burns = builder.total_supply(None);
     let expected_supply_after_burns = initial_supply - U512::from(10_000_000_000u64);
 
-    assert_eq!(
-        supply_after_burns,
-        expected_supply_after_burns
-    );
+    assert_eq!(supply_after_burns, expected_supply_after_burns);
 }

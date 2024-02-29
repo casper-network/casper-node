@@ -650,7 +650,7 @@ where
                 let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
-            // Type: `fn burn(purse: URef, amount: U512)` 
+            // Type: `fn burn(purse: URef, amount: U512)`
             mint::METHOD_BURN => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.burn)?;
 

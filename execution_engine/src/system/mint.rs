@@ -59,7 +59,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
     /// Burns native tokens.
     fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error>;
-    
+
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {

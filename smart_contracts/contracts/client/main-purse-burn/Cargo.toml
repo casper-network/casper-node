@@ -1,20 +1,16 @@
 [package]
-name = "session"
+name = "main-purse-burn"
 version = "0.1.0"
+authors = ["Igor Bunar <igor@casper.network>", "Jan Hoffmann <jan@casper.network>"]
 edition = "2021"
 
-[dependencies]
-casper-contract = "1.4.4"
-casper-types = "1.5.0"
-
 [[bin]]
-name = "session"
+name = "main_purse_burn"
 path = "src/main.rs"
 bench = false
 doctest = false
 test = false
 
-[profile.release]
-codegen-units = 1
-lto = true
-panic = "abort"
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

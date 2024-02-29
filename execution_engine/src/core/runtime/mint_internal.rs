@@ -10,8 +10,8 @@ use crate::{
     core::{engine_state::SystemContractRegistry, execution},
     storage::global_state::StateReader,
     system::mint::{
-        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-        system_provider::SystemProvider, Mint,detail
+        detail, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider, Mint,
     },
 };
 
@@ -192,8 +192,12 @@ where
     /// Burns native tokens.
     fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
         let purse_key = Key::URef(purse);
-        self.context.validate_writeable(&purse_key).map_err(|_| Error::InvalidAccessRights)?;
-        self.context.validate_key(&purse_key).map_err(|_| Error::InvalidURef)?;
+        self.context
+            .validate_writeable(&purse_key)
+            .map_err(|_| Error::InvalidAccessRights)?;
+        self.context
+            .validate_key(&purse_key)
+            .map_err(|_| Error::InvalidURef)?;
 
         let source_balance: U512 = match self.read_balance(purse)? {
             Some(source_balance) => source_balance,
@@ -202,10 +206,10 @@ where
 
         let new_balance = match source_balance.checked_sub(amount) {
             Some(value) => value,
-            None => U512::zero()
+            None => U512::zero(),
         };
 
-        // source_balance is >= than new_balance 
+        // source_balance is >= than new_balance
         // this should block user from reducing totaly supply beyond what they own
         let burned_amount = source_balance - new_balance;
 

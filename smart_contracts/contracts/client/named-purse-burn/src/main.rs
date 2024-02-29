@@ -2,15 +2,16 @@
 #![no_main]
 
 extern crate alloc;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use casper_contract::{
+    contract_api::{account, alloc_bytes, runtime, system},
     ext_ffi,
-    contract_api::{alloc_bytes, runtime, system, account},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{bytesrepr, runtime_args, api_error, system::mint, RuntimeArgs, URef, U512, Key, ApiError};
+use casper_types::{
+    api_error, bytesrepr, runtime_args, system::mint, ApiError, Key, RuntimeArgs, URef, U512,
+};
 
 const ARG_PURSE_NAME: &str = "purse_name";
 
@@ -26,16 +27,16 @@ fn burn(uref: URef, amount: U512) {
 #[no_mangle]
 pub extern "C" fn call() {
     let purse_uref = match get_named_arg_option::<String>(ARG_PURSE_NAME) {
-        Some(name) => { 
+        Some(name) => {
             // if a key was provided and there is no value under it we revert
             // to prevent user from accidentaly burning tokens from the main purse
             // eg. if they make a typo
-            let Some(Key::URef(purse_uref)) = runtime::get_key(&name) else { 
-                runtime::revert(ApiError::InvalidPurseName) 
-            }; 
+            let Some(Key::URef(purse_uref)) = runtime::get_key(&name) else {
+                runtime::revert(ApiError::InvalidPurseName)
+            };
             purse_uref
         }
-        None => account::get_main_purse()
+        None => account::get_main_purse(),
     };
     let amount: U512 = runtime::get_named_arg(mint::ARG_AMOUNT);
 
@@ -73,7 +74,9 @@ pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
             };
             let data =
                 unsafe { Vec::from_raw_parts(data_non_null_ptr.as_ptr(), arg_size, arg_size) };
-            if ret != 0 { return None }
+            if ret != 0 {
+                return None;
+            }
             data
         };
         res
@@ -81,7 +84,8 @@ pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
         // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-    
-    let deserialized_data = bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
+
+    let deserialized_data =
+        bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
     Some(deserialized_data)
 }
