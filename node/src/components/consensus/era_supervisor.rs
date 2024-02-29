@@ -32,7 +32,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
-    EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
+    EraId, FinalizedApprovals, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
 };
 
 use crate::{
@@ -59,8 +60,8 @@ use crate::{
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
-        FinalizedApprovals, FinalizedBlock, InternalEraReport, MetaBlockState, NodeId,
-        TypedTransactionHash, ValidatorMatrix,
+        FinalizedBlock, InternalEraReport, MetaBlockState, NodeId, TypedTransactionHash,
+        ValidatorMatrix,
     },
     NodeRng,
 };
