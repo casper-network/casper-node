@@ -912,8 +912,8 @@ function test_get_chainspec() {
     get_chainspec_from_rpc > "$OUTPUT_PATH/rpc_chainspec.toml"
     get_accounts_from_rpc > "$OUTPUT_PATH/rpc_accounts.toml"
     # Test File From RPC matches whats running on a node
-    compare_md5sum "$OUTPUT_PATH/rpc_chainspec.toml" "$(get_path_to_node 1)/config/1_0_0/chainspec.toml"
-    compare_md5sum "$OUTPUT_PATH/rpc_accounts.toml" "$(get_path_to_node 1)/config/1_0_0/accounts.toml"
+    compare_md5sum "$OUTPUT_PATH/rpc_chainspec.toml" "$(get_path_to_node 1)/config/2_0_0/chainspec.toml"
+    compare_md5sum "$OUTPUT_PATH/rpc_accounts.toml" "$(get_path_to_node 1)/config/2_0_0/accounts.toml"
     # Test JSON OUTPUT is Valid, jq will balk if invalid json
     get_chainspec_json_from_rpc | jq '.'
 }
