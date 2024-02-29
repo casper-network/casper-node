@@ -4,7 +4,6 @@ use crate::{
     storage::Keyspace,
 };
 
-use bitflags::Flags;
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
@@ -64,9 +63,7 @@ where
 }
 
 impl<T: CasperABI> CasperABI for Vector<T> {
-    fn populate_definitions(definitions: &mut Definitions) {
-        // definitions.insert(T::declaration(), T::)
-    }
+    fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
         format!("Vector<{}>", T::declaration())

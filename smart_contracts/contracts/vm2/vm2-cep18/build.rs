@@ -1,8 +1,8 @@
-use std::{env, fs, path::Path};
+// use std::{env, fs, path::Path};
 
-use casper_sdk_codegen::Codegen;
+// use casper_sdk_codegen::Codegen;
 
-const SCHEMA: &str = include_str!("cep18_schema.json");
+// const SCHEMA: &str = include_str!("cep18_schema.json");
 
 fn main() {
     // Check if target arch is wasm32 and set link flags accordingly

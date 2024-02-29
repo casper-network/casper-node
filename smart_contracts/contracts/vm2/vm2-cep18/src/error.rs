@@ -1,6 +1,5 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::CasperABI;
-use casper_sdk::abi::CasperABI;
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the [`Error::User`] variant or equivalently via the [`ApiError::User`]

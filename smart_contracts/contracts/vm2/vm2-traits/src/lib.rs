@@ -4,21 +4,10 @@
 #[macro_use]
 extern crate alloc;
 
-use core::marker::PhantomData;
-
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
-use casper_sdk::{
-    host::{self, Alloc, CallResult},
-    log, revert,
-    sys::CreateResult,
-    types::{Address, CallError, ResultCode},
-    Contract, ContractHandle, Selector, ToCallData,
-};
+use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_sdk::{log, Contract, ContractHandle};
 
 const GREET_RETURN_VALUE: u64 = 123456789;
 
@@ -180,23 +169,19 @@ pub fn perform_test() {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        CounterExt, CounterRef, CounterState, HasTraits, HasTraitsRef, Trait1, GREET_RETURN_VALUE,
-    };
+    use crate::{CounterExt, HasTraits, HasTraitsRef, Trait1};
 
-    use super::Trait1Ref;
     use alloc::collections::BTreeSet;
     use casper_macros::selector;
     use casper_sdk::{
-        abi::{Definition, StructField},
+        abi::StructField,
         host::{
             self,
             native::{dispatch_with, Environment},
         },
         log,
         schema::{CasperSchema, SchemaEntryPoint, SchemaType},
-        sys::CreateResult,
-        Contract, ContractHandle, ContractRef,
+        Contract, ContractRef,
     };
     use vm_common::flags::EntryPointFlags;
 

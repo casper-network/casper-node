@@ -1,10 +1,8 @@
 mod validation;
 
 use crate::{schema::CasperSchema, Contract};
-use casper_sdk_sys::EntryPoint;
-use clap::{error::ErrorKind, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use thiserror::Error;
-use vm_common::flags::EntryPointFlags;
 
 use self::validation::Validation;
 

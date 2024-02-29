@@ -6,8 +6,7 @@ pub mod error;
 pub mod security_badge;
 pub mod traits;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, selector};
+use casper_macros::casper;
 use casper_sdk::{log, Contract};
 use contract::{TokenContract, TokenContractRef};
 
@@ -15,7 +14,7 @@ use contract::{TokenContract, TokenContractRef};
 pub fn call() {
     log!("Hello");
     let constructor = TokenContractRef::new("my token name".to_string());
-    let result = TokenContract::create(constructor);
+    let _result = TokenContract::create(constructor);
     log!("CEP18 succeeded");
 }
 

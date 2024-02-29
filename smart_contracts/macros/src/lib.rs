@@ -1,16 +1,15 @@
 extern crate proc_macro;
 
-use blake2_rfc::blake2b;
 use casper_sdk::Selector;
-use darling::{usage::UsesLifetimes, FromAttributes, FromDeriveInput, FromMeta};
-use proc_macro::{Literal, TokenStream, TokenTree};
+use darling::FromAttributes;
+use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, token::Struct, Data, DeriveInput, Error, Fields, ItemEnum, ItemFn, ItemImpl,
-    ItemStruct, ItemTrait, ItemUnion, Lit, LitByteStr, LitStr, Meta, Path, Type,
+    parse_macro_input, Data, DeriveInput, Fields, ItemEnum, ItemFn, ItemImpl, ItemStruct,
+    ItemTrait, ItemUnion, LitStr, Type,
 };
-use vm_common::flags::{self, EntryPointFlags};
+use vm_common::flags::EntryPointFlags;
 
 #[derive(Debug, FromAttributes)]
 #[darling(attributes(casper))]
@@ -40,13 +39,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let name = &contract.ident;
     let _vis = &contract.vis;
 
-    let data_struct = match &contract.data {
+    let _data_struct = match &contract.data {
         Data::Struct(s) => s,
         Data::Enum(_) => todo!("Enum"),
         Data::Union(_) => todo!("Union"),
     };
 
-    // let manifest_name = format_ident!("{name}::MANIFEST");
     let ref_name = format_ident!("{}Ref", name);
 
     let mut dynamic_manifest = Vec::new();
@@ -166,7 +164,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                 let mut dispatch_table = Vec::new();
 
-                let mut entry_point_index = 0usize;
                 let mut extra_code = Vec::new();
 
                 let mut schema_entry_points = Vec::new();
@@ -302,13 +299,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     flags: 0, // TODO?
                                 }
                             });
-                            entry_point_index += 1;
-
-                            let ident = format_ident!(
-                                "{trait_name}_{name}",
-                                trait_name = trait_name,
-                                name = func_name
-                            );
 
                             let input_data_content = if arg_names.is_empty() {
                                 quote! {
@@ -329,11 +319,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             extra_code.push(quote! {
                                 fn #func_name<'a>(#self_ty #(#arg_names: #arg_types,)*) -> impl casper_sdk::ToCallData<Return<'a> = #call_data_return_lifetime> {
                                     #[derive(BorshSerialize)]
-                                    struct #ident {
+                                    struct CallData {
                                         #(pub #arg_names: #arg_types,)*
                                     }
 
-                                    impl casper_sdk::ToCallData for #ident {
+                                    impl casper_sdk::ToCallData for CallData {
                                         const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
                                         type Return<'a> = #call_data_return_lifetime;
 
@@ -342,8 +332,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         }
                                     }
 
-
-                                    #ident {
+                                    CallData {
                                         #(#arg_names,)*
                                     }
                                 }
@@ -546,8 +535,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(_) | None => None,
                                 };
 
-                                let preamble = if method_attribute.constructor {
-                                    let sig = &func.sig;
+                                let _preamble = if method_attribute.constructor {
                                     match func.sig.inputs.first() {
                                         Some(syn::FnArg::Receiver(_receiver)) => {
                                             panic!("Constructor should not take a receiver")
@@ -601,7 +589,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 let mut entrypoint_params = Vec::new();
 
-                                for (name, ty) in &arg_names_and_types {
+                                for (name, _ty) in &arg_names_and_types {
                                     entrypoint_params.push(quote! {
                                         {
                                             casper_sdk::sys::Param {
@@ -1123,18 +1111,13 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
     gen.into()
 }
 
-const PRIMITIVE_TYPES: &[&str] = &[
-    "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "bool", "String", "f32",
-    "f64",
-];
-
 #[proc_macro_derive(CasperSchema, attributes(casper))]
 pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let contract = parse_macro_input!(input as DeriveInput);
 
     let contract_attributes = ContractAttributes::from_attributes(&contract.attrs).unwrap();
 
-    let data_struct = match &contract.data {
+    let _data_struct = match &contract.data {
         Data::Struct(s) => s,
         Data::Enum(_) => todo!("Enum"),
         Data::Union(_) => todo!("Union"),

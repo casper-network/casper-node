@@ -11,7 +11,7 @@ pub mod schema;
 pub mod storage;
 pub mod types;
 
-use std::{fmt, io, marker::PhantomData, ptr::NonNull};
+use std::{io, marker::PhantomData, ptr::NonNull};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
@@ -233,7 +233,7 @@ impl<T: ContractRef> CallBuilder<T> {
         &self,
         func: impl FnOnce(T) -> CallData,
     ) -> Result<CallResult<CallData>, CallError> {
-        let mut inst = T::new();
+        let inst = T::new();
         let call_data = func(inst);
         host::call(&self.address, self.value.unwrap_or(0), call_data)
     }
@@ -245,7 +245,7 @@ impl<T: ContractRef> CallBuilder<T> {
     where
         CallData::Return<'a>: BorshDeserialize + Clone,
     {
-        let mut inst = T::new();
+        let inst = T::new();
         let call_data = func(inst);
         let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
         Ok(call_result.into_return_value())

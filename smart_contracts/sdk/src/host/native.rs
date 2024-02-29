@@ -1,16 +1,12 @@
 use bytes::Bytes;
-use casper_sdk_sys::{for_each_host_function, Param};
 use core::slice;
-use once_cell::sync::Lazy;
 use rand::Rng;
 use std::{
-    borrow::BorrowMut,
-    cell::{Ref, RefCell},
+    cell::RefCell,
     collections::{BTreeMap, VecDeque},
     convert::Infallible,
-    num::NonZeroU32,
     ptr::{self, NonNull},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
@@ -21,19 +17,19 @@ pub enum NativeTrap {
     Return(ReturnFlags, Bytes),
 }
 
-macro_rules! define_trait_methods {
-    // ( @optional $ty:ty ) => { stringify!($ty) };
-    // ( @optional ) => { "()" };
-    ( @ret $ty:ty ) => { Result<$ty, $crate::host::native::NativeTrap> };
-    ( @ret !) => { Result<$crate::host::native::Never, $crate::host::native::NativeTrap> };
-    ( @ret ) => { Result<(), $crate::host::native::NativeTrap> };
+// macro_rules! define_trait_methods {
+//     // ( @optional $ty:ty ) => { stringify!($ty) };
+//     // ( @optional ) => { "()" };
+//     ( @ret $ty:ty ) => { Result<$ty, $crate::host::native::NativeTrap> };
+//     ( @ret !) => { Result<$crate::host::native::Never, $crate::host::native::NativeTrap> };
+//     ( @ret ) => { Result<(), $crate::host::native::NativeTrap> };
 
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
-        $(
-            $(#[$cfg])? fn $name(&self $($(,$arg: $argty)*)?) -> define_trait_methods!(@ret $($ret)?);
-        )*
-    }
-}
+//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+//         $(
+//             $(#[$cfg])? fn $name(&self $($(,$arg: $argty)*)?) -> define_trait_methods!(@ret $($ret)?);
+//         )*
+//     }
+// }
 
 // pub unsafe trait HostInterface {
 //     for_each_host_function!(define_trait_methods);
@@ -163,7 +159,7 @@ impl Environment {
         let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
         let key_bytes = self.key_prefix(key_bytes);
 
-        let mut db = self.db.read().unwrap();
+        let db = self.db.read().unwrap();
 
         let value = match db.get(&key_space) {
             Some(values) => values.get(&key_bytes).cloned(),
@@ -272,14 +268,6 @@ impl Environment {
         }
     }
 
-    fn casper_copy_output(
-        &self,
-        output_ptr: *const u8,
-        output_len: usize,
-    ) -> Result<(), NativeTrap> {
-        todo!()
-    }
-
     fn casper_create_contract(
         &self,
         code_ptr: *const u8,
@@ -371,7 +359,7 @@ impl Environment {
         &self,
         address_ptr: *const u8,
         address_size: usize,
-        value: u64,
+        _value: u64,
         selector: u32,
         input_ptr: *const u8,
         input_size: usize,
@@ -434,10 +422,10 @@ Example paths:
   authorized keys into `authorized_keys` memory."]
     fn casper_env_read(
         &self,
-        env_path: *const u64,
-        env_path_size: usize,
-        alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
-        alloc_ctx: *const core::ffi::c_void,
+        _env_path: *const u64,
+        _env_path_size: usize,
+        _alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
+        _alloc_ctx: *const core::ffi::c_void,
     ) -> Result<*mut u8, NativeTrap> {
         todo!()
     }
@@ -520,33 +508,33 @@ pub fn dispatch_with<T>(stub: Environment, f: impl FnOnce() -> T) -> Result<T, N
     result
 }
 
-macro_rules! define_symbols {
+// macro_rules! define_symbols {
 
-    ( @optional $ty:ty ) => { $ty };
-    ( @optional ) => { () };
+//     ( @optional $ty:ty ) => { $ty };
+//     ( @optional ) => { () };
 
-    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
-        $(
-            mod $name {
-                type Ret = define_symbols!(@optional $($ret)?);
+//     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+//         $(
+//             mod $name {
+//                 type Ret = define_symbols!(@optional $($ret)?);
 
-                #[no_mangle]
-                $(#[$cfg])? pub extern "C"  fn $name($($($arg: $argty,)*)?) -> Ret {
-                    let _name = stringify!($name);
-                    let _args = ($($(&$arg,)*)?);
+//                 #[no_mangle]
+//                 $(#[$cfg])? pub extern "C"  fn $name($($($arg: $argty,)*)?) -> Ret {
+//                     let _name = stringify!($name);
+//                     let _args = ($($(&$arg,)*)?);
 
-                    let _call_result = $crate::host::native::STUB.with(|stub| {
-                        let stub = stub.borrow();
-                        stub.$name($($($arg,)*)?)
-                    });
+//                     let _call_result = $crate::host::native::STUB.with(|stub| {
+//                         let stub = stub.borrow();
+//                         stub.$name($($($arg,)*)?)
+//                     });
 
-                    $crate::host::native::handle_ret(_call_result)
-                }
-            }
+//                     $crate::host::native::handle_ret(_call_result)
+//                 }
+//             }
 
-        )*
-    }
-}
+//         )*
+//     }
+// }
 
 mod symbols {
     // TODO: Figure out how to use for_each_host_function macro here and deal with never type in
@@ -625,15 +613,6 @@ mod symbols {
         let _call_result =
             with_current_environment(|stub| stub.casper_copy_input(alloc, alloc_ctx));
         crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
-    }
-
-    #[no_mangle]
-    pub extern "C" fn casper_copy_output(output_ptr: *const u8, output_len: usize) {
-        let _name = "casper_copy_output";
-        let _args = (&output_ptr, &output_len);
-        let _call_result =
-            with_current_environment(|stub| stub.casper_copy_output(output_ptr, output_len));
-        crate::host::native::handle_ret(_call_result)
     }
 
     #[no_mangle]

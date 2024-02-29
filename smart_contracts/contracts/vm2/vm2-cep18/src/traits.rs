@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI};
-use casper_sdk::{abi::CasperABI, collections::Map, host, types::Address};
+use casper_sdk::{collections::Map, host, types::Address};
 
 use crate::{error::Cep18Error, security_badge::SecurityBadge};
 

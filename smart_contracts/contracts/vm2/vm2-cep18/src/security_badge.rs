@@ -10,12 +10,16 @@ pub enum SecurityBadge {
     None = 2,
 }
 
-pub(crate) fn sec_check(allowed_badge_list: &[SecurityBadge]) {
-    let caller = host::get_caller();
+pub fn sec_check(_allowed_badge_list: &[SecurityBadge]) {
+    let _caller = host::get_caller();
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn foo() {}
+    fn sec_check_works() {
+        sec_check(&[SecurityBadge::Admin]);
+    }
 }

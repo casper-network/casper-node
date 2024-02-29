@@ -3,10 +3,8 @@ pub mod native;
 
 use std::{
     ffi::c_void,
-    fmt,
     marker::PhantomData,
-    mem::{self, MaybeUninit},
-    num::NonZeroU32,
+    mem::MaybeUninit,
     ptr::{self, NonNull},
 };
 
@@ -278,7 +276,7 @@ use crate::{
     reserve_vec_space,
     storage::Keyspace,
     types::{Address, CallError, Entry, ResultCode},
-    Contract, ContractRef, Selector, ToCallData,
+    Contract, Selector, ToCallData,
 };
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
@@ -381,11 +379,9 @@ pub fn call<T: ToCallData>(
     }
 }
 
-const CASPER_CALLER: u64 = 0;
-
 pub fn get_caller() -> Address {
     let mut addr = MaybeUninit::<Address>::uninit();
-    let dest = unsafe { NonNull::new_unchecked(addr.as_mut_ptr() as *mut u8) };
+    let _dest = unsafe { NonNull::new_unchecked(addr.as_mut_ptr() as *mut u8) };
 
     // Pointer to the end of written bytes
     let _out_ptr = unsafe { casper_env_caller(addr.as_mut_ptr() as *mut _, 32) };

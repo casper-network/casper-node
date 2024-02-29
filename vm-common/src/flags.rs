@@ -1,6 +1,4 @@
 //! Types that can be safely shared between host and the wasm sdk.
-use std::collections::btree_map::Entry;
-
 use bitflags::bitflags;
 
 bitflags! {

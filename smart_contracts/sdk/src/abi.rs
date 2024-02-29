@@ -205,7 +205,7 @@ macro_rules! impl_abi_for_types {
 
     (@impl $ty:ty => $def:expr ) => {
         impl CasperABI for $ty {
-            fn populate_definitions(definitions: &mut Definitions) {
+            fn populate_definitions(_definitions: &mut Definitions) {
             }
 
             fn declaration() -> Declaration {
@@ -229,7 +229,7 @@ macro_rules! impl_abi_for_types {
 }
 
 impl CasperABI for () {
-    fn populate_definitions(definitions: &mut Definitions) {}
+    fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
         "()".to_string()
@@ -259,8 +259,8 @@ impl_abi_for_types!(
 
 #[impl_for_tuples(1, 12)]
 impl CasperABI for Tuple {
-    fn populate_definitions(definitions: &mut Definitions) {
-        for_tuples!( #( definitions.populate_one::<Tuple>(); )* )
+    fn populate_definitions(_definitions: &mut Definitions) {
+        for_tuples!( #( _definitions.populate_one::<Tuple>(); )* )
     }
 
     fn declaration() -> Declaration {
@@ -380,7 +380,7 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
 }
 
 impl CasperABI for String {
-    fn populate_definitions(definitions: &mut Definitions) {}
+    fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
         "String".into()
@@ -393,7 +393,7 @@ impl CasperABI for String {
 }
 
 impl CasperABI for str {
-    fn populate_definitions(definitions: &mut Definitions) {}
+    fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
         "String".into()
@@ -406,7 +406,7 @@ impl CasperABI for str {
 }
 
 impl CasperABI for &str {
-    fn populate_definitions(definitions: &mut Definitions) {}
+    fn populate_definitions(_definitions: &mut Definitions) {}
 
     fn declaration() -> Declaration {
         "String".into()

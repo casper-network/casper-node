@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 
 use crate::{host, storage::Keyspace};
 

@@ -4,7 +4,7 @@ use casper_sdk::{
     abi::{Declaration, Definition, Primitive},
     schema::{Schema, SchemaType},
 };
-use codegen::{Field, Impl, Scope, Struct, Type};
+use codegen::{Field, Scope, Type};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -85,7 +85,7 @@ impl Codegen {
         scope.import("casper_sdk", "Selector");
         scope.import("casper_sdk", "ToCallData");
 
-        let head = self
+        let _head = self
             .schema
             .definitions
             .first()
@@ -150,7 +150,7 @@ impl Codegen {
 
                 // Enqueue all unprocessed definitions that depend on the current definition
                 match def {
-                    Definition::Primitive(primitive) => {
+                    Definition::Primitive(_primitive) => {
                         continue;
                     }
                     Definition::Mapping { key, value } => {
@@ -167,7 +167,7 @@ impl Codegen {
                     Definition::Sequence { decl } => {
                         queue.push_front(decl);
                     }
-                    Definition::FixedSequence { length, decl } => {
+                    Definition::FixedSequence { length: _, decl } => {
                         if !processed.contains(decl) {
                             queue.push_front(decl);
                             continue;
@@ -211,7 +211,7 @@ impl Codegen {
                 Definition::Sequence { decl } => {
                     assert!(processed.contains(&decl));
                 }
-                Definition::FixedSequence { length, decl } => {
+                Definition::FixedSequence { length: _, decl } => {
                     assert!(processed.contains(&decl));
                 }
                 Definition::Tuple { items } => {
@@ -273,7 +273,7 @@ impl Codegen {
                         scope.new_type_alias(from, to).vis("pub");
                         self.type_mapping.insert(decl.to_string(), from.to_string());
                     }
-                    Definition::Mapping { key, value } => {
+                    Definition::Mapping { key: _, value: _ } => {
                         // println!("Processing mapping type {key:?} -> {value:?}");
                         todo!()
                     }
@@ -608,15 +608,6 @@ impl Codegen {
         }
 
         scope.to_string()
-    }
-
-    fn process_def(
-        &mut self,
-        scope: &mut Scope,
-        def_index: usize,
-        decl: &Declaration,
-        def: &Definition,
-    ) {
     }
 }
 

@@ -8,14 +8,11 @@ use std::{
     fmt::{self, LowerHex},
 };
 
-use bitflags::{Bits, Flags};
+use bitflags::Flags;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use vm_common::flags::EntryPointFlags;
 
-use crate::{
-    abi::{self, Declaration, Definition, Definitions},
-    Contract,
-};
+use crate::abi::{self, Declaration, Definitions};
 
 pub fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where

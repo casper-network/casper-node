@@ -1,17 +1,10 @@
 use crate::{
-    error, security_badge,
+    security_badge,
     traits::{CEP18Ref, CEP18State, CEP18},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
-use casper_sdk::{
-    collections::{Map, Set},
-    host, log, revert,
-    schema::CasperSchema,
-    types::Address,
-    Contract,
-};
-use error::Cep18Error;
+use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_sdk::host;
 use security_badge::SecurityBadge;
 use std::string::String;
 
