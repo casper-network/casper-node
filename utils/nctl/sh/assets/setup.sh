@@ -67,7 +67,7 @@ function _set_nodes()
 
     for IDX in $(seq 1 "$(get_count_of_nodes)")
     do
-        PATH_TO_CFG=$(get_path_to_node "$IDX")/config/1_0_0
+        PATH_TO_CFG=$(get_path_to_node "$IDX")/config/2_0_0
         PATH_TO_FILE="$PATH_TO_CFG"/config.toml
 
         cp "$PATH_TO_CONFIG_TOML" "$PATH_TO_CFG"
@@ -133,17 +133,17 @@ function _main()
     log "asset setup begins ... please wait"
 
     # Setup new.
-    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "1_0_0"
+    setup_asset_directories "$COUNT_NODES" "$COUNT_USERS" "2_0_0"
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
-        setup_asset_binaries "1_0_0" \
+        setup_asset_binaries "2_0_0" \
                              "$(get_count_of_nodes)" \
                              "$NCTL_CASPER_CLIENT_HOME/target/debug/casper-client" \
                              "$NCTL_CASPER_HOME/target/debug/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
-        setup_asset_binaries "1_0_0" \
+        setup_asset_binaries "2_0_0" \
                              "$(get_count_of_nodes)" \
                              "$NCTL_CASPER_CLIENT_HOME/target/release/casper-client" \
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
@@ -156,7 +156,7 @@ function _main()
     setup_asset_daemon
 
     setup_asset_chainspec "$COUNT_NODES" \
-                          "1.0.0" \
+                          "2.0.0" \
                           $(get_genesis_timestamp "$GENESIS_DELAY") \
                           "$PATH_TO_CHAINSPEC" \
                           true
@@ -168,7 +168,7 @@ function _main()
     fi
 
     setup_asset_node_configs "$COUNT_NODES" \
-                             "1_0_0" \
+                             "2_0_0" \
                              "$PATH_TO_CONFIG_TOML" \
                              true
 

@@ -13,7 +13,7 @@ function main()
 {
     local NODE_ID=${1}
     local NODE_CONFIG_PATH=$(get_path_to_node_config $NODE_ID)
-    local DPORT_SOCKET_PATH="${NODE_CONFIG_PATH}/1_0_0/debug.socket"
+    local DPORT_SOCKET_PATH="${NODE_CONFIG_PATH}/2_0_0/debug.socket"
 
     socat readline "unix:${DPORT_SOCKET_PATH}"
 }
