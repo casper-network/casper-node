@@ -99,7 +99,7 @@ impl Counter for HasTraits {
 impl HasTraits {
     #[casper(constructor)]
     pub fn new(counter_value: u64) -> Self {
-        log!("Calling new constructor {counter_value}");
+        log!("Calling new constructor with value={counter_value}");
         Self {
             counter_state: CounterState {
                 value: counter_value,
