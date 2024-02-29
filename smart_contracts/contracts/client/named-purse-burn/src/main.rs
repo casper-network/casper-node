@@ -30,7 +30,7 @@ pub extern "C" fn call() {
             // if a key was provided and there is no value under it we revert
             // to prevent user from accidentaly burning tokens from the main purse
             // eg. if they make a typo
-            let Key::URef (purse_uref) = runtime::get_key(&name).unwrap() else { 
+            let Some(Key::URef(purse_uref)) = runtime::get_key(&name) else { 
                 runtime::revert(ApiError::InvalidPurseName) 
             }; 
             purse_uref
@@ -81,5 +81,7 @@ pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
         // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-    bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument)
+    
+    let deserialized_data = bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
+    Some(deserialized_data)
 }
