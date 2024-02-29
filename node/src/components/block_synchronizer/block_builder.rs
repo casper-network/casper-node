@@ -11,6 +11,7 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{
     execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, Digest, EraId,
     FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
@@ -28,8 +29,7 @@ use super::{
 use crate::{
     components::block_synchronizer::block_builder::latch::Latch,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
-        NodeId, ValidatorMatrix,
+        BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };

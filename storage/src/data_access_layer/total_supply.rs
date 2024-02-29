@@ -1,21 +1,30 @@
 use crate::tracking_copy::TrackingCopyError;
-use casper_types::{Digest, U512};
+use casper_types::{Digest, ProtocolVersion, U512};
 
 /// Request for total supply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TotalSupplyRequest {
     state_hash: Digest,
+    protocol_version: ProtocolVersion,
 }
 
 impl TotalSupplyRequest {
     /// Creates an instance of TotalSupplyRequest.
-    pub fn new(state_hash: Digest) -> Self {
-        TotalSupplyRequest { state_hash }
+    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
+        TotalSupplyRequest {
+            state_hash,
+            protocol_version,
+        }
     }
 
     /// Returns state root hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
+    }
+
+    /// Returns the protocol version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
     }
 }
 

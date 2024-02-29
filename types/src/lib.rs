@@ -90,9 +90,10 @@ pub use api_error::ApiError;
 pub use block::JsonBlockWithSignatures;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader, BlockHeaderV1,
-    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
-    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
-    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
+    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
+    BlockSignaturesV2, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd, EraEndV1,
+    EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
+    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -170,14 +171,15 @@ pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::{
     AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, InitiatorAddr,
     NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
     TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
     TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
     TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
     TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
     TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransferTarget,
+    TransactionWithFinalizedApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

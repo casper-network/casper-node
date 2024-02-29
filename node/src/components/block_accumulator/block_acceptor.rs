@@ -5,7 +5,8 @@ use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    ActivationPoint, BlockHash, BlockSignatures, EraId, FinalitySignature, PublicKey, Timestamp,
+    ActivationPoint, BlockHash, BlockSignaturesV2, ChainNameDigest, EraId, FinalitySignatureV2,
+    PublicKey, Timestamp,
 };
 
 use crate::{
@@ -17,10 +18,10 @@ use crate::{
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
     meta_block: Option<ForwardMetaBlock>,
-    signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
+    signatures: BTreeMap<PublicKey, (FinalitySignatureV2, BTreeSet<NodeId>)>,
     peers: BTreeSet<NodeId>,
     last_progress: Timestamp,
-    our_signature: Option<FinalitySignature>,
+    our_signature: Option<FinalitySignatureV2>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -28,14 +29,14 @@ pub(super) struct BlockAcceptor {
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
         meta_block: ForwardMetaBlock,
-        block_signatures: BlockSignatures,
+        block_signatures: BlockSignaturesV2,
     },
     CompletedBlock {
         meta_block: ForwardMetaBlock,
-        block_signatures: BlockSignatures,
+        block_signatures: BlockSignaturesV2,
     },
     MarkComplete(ForwardMetaBlock),
-    SingleSignature(FinalitySignature),
+    SingleSignature(FinalitySignatureV2),
     Nothing,
 }
 
@@ -110,10 +111,10 @@ impl BlockAcceptor {
 
     pub(super) fn register_finality_signature(
         &mut self,
-        finality_signature: FinalitySignature,
+        finality_signature: FinalitySignatureV2,
         peer: Option<NodeId>,
         validator_slots: u32,
-    ) -> Result<Option<FinalitySignature>, AcceptorError> {
+    ) -> Result<Option<FinalitySignatureV2>, AcceptorError> {
         if self.block_hash != *finality_signature.block_hash() {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash,
@@ -206,6 +207,7 @@ impl BlockAcceptor {
     pub(super) fn should_store_block(
         &mut self,
         era_validator_weights: &EraValidatorWeights,
+        chain_name_hash: ChainNameDigest,
     ) -> (ShouldStore, Vec<(NodeId, AcceptorError)>) {
         let block_hash = self.block_hash;
         let no_block = self.meta_block.is_none();
@@ -240,10 +242,15 @@ impl BlockAcceptor {
         if SignatureWeight::Strict == signature_weight {
             self.touch();
             if let Some(meta_block) = self.meta_block.as_mut() {
-                let mut block_signatures =
-                    BlockSignatures::new(*meta_block.block.hash(), meta_block.block.era_id());
+                let mut block_signatures = BlockSignaturesV2::new(
+                    *meta_block.block.hash(),
+                    meta_block.block.height(),
+                    meta_block.block.era_id(),
+                    chain_name_hash,
+                );
                 self.signatures.values().for_each(|(signature, _)| {
-                    block_signatures.insert_signature(signature.clone());
+                    block_signatures
+                        .insert_signature(signature.public_key().clone(), *signature.signature());
                 });
                 if meta_block
                     .state
@@ -361,11 +368,11 @@ impl BlockAcceptor {
         self.last_progress
     }
 
-    pub(super) fn our_signature(&self) -> Option<&FinalitySignature> {
+    pub(super) fn our_signature(&self) -> Option<&FinalitySignatureV2> {
         self.our_signature.as_ref()
     }
 
-    pub(super) fn set_our_signature(&mut self, signature: FinalitySignature) {
+    pub(super) fn set_our_signature(&mut self, signature: FinalitySignatureV2) {
         self.our_signature = Some(signature);
     }
 
@@ -427,7 +434,7 @@ impl BlockAcceptor {
 fn check_signatures_from_peer_bound(
     limit: u32,
     peer: NodeId,
-    signatures: &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
+    signatures: &BTreeMap<PublicKey, (FinalitySignatureV2, BTreeSet<NodeId>)>,
 ) -> Result<(), AcceptorError> {
     let signatures_for_peer = signatures
         .values()
@@ -469,13 +476,15 @@ impl BlockAcceptor {
         }
     }
 
-    pub(super) fn signatures(&self) -> &BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+    pub(super) fn signatures(
+        &self,
+    ) -> &BTreeMap<PublicKey, (FinalitySignatureV2, BTreeSet<NodeId>)> {
         &self.signatures
     }
 
     pub(super) fn signatures_mut(
         &mut self,
-    ) -> &mut BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)> {
+    ) -> &mut BTreeMap<PublicKey, (FinalitySignatureV2, BTreeSet<NodeId>)> {
         &mut self.signatures
     }
 }
@@ -497,7 +506,7 @@ mod tests {
         // Insert only the peer to check:
         signatures.insert(
             PublicKey::random(rng),
-            (FinalitySignature::random(rng), {
+            (FinalitySignatureV2::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(peer_to_check);
                 nodes
@@ -506,7 +515,7 @@ mod tests {
         // Insert an unrelated peer:
         signatures.insert(
             PublicKey::random(rng),
-            (FinalitySignature::random(rng), {
+            (FinalitySignatureV2::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes
@@ -515,7 +524,7 @@ mod tests {
         // Insert both the peer to check and an unrelated one:
         signatures.insert(
             PublicKey::random(rng),
-            (FinalitySignature::random(rng), {
+            (FinalitySignatureV2::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes.insert(peer_to_check);
@@ -532,7 +541,7 @@ mod tests {
         // Let's insert once again both the peer to check and an unrelated one:
         signatures.insert(
             PublicKey::random(rng),
-            (FinalitySignature::random(rng), {
+            (FinalitySignatureV2::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes.insert(peer_to_check);

@@ -4,7 +4,9 @@ use derive_more::From;
 use either::Either;
 use serde::Serialize;
 
-use casper_storage::data_access_layer::ExecutionResultsChecksumResult;
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::ExecutionResultsChecksumResult,
+};
 use casper_types::{Block, BlockHash, BlockHeader, FinalitySignature, Transaction};
 
 use super::GlobalStateSynchronizerEvent;
@@ -14,10 +16,7 @@ use crate::{
         fetcher::FetchResult,
     },
     effect::requests::BlockSynchronizerRequest,
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId,
-        SyncLeap,
-    },
+    types::{BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId, SyncLeap},
 };
 
 #[derive(From, Debug, Serialize)]

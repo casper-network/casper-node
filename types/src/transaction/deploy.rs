@@ -8,6 +8,7 @@ mod deploy_header;
 mod deploy_id;
 mod error;
 mod executable_deploy_item;
+mod finalized_deploy_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -73,6 +74,7 @@ pub use error::{
 pub use executable_deploy_item::{
     ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
+pub use finalized_deploy_approvals::FinalizedDeployApprovals;
 
 #[cfg(feature = "json-schema")]
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {

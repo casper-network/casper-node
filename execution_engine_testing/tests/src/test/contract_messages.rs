@@ -614,13 +614,13 @@ fn should_carry_message_topics_on_upgraded_contract(use_initializer: bool) {
 
 #[ignore]
 #[test]
-fn should_carry_message_topics_on_upgraded_contract_without_initializer() {
+fn should_carry_message_topics_on_upgraded_contract_with_initializer() {
     should_carry_message_topics_on_upgraded_contract(true);
 }
 
 #[ignore]
 #[test]
-fn should_carry_message_topics_on_upgraded_contract_with_initializer() {
+fn should_carry_message_topics_on_upgraded_contract_without_initializer() {
     should_carry_message_topics_on_upgraded_contract(false);
 }
 
