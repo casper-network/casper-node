@@ -3,11 +3,10 @@ use std::collections::{BTreeMap, VecDeque};
 use assert_matches::assert_matches;
 use rand::Rng;
 
-use casper_storage::{
-    block_store::types::ApprovalsHashes, global_state::trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, StoredValue, TestBlockBuilder, Transaction, URef,
+    global_state::TrieMerkleProof, testing::TestRng, AccessRights, CLValue, StoredValue,
+    TestBlockBuilder, Transaction, URef,
 };
 
 use super::*;

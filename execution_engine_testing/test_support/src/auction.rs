@@ -9,12 +9,13 @@ use casper_storage::{
     data_access_layer::GenesisRequest,
     global_state::{
         state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie},
+        trie::Trie,
     },
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
+    global_state::Pointer,
     runtime_args,
     system::auction,
     ChainspecRegistry, Digest, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,

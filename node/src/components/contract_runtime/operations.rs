@@ -20,9 +20,10 @@ use casper_storage::{
 };
 // use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{
+    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, Transform, TransformKind},
     BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
     ProtocolVersion, PublicKey, Transaction, U512,
 };
@@ -495,7 +496,7 @@ pub fn speculatively_execute<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+) -> Result<SpeculativeExecutionResult, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
 {
@@ -520,20 +521,20 @@ where
                 ?deploy_hash,
                 "got more ({}) execution results from a single transaction", len
             );
-            None
+            SpeculativeExecutionResult::new(None)
         } else {
             // We know it must be 1, we could unwrap and then wrap
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(|result| {
+            SpeculativeExecutionResult::new(execution_results.pop_front().map(|result| {
                 let ExecutionResultAndMessages {
                     execution_result,
                     messages,
                 } = result.into();
 
                 (execution_result, messages)
-            })
+            }))
         }
     })
 }

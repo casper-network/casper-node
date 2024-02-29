@@ -94,7 +94,11 @@ mod pointer_block {
 mod proptests {
     use proptest::prelude::*;
 
-    use casper_types::{bytesrepr, gens::key_arb, Digest, Key, StoredValue};
+    use casper_types::{
+        bytesrepr,
+        gens::{blake2b_hash_arb, key_arb, trie_pointer_arb},
+        Digest, Key, StoredValue,
+    };
 
     use crate::global_state::trie::{gens::*, PointerBlock, Trie};
 

@@ -18,6 +18,7 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "AccountActionThresholds"))]
 pub struct ActionThresholds {
     /// Threshold for deploy execution.
     pub deployment: Weight,

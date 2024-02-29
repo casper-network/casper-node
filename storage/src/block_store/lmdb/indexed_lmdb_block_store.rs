@@ -16,13 +16,15 @@ use crate::block_store::{
     block_provider::{BlockStoreTransaction, DataReader, DataWriter},
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
-        LatestSwitchBlock, StateStore, Tip, TransactionFinalizedApprovals,
+        LatestSwitchBlock, StateStore, StateStoreKey, Tip, TransactionFinalizedApprovals,
     },
     BlockStoreError, BlockStoreProvider,
 };
 use casper_types::{
-    execution::ExecutionResult, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest,
-    EraId, FinalizedApprovals, ProtocolVersion, Transaction, TransactionHash, Transfer,
+    binary_port::{DbRawBytesSpec, RecordId},
+    execution::ExecutionResult,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId, FinalizedApprovals,
+    ProtocolVersion, Transaction, TransactionHash, Transfer,
 };
 
 #[derive(DataSize, Debug)]
@@ -868,20 +870,49 @@ impl<'a> DataReader<TransactionHash, ExecutionResult> for IndexedLmdbBlockStoreR
     }
 }
 
-impl<'a, K> DataReader<K, Vec<u8>> for IndexedLmdbBlockStoreReadTransaction<'a>
-where
-    K: AsRef<[u8]>,
-{
-    fn read(&self, key: K) -> Result<Option<Vec<u8>>, BlockStoreError> {
+impl<'a> DataReader<StateStoreKey, Vec<u8>> for IndexedLmdbBlockStoreReadTransaction<'a> {
+    fn read(&self, StateStoreKey(key): StateStoreKey) -> Result<Option<Vec<u8>>, BlockStoreError> {
         self.block_store
             .block_store
             .read_state_store(&self.txn, &key)
     }
 
-    fn exists(&mut self, key: K) -> Result<bool, BlockStoreError> {
+    fn exists(&mut self, StateStoreKey(key): StateStoreKey) -> Result<bool, BlockStoreError> {
         self.block_store
             .block_store
             .state_store_key_exists(&self.txn, &key)
+    }
+}
+
+impl<'a> DataReader<(RecordId, Vec<u8>), DbRawBytesSpec>
+    for IndexedLmdbBlockStoreReadTransaction<'a>
+{
+    fn read(
+        &self,
+        (id, key): (RecordId, Vec<u8>),
+    ) -> Result<Option<DbRawBytesSpec>, BlockStoreError> {
+        let store = &self.block_store.block_store;
+        let res = match id {
+            RecordId::BlockHeader => store.block_header_dbs.get_raw(&self.txn, &key),
+            RecordId::BlockBody => store.block_body_dbs.get_raw(&self.txn, &key),
+            RecordId::ApprovalsHashes => store.approvals_hashes_dbs.get_raw(&self.txn, &key),
+            RecordId::BlockMetadata => store.block_metadata_dbs.get_raw(&self.txn, &key),
+            RecordId::Transaction => store.transaction_dbs.get_raw(&self.txn, &key),
+            RecordId::ExecutionResult => store.execution_result_dbs.get_raw(&self.txn, &key),
+            RecordId::Transfer => match self.txn.get(store.transfer_db, &key) {
+                Ok(bytes) => Ok(Some(DbRawBytesSpec::new_legacy(bytes))),
+                Err(lmdb::Error::NotFound) => Ok(None),
+                Err(err) => return Err(BlockStoreError::InternalStorage(Box::new(err))),
+            },
+            RecordId::FinalizedTransactionApprovals => store
+                .finalized_transaction_approvals_dbs
+                .get_raw(&self.txn, &key),
+        };
+        res.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
+    }
+
+    fn exists(&mut self, key: (RecordId, Vec<u8>)) -> Result<bool, BlockStoreError> {
+        self.read(key).map(|res| res.is_some())
     }
 }
 

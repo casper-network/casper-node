@@ -10,6 +10,7 @@ use tracing::{debug, error};
 
 use casper_types::{
     execution::{Effects, Transform, TransformInstruction, TransformKind},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
@@ -23,7 +24,7 @@ use crate::{
         state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie::{Trie, TrieRaw},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{

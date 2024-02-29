@@ -8,12 +8,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-use crate::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    global_state::TrieMerkleProof,
     Block, BlockHash, BlockV1, BlockV2, DeployApprovalsHash, DeployId, Digest, Key, StoredValue,
     TransactionApprovalsHash, TransactionHash, TransactionId,
 };
+
+use crate::global_state::trie_store::operations::compute_state_hash;
 
 pub(crate) const APPROVALS_CHECKSUM_NAME: &str = "approvals_checksum";
 
@@ -93,8 +95,7 @@ impl ApprovalsHashes {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        let proof_state_root_hash = merkle_proof_approvals
-            .compute_state_hash()
+        let proof_state_root_hash = compute_state_hash(merkle_proof_approvals)
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
         if proof_state_root_hash != *block.state_root_hash() {

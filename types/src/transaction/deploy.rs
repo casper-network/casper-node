@@ -19,6 +19,7 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+pub use finalized_deploy_approvals::FinalizedDeployApprovals;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(any(feature = "std", test))]
@@ -74,7 +75,6 @@ pub use error::{
 pub use executable_deploy_item::{
     ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
-pub use finalized_deploy_approvals::FinalizedDeployApprovals;
 
 #[cfg(feature = "json-schema")]
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {

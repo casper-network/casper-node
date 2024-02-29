@@ -167,7 +167,8 @@ function setup_asset_binaries()
     local PATH_TO_CLIENT=${3}
     local PATH_TO_NODE=${4}
     local PATH_TO_NODE_LAUNCHER=${5}
-    local PATH_TO_WASM=${6}
+    local PATH_TO_SIDECAR=${6}
+    local PATH_TO_WASM=${7}
 
     local PATH_TO_BIN
     local CONTRACT
@@ -181,6 +182,10 @@ function setup_asset_binaries()
             cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
         fi
         cp "$PATH_TO_NODE" "$PATH_TO_BIN/$PROTOCOL_VERSION"
+
+        if [ -f "$PATH_TO_SIDECAR" ]; then
+            cp "$PATH_TO_SIDECAR" "$PATH_TO_BIN/$PROTOCOL_VERSION"
+        fi
     done
 
     # Set client-side binary.
@@ -384,12 +389,14 @@ function setup_asset_node_configs()
     local COUNT_NODES=${1}
     local PROTOCOL_VERSION=${2}
     local PATH_TO_TEMPLATE=${3}
-    local IS_GENESIS=${4}
+    local PATH_TO_SIDECAR_TEMPLATE=${4}
+    local IS_GENESIS=${5}
 
     local IDX
     local PATH_TO_NET
     local PATH_TO_CONFIG
     local PATH_TO_CONFIG_FILE
+    local PATH_TO_SIDECAR_CONFIG_FILE
     local SCRIPT
     local SPECULATIVE_EXEC_ADDR
 
@@ -400,15 +407,14 @@ function setup_asset_node_configs()
         # Set paths to node's config.
         PATH_TO_CONFIG="$(get_path_to_node "$IDX")/config/$PROTOCOL_VERSION"
         PATH_TO_CONFIG_FILE="$PATH_TO_CONFIG/config.toml"
+        PATH_TO_SIDECAR_CONFIG_FILE="$PATH_TO_CONFIG/sidecar.toml"
 
         # Set node configuration.
-        if [ $IS_GENESIS == true ]; then
+        if [ "$IS_GENESIS" == true ]; then
             cp "$PATH_TO_NET/chainspec/accounts.toml" "$PATH_TO_CONFIG"
         fi
         cp "$PATH_TO_NET/chainspec/chainspec.toml" "$PATH_TO_CONFIG"
         cp "$PATH_TO_TEMPLATE" "$PATH_TO_CONFIG_FILE"
-
-        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
 
         # Set node configuration settings.
         SCRIPT=(
@@ -420,10 +426,24 @@ function setup_asset_node_configs()
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
             "cfg['storage']['path']='../../storage';"
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
-            "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$IDX")';"
         )
 
+        BINARY_PORT_SERVER_ADDR=$(grep 'binary_port_server' $PATH_TO_CONFIG_FILE || true)
+        if [ ! -z "$BINARY_PORT_SERVER_ADDR" ]; then
+            SCRIPT+=(
+                "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
+            )
+        fi
+
+        RPC_SERVER_ADDR=$(grep 'rpc_server' $PATH_TO_CONFIG_FILE || true)
+        if [ ! -z "$RPC_SERVER_ADDR" ]; then
+            SCRIPT+=(
+                "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
+            )
+        fi
+
+        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
         if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
             SCRIPT+=(
                 "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
@@ -433,6 +453,19 @@ function setup_asset_node_configs()
         SCRIPT+=(
             "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
         )
+
+        if [ -f "$PATH_TO_SIDECAR_TEMPLATE" ]; then
+            # Prepare the sidecar config file.
+            cp "$PATH_TO_SIDECAR_TEMPLATE" "$PATH_TO_SIDECAR_CONFIG_FILE"
+
+             SCRIPT+=(
+                "cfg=toml.load('$PATH_TO_SIDECAR_CONFIG_FILE');"
+                "cfg['rpc_server']['main_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
+                "cfg['rpc_server']['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+                "cfg['rpc_server']['node_client']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
+                "toml.dump(cfg, open('$PATH_TO_SIDECAR_CONFIG_FILE', 'w'));"
+            )
+        fi
 
         python3 -c "${SCRIPT[*]}"
     done
