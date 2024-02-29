@@ -38,12 +38,12 @@ function _main()
 
     PATH_TO_NODE_REPO="$(get_path_to_remotes)/casper-node"
     PATH_TO_CLIENT_REPO="$(get_path_to_remotes)/casper-client-rs"
-    PATH_TO_SIDECAR_REPO="$(get_path_to_remotes)/event-sidecar"
+    PATH_TO_SIDECAR_REPO="$(get_path_to_remotes)/casper-sidecar"
     PATH_TO_STAGE="$(get_path_to_stage "$STAGE_ID")/$PROTOCOL_VERSION"
 
     _set_repo "https://github.com/casper-network/casper-node.git" "$PATH_TO_NODE_REPO" "$NODE_COMMIT_HASH"
     _set_repo "https://github.com/casper-ecosystem/casper-client-rs" "$PATH_TO_CLIENT_REPO" "$CLIENT_COMMIT_HASH"
-    _set_repo "https://github.com/CasperLabs/event-sidecar" "$PATH_TO_SIDECAR_REPO" "$SIDECAR_COMMIT_HASH"
+    _set_repo "https://github.com/casper-network/casper-sidecar" "$PATH_TO_SIDECAR_REPO" "$SIDECAR_COMMIT_HASH"
     set_stage_binaries "$PATH_TO_NODE_REPO" "$PATH_TO_CLIENT_REPO" "$PATH_TO_SIDECAR_REPO"
     set_stage_files_from_repo "$PATH_TO_NODE_REPO" "$PATH_TO_CLIENT_REPO" "$PATH_TO_SIDECAR_REPO" "$PATH_TO_STAGE"
 }

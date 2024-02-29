@@ -8,8 +8,8 @@
             "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
             "branch": "main"
         },
-        "event-sidecar": {
-            "github_repo_url": "https://github.com/CasperLabs/event-sidecar",
+        "casper-sidecar": {
+            "github_repo_url": "https://github.com/casper-network/casper-sidecar",
             "branch": "feat-2.0"
         }
     },

@@ -21,7 +21,7 @@ export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-n
 
 # Set sidecar root.
 NCTL_CASPER_SIDECAR_ROOT=${NCTL_CASPER_SIDECAR_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
-export NCTL_CASPER_SIDECAR_HOME="$NCTL_CASPER_SIDECAR_ROOT"/event-sidecar
+export NCTL_CASPER_SIDECAR_HOME="$NCTL_CASPER_SIDECAR_ROOT"/casper-sidecar
 
 # ###############################################################
 # UTILS
