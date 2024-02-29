@@ -3,6 +3,8 @@
 
 extern crate alloc;
 
+use alloc::collections::BTreeMap;
+
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
@@ -45,10 +47,15 @@ pub extern "C" fn call() {
         contract_package_hash,
         entry_points.clone(),
         NamedKeys::new(),
+        BTreeMap::new(),
     );
 
-    let (enabled_contract_hash, _version) =
-        storage::add_contract_version(contract_package_hash, entry_points, NamedKeys::new());
+    let (enabled_contract_hash, _version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        NamedKeys::new(),
+        BTreeMap::new(),
+    );
 
     runtime::put_key(CONTRACT_PACKAGE_HASH_KEY, contract_package_hash.into());
 

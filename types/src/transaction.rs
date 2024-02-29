@@ -1,5 +1,6 @@
 mod addressable_entity_identifier;
 mod deploy;
+mod finalized_approvals;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
 mod initiator_addr_and_secret_key;
@@ -17,6 +18,7 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transaction_with_finalized_approvals;
 mod transfer_target;
 
 use alloc::{collections::BTreeSet, vec::Vec};
@@ -47,7 +49,7 @@ pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedDeployApprovals,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
@@ -68,13 +70,17 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    FinalizedTransactionV1Approvals, TransactionV1, TransactionV1Approval,
+    TransactionV1ApprovalsHash, TransactionV1Body, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transfer_target::TransferTarget;
+
+pub use finalized_approvals::FinalizedApprovals;
+pub use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;

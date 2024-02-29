@@ -38,6 +38,7 @@ fn call() {
         None,
         Some(CONTRACT_PACKAGE_KEY.to_string()),
         None,
+        None,
     );
     runtime::put_key(CONTRACT_HASH_KEY, Key::contract_entity_key(contract_hash));
 }

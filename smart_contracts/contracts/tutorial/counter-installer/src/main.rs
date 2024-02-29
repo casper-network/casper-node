@@ -80,6 +80,7 @@ pub extern "C" fn call() {
         Some(counter_named_keys),
         Some("counter_package_name".to_string()),
         Some("counter_access_uref".to_string()),
+        None,
     );
 
     // To create a locked contract instead, use new_locked_contract and throw away the contract

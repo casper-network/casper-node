@@ -1368,10 +1368,6 @@ impl MessageTopics {
         topic_name: &str,
         topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
-        if self.0.len() >= u32::MAX as usize {
-            return Err(MessageTopicError::MaxTopicsExceeded);
-        }
-
         match self.0.entry(topic_name.to_string()) {
             Entry::Vacant(entry) => {
                 entry.insert(topic_name_hash);

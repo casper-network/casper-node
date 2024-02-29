@@ -1,4 +1,5 @@
 mod errors_v1;
+mod finalized_transaction_v1_approvals;
 mod transaction_v1_approval;
 mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
@@ -43,6 +44,7 @@ pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
 };
+pub use finalized_transaction_v1_approvals::FinalizedTransactionV1Approvals;
 pub use transaction_v1_approval::TransactionV1Approval;
 pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;

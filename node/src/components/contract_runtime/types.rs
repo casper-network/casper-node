@@ -5,7 +5,9 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
-use casper_storage::data_access_layer::EraValidatorsRequest;
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::EraValidatorsRequest,
+};
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
@@ -13,7 +15,7 @@ use casper_types::{
     TransactionHash, TransactionHeader, U512,
 };
 
-use crate::{contract_runtime::NewUserRequestError, types::ApprovalsHashes};
+use crate::contract_runtime::NewUserRequestError;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

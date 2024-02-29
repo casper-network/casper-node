@@ -4,11 +4,9 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::Deploy;
 #[cfg(test)]
 use casper_types::DeployApproval;
-
-use crate::types::FinalizedDeployApprovals;
+use casper_types::{Deploy, FinalizedDeployApprovals};
 
 /// A deploy combined with a potential set of finalized approvals.
 ///

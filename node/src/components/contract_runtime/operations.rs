@@ -14,6 +14,7 @@ use casper_execution_engine::engine_state::{
     StepRequest, StepSuccess,
 };
 use casper_storage::{
+    block_store::types::ApprovalsHashes,
     data_access_layer::{
         transfer::TransferConfig, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
         TransferRequest, TransferResult,
@@ -30,16 +31,15 @@ use casper_types::{
     TransactionHeader, U512,
 };
 
-use crate::{
-    components::fetcher::FetchItem,
-    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
-};
-
 use super::{
     utils::calculate_prune_eras, BlockAndExecutionResults, BlockExecutionError, ExecutionArtifact,
     ExecutionPreState, Metrics, NewUserRequestError, SpeculativeExecutionError,
     SpeculativeExecutionState, StepEffectsAndUpcomingEraValidators, APPROVALS_CHECKSUM_NAME,
     EXECUTION_RESULTS_CHECKSUM_NAME,
+};
+use crate::{
+    components::fetcher::FetchItem,
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 /// Executes a finalized block.

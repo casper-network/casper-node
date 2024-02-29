@@ -238,6 +238,7 @@ pub fn delegate() {
         Some(named_keys),
         Some(CONTRACT_PACKAGE_HASH_NAME.to_string()),
         None,
+        None,
     );
 
     let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
