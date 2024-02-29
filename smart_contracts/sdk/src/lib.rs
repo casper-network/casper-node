@@ -255,6 +255,8 @@ impl<T: ContractRef> CallBuilder<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[allow(dead_code)]
     struct MyContract;
 
     #[derive(BorshSerialize)]
@@ -271,6 +273,7 @@ mod tests {
     }
 
     impl MyContract {
+        #[allow(dead_code)]
         fn do_something(&mut self, foo: u64) -> impl ToCallData {
             DoSomethingArg { foo }
         }

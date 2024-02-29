@@ -110,7 +110,7 @@ impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Environment {
     pub db: Arc<RwLock<Container>>,
     manifests: Arc<RwLock<BTreeMap<Address, NativeManifest>>>,
@@ -118,6 +118,18 @@ pub struct Environment {
     input_data: Option<Bytes>,
     contract_address: Option<Address>,
     caller: Address,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self {
+            db: Default::default(),
+            manifests: Default::default(),
+            input_data: Default::default(),
+            contract_address: Default::default(),
+            caller: DEFAULT_ADDRESS,
+        }
+    }
 }
 
 pub const DEFAULT_ADDRESS: Address = [42; 32];
@@ -478,6 +490,12 @@ fn handle_ret<T: Default>(value: Result<T, NativeTrap>) -> T {
     handle_ret_with(value, || Default::default())
 }
 
+/// Dispatches a function with a default environment.
+pub fn dispatch<T>(f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
+    dispatch_with(Environment::default(), f)
+}
+
+/// Dispatches a function with a given environment.
 pub fn dispatch_with<T>(stub: Environment, f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
     ENV_STACK.with(|stack| {
         let mut borrowed = stack.borrow_mut();
@@ -732,15 +750,21 @@ mod tests {
 
     #[test]
     fn test() {
-        let msg = "Hello";
-        // let stub = STUB.read().unwrap();
-        // stub.casper_print(msg.as_ptr(), msg.len());
-        let () = with_current_environment(|stub| stub.casper_print(msg.as_ptr(), msg.len()))
-            .expect("Ok");
+        dispatch_with(Environment::default(), || {
+            let msg = "Hello";
+            // let stub = STUB.read().unwrap();
+            // stub.casper_print(msg.as_ptr(), msg.len());
+            let () = with_current_environment(|stub| stub.casper_print(msg.as_ptr(), msg.len()))
+                .expect("Ok");
+        })
+        .unwrap();
     }
 
     #[test]
     fn test_returns() {
-        let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
+        dispatch_with(Environment::default(), || {
+            let _ = with_current_environment(|stub| stub.casper_return(0, ptr::null(), 0));
+        })
+        .unwrap();
     }
 }

@@ -8,12 +8,11 @@ use alloc::{
     vec::Vec,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
+use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     host, log, revert,
-    sys::CreateResult,
     types::{Address, CallError, ResultCode},
-    Contract, ContractRef, Selector,
+    Contract,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
@@ -261,15 +260,13 @@ pub fn call() {
 #[cfg(test)]
 mod tests {
 
-    use core::slice;
-
     use alloc::collections::{BTreeMap, BTreeSet};
-    use borsh::{schema::BorshSchemaContainer, BorshSchema};
+
+    use casper_macros::selector;
     use casper_sdk::{
-        host::native::{dispatch_with, Environment},
+        host::native::dispatch,
         schema::{schema_helper, CasperSchema},
-        sys::Manifest,
-        Contract,
+        Selector,
     };
     use vm_common::flags::EntryPointFlags;
 
@@ -277,8 +274,11 @@ mod tests {
 
     #[test]
     fn test() {
-        let args = ();
-        schema_helper::dispatch("call", args);
+        dispatch(|| {
+            let args = ();
+            schema_helper::dispatch("call", args);
+        })
+        .unwrap();
     }
 
     #[test]
@@ -295,19 +295,22 @@ mod tests {
 
     #[test]
     fn should_greet() {
-        // assert_eq!(Greeter::name(), "Greeter");
-        // let mut flipper = Greeter::new();
-        // assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
-        // flipper.set_greeting("Hi".into());
-        // assert_eq!(flipper.get_greeting(), "Hi");
+        assert_eq!(Harness::name(), "Harness");
+        let mut flipper = Harness::constructor_with_args("Hello".into());
+        assert_eq!(flipper.get_greeting(), "Hello"); // TODO: Initializer
+        flipper.set_greeting("Hi".into());
+        assert_eq!(flipper.get_greeting(), "Hi");
     }
 
     #[test]
     fn unittest() {
-        let mut foo = Harness::initialize();
-        assert_eq!(foo.get_greeting(), INITIAL_GREETING);
-        foo.set_greeting("New greeting".to_string());
-        assert_eq!(foo.get_greeting(), "New greeting");
+        dispatch(|| {
+            let mut foo = Harness::initialize();
+            assert_eq!(foo.get_greeting(), INITIAL_GREETING);
+            foo.set_greeting("New greeting".to_string());
+            assert_eq!(foo.get_greeting(), "New greeting");
+        })
+        .unwrap();
     }
 
     #[test]
@@ -344,7 +347,7 @@ mod tests {
             .map(|e| (e.name.as_str(), e.selector))
             .collect();
 
-        let manifest = <Harness as ToManifest>::to_manifest();
+        let manifest = &Harness::MANIFEST;
 
         let manifest_selectors: BTreeSet<u32> = manifest.iter().map(|e| e.selector).collect();
 
@@ -354,13 +357,13 @@ mod tests {
 
     #[test]
     fn verify_check_private_and_public_methods() {
-        dispatch_with(Environment::default(), || {
+        dispatch(|| {
             Harness::default().private_function_that_should_not_be_exported();
             Harness::default().restricted_function_that_should_be_part_of_manifest();
         })
         .expect("No trap");
 
-        let manifest = <Harness as ToManifest>::to_manifest();
+        let manifest = &Harness::MANIFEST;
         const PRIVATE_SELECTOR: Selector =
             selector!("private_function_that_should_not_be_exported");
         const PUB_CRATE_SELECTOR: Selector =

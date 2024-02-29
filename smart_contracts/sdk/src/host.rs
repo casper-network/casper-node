@@ -391,10 +391,23 @@ pub fn get_caller() -> Address {
 
 #[cfg(test)]
 mod tests {
-    use super::start;
+    use bytes::Bytes;
+    use vm_common::flags::ReturnFlags;
+
+    use crate::host::native::NativeTrap;
+
+    use super::{
+        native::{dispatch_with, Environment},
+        start,
+    };
 
     #[test]
     fn foo() {
-        start(|arg: String| {})
+        let dispatch_result =
+            dispatch_with(Environment::default(), || start(|_arg: ()| {})).unwrap_err();
+        assert_eq!(
+            dispatch_result,
+            NativeTrap::Return(ReturnFlags::empty(), Bytes::new())
+        );
     }
 }

@@ -55,8 +55,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             let ref_struct = format_ident!("{}Ref", path.require_ident().unwrap());
             dynamic_manifest.push(quote! {
                 {
-                    const DISPATCHER: &[casper_sdk::sys::EntryPoint] = &(<#ref_struct>::__casper_new_trait_dispatch_table::<#name>());
-                    DISPATCHER
+                    const DISPATCH_TABLE: &[casper_sdk::sys::EntryPoint] = &(<#ref_struct>::__casper_new_trait_dispatch_table::<#name>());
+                    DISPATCH_TABLE
                 }
             });
 
