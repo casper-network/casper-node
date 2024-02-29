@@ -249,7 +249,7 @@ impl ValidatorBid {
         self.maximum_delegation_amount
     }
 
-    /// Sets minimum and maximum delegation amounts in modes.
+    /// Sets minimum and maximum delegation amounts in motes.
     pub fn set_delegation_amount_boundaries(
         &mut self,
         minimum_delegation_amount: u64,

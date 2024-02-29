@@ -97,8 +97,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
-            auction::ARG_MINIMUM_DELEGATION_AMOUNT => None::<u64>,
-            auction::ARG_MAXIMUM_DELEGATION_AMOUNT => Some(1_000_000_000_000u64),
         },
     )
     .build();

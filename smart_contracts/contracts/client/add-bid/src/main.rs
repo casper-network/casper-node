@@ -14,13 +14,24 @@ fn add_bid(
     maximum_delegation_amount: Option<u64>,
 ) {
     let contract_hash = system::get_auction();
-    let args = runtime_args! {
+    let mut args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
         auction::ARG_AMOUNT => bond_amount,
         auction::ARG_DELEGATION_RATE => delegation_rate,
-        auction::ARG_MINIMUM_DELEGATION_AMOUNT => minimum_delegation_amount,
-        auction::ARG_MAXIMUM_DELEGATION_AMOUNT => maximum_delegation_amount,
     };
+    // Optional arguments
+    if let Some(minimum_delegation_amount) = minimum_delegation_amount {
+        args.insert(
+            auction::ARG_MINIMUM_DELEGATION_AMOUNT,
+            minimum_delegation_amount,
+        );
+    }
+    if let Some(maximum_delegation_amount) = maximum_delegation_amount {
+        args.insert(
+            auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
+            maximum_delegation_amount,
+        );
+    }
     runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, args);
 }
 
@@ -33,8 +44,11 @@ pub extern "C" fn call() {
     let public_key = runtime::get_named_arg(auction::ARG_PUBLIC_KEY);
     let bond_amount = runtime::get_named_arg(auction::ARG_AMOUNT);
     let delegation_rate = runtime::get_named_arg(auction::ARG_DELEGATION_RATE);
-    let minimum_delegation_amount = runtime::get_named_arg(auction::ARG_MINIMUM_DELEGATION_AMOUNT);
-    let maximum_delegation_amount = runtime::get_named_arg(auction::ARG_MAXIMUM_DELEGATION_AMOUNT);
+    // Optional arguments
+    let minimum_delegation_amount =
+        runtime::try_get_named_arg(auction::ARG_MINIMUM_DELEGATION_AMOUNT);
+    let maximum_delegation_amount =
+        runtime::try_get_named_arg(auction::ARG_MAXIMUM_DELEGATION_AMOUNT);
 
     add_bid(
         public_key,

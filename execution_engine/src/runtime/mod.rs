@@ -532,6 +532,22 @@ where
             .map_err(|_| Error::Revert(ApiError::InvalidArgument))
     }
 
+    fn try_get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<Option<T>, Error> {
+        match args.get(name) {
+            Some(arg) => {
+                let arg = arg
+                    .clone()
+                    .into_t()
+                    .map_err(|_| Error::Revert(ApiError::InvalidArgument))?;
+                Ok(Some(arg))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn reverter<T: Into<ApiError>>(error: T) -> Error {
         let api_error: ApiError = error.into();
         // NOTE: This is special casing needed to keep the native system contracts propagate
@@ -844,7 +860,7 @@ where
 
                 let global_minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-                let minimum_delegation_amount = Self::get_named_argument::<Option<u64>>(
+                let minimum_delegation_amount = Self::try_get_named_argument(
                     runtime_args,
                     auction::ARG_MINIMUM_DELEGATION_AMOUNT,
                 )?
@@ -852,11 +868,11 @@ where
 
                 let global_maximum_delegation_amount =
                     self.context.engine_config().maximum_delegation_amount();
-                let maximum_delegation_amount = Self::get_named_argument::<Option<u64>>(
+                let maximum_delegation_amount = Self::try_get_named_argument(
                     runtime_args,
                     auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
                 )?
-                .unwrap_or(global_minimum_delegation_amount);
+                .unwrap_or(global_maximum_delegation_amount);
 
                 if minimum_delegation_amount < global_minimum_delegation_amount
                     || maximum_delegation_amount > global_maximum_delegation_amount
