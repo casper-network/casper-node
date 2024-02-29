@@ -3,15 +3,15 @@ use std::{collections::BTreeMap, sync::Arc};
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_storage::data_access_layer::EraValidatorsRequest;
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::EraValidatorsRequest,
+};
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion,
     PublicKey, Timestamp, U512,
 };
-
-use crate::types::ApprovalsHashes;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

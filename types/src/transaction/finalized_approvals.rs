@@ -1,30 +1,38 @@
-#[cfg(test)]
-use std::collections::BTreeSet;
+use alloc::vec::Vec;
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::TransactionApproval;
-use casper_types::{
+#[cfg(any(feature = "testing", test))]
+use crate::TransactionApproval;
+
+#[cfg(any(feature = "testing", test))]
+use alloc::collections::BTreeSet;
+
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Transaction,
 };
 
-use super::{FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
+use super::{deploy::FinalizedDeployApprovals, transaction_v1::FinalizedTransactionV1Approvals};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific transaction.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, DataSize, Debug)]
-pub(crate) enum FinalizedApprovals {
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub enum FinalizedApprovals {
+    /// Finalized approvals for deploys.
     Deploy(FinalizedDeployApprovals),
+    /// Finalized approvals for v1 transactions.
     V1(FinalizedTransactionV1Approvals),
 }
 
 impl FinalizedApprovals {
-    pub(crate) fn new(transaction: &Transaction) -> Self {
+    /// Creates a new finalized approvals set.
+    pub fn new(transaction: &Transaction) -> Self {
         match transaction {
             Transaction::Deploy(deploy) => {
                 Self::Deploy(FinalizedDeployApprovals::new(deploy.approvals().clone()))
@@ -35,8 +43,9 @@ impl FinalizedApprovals {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> BTreeSet<TransactionApproval> {
+    #[cfg(any(feature = "testing", test))]
+    /// Returns the inner set of approvals.
+    pub fn inner(&self) -> BTreeSet<TransactionApproval> {
         match self {
             FinalizedApprovals::Deploy(deploy) => deploy
                 .inner()
@@ -112,7 +121,7 @@ impl FromBytes for FinalizedApprovals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_types::testing::TestRng;
+    use crate::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

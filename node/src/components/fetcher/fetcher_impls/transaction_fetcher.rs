@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{Transaction, TransactionConfigFailure, TransactionId};
+use casper_types::{FinalizedApprovals, Transaction, TransactionConfigFailure, TransactionId};
 
 use crate::{
     components::fetcher::{
@@ -11,7 +11,7 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{FinalizedApprovals, NodeId},
+    types::NodeId,
 };
 
 impl FetchItem for Transaction {

@@ -27,7 +27,7 @@ use thiserror::Error;
 
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
-    compute_approvals_checksum, create_single_block_rewarded_signatures, ApprovalsHashes,
+    compute_approvals_checksum, create_single_block_rewarded_signatures,
     BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
     MetaBlockMergeError, MetaBlockState,
 };
@@ -48,9 +48,8 @@ pub use transaction::TransactionHashWithApprovals;
 pub(crate) use transaction::{DeployExt, TransactionV1Ext};
 pub(crate) use transaction::{
     DeployHashWithApprovals, DeployOrTransactionHash, DeployOrTransferHash,
-    DeployWithFinalizedApprovals, ExecutionInfo, FinalizedApprovals, FinalizedDeployApprovals,
-    FinalizedTransactionV1Approvals, Footprint, LegacyDeploy, TransactionExt,
-    TransactionWithFinalizedApprovals, TypedTransactionHash,
+    DeployWithFinalizedApprovals, ExecutionInfo, Footprint, LegacyDeploy, TransactionExt,
+    TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{

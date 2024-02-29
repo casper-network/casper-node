@@ -9,6 +9,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod address_generator;
+pub mod block_store;
 pub mod data_access_layer;
 pub mod global_state;
 pub mod system;

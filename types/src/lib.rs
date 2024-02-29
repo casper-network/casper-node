@@ -172,14 +172,15 @@ pub use transaction::{
     AddressableEntityIdentifier, CategorizationError, Deploy, DeployApproval, DeployApprovalsHash,
     DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-    InitiatorAddr, NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction,
-    TransactionApproval, TransactionApprovalsHash, TransactionCategory, TransactionConfigFailure,
-    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
-    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
-    TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransferTarget,
+    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, InitiatorAddr,
+    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApproval,
+    TransactionApprovalsHash, TransactionCategory, TransactionConfigFailure, TransactionEntryPoint,
+    TransactionHash, TransactionHeader, TransactionId, TransactionInvocationTarget,
+    TransactionRuntime, TransactionScheduling, TransactionSessionKind, TransactionTarget,
+    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1HashWithApprovals,
+    TransactionV1Header, TransactionWithFinalizedApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

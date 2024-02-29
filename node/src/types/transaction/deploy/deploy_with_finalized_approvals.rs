@@ -1,9 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::Deploy;
-
-use crate::types::FinalizedDeployApprovals;
+use casper_types::{Deploy, FinalizedDeployApprovals};
 
 /// A deploy combined with a potential set of finalized approvals.
 ///

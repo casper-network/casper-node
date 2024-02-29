@@ -47,8 +47,9 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 // Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
 // 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.

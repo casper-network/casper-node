@@ -1,4 +1,5 @@
 mod errors_v1;
+mod finalized_transaction_v1_approvals;
 mod transaction_v1_approval;
 mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
@@ -6,6 +7,7 @@ mod transaction_v1_body;
 mod transaction_v1_builder;
 mod transaction_v1_category;
 mod transaction_v1_hash;
+mod transaction_v1_hash_with_approvals;
 mod transaction_v1_header;
 
 #[cfg(any(feature = "std", test))]
@@ -46,6 +48,7 @@ pub use errors_v1::{
     ErrorV1 as TransactionV1Error, ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
     TransactionV1ConfigFailure,
 };
+pub use finalized_transaction_v1_approvals::FinalizedTransactionV1Approvals;
 pub use transaction_v1_approval::TransactionV1Approval;
 pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
@@ -53,6 +56,7 @@ pub use transaction_v1_body::TransactionV1Body;
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
+pub use transaction_v1_hash_with_approvals::TransactionV1HashWithApprovals;
 pub use transaction_v1_header::TransactionV1Header;
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to

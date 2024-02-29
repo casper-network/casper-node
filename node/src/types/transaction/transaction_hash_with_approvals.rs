@@ -4,15 +4,13 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    DeployApproval, DeployHash, Transaction, TransactionApproval, TransactionHash,
-    TransactionV1Approval, TransactionV1Hash,
+    DeployApproval, DeployHash, FinalizedApprovals, FinalizedDeployApprovals,
+    FinalizedTransactionV1Approvals, Transaction, TransactionApproval, TransactionHash,
+    TransactionV1Approval, TransactionV1Hash, TransactionV1HashWithApprovals,
 };
 use tracing::error;
 
-use super::{
-    transaction_v1::TransactionV1HashWithApprovals, DeployHashWithApprovals, FinalizedApprovals,
-    FinalizedDeployApprovals, FinalizedTransactionV1Approvals,
-};
+use super::DeployHashWithApprovals;
 
 #[allow(missing_docs)]
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]

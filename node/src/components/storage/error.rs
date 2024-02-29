@@ -8,8 +8,8 @@ use casper_types::{
     EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
-use super::lmdb_ext::LmdbExtError;
 use crate::types::VariantMismatch;
+use casper_storage::block_store::BlockStoreError;
 
 /// A fatal storage component error.
 ///
@@ -50,9 +50,6 @@ pub enum FatalStorageError {
         /// Second block hash encountered at `transaction_hash`.
         second: BlockHash,
     },
-    /// LMDB error while operating.
-    #[error("internal database error: {0}")]
-    InternalStorage(#[from] LmdbExtError),
     /// An internal DB error - blocks should be overwritten.
     #[error("failed overwriting block")]
     FailedToOverwriteBlock,
@@ -176,13 +173,9 @@ pub enum FatalStorageError {
     /// Type mismatch indicating programmer error.
     #[error(transparent)]
     VariantMismatch(#[from] VariantMismatch),
-}
-
-// We wholesale wrap lmdb errors and treat them as internal errors here.
-impl From<lmdb::Error> for FatalStorageError {
-    fn from(err: lmdb::Error) -> Self {
-        LmdbExtError::from(err).into()
-    }
+    /// BlockStoreError
+    #[error(transparent)]
+    BlockStoreError(#[from] BlockStoreError),
 }
 
 impl From<Box<BlockValidationError>> for FatalStorageError {

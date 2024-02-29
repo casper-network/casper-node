@@ -274,7 +274,7 @@ impl TestFixture {
             .expect("should have node 0")
             .main_reactor()
             .storage()
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .expect("should not error reading db")
             .expect("node 0 should have a complete block")
     }
@@ -293,7 +293,6 @@ impl TestFixture {
             .main_reactor()
             .storage()
             .read_switch_block_by_era_id(era)
-            .expect("should not error reading db")
             .and_then(|block| BlockV2::try_from(block).ok())
             .unwrap_or_else(|| panic!("node 0 should have a switch block V2 for {}", era))
     }
@@ -420,7 +419,7 @@ impl TestFixture {
                     runner
                         .main_reactor()
                         .storage()
-                        .read_highest_complete_block()
+                        .get_highest_complete_block()
                         .expect("should not error reading db")
                         .map(|block| block.height())
                         == Some(block_height)
@@ -564,7 +563,6 @@ impl TestFixture {
             .main_reactor()
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
@@ -614,7 +612,6 @@ impl TestFixture {
         let highest_block = reactor
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
@@ -746,9 +743,7 @@ impl SwitchBlocks {
         for era_number in 0..era_count {
             let mut header_iter = nodes.values().map(|runner| {
                 let storage = runner.main_reactor().storage();
-                let maybe_block = storage
-                    .read_switch_block_by_era_id(EraId::from(era_number))
-                    .expect("failed to get switch block by era id");
+                let maybe_block = storage.read_switch_block_by_era_id(EraId::from(era_number));
                 maybe_block.expect("missing switch block").take_header()
             });
             let header = header_iter.next().unwrap();
@@ -1210,10 +1205,9 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .main_reactor()
             .storage()
-            .read_block_by_height(2)
+            .read_block_header_by_height(2, false)
             .expect("failed to read from storage")
-            .expect("missing switch block")
-            .take_header();
+            .expect("missing switch block");
         assert_eq!(ERA_ONE, header.era_id(), "era should be 1");
         assert!(header.is_switch_block(), "header should be switch block");
     }
@@ -1850,7 +1844,6 @@ async fn run_rewards_network_scenario(
             representative_storage
                 .read_block_by_height(i)
                 .expect("block not found")
-                .unwrap()
         })
         .collect();
 

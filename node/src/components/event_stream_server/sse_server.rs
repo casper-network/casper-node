@@ -75,7 +75,6 @@ pub enum SseData {
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
-        //#[data_size(skip)]
         execution_result: Box<ExecutionResult>,
         messages: Messages,
     },

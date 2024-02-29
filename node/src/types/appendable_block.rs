@@ -10,13 +10,10 @@ use tracing::error;
 
 use casper_types::{
     Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionCategory,
-    TransactionConfig, TransactionHash,
+    TransactionConfig, TransactionHash, TransactionV1HashWithApprovals,
 };
 
-use super::{
-    transaction::{DeployHashWithApprovals, TransactionV1HashWithApprovals},
-    BlockPayload, Footprint, VariantMismatch,
-};
+use super::{transaction::DeployHashWithApprovals, BlockPayload, Footprint, VariantMismatch};
 use crate::types::TransactionHashWithApprovals;
 
 const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);

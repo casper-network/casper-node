@@ -11,6 +11,7 @@ use casper_execution_engine::engine_state::{
     PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
+    block_store::types::ApprovalsHashes,
     data_access_layer::{
         transfer::TransferConfig, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
         TransferRequest,
@@ -36,7 +37,7 @@ use crate::{
         fetcher::FetchItem,
     },
     contract_runtime::utils::calculate_prune_eras,
-    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 use super::ExecutionArtifact;

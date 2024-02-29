@@ -39,10 +39,11 @@ use crate::{
     },
     protocol::Message,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock,
-        InternalEraReport, LegacyDeploy, SyncLeap, TransactionHashWithApprovals, TrieOrChunk,
+        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
+        LegacyDeploy, SyncLeap, TransactionHashWithApprovals, TrieOrChunk,
     },
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 /// The largest valid unicode codepoint that can be encoded to UTF-8.
 pub(crate) const HIGHEST_UNICODE_CODEPOINT: char = '\u{10FFFF}';
