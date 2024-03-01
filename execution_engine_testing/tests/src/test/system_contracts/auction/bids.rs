@@ -31,7 +31,8 @@ use casper_types::{
         self,
         auction::{
             self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
-            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
+            ARG_MAXIMUM_DELEGATION_AMOUNT, ARG_MINIMUM_DELEGATION_AMOUNT, ARG_NEW_VALIDATOR,
             ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
@@ -184,6 +185,67 @@ fn should_add_new_bid() {
             ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_success().commit();
+
+    let bids = builder.get_bids();
+
+    assert_eq!(bids.len(), 1);
+    let active_bid = bids.validator_bid(&BID_ACCOUNT_1_PK.clone()).unwrap();
+    assert_eq!(
+        builder.get_purse_balance(*active_bid.bonding_purse()),
+        U512::from(ADD_BID_AMOUNT_1)
+    );
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+}
+
+#[ignore]
+#[test]
+fn should_add_new_bid_with_limits() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(run_genesis_request);
+
+    let exec_request_0 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            // Below global minimum.
+            ARG_MINIMUM_DELEGATION_AMOUNT => Some(1_000_000_000u64),
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_0).expect_failure();
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => BID_ACCOUNT_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_MINIMUM_DELEGATION_AMOUNT => Some(600_000_000_000u64),
+            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(900_000_000_000u64),
         },
     )
     .build();
@@ -502,6 +564,102 @@ fn should_run_delegate_and_undelegate() {
     assert!(!unbond_list[0].is_validator());
 
     assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID);
+}
+
+#[ignore]
+#[test]
+fn should_run_delegate_with_delegation_amount_limits() {
+    let accounts = {
+        let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
+        let account_1 = GenesisAccount::account(
+            BID_ACCOUNT_1_PK.clone(),
+            Motes::new(BID_ACCOUNT_1_BALANCE.into()),
+            None,
+        );
+        tmp.push(account_1);
+        tmp
+    };
+
+    let run_genesis_request = utils::create_run_genesis_request(accounts);
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(run_genesis_request);
+
+    let transfer_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    // non-founding validator request
+    let add_bid_request_1 = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+            ARG_MINIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_1),
+            ARG_MAXIMUM_DELEGATION_AMOUNT => Some(DELEGATE_AMOUNT_1),
+        },
+    )
+    .build();
+
+    builder.exec(transfer_request).expect_success().commit();
+    builder.exec(add_bid_request_1).expect_success().commit();
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 1);
+    let active_bid = bids.validator_bid(&NON_FOUNDER_VALIDATOR_1_PK).unwrap();
+    assert_eq!(
+        builder.get_purse_balance(*active_bid.bonding_purse()),
+        U512::from(ADD_BID_AMOUNT_1)
+    );
+    assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
+
+    let exec_request_0 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1 - 1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_0).expect_failure();
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1 + 1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_1).expect_failure();
+
+    let exec_request_2 = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    builder.exec(exec_request_2).expect_success().commit();
 }
 
 #[ignore]
