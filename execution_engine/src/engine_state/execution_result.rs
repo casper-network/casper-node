@@ -11,7 +11,7 @@ use casper_types::{
 };
 
 use super::Error;
-use crate::execution::Error as ExecError;
+use crate::execution::ExecError;
 
 /// Represents the result of an execution specified by
 /// [`crate::engine_state::ExecuteRequest`].

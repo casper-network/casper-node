@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
-    execution,
+    execution::ExecError,
 };
 use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
 use casper_types::{
@@ -138,7 +138,7 @@ fn genesis_accounts_should_not_update_key_weight() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -183,7 +183,7 @@ fn genesis_accounts_should_not_modify_action_thresholds() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -212,7 +212,7 @@ fn genesis_accounts_should_not_add_associated_keys() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -274,7 +274,7 @@ fn genesis_accounts_should_not_remove_associated_keys() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -587,7 +587,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
+                Error::Exec(ExecError::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
@@ -806,7 +806,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
+                Error::Exec(ExecError::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
@@ -895,7 +895,7 @@ fn should_not_allow_add_bid_on_private_chain() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(api_error))
+            Error::Exec(ExecError::Revert(api_error))
             if api_error == auction::Error::AuctionBidsDisabled.into(),
         ),
         "{:?}",
@@ -924,7 +924,7 @@ fn should_not_allow_delegate_on_private_chain() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(api_error))
+            Error::Exec(ExecError::Revert(api_error))
             if api_error == auction::Error::AuctionBidsDisabled.into()
         ),
         "{:?}",

@@ -9,7 +9,9 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution, runtime::PreprocessingError};
+use casper_execution_engine::{
+    engine_state::Error, execution::ExecError, runtime::PreprocessingError,
+};
 use casper_types::{
     account::AccountHash,
     addressable_entity::DEFAULT_ENTRY_POINT_NAME,
@@ -99,7 +101,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::Exec(execution::Error::GasLimit)),
+        matches!(error, Error::Exec(ExecError::GasLimit)),
         "Unexpected error {:?}",
         error
     );
@@ -163,7 +165,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::Exec(execution::Error::GasLimit)),
+        matches!(error, Error::Exec(ExecError::GasLimit)),
         "Unexpected error {:?}",
         error
     );
@@ -211,7 +213,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::Exec(execution::Error::GasLimit)),
+        matches!(error, Error::Exec(ExecError::GasLimit)),
         "Unexpected error {:?}",
         error
     );

@@ -575,7 +575,8 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => None,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => None,
             },
         };
 

@@ -178,6 +178,20 @@ impl ContextAccessRights {
         context_access_rights
     }
 
+    /// Extend context access rights with access rights.
+    pub fn extend_access_rights(&mut self, access_rights: BTreeMap<URefAddr, AccessRights>) {
+        for (uref_addr, access_rights) in access_rights {
+            match self.access_rights.entry(uref_addr) {
+                Entry::Occupied(rights) => {
+                    *rights.into_mut() = rights.get().union(access_rights);
+                }
+                Entry::Vacant(rights) => {
+                    rights.insert(access_rights);
+                }
+            }
+        }
+    }
+
     /// Returns the current context key.
     pub fn context_key(&self) -> AddressableEntityHash {
         self.context_entity_hash
@@ -211,6 +225,11 @@ impl ContextAccessRights {
             // URef is not known
             false
         }
+    }
+
+    /// Consume into access rights.
+    pub fn take_access_rights(self) -> BTreeMap<URefAddr, AccessRights> {
+        self.access_rights
     }
 
     /// Grants access to a [`URef`]; unless access was pre-existing.

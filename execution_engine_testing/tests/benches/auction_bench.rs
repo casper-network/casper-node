@@ -236,7 +236,7 @@ fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
     let step_request = step_request_builder
         .with_next_era_id(builder.get_era() + 1)
         .build();
-    builder.step(step_request).expect("should step");
+    assert!(builder.step(step_request).is_success(), "should step");
 }
 
 pub fn auction_bench(c: &mut Criterion) {

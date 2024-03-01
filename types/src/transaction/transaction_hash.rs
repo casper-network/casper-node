@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::TransactionV1;
 use super::{DeployHash, TransactionV1Hash};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest,
+};
 
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
@@ -35,6 +38,14 @@ pub enum TransactionHash {
 }
 
 impl TransactionHash {
+    /// Digest representation of hash.
+    pub fn digest(&self) -> Digest {
+        match self {
+            TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
+            TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
+        }
+    }
+
     /// Returns a random `TransactionHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {

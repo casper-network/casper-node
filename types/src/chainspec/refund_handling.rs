@@ -75,6 +75,14 @@ impl FromBytes for RefundHandling {
     }
 }
 
+impl Default for RefundHandling {
+    fn default() -> Self {
+        RefundHandling::Refund {
+            refund_ratio: Ratio::new(99, 100),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

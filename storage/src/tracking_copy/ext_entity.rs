@@ -1,4 +1,5 @@
 use std::{collections::BTreeSet, convert::TryFrom};
+use tracing::error;
 
 use casper_types::{
     account::AccountHash,
@@ -8,9 +9,10 @@ use casper_types::{
     },
     bytesrepr,
     package::{EntityVersions, Groups, PackageStatus},
+    system::{AUCTION, HANDLE_PAYMENT, MINT},
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
-    EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase, ProtocolVersion,
-    StoredValue, StoredValueTypeMismatch,
+    ContextAccessRights, EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch,
 };
 
 use crate::{
@@ -77,6 +79,21 @@ pub trait TrackingCopyEntityExt<R> {
         account: Account,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
+
+    /// Returns entity, named keys, and access rights for the system.
+    fn system_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
+
+    /// Returns entity, named keys, and access rights.
+    fn resolved_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -372,5 +389,106 @@ where
             StoredValue::CLValue(contract_by_account),
         );
         Ok(())
+    }
+
+    fn system_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError> {
+        let system_account_hash = PublicKey::System.to_account_hash();
+        let system_entity =
+            self.get_addressable_entity_by_account_hash(protocol_version, system_account_hash)?;
+
+        let scr = self.get_system_entity_registry()?;
+
+        let (auction_named_keys, mut auction_access_rights) = {
+            let auction_hash = match scr.get(AUCTION).copied() {
+                Some(auction_hash) => auction_hash,
+                None => {
+                    error!("unexpected failure; auction not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        AUCTION.to_string(),
+                    ));
+                }
+            };
+            let auction = self.get_addressable_entity(auction_hash)?;
+            let auction_addr =
+                EntityAddr::new_with_tag(auction.entity_kind(), auction_hash.value());
+            let auction_named_keys = self.get_named_keys(auction_addr)?;
+            let auction_access_rights =
+                auction.extract_access_rights(auction_hash, &auction_named_keys);
+            (auction_named_keys, auction_access_rights)
+        };
+        let (mint_named_keys, mint_access_rights) = {
+            let mint_hash = match scr.get(MINT).copied() {
+                Some(mint_hash) => mint_hash,
+                None => {
+                    error!("unexpected failure; mint not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        MINT.to_string(),
+                    ));
+                }
+            };
+            let mint = self.get_addressable_entity(mint_hash)?;
+            let mint_addr = EntityAddr::new_with_tag(mint.entity_kind(), mint_hash.value());
+            let mint_named_keys = self.get_named_keys(mint_addr)?;
+            let mint_access_rights = mint.extract_access_rights(mint_hash, &mint_named_keys);
+            (mint_named_keys, mint_access_rights)
+        };
+
+        let (payment_named_keys, payment_access_rights) = {
+            let payment_hash = match scr.get(HANDLE_PAYMENT).copied() {
+                Some(payment_hash) => payment_hash,
+                None => {
+                    error!("unexpected failure; handle payment not found");
+                    return Err(TrackingCopyError::MissingSystemContractHash(
+                        HANDLE_PAYMENT.to_string(),
+                    ));
+                }
+            };
+            let payment = self.get_addressable_entity(payment_hash)?;
+            let payment_addr =
+                EntityAddr::new_with_tag(payment.entity_kind(), payment_hash.value());
+            let payment_named_keys = self.get_named_keys(payment_addr)?;
+            let payment_access_rights =
+                payment.extract_access_rights(payment_hash, &mint_named_keys);
+            (payment_named_keys, payment_access_rights)
+        };
+
+        // the auction calls the mint for total supply behavior, so extending the context to include
+        // mint named keys & access rights
+
+        let mut named_keys = NamedKeys::new();
+        named_keys.append(auction_named_keys);
+        named_keys.append(mint_named_keys);
+        named_keys.append(payment_named_keys);
+
+        auction_access_rights.extend_access_rights(mint_access_rights.take_access_rights());
+        auction_access_rights.extend_access_rights(payment_access_rights.take_access_rights());
+        Ok((system_entity, named_keys, auction_access_rights))
+    }
+
+    fn resolved_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError> {
+        if initiating_address == PublicKey::System.to_account_hash() {
+            return self.system_entity(protocol_version);
+        }
+
+        let (entity, entity_hash) = self.get_authorized_addressable_entity(
+            protocol_version,
+            initiating_address,
+            authorization_keys,
+            administrative_accounts,
+        )?;
+        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+        let named_keys = self.get_named_keys(entity_addr)?;
+        let access_rights = entity
+            .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
+        Ok((entity, named_keys, access_rights))
     }
 }

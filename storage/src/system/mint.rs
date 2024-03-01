@@ -20,8 +20,6 @@ use crate::system::mint::{
     system_provider::SystemProvider,
 };
 
-pub use crate::system::mint::mint_native::NativeMintRuntime;
-
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Mint new token with given `initial_balance` balance. Returns new purse on success, otherwise
