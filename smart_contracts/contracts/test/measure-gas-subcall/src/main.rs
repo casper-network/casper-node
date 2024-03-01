@@ -61,7 +61,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
 
         entry_points
     };
-    storage::new_contract(entry_points, None, None, None)
+    storage::new_contract(entry_points, None, None, None, None)
 }
 
 #[no_mangle]

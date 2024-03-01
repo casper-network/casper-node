@@ -397,14 +397,12 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
-    use casper_storage::global_state::{
-        state::StateProvider,
-        trie::{Pointer, Trie},
-    };
+    use casper_storage::global_state::{state::StateProvider, trie::Trie};
     use casper_types::{
         account::AccountHash,
         bytesrepr,
         execution::{Transform, TransformKind},
+        global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
         ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,

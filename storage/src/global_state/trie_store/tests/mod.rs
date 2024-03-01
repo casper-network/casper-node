@@ -4,10 +4,11 @@ mod simple;
 
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
+    global_state::Pointer,
     Digest,
 };
 
-use crate::global_state::trie::{Pointer, PointerBlock, Trie};
+use crate::global_state::trie::{PointerBlock, Trie};
 
 #[derive(Clone)]
 struct TestData<K, V>(Digest, Trie<K, V>);

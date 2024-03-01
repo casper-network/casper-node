@@ -31,8 +31,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
+    binary_port::{ConsensusStatus, ConsensusValidatorChanges},
     AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
-    EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
+    EraId, FinalizedApprovals, PublicKey, RewardedSignatures, Timestamp, Transaction,
+    TransactionHash, ValidatorChange,
 };
 
 use crate::{
@@ -44,7 +46,7 @@ use crate::{
                 ProtocolOutcome,
             },
             metrics::Metrics,
-            validator_change::{ValidatorChange, ValidatorChanges},
+            validator_change::ValidatorChanges,
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
             Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },
@@ -59,8 +61,8 @@ use crate::{
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
-        FinalizedApprovals, FinalizedBlock, InternalEraReport, MetaBlockState, NodeId,
-        TypedTransactionHash, ValidatorMatrix,
+        FinalizedBlock, InternalEraReport, MetaBlockState, NodeId, TypedTransactionHash,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -245,16 +247,14 @@ impl EraSupervisor {
     }
 
     /// Returns a list of status changes of active validators.
-    pub(super) fn get_validator_changes(
-        &self,
-    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+    pub(super) fn get_validator_changes(&self) -> ConsensusValidatorChanges {
         let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
         for ((_, era0), (era_id, era1)) in self.open_eras.iter().tuple_windows() {
             for (pub_key, change) in ValidatorChanges::new(era0, era1).0 {
                 result.entry(pub_key).or_default().push((*era_id, change));
             }
         }
-        result
+        ConsensusValidatorChanges::new(result)
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {
@@ -1283,17 +1283,16 @@ impl EraSupervisor {
         }
     }
 
-    pub(super) fn status(
-        &self,
-        responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
-    ) -> Effects<Event> {
+    pub(super) fn status(&self, responder: Responder<Option<ConsensusStatus>>) -> Effects<Event> {
         let public_key = self.validator_matrix.public_signing_key().clone();
         let round_length = self
             .open_eras
             .values()
             .last()
             .and_then(|era| era.consensus.next_round_length());
-        responder.respond(Some((public_key, round_length))).ignore()
+        responder
+            .respond(Some(ConsensusStatus::new(public_key, round_length)))
+            .ignore()
     }
 
     /// Get a reference to the era supervisor's open eras.

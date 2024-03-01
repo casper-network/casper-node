@@ -22,6 +22,7 @@ use casper_types::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    global_state::TrieMerkleProof,
     system::{
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         handle_payment::ACCUMULATION_PURSE_KEY,
@@ -48,7 +49,7 @@ use crate::{
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie::Trie,
         trie_store::{
             operations::{
                 prune, read, write, PruneResult as OpPruneResult, ReadResult, WriteResult,

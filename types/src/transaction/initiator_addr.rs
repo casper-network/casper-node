@@ -16,7 +16,7 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    PublicKey,
+    AsymmetricType, PublicKey,
 };
 
 const PUBLIC_KEY_TAG: u8 = 0;
@@ -61,9 +61,11 @@ impl InitiatorAddr {
 impl Display for InitiatorAddr {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            InitiatorAddr::PublicKey(public_key) => write!(formatter, "{}", public_key),
+            InitiatorAddr::PublicKey(public_key) => {
+                write!(formatter, "public key {}", public_key.to_hex())
+            }
             InitiatorAddr::AccountHash(account_hash) => {
-                write!(formatter, "account-hash({})", account_hash)
+                write!(formatter, "account hash {}", account_hash)
             }
         }
     }

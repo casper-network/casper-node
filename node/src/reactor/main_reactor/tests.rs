@@ -1,3 +1,5 @@
+mod binary_port;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
@@ -28,10 +30,11 @@ use casper_types::{
         AUCTION,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
-    EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
+    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionWithFinalizedApprovals, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -40,7 +43,6 @@ use crate::{
             self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
         },
         gossiper, network, storage,
-        upgrade_watcher::NextUpgrade,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -56,10 +58,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{
-        AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
-        ExitCode, NodeId, SyncHandling, TransactionWithFinalizedApprovals,
-    },
+    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -260,6 +259,12 @@ impl TestFixture {
         fixture
     }
 
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
+    }
+
     /// Returns the highest complete block from node 0.
     ///
     /// Panics if there is no such block.
@@ -276,7 +281,7 @@ impl TestFixture {
             .expect("should have node 0")
             .main_reactor()
             .storage()
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .expect("should not error reading db")
             .expect("node 0 should have a complete block")
     }
@@ -295,7 +300,6 @@ impl TestFixture {
             .main_reactor()
             .storage()
             .read_switch_block_by_era_id(era)
-            .expect("should not error reading db")
             .and_then(|block| BlockV2::try_from(block).ok())
             .unwrap_or_else(|| panic!("node 0 should have a switch block V2 for {}", era))
     }
@@ -322,6 +326,11 @@ impl TestFixture {
         let mut cfg = Config {
             network: network_cfg,
             gossip: gossiper::Config::new_with_small_timeouts(),
+            binary_port_server: crate::BinaryPortConfig {
+                allow_request_get_all_values: true,
+                allow_request_get_trie: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -422,7 +431,7 @@ impl TestFixture {
                     runner
                         .main_reactor()
                         .storage()
-                        .read_highest_complete_block()
+                        .get_highest_complete_block()
                         .expect("should not error reading db")
                         .map(|block| block.height())
                         == Some(block_height)
@@ -566,7 +575,6 @@ impl TestFixture {
             .main_reactor()
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
@@ -616,7 +624,6 @@ impl TestFixture {
         let highest_block = reactor
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
@@ -700,6 +707,18 @@ impl TestFixture {
             }
         }
     }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
+    }
 }
 
 /// Given a block height and a node id, returns a predicate to check if the lowest available block
@@ -747,9 +766,7 @@ impl SwitchBlocks {
         for era_number in 0..era_count {
             let mut header_iter = nodes.values().map(|runner| {
                 let storage = runner.main_reactor().storage();
-                let maybe_block = storage
-                    .read_switch_block_by_era_id(EraId::from(era_number))
-                    .expect("failed to get switch block by era id");
+                let maybe_block = storage.read_switch_block_by_era_id(EraId::from(era_number));
                 maybe_block.expect("missing switch block").take_header()
             });
             let header = header_iter.next().unwrap();
@@ -1211,10 +1228,9 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .main_reactor()
             .storage()
-            .read_block_by_height(2)
+            .read_block_header_by_height(2, false)
             .expect("failed to read from storage")
-            .expect("missing switch block")
-            .take_header();
+            .expect("missing switch block");
         assert_eq!(ERA_ONE, header.era_id(), "era should be 1");
         assert!(header.is_switch_block(), "header should be switch block");
     }
@@ -1315,16 +1331,16 @@ async fn should_store_finalized_approvals() {
                 TransactionWithFinalizedApprovals::Deploy {
                     deploy,
                     finalized_approvals,
-                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                } => (deploy, finalized_approvals),
                 _ => panic!("should receive deploy with finalized approvals"),
             });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
-            .and_then(|dwa| dwa.finalized_approvals())
+            .and_then(|(_, approvals)| approvals.as_ref())
             .map(|fa| fa.inner().iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
-            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
+            .map(|(deploy, _)| deploy.approvals().iter().cloned().collect());
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(
@@ -1777,9 +1793,9 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 25000; //milliseconds
-const MIN_HEIGHT: u64 = 8;
-const BLOCK_TIME: u64 = 2500; //milliseconds
+const ERA_DURATION: u64 = 20000; //milliseconds
+const MIN_HEIGHT: u64 = 6;
+const BLOCK_TIME: u64 = 2000; //milliseconds
 const TIME_OUT: u64 = 500; //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
@@ -1859,7 +1875,6 @@ async fn run_rewards_network_scenario(
             representative_storage
                 .read_block_by_height(i)
                 .expect("block not found")
-                .unwrap()
         })
         .collect();
 

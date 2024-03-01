@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, convert::TryFrom};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+};
 
 use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
@@ -617,15 +620,17 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::AddPackageVersion => {
-                // args(0) = pointer to package hash in wasm memory
-                // args(1) = size of package hash in wasm memory
-                // args(2) = pointer to entity version in wasm memory
-                // args(3) = pointer to entrypoints in wasm memory
-                // args(4) = size of entrypoints in wasm memory
-                // args(5) = pointer to named keys in wasm memory
-                // args(6) = size of named keys in wasm memory
-                // args(7) = pointer to output buffer for serialized key
-                // args(8) = size of output buffer
+                // args(0)  = pointer to package hash in wasm memory
+                // args(1)  = size of package hash in wasm memory
+                // args(2)  = pointer to entity version in wasm memory
+                // args(3)  = pointer to entrypoints in wasm memory
+                // args(4)  = size of entrypoints in wasm memory
+                // args(5)  = pointer to named keys in wasm memory
+                // args(6)  = size of named keys in wasm memory
+                // args(7)  = pointer to the new topic names in wasm memory
+                // args(8)  = size of the new topic names in wasm memory
+                // args(9)  = pointer to output buffer for serialized key
+                // args(10) = size of output buffer
                 let (
                     contract_package_hash_ptr,
                     contract_package_hash_size,
@@ -634,6 +639,8 @@ where
                     entry_points_size,
                     named_keys_ptr,
                     named_keys_size,
+                    message_topics,
+                    message_topics_size,
                     output_ptr,
                     output_size,
                 ) = Args::parse(args)?;
@@ -648,6 +655,8 @@ where
                         entry_points_size,
                         named_keys_ptr,
                         named_keys_size,
+                        message_topics,
+                        message_topics_size,
                         output_ptr,
                         output_size,
                     ],
@@ -666,11 +675,32 @@ where
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
                 let named_keys: NamedKeys = self.t_from_mem(named_keys_ptr, named_keys_size)?;
+                let message_topics: BTreeMap<String, MessageTopicOperation> =
+                    self.t_from_mem(message_topics, message_topics_size)?;
+
+                // Check that the names of the topics that are added are within the configured
+                // limits.
+                let message_limits = self.context.engine_config().wasm_config().messages_limits();
+                for (topic_name, _) in
+                    message_topics
+                        .iter()
+                        .filter(|(_, operation)| match operation {
+                            MessageTopicOperation::Add => true,
+                        })
+                {
+                    if topic_name.len() > message_limits.max_topic_name_size() as usize {
+                        return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                            ApiError::MaxTopicNameSizeExceeded,
+                        )))));
+                    }
+                }
+
                 let ret = self.add_contract_version(
                     package_hash,
                     version_ptr,
                     entry_points,
                     named_keys,
+                    message_topics,
                     output_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))

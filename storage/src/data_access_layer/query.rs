@@ -1,10 +1,7 @@
 //! Support for global state queries.
-use casper_types::{Digest, Key, StoredValue};
+use casper_types::{global_state::TrieMerkleProof, Digest, Key, StoredValue};
 
-use crate::{
-    global_state::trie::merkle_proof::TrieMerkleProof,
-    tracking_copy::{TrackingCopyError, TrackingCopyQueryResult},
-};
+use crate::tracking_copy::{TrackingCopyError, TrackingCopyQueryResult};
 
 /// Request for a global state query.
 #[derive(Debug, Clone, PartialEq, Eq)]

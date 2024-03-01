@@ -6,14 +6,12 @@ mod block_with_metadata;
 mod executable_block;
 mod finalized_block;
 mod meta_block;
-mod signed_block;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
     Digest, FinalitySignature, SingleBlockRewardedSignatures, TransactionId,
 };
 
-pub(crate) use approvals_hashes::ApprovalsHashes;
 pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
 pub use block_payload::BlockPayload;
@@ -23,7 +21,6 @@ pub use finalized_block::{FinalizedBlock, InternalEraReport};
 pub(crate) use meta_block::{
     ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
-pub use signed_block::SignedBlock;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid

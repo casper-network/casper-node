@@ -9,6 +9,7 @@ use casper_execution_engine::engine_state::{
     DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
 };
 use casper_storage::{
+    block_store::types::ApprovalsHashes,
     data_access_layer::{
         BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
         EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, PruneRequest,
@@ -24,9 +25,10 @@ use casper_storage::{
     system::runtime_native::Config as NativeRuntimeConfig,
 };
 use casper_types::{
+    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, Transform, TransformKind},
     BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
@@ -41,7 +43,7 @@ use crate::{
         fetcher::FetchItem,
     },
     contract_runtime::utils::calculate_prune_eras,
-    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 use super::ExecutionArtifact;
@@ -549,7 +551,7 @@ pub fn speculatively_execute<S>(
     data_access_layer: &S,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+) -> Result<SpeculativeExecutionResult, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
 {
@@ -574,20 +576,20 @@ where
                 ?deploy_hash,
                 "got more ({}) execution results from a single transaction", len
             );
-            None
+            SpeculativeExecutionResult::new(None)
         } else {
             // We know it must be 1, we could unwrap and then wrap
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(|result| {
+            SpeculativeExecutionResult::new(execution_results.pop_front().map(|result| {
                 let ExecutionResultAndMessages {
                     execution_result,
                     messages,
                 } = result.into();
 
                 (execution_result, messages)
-            })
+            }))
         }
     })
 }

@@ -2,13 +2,13 @@ use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
 use casper_storage::data_access_layer::{GenesisResult, ProtocolUpgradeResult};
-use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
+use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, ReactorState, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
+        binary_port, block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
-        rest_server, rpc_server, upgrade_watcher,
+        rest_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -16,7 +16,7 @@ use crate::{
         catch_up::CatchUpInstruction, genesis_instruction::GenesisInstruction,
         keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction,
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
-        MainEvent, MainReactor, ReactorState,
+        MainEvent, MainReactor,
     },
     types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     NodeRng,
@@ -290,20 +290,19 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // bring up rpc and rest server last to defer complications (such as put_deploy) and
-        // for it to be able to answer to /status, which requires various other components to be
-        // initialized
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.rest_server,
             MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+
+        // bring up binary port
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.binary_port,
+            MainEvent::BinaryPort(binary_port::Event::Initialize),
         ) {
             return Some(effects);
         }
@@ -594,7 +593,7 @@ impl MainReactor {
     fn get_local_tip_header(&self) -> Result<Option<BlockHeader>, String> {
         match self
             .storage
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .map_err(|err| format!("Could not read highest complete block: {}", err))?
         {
             Some(local_tip) => Ok(Some(local_tip.take_header())),

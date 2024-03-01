@@ -16,6 +16,7 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceResult,
         block_rewards::{BlockRewardsRequest, BlockRewardsResult},
+        get_all_values::{AllValuesRequest, AllValuesResult},
         get_bids::{BidsRequest, BidsResult},
         prune::{PruneRequest, PruneResult},
         query::{QueryRequest, QueryResult},
@@ -1079,6 +1080,41 @@ where
         };
         let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
         EraValidatorsResult::Success { era_validators }
+    }
+
+    /// Gets all values under the given key.
+    pub fn get_all_values(&self, get_all_values_request: AllValuesRequest) -> AllValuesResult {
+        let state_root_hash = get_all_values_request.state_hash();
+        let tracking_copy = match self.state.checkout(state_root_hash) {
+            Ok(ret) => match ret {
+                Some(tracking_copy) => Rc::new(RefCell::new(TrackingCopy::new(
+                    tracking_copy,
+                    self.config.max_query_depth,
+                ))),
+                None => return AllValuesResult::RootNotFound,
+            },
+            Err(err) => return AllValuesResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let mut tracking_copy = tracking_copy.borrow_mut();
+
+        let keys = match tracking_copy.get_keys(&get_all_values_request.key_tag()) {
+            Ok(ret) => ret,
+            Err(err) => return AllValuesResult::Failure(err),
+        };
+
+        let mut values = vec![];
+        for key in keys {
+            match tracking_copy.get(&key) {
+                Ok(Some(value)) => {
+                    values.push(value);
+                }
+                Ok(None) => {}
+                Err(error) => return AllValuesResult::Failure(error),
+            }
+        }
+
+        AllValuesResult::Success { values }
     }
 
     /// Gets current bids from the auction system.

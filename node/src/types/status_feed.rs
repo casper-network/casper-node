@@ -9,21 +9,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp,
+    binary_port::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block, BlockHash,
+    BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey,
+    ReactorState, TimeDiff, Timestamp,
 };
 
 use crate::{
-    components::{
-        block_synchronizer::BlockSynchronizerStatus,
-        rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-        upgrade_watcher::NextUpgrade,
-    },
-    reactor::main_reactor::ReactorState,
-    types::{NodeId, PeersMap},
+    components::rest_server::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    types::NodeId,
 };
-
-use super::AvailableBlockRange;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     let next_upgrade = NextUpgrade::new(
@@ -52,7 +46,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         reactor_state: ReactorState::Initialize,
         last_progress: Timestamp::from(0),
         available_block_range: AvailableBlockRange::RANGE_0_0,
-        block_sync: BlockSynchronizerStatus::doc_example().clone(),
+        block_sync: BlockSynchronizerStatus::example().clone(),
         starting_state_root_hash: Digest::default(),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
@@ -116,7 +110,7 @@ impl StatusFeed {
         last_added_block: Option<Block>,
         peers: BTreeMap<NodeId, String>,
         chainspec_info: ChainspecInfo,
-        consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
+        consensus_status: Option<ConsensusStatus>,
         node_uptime: Duration,
         reactor_state: ReactorState,
         last_progress: Timestamp,
@@ -124,10 +118,13 @@ impl StatusFeed {
         block_sync: BlockSynchronizerStatus,
         starting_state_root_hash: Digest,
     ) -> Self {
-        let (our_public_signing_key, round_length) = match consensus_status {
-            Some((public_key, round_length)) => (Some(public_key), round_length),
-            None => (None, None),
-        };
+        let (our_public_signing_key, round_length) =
+            consensus_status.map_or((None, None), |consensus_status| {
+                (
+                    Some(consensus_status.validator_public_key().clone()),
+                    consensus_status.round_length(),
+                )
+            });
         StatusFeed {
             last_added_block,
             peers,
@@ -180,7 +177,7 @@ impl From<Block> for MinimalBlockInfo {
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The node ID and network address of each connected peer.
-    pub peers: PeersMap,
+    pub peers: Peers,
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
@@ -214,7 +211,7 @@ impl GetStatusResult {
     #[allow(deprecated)]
     pub(crate) fn new(status_feed: StatusFeed, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
-            peers: PeersMap::from(status_feed.peers),
+            peers: Peers::from(status_feed.peers),
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
             starting_state_root_hash: status_feed.starting_state_root_hash,

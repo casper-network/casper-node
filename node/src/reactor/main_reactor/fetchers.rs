@@ -8,10 +8,11 @@ use crate::{
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
     utils::Source,
     FetcherConfig, NodeRng,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {

@@ -14,6 +14,7 @@ mod execution_results_checksum;
 mod fee;
 mod flush;
 mod genesis;
+pub mod get_all_values;
 pub mod get_bids;
 mod protocol_upgrade;
 pub mod prune;

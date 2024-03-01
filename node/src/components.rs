@@ -44,6 +44,7 @@
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
+pub(crate) mod binary_port;
 pub(crate) mod block_accumulator;
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
@@ -60,7 +61,6 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod network;
 pub(crate) mod rest_server;
-pub mod rpc_server;
 pub(crate) mod shutdown_trigger;
 pub mod storage;
 pub(crate) mod sync_leaper;

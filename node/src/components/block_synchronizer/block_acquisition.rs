@@ -7,6 +7,7 @@ use datasize::DataSize;
 use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{
     execution::ExecutionResult, Block, BlockHash, BlockHeader, Digest, EraId, FinalitySignature,
     ProtocolVersion, PublicKey, TransactionHash, TransactionId,
@@ -19,10 +20,7 @@ use crate::{
         signature_acquisition::SignatureAcquisition, BlockAcquisitionError,
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
-        SignatureWeight,
-    },
+    types::{BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock, SignatureWeight},
     NodeRng,
 };
 

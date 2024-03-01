@@ -33,12 +33,13 @@ use casper_types::{
     addressable_entity::{
         self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
         AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-        EntryPointType, EntryPoints, MessageTopics, NamedKeys, Parameter, RemoveKeyFailure,
-        SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
+        EntryPointType, EntryPoints, MessageTopicError, MessageTopics, NamedKeys, Parameter,
+        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicSummary,
+        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicOperation,
+        MessageTopicSummary,
     },
     contracts::ContractPackage,
     crypto,
@@ -1800,6 +1801,7 @@ where
         version_ptr: u32,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
+        message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if entry_points.contains_stored_session() {
@@ -1813,8 +1815,40 @@ where
             return Err(ExecError::LockedEntity(package_hash));
         }
 
-        let (main_purse, previous_named_keys, action_thresholds, associated_keys, message_topics) =
-            self.new_version_entity_parts(&package)?;
+        let (
+            main_purse,
+            previous_named_keys,
+            action_thresholds,
+            associated_keys,
+            mut previous_message_topics,
+        ) = self.new_version_entity_parts(&package)?;
+
+        let max_topics_per_contract = self
+            .context
+            .engine_config()
+            .wasm_config()
+            .messages_limits()
+            .max_topics_per_contract();
+
+        let topics_to_add = message_topics
+            .iter()
+            .filter(|(_, operation)| match operation {
+                MessageTopicOperation::Add => true,
+            });
+        // Check if registering the new topics would exceed the limit per contract
+        if previous_message_topics.len() + topics_to_add.clone().count()
+            > max_topics_per_contract as usize
+        {
+            return Ok(Err(ApiError::from(MessageTopicError::MaxTopicsExceeded)));
+        }
+
+        // Extend the previous topics with the newly added ones.
+        for (new_topic, _) in topics_to_add {
+            let topic_name_hash = crypto::blake2b(new_topic.as_bytes()).into();
+            if let Err(e) = previous_message_topics.add_topic(new_topic.as_str(), topic_name_hash) {
+                return Ok(Err(e.into()));
+            }
+        }
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
         named_keys.append(previous_named_keys);
@@ -1854,7 +1888,7 @@ where
             main_purse,
             associated_keys,
             action_thresholds,
-            message_topics.clone(),
+            previous_message_topics.clone(),
             EntityKind::SmartContract,
         );
 
@@ -1862,7 +1896,7 @@ where
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
-        for (_, topic_hash) in message_topics.iter() {
+        for (_, topic_hash) in previous_message_topics.iter() {
             let topic_key = Key::message_topic(entity_hash.into(), *topic_hash);
             let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
                 0,

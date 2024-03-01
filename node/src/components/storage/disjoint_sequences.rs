@@ -1,6 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    AvailableBlockRange,
+};
 use datasize::DataSize;
 use itertools::Itertools;
 use tracing::trace;
@@ -73,6 +76,12 @@ impl Sequence {
     /// Returns the inclusive low end of the sequence.
     pub(crate) fn low(&self) -> u64 {
         self.low
+    }
+}
+
+impl From<Sequence> for AvailableBlockRange {
+    fn from(sequence: Sequence) -> Self {
+        AvailableBlockRange::new(sequence.low(), sequence.high())
     }
 }
 
