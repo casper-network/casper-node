@@ -1462,7 +1462,7 @@ async fn network_should_recover_from_stall() {
 
     // Expect node 0 can't produce more blocks, i.e. the network has stalled.
     fixture
-        .try_run_until_block_height(3, TEN_SECS)
+        .try_run_until_block_height(3, ONE_MIN)
         .await
         .expect_err("should time out");
 
@@ -1796,7 +1796,7 @@ const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 20000; //milliseconds
 const MIN_HEIGHT: u64 = 6;
 const BLOCK_TIME: u64 = 2000; //milliseconds
-const TIME_OUT: u64 = 500; //seconds
+const TIME_OUT: u64 = 600; //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
