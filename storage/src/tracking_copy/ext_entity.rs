@@ -85,6 +85,15 @@ pub trait TrackingCopyEntityExt<R> {
         &mut self,
         protocol_version: ProtocolVersion,
     ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
+
+    /// Returns entity, named keys, and access rights.
+    fn resolved_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -457,5 +466,29 @@ where
         auction_access_rights.extend_access_rights(mint_access_rights.take_access_rights());
         auction_access_rights.extend_access_rights(payment_access_rights.take_access_rights());
         Ok((system_entity, named_keys, auction_access_rights))
+    }
+
+    fn resolved_entity(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        initiating_address: AccountHash,
+        authorization_keys: &BTreeSet<AccountHash>,
+        administrative_accounts: &BTreeSet<AccountHash>,
+    ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError> {
+        if initiating_address == PublicKey::System.to_account_hash() {
+            return self.system_entity(protocol_version);
+        }
+
+        let (entity, entity_hash) = self.get_authorized_addressable_entity(
+            protocol_version,
+            initiating_address,
+            authorization_keys,
+            administrative_accounts,
+        )?;
+        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+        let named_keys = self.get_named_keys(entity_addr)?;
+        let access_rights = entity
+            .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
+        Ok((entity, named_keys, access_rights))
     }
 }

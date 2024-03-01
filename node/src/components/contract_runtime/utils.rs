@@ -188,7 +188,7 @@ pub(super) async fn exec_or_requeue<REv>(
     let execution_results_map: HashMap<_, _> = execution_results
         .iter()
         .cloned()
-        .map(|artifact| (artifact.deploy_hash.into(), artifact.execution_result))
+        .map(|artifact| (artifact.transaction_hash, artifact.execution_result))
         .collect();
     if meta_block_state.register_as_stored().was_updated() {
         effect_builder

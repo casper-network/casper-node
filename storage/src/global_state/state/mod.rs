@@ -23,28 +23,31 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     global_state::TrieMerkleProof,
+    system,
     system::{
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         handle_payment::ACCUMULATION_PURSE_KEY,
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    Account, AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
-    Phase, PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+    Account, AddressableEntity, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase, PublicKey,
+    RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
 };
 
 use crate::{
     data_access_layer::{
+        bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
         era_validators::EraValidatorsResult,
         transfer::{TransferRequest, TransferRequestArgs, TransferResult},
-        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BalanceResult,
-        BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
-        EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
-        FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepError, StepRequest, StepResult, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceRequest,
+        BalanceResult, BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest,
+        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
+        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepError, StepRequest,
+        StepResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -59,10 +62,7 @@ use crate::{
     },
     system::{
         auction,
-        auction::{
-            bidding::{BiddingRequest, BiddingResult},
-            Auction,
-        },
+        auction::Auction,
         genesis::{GenesisError, GenesisInstaller},
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
@@ -669,38 +669,18 @@ pub trait CommitProvider: StateProvider {
             }
         }
 
-        let (entity, entity_named_keys, entity_access_rights) = {
-            if source_account_hash == PublicKey::System.to_account_hash() {
-                match tc.borrow_mut().system_entity(protocol_version) {
-                    Ok(ret) => ret,
-                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                source_account_hash,
+                authorization_keys,
+                &administrative_accounts,
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return TransferResult::Failure(TransferError::TrackingCopy(tce));
                 }
-            } else {
-                let (entity, entity_addr) = match tc.borrow_mut().get_authorized_addressable_entity(
-                    protocol_version,
-                    source_account_hash,
-                    authorization_keys,
-                    &administrative_accounts,
-                ) {
-                    Ok((entity, entity_hash)) => {
-                        let entity_addr =
-                            EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
-                        (entity, entity_addr)
-                    }
-                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
-                };
-
-                let named_keys = match tc.borrow_mut().get_named_keys(entity_addr) {
-                    Ok(named_keys) => named_keys,
-                    Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
-                };
-                let access_rights = entity.extract_access_rights(
-                    AddressableEntityHash::new(entity_addr.value()),
-                    &named_keys,
-                );
-                (entity, named_keys, access_rights)
-            }
-        };
+            };
 
         let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
@@ -793,8 +773,135 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
-    fn staking(&self, _bid_request: BiddingRequest) -> BiddingResult {
-        unimplemented!()
+    /// Direct biddings.
+    fn bidding(&self, request: BiddingRequest) -> BiddingResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return BiddingResult::RootNotFound,
+            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let protocol_version = request.protocol_version();
+        let config = request.config();
+        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
+
+        let initiating_address = request.address();
+        let authorization_keys = request.authorization_keys();
+        let transfer_config = config.transfer_config();
+        let administrative_accounts = transfer_config.administrative_accounts();
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                initiating_address,
+                authorization_keys,
+                &administrative_accounts,
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return BiddingResult::Failure(tce);
+                }
+            };
+
+        // IMPORTANT: this runtime _must_ use the initiators's context.
+        let mut runtime = RuntimeNative::new(
+            protocol_version,
+            config.clone(),
+            id,
+            Rc::clone(&tc),
+            initiating_address,
+            entity,
+            entity_named_keys,
+            entity_access_rights,
+            U512::MAX,
+            Phase::Session,
+        );
+
+        let auction_method = request.auction_method();
+
+        let result = match auction_method {
+            AuctionMethod::ActivateBid {
+                validator_public_key,
+            } => runtime
+                .activate_bid(validator_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::AddBid {
+                public_key,
+                delegation_rate,
+                amount,
+            } => runtime
+                .add_bid(public_key, delegation_rate, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Revert),
+            AuctionMethod::WithdrawBid { public_key, amount } => runtime
+                .withdraw_bid(public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Delegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                max_delegators_per_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .delegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    max_delegators_per_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Revert),
+            AuctionMethod::Undelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+            } => runtime
+                .undelegate(delegator_public_key, validator_public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Redelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                new_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .redelegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    new_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        // commit
+        match result {
+            Ok(ret) => match self.commit(state_hash, effects.clone()) {
+                Ok(post_state_hash) => BiddingResult::Success {
+                    ret,
+                    post_state_hash,
+                    effects,
+                },
+                Err(tce) => BiddingResult::Failure(tce.into()),
+            },
+            Err(tce) => BiddingResult::Failure(tce),
+        }
     }
 }
 

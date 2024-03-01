@@ -11,9 +11,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest,
+        AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
+        FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest, TransferResult,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -28,8 +29,8 @@ use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, Transform, TransformKind},
-    BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
+    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
 
@@ -76,7 +77,7 @@ pub fn execute_finalized_block(
     let parent_seed = execution_pre_state.parent_seed();
 
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: Vec<ExecutionArtifact> =
+    let mut execution_artifacts: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
@@ -107,14 +108,16 @@ pub fn execute_finalized_block(
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
-                post_state_hash, ..
                 //transfers: fee_transfers,
+                post_state_hash,
+                ..
             } => {
-                state_root_hash = post_state_hash;
                 //transfers.extend(fee_transfers);
-                // TODO: looks like effects & transfer records are associated with the ExecutionResult struct
-                // which assumes they were caused by a deploy. however, systemic operations produce effects
-                // and transfer records also.
+                state_root_hash = post_state_hash;
+                // TODO: looks like effects & transfer records are associated with the
+                // ExecutionResult struct which assumes they were caused by a
+                // deploy. however, systemic operations produce effects and transfer
+                // records also.
             }
         }
     }
@@ -148,52 +151,120 @@ pub fn execute_finalized_block(
     }
 
     for transaction in executable_block.transactions {
+        let transaction_hash = transaction.hash();
+        if transaction.is_native_mint() {
+            // native transfers are routed to the data provider
+            let authorization_keys = transaction.authorization_keys();
+            let transfer_req = TransferRequest::with_runtime_args(
+                native_runtime_config.clone(),
+                state_root_hash,
+                block_time,
+                protocol_version,
+                transaction_hash,
+                transaction.initiator_addr().account_hash(),
+                authorization_keys,
+                transaction.session_args().clone(),
+                U512::zero(), /* <-- this should be from chainspec cost table */
+            );
+            //NOTE: native mint interactions auto-commit
+            let transfer_result = data_access_layer.transfer(transfer_req);
+            trace!(
+                ?transaction_hash,
+                ?transfer_result,
+                "native transfer result"
+            );
+            match transfer_result {
+                TransferResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                TransferResult::Failure(transfer_error) => {
+                    let artifact = ExecutionArtifact::new(
+                        transaction_hash,
+                        transaction.header(),
+                        ExecutionResult::V2(ExecutionResultV2::Failure {
+                            effects: Effects::new(),
+                            cost: U512::zero(),
+                            transfers: vec![],
+                            error_message: format!("{:?}", transfer_error),
+                        }),
+                        Messages::default(),
+                    );
+                    execution_artifacts.push(artifact);
+                    debug!(%transfer_error);
+                    // a failure does not auto commit
+                    continue;
+                }
+                TransferResult::Success {
+                    post_state_hash,
+                    transfers,
+                    ..
+                } => {
+                    // ideally we should be doing something with the transfer records and effects,
+                    // but currently this is auto-commit and if we include the effects in the
+                    // collection they will get double-committed. there's also
+                    // the problem that the execution results type needs to be
+                    // made more expressive / flexible. effects? transfers?
+                    state_root_hash = post_state_hash;
+                    let artifact = ExecutionArtifact::new(
+                        transaction_hash,
+                        transaction.header(),
+                        ExecutionResult::V2(ExecutionResultV2::Success {
+                            effects: Effects::new(), // auto commit
+                            cost: U512::zero(),
+                            transfers,
+                        }),
+                        Messages::default(),
+                    );
+                    execution_artifacts.push(artifact);
+                }
+            }
+            continue;
+        }
+        if transaction.is_native_auction() {
+            let args = transaction.session_args();
+            let entry_point = transaction.entry_point();
+            let auction_method = match AuctionMethod::from_parts(entry_point, args, chainspec) {
+                Ok(auction_method) => auction_method,
+                Err(_) => {
+                    error!(%transaction_hash, "failed to resolve auction method");
+                    continue; // skip to next record
+                }
+            };
+            let authorization_keys = transaction.authorization_keys();
+            let bidding_req = BiddingRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                block_time,
+                protocol_version,
+                transaction_hash,
+                transaction.initiator_addr().account_hash(),
+                authorization_keys,
+                auction_method,
+            );
+
+            //NOTE: native mint interactions auto-commit
+            let bidding_result = data_access_layer.bidding(bidding_req);
+            trace!(?transaction_hash, ?bidding_result, "native auction result");
+            match bidding_result {
+                BiddingResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                }
+                BiddingResult::Success {
+                    post_state_hash, ..
+                } => {
+                    // we need a way to capture the effects from this without double committing
+                    state_root_hash = post_state_hash;
+                }
+                BiddingResult::Failure(tce) => {
+                    debug!(%tce);
+                    continue;
+                }
+            }
+        }
+
         let (deploy_hash, deploy) = match transaction {
             Transaction::Deploy(deploy) => {
                 let deploy_hash = *deploy.hash();
-                if deploy.is_transfer() {
-                    // native transfers are routed to the data provider
-                    let authorization_keys = deploy
-                        .approvals()
-                        .iter()
-                        .map(|approval| approval.signer().to_account_hash())
-                        .collect();
-                    let transfer_req = TransferRequest::with_runtime_args(
-                        native_runtime_config.clone(),
-                        state_root_hash,
-                        block_time,
-                        protocol_version,
-                        deploy_hash.into(),
-                        deploy.header().account().to_account_hash(),
-                        authorization_keys,
-                        deploy.session().args().clone(),
-                        U512::zero(), /* <-- this should be from chainspec cost table */
-                    );
-                    // native transfer auto-commits
-                    let transfer_result = data_access_layer.transfer(transfer_req);
-                    trace!(?deploy_hash, ?transfer_result, "native transfer result");
-                    match EngineExecutionResult::from_transfer_result(
-                        transfer_result,
-                        Gas::new(U512::zero()),
-                    ) {
-                        Err(_) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
-                        Ok(exec_result) => {
-                            let ExecutionResultAndMessages {
-                                execution_result,
-                                messages,
-                            } = ExecutionResultAndMessages::from(exec_result);
-                            let versioned_execution_result =
-                                ExecutionResult::from(execution_result);
-                            execution_results.push(ExecutionArtifact::new(
-                                deploy_hash,
-                                deploy.header().clone(),
-                                versioned_execution_result,
-                                messages,
-                            ));
-                        }
-                    }
-                    continue;
-                }
                 (deploy_hash, deploy)
             }
             Transaction::V1(_) => continue,
@@ -224,7 +295,7 @@ pub fn execute_finalized_block(
             deploy_hash,
             exec_result,
         )?;
-        execution_results.push(ExecutionArtifact::new(
+        execution_artifacts.push(ExecutionArtifact::deploy(
             deploy_hash,
             deploy_header,
             execution_result,
@@ -241,7 +312,7 @@ pub fn execute_finalized_block(
 
         // Write the deploy approvals' and execution results' checksums to global state.
         let execution_results_checksum = compute_execution_results_checksum(
-            execution_results
+            execution_artifacts
                 .iter()
                 .map(|artifact| &artifact.execution_result),
         )?;
@@ -477,7 +548,7 @@ pub fn execute_finalized_block(
     Ok(BlockAndExecutionResults {
         block,
         approvals_hashes,
-        execution_results,
+        execution_results: execution_artifacts,
         maybe_step_effects_and_upcoming_era_validators,
     })
 }

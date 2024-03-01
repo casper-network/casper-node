@@ -10,7 +10,8 @@ use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion,
-    PublicKey, Timestamp, U512,
+    PublicKey, Timestamp, TransactionHash, TransactionHeader, TransactionV1Hash,
+    TransactionV1Header, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -64,22 +65,51 @@ pub(crate) struct StepEffectsAndUpcomingEraValidators {
 
 #[derive(Clone, Debug, DataSize, PartialEq, Eq, Serialize)]
 pub(crate) struct ExecutionArtifact {
-    pub(crate) deploy_hash: DeployHash,
-    pub(crate) deploy_header: DeployHeader,
+    pub(crate) transaction_hash: TransactionHash,
+    pub(crate) header: TransactionHeader,
     pub(crate) execution_result: ExecutionResult,
     pub(crate) messages: Messages,
 }
 
 impl ExecutionArtifact {
     pub(crate) fn new(
-        deploy_hash: DeployHash,
-        deploy_header: DeployHeader,
+        transaction_hash: TransactionHash,
+        header: TransactionHeader,
         execution_result: ExecutionResult,
         messages: Messages,
     ) -> Self {
         Self {
-            deploy_hash,
-            deploy_header,
+            transaction_hash,
+            header,
+            execution_result,
+            messages,
+        }
+    }
+
+    pub(crate) fn deploy(
+        deploy_hash: DeployHash,
+        header: DeployHeader,
+        execution_result: ExecutionResult,
+        messages: Messages,
+    ) -> Self {
+        Self {
+            transaction_hash: TransactionHash::Deploy(deploy_hash),
+            header: TransactionHeader::Deploy(header),
+            execution_result,
+            messages,
+        }
+    }
+
+    #[allow(unused)]
+    pub(crate) fn v1(
+        transaction_hash: TransactionV1Hash,
+        header: TransactionV1Header,
+        execution_result: ExecutionResult,
+        messages: Messages,
+    ) -> Self {
+        Self {
+            transaction_hash: TransactionHash::V1(transaction_hash),
+            header: TransactionHeader::V1(header),
             execution_result,
             messages,
         }

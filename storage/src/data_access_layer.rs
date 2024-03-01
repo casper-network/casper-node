@@ -8,6 +8,7 @@ use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
 pub mod balance;
+pub mod bidding;
 pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
@@ -27,6 +28,7 @@ mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
+pub use bidding::{BiddingRequest, BiddingResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
@@ -45,6 +47,8 @@ pub use step::{EvictItem, RewardItem, SlashItem, StepError, StepRequest, StepRes
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
+
+pub use bidding::AuctionMethod;
 
 pub struct Block {
     _era_id: EraId,
