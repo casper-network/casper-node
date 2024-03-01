@@ -23,8 +23,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey, RewardedSignatures,
-    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionId,
+    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash, TransactionId,
 };
 
 use crate::{
@@ -40,7 +39,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, NodeId, TransactionExt, TransactionHashWithApprovals, ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransactionHash, NodeId, TransactionExt,
+        TransactionHashWithApprovals, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -55,8 +55,12 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn all_transactions(&self) -> Vec<TransactionHashWithApprovals> {
-        self.value().all_transactions().cloned().collect()
+    fn transfers(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().transfer().cloned().collect()
+    }
+
+    fn non_transfer(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().non_transfer().cloned().collect()
     }
 
     fn non_transfer_count(&self) -> usize {
@@ -516,7 +520,7 @@ impl BlockValidator {
     fn handle_transaction_fetched<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        hash: TransactionHash,
+        dt_hash: DeployOrTransactionHash,
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
     where
@@ -527,36 +531,37 @@ impl BlockValidator {
     {
         match &result {
             Ok(FetchedData::FromPeer { peer, .. }) => {
-                debug!(%hash, %peer, "fetched transaction from peer")
+                debug!(%dt_hash, %peer, "fetched transaction from peer")
             }
-            Ok(FetchedData::FromStorage { .. }) => debug!(%hash, "fetched transaction locally"),
-            Err(error) => warn!(%hash, %error, "could not fetch transaction"),
+            Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched transaction locally"),
+            Err(error) => warn!(%dt_hash, %error, "could not fetch transaction"),
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                if item.hash() != hash {
-                    // TODO[RC]: We miss a "Deploy vs Transfer" check here. Double check if this is
-                    // ok.
-                    warn!(
-                        transaction = %item,
-                        expected_transaction_hash = %hash,
-                        actual_transaction_hash = %item.hash(),
-                        "transaction has incorrect hash"
-                    );
-                    // Hard failure - change state to Invalid.
-                    let responders = self
-                        .validation_states
-                        .values_mut()
-                        .flat_map(|state| state.try_mark_invalid(&hash));
-                    return respond(false, responders);
+                // TODO[RC]: Take care of the type verification for V1 transactions
+                // (TypedTransactionHash?)
+                if let Transaction::Deploy(_) = item.as_ref() {
+                    if DeployOrTransactionHash::new(&item) != dt_hash {
+                        warn!(
+                            transaction = %item,
+                            expected_deploy_or_transaction_hash = %dt_hash,
+                            actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
+                            "transaction has incorrect deploy-or-transaction hash"
+                        );
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        return respond(false, responders);
+                    }
                 }
-
                 let transaction_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
                     Err(error) => {
                         warn!(
                             transaction = %item,
-                            %hash,
+                            %dt_hash,
                             %error,
                             "could not convert transaction",
                         );
@@ -564,14 +569,14 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&hash));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
                         return respond(false, responders);
                     }
                 };
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
                     let responders =
-                        state.try_add_transaction_footprint(&hash, &transaction_footprint);
+                        state.try_add_transaction_footprint(&dt_hash, &transaction_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
                         effects.extend(respond(is_valid, responders));
@@ -627,7 +632,7 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&hash));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
                         respond(false, responders)
                     }
                 }
@@ -788,7 +793,7 @@ where
 fn fetch_transactions_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
-    missing_transactions: HashMap<TransactionHash, TransactionApprovalsHash>,
+    missing_transactions: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
@@ -799,35 +804,35 @@ where
 {
     let mut effects: Effects<Event> = missing_transactions
         .into_iter()
-        .flat_map(|(hash, approvals_hash)| {
-            let txn_id = match (hash, approvals_hash) {
+        .flat_map(|(dt_hash, approvals_hash)| {
+            let txn_id = match (dt_hash, approvals_hash) {
                 (
-                    TransactionHash::Deploy(deploy_hash),
+                    DeployOrTransactionHash::Deploy(dt_hash),
                     TransactionApprovalsHash::Deploy(approvals_hash),
                 ) => TransactionId::Deploy {
-                    deploy_hash,
+                    deploy_hash: dt_hash.into(),
                     approvals_hash,
                 },
                 (
-                    TransactionHash::V1(transaction_v1_hash),
+                    DeployOrTransactionHash::V1(dt_hash),
                     TransactionApprovalsHash::V1(approvals_hash),
                 ) => TransactionId::V1 {
-                    transaction_v1_hash,
+                    transaction_v1_hash: dt_hash,
                     approvals_hash,
                 },
-                (TransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
-                    error!(%hash, "can not fetch 'legacy deploy' using 'transaction' approvals hash");
+                (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
+                    error!(%dt_hash, "can not fetch 'legacy deploy' using 'transaction' approvals hash");
                     return Effects::new();
                 }
-                (TransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
-                    error!(%hash, "can not fetch 'transaction' using 'legacy deploy' approvals hash");
+                (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
+                    error!(%dt_hash, "can not fetch 'transaction' using 'legacy deploy' approvals hash");
                     return Effects::new();
                 }
             };
 
             effect_builder
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
-                .event(move |result| Event::TransactionFetched { dt_hash: hash, result })
+                .event(move |result| Event::TransactionFetched { dt_hash, result })
         })
         .collect();
 

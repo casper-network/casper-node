@@ -39,8 +39,8 @@ pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 #[cfg(test)]
 pub(crate) use transaction::{DeployExt, TransactionV1Ext};
 pub(crate) use transaction::{
-    DeployHashWithApprovals, Footprint, LegacyDeploy, TransactionExt, TransactionHashWithApprovals,
-    TypedTransactionHash,
+    DeployHashWithApprovals, DeployOrTransactionHash, DeployOrTransferHash, Footprint,
+    LegacyDeploy, TransactionExt, TransactionHashWithApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
