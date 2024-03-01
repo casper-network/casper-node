@@ -2,6 +2,10 @@
 //!
 //! Generally should not be used directly.  See the [`contract_api`](crate::contract_api) for
 //! high-level bindings suitable for writing smart contracts.
+
+#[cfg(doc)]
+use alloc::collections::BTreeMap;
+
 extern "C" {
     /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
     /// to a valid global state key, otherwise the function will fail. If the key is de-serialized

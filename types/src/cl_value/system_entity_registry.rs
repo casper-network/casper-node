@@ -84,4 +84,17 @@ mod tests {
         system_entity_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
         bytesrepr::test_serialization_roundtrip(&system_entity_registry);
     }
+
+    #[test]
+    fn bytesrepr_transparent() {
+        // this test ensures that the serialization is not affected by the wrapper, because
+        // this data is deserialized in other places as a BTree, e.g. GetAuctionInfo in the sidecar
+        let mut system_entity_registry = SystemEntityRegistry::new();
+        system_entity_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
+        let serialized =
+            ToBytes::to_bytes(&system_entity_registry).expect("Unable to serialize data");
+        let deserialized: BTreeMap<String, AddressableEntityHash> =
+            bytesrepr::deserialize_from_slice(serialized).expect("Unable to deserialize data");
+        assert_eq!(system_entity_registry, SystemEntityRegistry(deserialized));
+    }
 }

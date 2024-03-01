@@ -396,29 +396,27 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
     use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
-    use casper_storage::global_state::{
-        state::StateProvider,
-        trie::{Pointer, Trie},
-    };
+    use casper_storage::global_state::{state::StateProvider, trie::Trie};
     use casper_types::{
         account::AccountHash,
         bytesrepr,
         execution::{Transform, TransformKind},
+        global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
         ProtocolConfig, StoredValue, TimeDiff, DEFAULT_REFUND_HANDLING,
     };
-    use prometheus::Registry;
-    use tempfile::tempdir;
 
+    use super::{Config as ContractRuntimeConfig, ContractRuntime};
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::ContractRuntimeError,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
-
-    use super::{Config as ContractRuntimeConfig, ContractRuntime};
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);

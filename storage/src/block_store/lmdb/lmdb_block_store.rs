@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 
 use datasize::DataSize;
@@ -59,27 +59,27 @@ pub struct LmdbBlockStore<'s> {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    pub(crate) env: Rc<Environment>,
+    pub(super) env: Arc<Environment>,
     /// The block header databases.
-    pub(crate) block_header_dbs: VersionedDatabases<BlockHash, BlockHeader>,
+    pub(super) block_header_dbs: VersionedDatabases<BlockHash, BlockHeader>,
     /// The block body databases.
-    pub(crate) block_body_dbs: VersionedDatabases<Digest, BlockBody>,
+    pub(super) block_body_dbs: VersionedDatabases<Digest, BlockBody>,
     /// The approvals hashes databases.
-    approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
+    pub(super) approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
     /// The block metadata db.
-    pub(crate) block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
+    pub(super) block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     /// The transaction databases.
-    pub(crate) transaction_dbs: VersionedDatabases<TransactionHash, Transaction>,
+    pub(super) transaction_dbs: VersionedDatabases<TransactionHash, Transaction>,
     /// Databases of `ExecutionResult`s indexed by transaction hash for current DB or by deploy
     /// hash for legacy DB.
-    pub(crate) execution_result_dbs: VersionedDatabases<TransactionHash, ExecutionResult>,
-    /// The transfer database.
-    transfer_dbs: VersionedDatabases<BlockHash, Transfers<'s>>,
+    pub(super) execution_result_dbs: VersionedDatabases<TransactionHash, ExecutionResult>,
+    /// The transfer databases.
+    pub(super) transfer_dbs: VersionedDatabases<BlockHash, Transfers<'s>>,
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
     /// The finalized transaction approvals databases.
-    pub(crate) finalized_transaction_approvals_dbs:
+    pub(super) finalized_transaction_approvals_dbs:
         VersionedDatabases<TransactionHash, FinalizedApprovals>,
 }
 
@@ -116,7 +116,7 @@ impl<'s> LmdbBlockStore<'s> {
 
         Ok(Self {
             root: root_path.to_path_buf(),
-            env: Rc::new(env),
+            env: Arc::new(env),
             block_header_dbs,
             block_body_dbs,
             approvals_hashes_dbs,

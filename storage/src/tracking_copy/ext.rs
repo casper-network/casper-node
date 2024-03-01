@@ -1,13 +1,11 @@
 use std::{collections::BTreeSet, convert::TryInto};
 
-use crate::global_state::{
-    error::Error as GlobalStateError, state::StateReader, trie::merkle_proof::TrieMerkleProof,
-};
+use crate::global_state::{error::Error as GlobalStateError, state::StateReader};
 
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, ByteCode, ByteCodeAddr, ByteCodeHash,
-    CLValue, ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package, PackageHash, StoredValue,
-    StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof, ByteCode,
+    ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package,
+    PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};

@@ -34,10 +34,10 @@ impl TransactionHash {
     /// Returns a random `TransactionHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        if rng.gen() {
-            TransactionHash::Deploy(DeployHash::random(rng))
-        } else {
-            TransactionHash::V1(TransactionV1Hash::random(rng))
+        match rng.gen_range(0..2) {
+            0 => TransactionHash::from(DeployHash::random(rng)),
+            1 => TransactionHash::from(TransactionV1Hash::random(rng)),
+            _ => panic!(),
         }
     }
 }

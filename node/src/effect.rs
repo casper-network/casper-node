@@ -114,50 +114,52 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_storage::data_access_layer::{
-    BalanceRequest, BalanceResult, BidsRequest, BidsResult, QueryRequest, QueryResult,
-};
-
-use casper_storage::data_access_layer::{
-    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
-    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_storage::{
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{
+        get_all_values::{AllValuesRequest, AllValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
 };
 use casper_types::{
-    contract_messages::Messages,
-    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key,
-    Package, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
+    binary_port::{
+        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
+        RecordId, SpeculativeExecutionResult, Uptime,
+    },
+    execution::{Effects as ExecutionEffects, ExecutionResult},
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
+    BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
+    FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade, Package,
+    ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
-            TrieAccumulatorError, TrieAccumulatorResponse,
+            GlobalStateSynchronizerError, GlobalStateSynchronizerResponse, TrieAccumulatorError,
+            TrieAccumulatorResponse,
         },
-        consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
+        consensus::{ClContext, EraDump, ProposedBlock},
         contract_runtime::{SpeculativeExecutionError, SpeculativeExecutionState},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
-        upgrade_watcher::NextUpgrade,
     },
     failpoints::FailpointActivation,
-    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
+    reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, AvailableBlockRange, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock,
+        appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
-use casper_storage::block_store::types::ApprovalsHashes;
-
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
@@ -171,7 +173,7 @@ use requests::{
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
     ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
+    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
     TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
@@ -1162,6 +1164,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_raw_data(
+        self,
+        record_id: RecordId,
+        key: Vec<u8>,
+    ) -> Option<DbRawBytesSpec>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetRawData {
+                record_id,
+                key,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested block header from the linear block store.
     pub(crate) async fn get_block_header_from_storage(
         self,
@@ -1395,12 +1416,71 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
+    /// Get a trie or chunk by its ID.
+    pub(crate) async fn get_trie(self, request: TrieRequest) -> TrieResult
     where
-        REv: From<ReactorStatusRequest>,
+        REv: From<ContractRuntimeRequest>,
     {
-        self.make_request(ReactorStatusRequest, QueueKind::Regular)
-            .await
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetTrie { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_reactor_state(self) -> ReactorState
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::ReactorState { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_last_progress(self) -> LastProgress
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::LastProgress { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_uptime(self) -> Uptime
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::Uptime { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_network_name(self) -> NetworkName
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::NetworkName { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_protocol_version(self) -> ProtocolVersion
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::ProtocolVersion { responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     pub(crate) async fn get_block_synchronizer_status(self) -> BlockSynchronizerStatus
@@ -1410,18 +1490,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| BlockSynchronizerRequest::Status { responder },
             QueueKind::Regular,
-        )
-        .await
-    }
-
-    /// Get a trie or chunk by its ID.
-    pub(crate) async fn get_trie(self, request: TrieRequest) -> TrieResult
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie { request, responder },
-            QueueKind::ContractRuntime,
         )
         .await
     }
@@ -1471,6 +1539,26 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetTransactions {
                 transaction_hashes,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    /// Gets the requested transaction and its execution info from storage by TransactionHash.
+    pub(crate) async fn get_transaction_and_exec_info_from_storage(
+        self,
+        transaction_hash: TransactionHash,
+        with_finalized_approvals: bool,
+    ) -> Option<(Transaction, Option<ExecutionInfo>)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
+                with_finalized_approvals,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1558,44 +1646,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction and associated execution info if available.
-    pub(crate) async fn get_transaction_and_execution_info_from_storage(
-        self,
-        transaction_hash: TransactionHash,
-    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the requested block and its finality signatures.
-    pub(crate) async fn get_signed_block_at_height_from_storage(
-        self,
-        block_height: u64,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
     /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
@@ -1656,44 +1706,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::IsFinalitySignatureStored { id, responder },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the requested block by hash with its associated metadata.
-    pub(crate) async fn get_signed_block_from_storage(
-        self,
-        block_hash: BlockHash,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSignedBlockByHash {
-                block_hash,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the highest block with its associated metadata.
-    pub(crate) async fn get_highest_signed_block_from_storage(
-        self,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetHighestSignedBlock {
-                only_from_available_block_range,
-                responder,
-            },
             QueueKind::FromStorage,
         )
         .await
@@ -2021,12 +2033,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_bids(self, request: BidsRequest) -> BidsResult
+    pub(crate) async fn get_all_values(
+        self,
+        all_values_request: AllValuesRequest,
+    ) -> AllValuesResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetBids { request, responder },
+            |responder| ContractRuntimeRequest::GetAllValues {
+                all_values_request,
+                responder,
+            },
             QueueKind::ContractRuntime,
         )
         .await
@@ -2052,7 +2070,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.
-    pub(crate) async fn consensus_status(self) -> Option<(PublicKey, Option<TimeDiff>)>
+    pub(crate) async fn consensus_status(self) -> Option<ConsensusStatus>
     where
         REv: From<ConsensusRequest>,
     {
@@ -2061,9 +2079,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Returns a list of validator status changes, by public key.
-    pub(crate) async fn get_consensus_validator_changes(
-        self,
-    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    pub(crate) async fn get_consensus_validator_changes(self) -> ConsensusValidatorChanges
     where
         REv: From<ConsensusRequest>,
     {
@@ -2208,7 +2224,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         execution_prestate: SpeculativeExecutionState,
         transaction: Box<Transaction>,
-    ) -> Result<(ExecutionResultV2, Messages), SpeculativeExecutionError>
+    ) -> Result<SpeculativeExecutionResult, SpeculativeExecutionError>
     where
         REv: From<ContractRuntimeRequest>,
     {

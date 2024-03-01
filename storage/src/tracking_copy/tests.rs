@@ -10,6 +10,7 @@ use casper_types::{
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,
+    global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
     CLValueDictionary, CLValueError, EntityAddr, EntityKind, EntryPoints, HashAddr, Key, KeyTag,
     PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
@@ -19,10 +20,7 @@ use super::{
     meter::count_meter::Count, TrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
 };
 use crate::{
-    global_state::{
-        state::{self, StateProvider, StateReader},
-        trie::merkle_proof::TrieMerkleProof,
-    },
+    global_state::state::{self, StateProvider, StateReader},
     tracking_copy::{self, TrackingCopy},
 };
 

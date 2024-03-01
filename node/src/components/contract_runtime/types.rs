@@ -9,6 +9,7 @@ use casper_storage::{
     block_store::types::ApprovalsHashes, data_access_layer::EraValidatorsRequest,
 };
 use casper_types::{
+    binary_port,
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
@@ -187,4 +188,13 @@ pub enum SpeculativeExecutionError {
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
     EngineState(#[from] EngineStateError),
+}
+
+impl From<SpeculativeExecutionError> for binary_port::ErrorCode {
+    fn from(error: SpeculativeExecutionError) -> Self {
+        match error {
+            SpeculativeExecutionError::NewRequest(_) => binary_port::ErrorCode::InvalidTransaction,
+            SpeculativeExecutionError::EngineState(error) => error.into(),
+        }
+    }
 }

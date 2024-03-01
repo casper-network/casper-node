@@ -14,6 +14,7 @@ use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    global_state::TrieMerkleProof,
     system::{
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
@@ -40,7 +41,7 @@ use crate::{
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie::Trie,
         trie_store::{
             operations::{prune, read, write, ReadResult, WriteResult},
             TrieStore,

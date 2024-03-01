@@ -19,32 +19,23 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "std", test))]
+use itertools::Itertools;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
-#[cfg(any(feature = "std", test))]
-use {
-    super::{InitiatorAddr, InitiatorAddrAndSecretKey},
-    itertools::Itertools,
-    serde::{Deserialize, Serialize},
-};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use {
-    crate::{
-        bytesrepr::Bytes,
-        system::auction::{
-            ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-            ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
-            METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-        },
-        AddressableEntityHash,
-        {system::mint::ARG_AMOUNT, TransactionConfig, U512},
-        {testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES},
-    },
-    rand::{Rng, RngCore},
-    tracing::{debug, warn},
-};
+use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
-use {once_cell::sync::Lazy, schemars::JsonSchema};
+use schemars::JsonSchema;
+#[cfg(any(feature = "std", test))]
+use serde::{Deserialize, Serialize};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use tracing::{debug, warn};
+
+#[cfg(any(feature = "std", test))]
+use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
 
 #[cfg(any(
     all(feature = "std", feature = "testing"),
@@ -53,7 +44,21 @@ use {once_cell::sync::Lazy, schemars::JsonSchema};
 ))]
 use crate::runtime_args;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::RuntimeArgs;
+use crate::{
+    bytesrepr::Bytes,
+    system::{
+        auction::{
+            ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+            ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+            METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        },
+        mint::ARG_AMOUNT,
+    },
+    testing::TestRng,
+    AddressableEntityHash, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
+    DEFAULT_MIN_TRANSFER_MOTES, U512,
+};
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,

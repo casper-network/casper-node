@@ -447,6 +447,7 @@ impl FromBytes for TransformEntry {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "TransformV1"))]
 #[serde(deny_unknown_fields)]
 pub enum Transform {
     /// A transform having no effect.
@@ -742,6 +743,7 @@ pub struct NamedKey {
     /// The name of the entry.
     pub name: String,
     /// The value of the entry: a casper `Key` type.
+    #[cfg_attr(feature = "json-schema", schemars(with = "Key"))]
     pub key: String,
 }
 

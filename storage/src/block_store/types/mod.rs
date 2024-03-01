@@ -38,6 +38,14 @@ pub struct StateStore {
     pub value: Vec<u8>,
 }
 
+pub struct StateStoreKey(pub(super) Cow<'static, [u8]>);
+
+impl StateStoreKey {
+    pub fn new(key: Cow<'static, [u8]>) -> Self {
+        StateStoreKey(key)
+    }
+}
+
 pub struct Tip;
 pub struct LatestSwitchBlock;
 

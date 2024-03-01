@@ -21,14 +21,12 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_storage::{
-    data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult},
-    global_state::trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
+    global_state::TrieMerkleProof,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
     EraId, HashAddr, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,

@@ -16,7 +16,6 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::From;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::task;
@@ -24,7 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     file_utils::{self, ReadFileError},
-    ActivationPoint, Chainspec, EraId, ProtocolConfig, ProtocolVersion, TimeDiff,
+    Chainspec, EraId, NextUpgrade, ProtocolConfig, ProtocolVersion, TimeDiff,
 };
 
 use crate::{
@@ -118,51 +117,6 @@ pub(crate) enum Error {
     },
 }
 
-/// Information about the next protocol upgrade.
-#[derive(PartialEq, Eq, DataSize, Debug, Serialize, Deserialize, Clone, JsonSchema)]
-pub struct NextUpgrade {
-    activation_point: ActivationPoint,
-    #[data_size(skip)]
-    #[schemars(with = "String")]
-    protocol_version: ProtocolVersion,
-}
-
-impl NextUpgrade {
-    pub(crate) fn new(
-        activation_point: ActivationPoint,
-        protocol_version: ProtocolVersion,
-    ) -> Self {
-        NextUpgrade {
-            activation_point,
-            protocol_version,
-        }
-    }
-
-    pub(crate) fn activation_point(&self) -> ActivationPoint {
-        self.activation_point
-    }
-}
-
-impl From<ProtocolConfig> for NextUpgrade {
-    fn from(protocol_config: ProtocolConfig) -> Self {
-        NextUpgrade {
-            activation_point: protocol_config.activation_point,
-            protocol_version: protocol_config.version,
-        }
-    }
-}
-
-impl Display for NextUpgrade {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "next upgrade to {} at start of era {}",
-            self.protocol_version,
-            self.activation_point.era_id()
-        )
-    }
-}
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct UpgradeWatcher {
     current_version: ProtocolVersion,
@@ -202,7 +156,7 @@ impl UpgradeWatcher {
 
     pub(crate) fn should_upgrade_after(&self, era_id: EraId) -> bool {
         self.next_upgrade.as_ref().map_or(false, |upgrade| {
-            upgrade.activation_point.should_upgrade(&era_id)
+            upgrade.activation_point().should_upgrade(&era_id)
         })
     }
 
@@ -257,7 +211,7 @@ impl UpgradeWatcher {
         if let Some(ref current_point) = self.next_upgrade {
             if next_upgrade != *current_point {
                 info!(
-                    new_point=%next_upgrade.activation_point,
+                    new_point=%next_upgrade.activation_point(),
                     %current_point,
                     "changing upgrade activation point"
                 );

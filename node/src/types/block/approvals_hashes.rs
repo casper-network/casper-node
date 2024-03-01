@@ -1,11 +1,11 @@
 mod specimen_support {
     use std::collections::BTreeMap;
 
-    use casper_storage::global_state::trie::{
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        Pointer,
+    use casper_types::{
+        bytesrepr::Bytes,
+        global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
+        CLValue, Digest, Key, StoredValue,
     };
-    use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
 
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},

@@ -23,8 +23,8 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
+    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
     ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionEntryPoint, TransactionHash,
@@ -446,7 +446,7 @@ pub(super) fn speculatively_execute<S>(
     allow_unrestricted_transfers: bool,
     system_costs: SystemConfig,
     txn: Transaction,
-) -> Result<(ExecutionResultV2, Messages), SpeculativeExecutionError>
+) -> Result<SpeculativeExecutionResult, SpeculativeExecutionError>
 where
     S: StateProvider + CommitProvider,
 {
@@ -469,7 +469,12 @@ where
 
     match request {
         UserRequest::Execute(execute_request) => execute(engine_state, None, execute_request)
-            .map(|res_and_msgs| (res_and_msgs.execution_result, res_and_msgs.messages))
+            .map(|res_and_msgs| {
+                SpeculativeExecutionResult::new(
+                    res_and_msgs.execution_result,
+                    res_and_msgs.messages,
+                )
+            })
             .map_err(SpeculativeExecutionError::from),
         UserRequest::Transfer(_transfer_request) => {
             todo!("route native transactions to data access layer, but don't commit them");

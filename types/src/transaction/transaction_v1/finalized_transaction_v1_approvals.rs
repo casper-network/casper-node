@@ -1,13 +1,11 @@
-use alloc::collections::BTreeSet;
-
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -21,23 +19,24 @@ use crate::{
 pub struct FinalizedTransactionV1Approvals(BTreeSet<TransactionV1Approval>);
 
 impl FinalizedTransactionV1Approvals {
-    /// Creates a new set of finalized transaction approvals
+    /// Creates a new set of finalized transaction approvals.
     pub fn new(approvals: BTreeSet<TransactionV1Approval>) -> Self {
         Self(approvals)
     }
 
-    /// Returns a reference to the inner BTreeSet where the transactions approvals are stored
+    /// Returns the inner `BTreeSet` of approvals.
     pub fn inner(&self) -> &BTreeSet<TransactionV1Approval> {
         &self.0
     }
 
-    /// Converts to the inner BTreeSet representation.
+    /// Converts this set of finalized approvals into the inner `BTreeSet`.
     pub fn into_inner(self) -> BTreeSet<TransactionV1Approval> {
         self.0
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Returns a random FinalizedTransactionV1Approvals.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         let count = rng.gen_range(1..10);
         let approvals = (0..count)
             .into_iter()
