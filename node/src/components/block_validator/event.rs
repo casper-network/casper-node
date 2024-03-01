@@ -1,11 +1,10 @@
 use derive_more::{Display, From};
 
-use casper_types::{FinalitySignature, FinalitySignatureId, Transaction};
+use casper_types::{FinalitySignature, FinalitySignatureId, Transaction, TransactionHash};
 
 use crate::{
-    components::fetcher::FetchResult,
-    effect::requests::BlockValidationRequest,
-    types::{BlockWithMetadata, DeployOrTransactionHash},
+    components::fetcher::FetchResult, effect::requests::BlockValidationRequest,
+    types::BlockWithMetadata,
 };
 
 #[derive(Debug, From, Display)]
@@ -24,7 +23,7 @@ pub(crate) enum Event {
 
     #[display(fmt = "{} fetched", dt_hash)]
     TransactionFetched {
-        dt_hash: DeployOrTransactionHash,
+        dt_hash: TransactionHash,
         result: FetchResult<Transaction>,
     },
 

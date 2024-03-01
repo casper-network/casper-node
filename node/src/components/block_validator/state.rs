@@ -16,8 +16,8 @@ use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
     types::{
-        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
-        DeployOrTransferHash, Footprint, NodeId, TransactionHashWithApprovals,
+        appendable_block::AppendableBlock, DeployHashWithApprovals, Footprint, NodeId,
+        TransactionHashWithApprovals,
     },
 };
 
@@ -50,7 +50,7 @@ pub(super) enum MaybeStartFetching {
     /// Should start a new round of fetches.
     Start {
         holder: NodeId,
-        missing_transactions: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
+        missing_transactions: HashMap<TransactionHash, TransactionApprovalsHash>,
         missing_signatures: HashSet<FinalitySignatureId>,
     },
     /// No new round of fetches should be started as one is already in progress.
@@ -93,7 +93,7 @@ pub(super) enum BlockValidationState {
         appendable_block: AppendableBlock,
         /// The set of approvals contains approvals from transactions that would be finalized with
         /// the block.
-        missing_transactions: HashMap<DeployOrTransactionHash, ApprovalInfo>,
+        missing_transactions: HashMap<TransactionHash, ApprovalInfo>,
         /// The set of finality signatures for past blocks cited in this block.
         missing_signatures: HashSet<FinalitySignatureId>,
         /// The set of peers which each claim to hold all the transactions.
@@ -140,31 +140,20 @@ impl BlockValidationState {
             AppendableBlock::new(chainspec.transaction_config, block.timestamp());
 
         let mut missing_transactions = HashMap::new();
-        let transactions_iter = block.non_transfer().into_iter().map(|dhwa| {
-            let dt_hash = match &dhwa {
+        let transactions_iter = block.all_transactions().into_iter().map(|thwa| {
+            let hash = match &thwa {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
-                    DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(*deploy_hash))
+                    TransactionHash::from(*deploy_hash)
                 }
                 TransactionHashWithApprovals::V1(thwa) => {
-                    DeployOrTransactionHash::from(*thwa.transaction_hash())
+                    TransactionHash::from(*thwa.transaction_hash())
                 }
             };
-            (dt_hash, dhwa.approvals())
+            (hash, thwa.approvals())
         });
-        let transfers_iter = block.transfers().into_iter().map(|dhwa| {
-            let dt_hash = match &dhwa {
-                TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
-                    DeployOrTransactionHash::from(DeployOrTransferHash::Transfer(*deploy_hash))
-                }
-                TransactionHashWithApprovals::V1(thwa) => {
-                    DeployOrTransactionHash::from(*thwa.transaction_hash())
-                }
-            };
-            (dt_hash, dhwa.approvals())
-        });
-        for (dt_hash, approvals) in transactions_iter.chain(transfers_iter) {
+        for (dt_hash, approvals) in transactions_iter {
             let approval_info: ApprovalInfo = match dt_hash {
-                DeployOrTransactionHash::Deploy(_) => {
+                TransactionHash::Deploy(_) => {
                     let deploy_approvals: BTreeSet<_> = approvals
                         .iter()
                         .cloned()
@@ -185,7 +174,7 @@ impl BlockValidationState {
                         }
                     }
                 }
-                DeployOrTransactionHash::V1(_) => {
+                TransactionHash::V1(_) => {
                     let transaction_v1_approvals: BTreeSet<_> = approvals
                         .iter()
                         .cloned()
@@ -381,7 +370,7 @@ impl BlockValidationState {
     /// the appendable block to continue validation of the proposed block.
     pub(super) fn try_add_transaction_footprint(
         &mut self,
-        dt_hash: &DeployOrTransactionHash,
+        hash: &TransactionHash,
         footprint: &Footprint,
     ) -> Vec<Responder<bool>> {
         let (new_state, responders) = match self {
@@ -392,7 +381,7 @@ impl BlockValidationState {
                 responders,
                 ..
             } => {
-                let approvals_info = match missing_transactions.remove(dt_hash) {
+                let approvals_info = match missing_transactions.remove(hash) {
                     Some(info) => info,
                     None => {
                         // If this deploy is not present, just return.
@@ -401,15 +390,14 @@ impl BlockValidationState {
                 };
                 // Try adding the footprint to the appendable block to see if the block remains
                 // valid.
-                let transaction_hash: TransactionHash = dt_hash.transaction_hash();
-                let dhwa = TransactionHashWithApprovals::new_from_hash_and_approvals(
-                    &transaction_hash,
+                let thwa = TransactionHashWithApprovals::new_from_hash_and_approvals(
+                    hash,
                     &approvals_info.approvals,
                 );
 
-                let add_result = match (dt_hash, dhwa) {
+                let add_result = match (hash, thwa) {
                     (
-                        DeployOrTransactionHash::Deploy(_),
+                        TransactionHash::Deploy(_),
                         TransactionHashWithApprovals::Deploy {
                             deploy_hash,
                             approvals,
@@ -419,19 +407,16 @@ impl BlockValidationState {
                         appendable_block.add_deploy(dhwa, footprint)
                     }
                     (
-                        DeployOrTransactionHash::V1(_),
+                        TransactionHash::V1(_),
                         TransactionHashWithApprovals::V1(transaction_v1_hash_with_approvals),
                     ) => appendable_block
                         .add_transaction_v1(transaction_v1_hash_with_approvals, footprint),
-                    (DeployOrTransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
-                        error!(%dt_hash, "legacy deploy with transaction V1 approvals");
+                    (TransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
+                        error!(%hash, "legacy deploy with transaction V1 approvals");
                         return vec![];
                     }
-                    (
-                        DeployOrTransactionHash::V1(_),
-                        TransactionHashWithApprovals::Deploy { .. },
-                    ) => {
-                        error!(%dt_hash, "transaction V1 with legacy deploy approvals");
+                    (TransactionHash::V1(_), TransactionHashWithApprovals::Deploy { .. }) => {
+                        error!(%hash, "transaction V1 with legacy deploy approvals");
                         return vec![];
                     }
                 };
@@ -457,7 +442,7 @@ impl BlockValidationState {
                         (new_state, mem::take(responders))
                     }
                     Err(error) => {
-                        warn!(%dt_hash, ?footprint, %error, "block invalid");
+                        warn!(%hash, ?footprint, %error, "block invalid");
                         let new_state = BlockValidationState::Invalid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
                     }
@@ -509,10 +494,7 @@ impl BlockValidationState {
 
     /// If the current state is `InProgress` and `dt_hash` is present, sets the state to `Invalid`
     /// and returns the responders.
-    pub(super) fn try_mark_invalid(
-        &mut self,
-        dt_hash: &DeployOrTransactionHash,
-    ) -> Vec<Responder<bool>> {
+    pub(super) fn try_mark_invalid(&mut self, dt_hash: &TransactionHash) -> Vec<Responder<bool>> {
         let (timestamp, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -573,8 +555,8 @@ impl BlockValidationState {
             } => missing_transactions
                 .keys()
                 .map(|dt_hash| match dt_hash {
-                    DeployOrTransactionHash::Deploy(deploy) => deploy.deploy_hash().into(),
-                    DeployOrTransactionHash::V1(v1) => (*v1).into(),
+                    TransactionHash::Deploy(deploy_hash) => deploy_hash.into(),
+                    TransactionHash::V1(v1_hash) => (*v1_hash).into(),
                 })
                 .collect(),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
@@ -807,7 +789,7 @@ mod tests {
             transactions_for_block
         }
 
-        fn footprints(&self) -> Vec<(DeployOrTransactionHash, Footprint)> {
+        fn footprints(&self) -> Vec<(TransactionHash, Footprint)> {
             self.standard
                 .iter()
                 .chain(self.staking.iter().chain(self.install_upgrade.iter()))
@@ -818,12 +800,7 @@ mod tests {
                         if footprint.is_transfer() {
                             panic!("unexpected transfer in transactions");
                         } else {
-                            (
-                                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(
-                                    *hash,
-                                )),
-                                footprint,
-                            )
+                            (TransactionHash::from(hash), footprint)
                         }
                     }
                     Transaction::V1(v1) => {
@@ -832,7 +809,7 @@ mod tests {
                         if footprint.is_transfer() {
                             panic!("unexpected transfer in transactions");
                         } else {
-                            (DeployOrTransactionHash::from(*hash), footprint)
+                            (TransactionHash::from(*hash), footprint)
                         }
                     }
                 })
@@ -841,12 +818,7 @@ mod tests {
                         let hash = deploy.hash();
                         let footprint = deploy.footprint().unwrap();
                         if footprint.is_transfer() {
-                            (
-                                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Transfer(
-                                    *hash,
-                                )),
-                                footprint,
-                            )
+                            (TransactionHash::from(*hash), footprint)
                         } else {
                             panic!("unexpected transaction in transfers");
                         }
@@ -855,7 +827,7 @@ mod tests {
                         let hash = v1.hash();
                         let footprint = v1.footprint().unwrap();
                         if footprint.is_transfer() {
-                            (DeployOrTransactionHash::from(*hash), footprint)
+                            (TransactionHash::from(*hash), footprint)
                         } else {
                             panic!("unexpected transaction in transfers");
                         }
@@ -1365,8 +1337,8 @@ mod tests {
         // should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
         while footprints.len() > 1 {
-            let (dt_hash, footprint) = footprints.pop().unwrap();
-            let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
+            let (transaction_hash, footprint) = footprints.pop().unwrap();
+            let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
             assert!(responders.is_empty());
             assert!(matches!(
                 state,
@@ -1377,8 +1349,8 @@ mod tests {
 
         // The final transaction should cause the state to go to `Valid` and the responders to be
         // returned.
-        let (dt_hash, footprint) = footprints.pop().unwrap();
-        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
+        let (transaction_hash, footprint) = footprints.pop().unwrap();
+        let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Valid(_)));
     }
@@ -1406,12 +1378,7 @@ mod tests {
 
         // Create a new, random transaction.
         let transaction = new_standard(fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
-        let dt_hash = match &transaction {
-            Transaction::Deploy(deploy) => {
-                DeployOrTransactionHash::Deploy(DeployOrTransferHash::Deploy(*deploy.hash()))
-            }
-            Transaction::V1(v1) => DeployOrTransactionHash::from(*v1.hash()),
-        };
+        let dt_hash = transaction.hash();
         let footprint = transaction.footprint().unwrap();
 
         // Ensure trying to add it doesn't change the state.
@@ -1449,28 +1416,22 @@ mod tests {
         // Add some valid deploys, should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
         while footprints.len() > 3 {
-            let (dt_hash, footprint) = footprints.pop().unwrap();
-            if dt_hash.transaction_hash() == invalid_transaction_hash {
+            let (transaction_hash, footprint) = footprints.pop().unwrap();
+            if transaction_hash == invalid_transaction_hash {
                 continue;
             }
-            let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
+            let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
             assert!(responders.is_empty());
         }
 
         // The invalid transaction should cause the state to go to `Invalid` and the responders to
         // be returned.
-        let dt_hash = match &invalid_transaction {
-            Transaction::Deploy(deploy) => {
-                DeployOrTransactionHash::Deploy(if deploy.is_transfer() {
-                    DeployOrTransferHash::Transfer(*deploy.hash())
-                } else {
-                    DeployOrTransferHash::Deploy(*deploy.hash())
-                })
-            }
-            Transaction::V1(v1) => DeployOrTransactionHash::from(*v1.hash()),
+        let transaction_hash = match &invalid_transaction {
+            Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
+            Transaction::V1(v1) => TransactionHash::from(*v1.hash()),
         };
         let footprint = invalid_transaction.footprint().unwrap();
-        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));
     }
