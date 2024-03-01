@@ -52,6 +52,11 @@ impl Bytes {
     pub fn as_slice(&self) -> &[u8] {
         self
     }
+
+    /// Consumes self and returns the inner bytes.
+    pub fn take_inner(self) -> Vec<u8> {
+        self.0
+    }
 }
 
 impl Deref for Bytes {

@@ -161,6 +161,11 @@ impl Error {
             data,
         }
     }
+
+    /// Returns the code of the error.
+    pub fn code(&self) -> i64 {
+        self.code
+    }
 }
 
 #[cfg(test)]

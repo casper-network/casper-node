@@ -30,6 +30,7 @@ pub(super) struct MemoryMetrics {
     mem_fetchers: IntGauge,
     mem_diagnostics_port: IntGauge,
     mem_upgrade_watcher: IntGauge,
+    mem_binary_port: IntGauge,
     /// Histogram detailing how long it took to measure memory usage.
     mem_estimator_runtime_s: Histogram,
     registry: Registry,
@@ -99,6 +100,8 @@ impl MemoryMetrics {
             "mem_upgrade_watcher",
             "upgrade watcher memory usage in bytes",
         )?;
+        let mem_binary_port =
+            IntGauge::new("mem_binary_port", "binary port memory usage in bytes")?;
         let mem_estimator_runtime_s = Histogram::with_opts(
             HistogramOpts::new(
                 "mem_estimator_runtime_s",
@@ -130,6 +133,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_block_accumulator.clone()))?;
         registry.register(Box::new(mem_diagnostics_port.clone()))?;
         registry.register(Box::new(mem_upgrade_watcher.clone()))?;
+        registry.register(Box::new(mem_binary_port.clone()))?;
         registry.register(Box::new(mem_estimator_runtime_s.clone()))?;
 
         Ok(MemoryMetrics {
@@ -155,6 +159,7 @@ impl MemoryMetrics {
             mem_block_accumulator,
             mem_diagnostics_port,
             mem_upgrade_watcher,
+            mem_binary_port,
             mem_estimator_runtime_s,
             registry,
         })
@@ -169,7 +174,6 @@ impl MemoryMetrics {
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
         let rest_server = reactor.rest_server.estimate_heap_size() as i64;
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
@@ -186,13 +190,13 @@ impl MemoryMetrics {
         let block_accumulator = reactor.block_accumulator.estimate_heap_size() as i64;
         let diagnostics_port = reactor.diagnostics_port.estimate_heap_size() as i64;
         let upgrade_watcher = reactor.upgrade_watcher.estimate_heap_size() as i64;
+        let binary_port = reactor.binary_port.estimate_heap_size() as i64;
 
         let total = metrics
             + network
             + address_gossiper
             + storage
             + contract_runtime
-            + rpc_server
             + rest_server
             + event_stream_server
             + consensus
@@ -207,13 +211,13 @@ impl MemoryMetrics {
             + block_synchronizer
             + block_accumulator
             + diagnostics_port
-            + upgrade_watcher;
+            + upgrade_watcher
+            + binary_port;
 
         self.mem_net.set(network);
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
-        self.mem_rpc_server.set(rpc_server);
         self.mem_rest_server.set(rest_server);
         self.mem_event_stream_server.set(event_stream_server);
         self.mem_consensus.set(consensus);
@@ -230,6 +234,7 @@ impl MemoryMetrics {
         self.mem_block_accumulator.set(block_accumulator);
         self.mem_diagnostics_port.set(diagnostics_port);
         self.mem_upgrade_watcher.set(upgrade_watcher);
+        self.mem_binary_port.set(binary_port);
 
         self.mem_total.set(total);
         self.mem_metrics.set(metrics);
@@ -244,7 +249,6 @@ impl MemoryMetrics {
                %address_gossiper,
                %storage,
                %contract_runtime,
-               %rpc_server,
                %rest_server,
                %event_stream_server,
                %consensus,
@@ -260,6 +264,7 @@ impl MemoryMetrics {
                %block_accumulator,
                %diagnostics_port,
                %upgrade_watcher,
+               %binary_port,
                "Collected new set of memory metrics.");
     }
 }
@@ -290,5 +295,6 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_block_accumulator);
         unregister_metric!(self.registry, self.mem_diagnostics_port);
         unregister_metric!(self.registry, self.mem_upgrade_watcher);
+        unregister_metric!(self.registry, self.mem_binary_port);
     }
 }

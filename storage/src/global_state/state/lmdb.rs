@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     execution::{Effects, Transform, TransformKind},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
@@ -23,9 +24,7 @@ use crate::{
         },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
-        },
+        trie::{operations::create_hashed_empty_trie, Trie, TrieRaw},
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{

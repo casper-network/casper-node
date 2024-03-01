@@ -1,3 +1,5 @@
+mod binary_port;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
@@ -29,10 +31,12 @@ use casper_types::{
         mint, AUCTION,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
-    EntityAddr, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EntityAddr, EraId, Key, Motes, NextUpgrade, ProtocolVersion,
+    PublicKey, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp,
+    Transaction, TransactionApproval, TransactionHash, TransactionWithFinalizedApprovals,
+    ValidatorConfig, U512,
 };
 
 use crate::{
@@ -41,7 +45,6 @@ use crate::{
             self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
         },
         gossiper, network, storage,
-        upgrade_watcher::NextUpgrade,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -57,7 +60,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{AvailableBlockRange, BlockPayload, ExitCode, NodeId, SyncHandling},
+    types::{BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -258,6 +261,12 @@ impl TestFixture {
         fixture
     }
 
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
+    }
+
     /// Returns the highest complete block from node 0.
     ///
     /// Panics if there is no such block.
@@ -319,6 +328,11 @@ impl TestFixture {
         let mut cfg = Config {
             network: network_cfg,
             gossip: gossiper::Config::new_with_small_timeouts(),
+            binary_port_server: crate::BinaryPortConfig {
+                allow_request_get_all_values: true,
+                allow_request_get_trie: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -695,6 +709,18 @@ impl TestFixture {
                 );
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
     }
 }
 
@@ -1299,17 +1325,28 @@ async fn should_store_finalized_approvals() {
 
     // Check if the approvals agree.
     for runner in fixture.network.nodes().values() {
-        let maybe_dwa = runner
+        let maybe_twa = runner
             .main_reactor()
             .storage()
-            .get_transaction_with_finalized_approvals_by_hash(&transaction_hash);
-        let maybe_finalized_approvals = maybe_dwa
+            .get_transaction_with_finalized_approvals_by_hash(&transaction_hash)
+            .map(|transaction_wfa| match transaction_wfa {
+                TransactionWithFinalizedApprovals::Deploy {
+                    deploy,
+                    finalized_approvals,
+                } => (deploy, finalized_approvals),
+                _ => panic!("should receive deploy with finalized approvals"),
+            });
+        let maybe_finalized_approvals = maybe_twa
             .as_ref()
-            .and_then(|dwa| dwa.finalized_approvals())
-            .map(|fa| fa.inner().iter().cloned().collect());
-        let maybe_original_approvals = maybe_dwa
-            .as_ref()
-            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
+            .and_then(|(_, approvals)| approvals.as_ref())
+            .map(|fa| fa.inner().iter().map(TransactionApproval::from).collect());
+        let maybe_original_approvals = maybe_twa.as_ref().map(|(deploy, _)| {
+            deploy
+                .approvals()
+                .iter()
+                .map(TransactionApproval::from)
+                .collect()
+        });
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(

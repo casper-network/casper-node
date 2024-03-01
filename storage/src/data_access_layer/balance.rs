@@ -1,7 +1,7 @@
 //! Types for balance queries.
-use casper_types::{Digest, Key, StoredValue, URef, U512};
+use casper_types::{global_state::TrieMerkleProof, Digest, Key, StoredValue, URef, U512};
 
-use crate::{global_state::trie::merkle_proof::TrieMerkleProof, tracking_copy::TrackingCopyError};
+use crate::tracking_copy::TrackingCopyError;
 
 /// Result enum that represents all possible outcomes of a balance request.
 #[derive(Debug)]

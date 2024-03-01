@@ -1,12 +1,11 @@
 use alloc::{collections::BTreeSet, vec::Vec};
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -29,13 +28,14 @@ impl FinalizedDeployApprovals {
         &self.0
     }
 
-    /// Converts to the inner BTreeSet representation.
+    /// Converts this set of deploy approvals into the inner `BTreeSet`.
     pub fn into_inner(self) -> BTreeSet<DeployApproval> {
         self.0
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Returns a random FinalizedDeployApprovals.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         let count = rng.gen_range(1..10);
         let approvals = (0..count)
             .into_iter()

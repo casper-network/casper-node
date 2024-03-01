@@ -13,6 +13,7 @@ pub mod era_validators;
 mod execution_results_checksum;
 mod flush;
 mod genesis;
+pub mod get_all_values;
 pub mod get_bids;
 mod protocol_upgrade;
 pub mod query;

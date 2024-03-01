@@ -46,8 +46,9 @@ const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str =
     "time in seconds to get validators for a given era from global state";
 
-const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
-const GET_BIDS_HELP: &str = "time in seconds to get bids from global state";
+const GET_ALL_VALUES_NAME: &str = "contract_runtime_get_all_values";
+const GET_ALL_VALUES_NAME_HELP: &str =
+    "time in seconds to get all values under a give key from global state";
 
 const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "contract_runtime_execution_results_checksum";
 const EXECUTION_RESULTS_CHECKSUM_HELP: &str = "contract_runtime_execution_results_checksum";
@@ -84,7 +85,7 @@ pub struct Metrics {
     pub(super) get_total_supply: Histogram,
     pub(super) get_round_seigniorage_rate: Histogram,
     pub(super) get_era_validators: Histogram,
-    pub(super) get_bids: Histogram,
+    pub(super) get_all_values: Histogram,
     pub(super) execution_results_checksum: Histogram,
     pub(super) addressable_entity: Histogram,
     pub(super) put_trie: Histogram,
@@ -177,10 +178,10 @@ impl Metrics {
                 GET_ERA_VALIDATORS_HELP,
                 common_buckets.clone(),
             )?,
-            get_bids: utils::register_histogram_metric(
+            get_all_values: utils::register_histogram_metric(
                 registry,
-                GET_BIDS_NAME,
-                GET_BIDS_HELP,
+                GET_ALL_VALUES_NAME,
+                GET_ALL_VALUES_NAME_HELP,
                 common_buckets.clone(),
             )?,
             execution_results_checksum: utils::register_histogram_metric(
@@ -229,8 +230,10 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
+        unregister_metric!(self.registry, self.get_total_supply);
+        unregister_metric!(self.registry, self.get_round_seigniorage_rate);
         unregister_metric!(self.registry, self.get_era_validators);
-        unregister_metric!(self.registry, self.get_bids);
+        unregister_metric!(self.registry, self.get_all_values);
         unregister_metric!(self.registry, self.execution_results_checksum);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);

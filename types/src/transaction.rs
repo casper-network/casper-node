@@ -1,5 +1,6 @@
 mod addressable_entity_identifier;
 mod deploy;
+mod execution_info;
 mod finalized_approvals;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
@@ -55,6 +56,8 @@ pub use deploy::{
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use execution_info::ExecutionInfo;
+pub use finalized_approvals::FinalizedApprovals;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
 use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
@@ -81,8 +84,6 @@ pub use transaction_v1::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
-
-pub use finalized_approvals::FinalizedApprovals;
 pub use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 
 const DEPLOY_TAG: u8 = 0;

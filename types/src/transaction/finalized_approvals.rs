@@ -1,14 +1,18 @@
+#[cfg(any(feature = "testing", test))]
+use alloc::collections::BTreeSet;
+
 use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 #[cfg(any(feature = "testing", test))]
 use crate::TransactionApproval;
-
-#[cfg(any(feature = "testing", test))]
-use alloc::collections::BTreeSet;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -55,6 +59,16 @@ impl FinalizedApprovals {
             FinalizedApprovals::V1(v1) => {
                 v1.inner().iter().map(TransactionApproval::from).collect()
             }
+        }
+    }
+
+    /// Returns a random FinalizedApprovals.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen_bool(0.5) {
+            Self::Deploy(FinalizedDeployApprovals::random(rng))
+        } else {
+            Self::V1(FinalizedTransactionV1Approvals::random(rng))
         }
     }
 }

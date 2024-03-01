@@ -24,6 +24,7 @@ use crate::{
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "EntityAssociatedKeys"))]
 #[serde(deny_unknown_fields)]
 #[rustfmt::skip]
 pub struct AssociatedKeys(

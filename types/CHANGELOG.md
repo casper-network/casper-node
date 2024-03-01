@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add new `EntryPointType::Install`, `EntryPointType::Normal`, `EntryPointAccess::Abstract` variants to support implementation of a factory pattern.
+* Add new types (`types/src/binary_port`) to support the BinaryPort interface
 
 
 

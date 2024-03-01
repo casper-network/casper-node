@@ -16,7 +16,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 
 use tracing::{debug, error};
@@ -57,13 +57,13 @@ pub struct LmdbBlockStore {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    pub(crate) env: Rc<Environment>,
+    pub(crate) env: Arc<Environment>,
     /// The block header databases.
     pub(crate) block_header_dbs: VersionedDatabases<BlockHash, BlockHeader>,
     /// The block body databases.
     pub(crate) block_body_dbs: VersionedDatabases<Digest, BlockBody>,
     /// The approvals hashes databases.
-    approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
+    pub(crate) approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
     /// The block metadata db.
     pub(crate) block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     /// The transaction databases.
@@ -73,7 +73,7 @@ pub struct LmdbBlockStore {
     pub(crate) execution_result_dbs: VersionedDatabases<TransactionHash, ExecutionResult>,
     /// The transfer database.
     #[data_size(skip)]
-    transfer_db: Database,
+    pub(crate) transfer_db: Database,
     /// The state storage database.
     #[data_size(skip)]
     state_store_db: Database,
@@ -116,7 +116,7 @@ impl LmdbBlockStore {
 
         Ok(Self {
             root: root_path.to_path_buf(),
-            env: Rc::new(env),
+            env: Arc::new(env),
             block_header_dbs,
             block_body_dbs,
             approvals_hashes_dbs,

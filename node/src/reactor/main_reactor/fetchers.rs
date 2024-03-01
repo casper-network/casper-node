@@ -4,10 +4,12 @@ use prometheus::Registry;
 use casper_types::{Block, BlockHeader, FinalitySignature, Transaction};
 
 use crate::{
-    components::{fetcher, fetcher::Fetcher, Component},
+    components::{
+        fetcher::{self, Fetcher},
+        Component,
+    },
     effect::{announcements::TransactionAcceptorAnnouncement, EffectBuilder, Effects},
-    reactor,
-    reactor::main_reactor::MainEvent,
+    reactor::{self, main_reactor::MainEvent},
     types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
     utils::Source,
     FetcherConfig, NodeRng,
