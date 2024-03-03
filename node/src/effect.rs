@@ -116,7 +116,7 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
-    get_all_values::{AllValuesRequest, AllValuesResult},
+    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
     BalanceRequest, BalanceResult, QueryRequest, QueryResult,
 };
 
@@ -2037,18 +2037,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_all_values(
-        self,
-        all_values_request: AllValuesRequest,
-    ) -> AllValuesResult
+    pub(crate) async fn get_tagged_values(self, request: TaggedValuesRequest) -> TaggedValuesResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetAllValues {
-                all_values_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetTaggedValues { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

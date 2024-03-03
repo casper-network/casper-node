@@ -38,6 +38,7 @@ use crate::{
     data_access_layer::{
         bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
         era_validators::EraValidatorsResult,
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         transfer::{TransferRequest, TransferRequestArgs, TransferResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceRequest,
         BalanceResult, BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest,
@@ -534,7 +535,6 @@ pub trait CommitProvider: StateProvider {
                     ))
                 }
             };
-            // let tmp_hash = TransactionHash::V1(TransactionV1Hash::from_bytes(id.seed()));
             for target in administrative_accounts {
                 let target_purse = match tc
                     .borrow_mut()
@@ -1290,6 +1290,38 @@ pub trait StateProvider {
                     }
                 }
             }
+        }
+    }
+
+    /// Gets all values under a given key tag.
+    fn tagged_values(&self, request: TaggedValuesRequest) -> TaggedValuesResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return TaggedValuesResult::RootNotFound,
+            Err(gse) => return TaggedValuesResult::Failure(TrackingCopyError::Storage(gse)),
+        };
+
+        let key_tag = request.key_tag();
+        let keys = match tc.get_keys(&key_tag) {
+            Ok(keys) => keys,
+            Err(tce) => return TaggedValuesResult::Failure(tce),
+        };
+
+        let mut values = vec![];
+        for key in keys {
+            match tc.get(&key) {
+                Ok(Some(value)) => {
+                    values.push(value);
+                }
+                Ok(None) => {}
+                Err(error) => return TaggedValuesResult::Failure(error),
+            }
+        }
+
+        TaggedValuesResult::Success {
+            values,
+            selection: request.selection(),
         }
     }
 

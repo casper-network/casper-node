@@ -17,7 +17,7 @@ use static_assertions::const_assert;
 
 use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
-    get_all_values::{AllValuesRequest, AllValuesResult},
+    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
     AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
     EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
     QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
@@ -771,12 +771,12 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<EraValidatorsResult>,
     },
     /// Return all values at a given state root hash and given key tag.
-    GetAllValues {
-        /// Get all values request.
+    GetTaggedValues {
+        /// Get tagged values request.
         #[serde(skip_serializing)]
-        all_values_request: AllValuesRequest,
+        request: TaggedValuesRequest,
         /// Responder to call with the result.
-        responder: Responder<AllValuesResult>,
+        responder: Responder<TaggedValuesResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
@@ -857,8 +857,8 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
-            ContractRuntimeRequest::GetAllValues {
-                all_values_request: get_all_values_request,
+            ContractRuntimeRequest::GetTaggedValues {
+                request: get_all_values_request,
                 ..
             } => {
                 write!(
