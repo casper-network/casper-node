@@ -299,8 +299,11 @@ address = '0.0.0.0:7779'
 # Flag that enables the `AllValues` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_all_values = false
 
-# Flag that enables the `Trie` gewt request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
+# Flag that enables the `Trie` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
+
+# Flag that enables the `TrySpeculativeExec` request. Disabled by default.
+allow_request_speculative_exec = false
 
 # Maximum size of a request in bytes.
 max_request_size_bytes = 4_194_304
