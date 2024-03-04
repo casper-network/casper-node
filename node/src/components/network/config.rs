@@ -6,7 +6,7 @@ use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::PerChannel;
+use super::{conman::Config as ConmanConfig, PerChannel};
 
 /// Default binding address.
 ///
@@ -53,6 +53,7 @@ impl Default for Config {
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
+            conman: Default::default(),
         }
     }
 }
@@ -120,6 +121,8 @@ pub struct Config {
     /// An identity will be automatically generated when starting up a node if this option is
     /// unspecified.
     pub identity: Option<IdentityConfig>,
+    /// Configuration for the connection manager.
+    pub conman: ConmanConfig,
 }
 
 #[cfg(test)]

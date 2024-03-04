@@ -251,6 +251,45 @@ blocklist_retain_duration = '10 minutes'
 # secret_key = "local_node.pem"
 # ca_certificate = "ca_cert.pem"
 
+
+# ============================================
+# Configuration options for Connection Manager
+# ============================================
+[network.conman]
+
+# The timeout for one TCP to be connection to be established, from a single `connect` call.
+tcp_connect_timeout = '10 seconds'
+
+# Maximum time allowed for TLS setup and handshaking to proceed.
+setup_timeout = '10 seconds'
+
+# How often to reattempt a connection.
+tcp_connect_attempts = 0
+
+# Base delay for the backoff, grows exponentially until `tcp_connect_attempts` maxes out.
+tcp_connect_base_backoff = '1 second'
+
+# How long to back off from reconnecting to an address after a failure that indicates a
+# significant problem.
+significant_error_backoff = '60 seconds'
+
+# How long to back off from reconnecting to an address if the error is likely not going to
+# change for a long time.
+permanent_error_backoff = '10 minutes'
+
+# How long to wait before reconnecting when a succesful outgoing connection is lost.
+successful_reconnect_delay = '1 second'
+
+# The minimum time a connection must have successfully served data to not be seen as flaky.
+flaky_connection_threshold = '1 minute'
+
+# Number of incoming connections before refusing to accept any new ones.
+max_incoming_connections = 10000
+
+# Number of outgoing connections before stopping to connect to learned addresses.
+max_outgoing_connections = 10000
+
+
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================
