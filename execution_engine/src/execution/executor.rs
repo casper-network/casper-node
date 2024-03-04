@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{EntityKind, NamedKeys},
     bytesrepr::FromBytes,
-    system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
+    system::{handle_payment, mint, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
     DeployHash, EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs,
     StoredValue, Tagged, URef, U512,
@@ -20,15 +20,17 @@ use crate::{
     engine_state::{
         execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
     },
-    execution::Error,
+    execution::ExecError,
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
 };
 
 const ARG_AMOUNT: &str = "amount";
 
-fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, Error> {
-    runtime_args.try_get_number(ARG_AMOUNT).map_err(Error::from)
+fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
+    runtime_args
+        .try_get_number(ARG_AMOUNT)
+        .map_err(ExecError::from)
 }
 
 /// Executor object deals with execution of WASM modules.
@@ -182,14 +184,6 @@ impl Executor {
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
         let entity_hash = match direct_system_contract_call {
-            DirectSystemContractCall::Slash
-            | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards => {
-                let auction_hash = system_contract_registry
-                    .get(AUCTION)
-                    .expect("should have auction hash");
-                *auction_hash
-            }
             DirectSystemContractCall::Transfer => {
                 let mint_hash = system_contract_registry
                     .get(MINT)
@@ -197,8 +191,7 @@ impl Executor {
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse
-            | DirectSystemContractCall::DistributeAccumulatedFees => {
+            | DirectSystemContractCall::GetPaymentPurse => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -222,11 +215,11 @@ impl Executor {
         };
 
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
-        let entity_address = entity_addr.into();
+        let entity_key = entity_addr.into();
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             access_rights,
             entity_kind,
@@ -264,7 +257,7 @@ impl Executor {
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
                     effects,
-                    error: Error::CLValue(error).into(),
+                    error: ExecError::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                     messages,
@@ -352,7 +345,7 @@ impl Executor {
     ) -> Result<ExecutionResult, EngineStateError>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        R::Error: Into<Error>,
+        R::Error: Into<ExecError>,
     {
         let payment_amount: U512 = match try_get_amount(&payment_args) {
             Ok(payment_amount) => payment_amount,
@@ -398,7 +391,7 @@ impl Executor {
                 Ok(runtime_args) => runtime_args,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(
-                        Error::CLValue(error).into(),
+                        ExecError::CLValue(error).into(),
                     ))
                 }
             }
@@ -455,7 +448,7 @@ impl Executor {
     ) -> (Option<URef>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        R::Error: Into<Error>,
+        R::Error: Into<ExecError>,
     {
         self.call_system_contract(
             DirectSystemContractCall::GetPaymentPurse,
@@ -493,7 +486,7 @@ impl Executor {
     ) -> (Option<Result<(), u8>>, ExecutionResult)
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
-        R::Error: Into<Error>,
+        R::Error: Into<ExecError>,
     {
         self.call_system_contract(
             DirectSystemContractCall::Transfer,
@@ -516,34 +509,20 @@ impl Executor {
 
 /// Represents a variant of a system contract call.
 pub(crate) enum DirectSystemContractCall {
-    /// Calls auction's `slash` entry point.
-    Slash,
-    /// Calls auction's `run_auction` entry point.
-    RunAuction,
-    /// Calls auction's `distribute` entry point.
-    DistributeRewards,
     /// Calls handle payment's `finalize` entry point.
     FinalizePayment,
     /// Calls mint's `transfer` entry point.
     Transfer,
     /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
-    /// Calls handle payment's `distribute_accumulated_fees` entry point.
-    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
-            DirectSystemContractCall::Slash => auction::METHOD_SLASH,
-            DirectSystemContractCall::RunAuction => auction::METHOD_RUN_AUCTION,
-            DirectSystemContractCall::DistributeRewards => auction::METHOD_DISTRIBUTE,
             DirectSystemContractCall::FinalizePayment => handle_payment::METHOD_FINALIZE_PAYMENT,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
-            DirectSystemContractCall::DistributeAccumulatedFees => {
-                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
-            }
         }
     }
 }

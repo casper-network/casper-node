@@ -475,7 +475,7 @@ fn should_limit_max_urefs_while_extending() {
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
-    let error = assert_matches!(error, Error::Exec(execution::Error::Revert(e)) => e);
+    let error = assert_matches!(error, Error::Exec(ExecError::Revert(e)) => e);
     assert_eq!(
         error,
         &addressable_entity::Error::MaxTotalURefsExceeded.into()

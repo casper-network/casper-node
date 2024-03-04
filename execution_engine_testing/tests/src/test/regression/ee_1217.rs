@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
-    execution::Error as ExecError,
+    execution::ExecError,
 };
 use casper_types::{runtime_args, system::auction, ApiError, PublicKey, SecretKey, U512};
 use once_cell::sync::Lazy;

@@ -27,8 +27,7 @@ use tracing::{debug, error, info, warn};
 use casper_types::{
     binary_port::{LastProgress, NetworkName, Uptime},
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
-    FinalitySignatureV2, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionHeader, U512,
+    FinalitySignatureV2, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, U512,
 };
 
 #[cfg(test)]
@@ -1649,10 +1648,8 @@ impl MainReactor {
             MetaBlock::Forward(fwd_meta_block) => {
                 for exec_artifact in fwd_meta_block.execution_results.iter() {
                     let event = event_stream_server::Event::TransactionProcessed {
-                        transaction_hash: TransactionHash::Deploy(exec_artifact.deploy_hash),
-                        transaction_header: Box::new(TransactionHeader::Deploy(
-                            exec_artifact.deploy_header.clone(),
-                        )),
+                        transaction_hash: exec_artifact.transaction_hash,
+                        transaction_header: Box::new(exec_artifact.header.clone()),
                         block_hash: *fwd_meta_block.block.hash(),
                         execution_result: Box::new(exec_artifact.execution_result.clone()),
                         messages: exec_artifact.messages.clone(),

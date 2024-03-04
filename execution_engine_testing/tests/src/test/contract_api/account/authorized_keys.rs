@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{self, Error},
-    execution,
+    execution::ExecError,
 };
 use casper_storage::{system::transfer::TransferError, tracking_copy::TrackingCopyError};
 use casper_types::{
@@ -241,10 +241,7 @@ fn should_raise_deploy_authorization_failure() {
 
         assert!(deploy_result.has_precondition_failure());
         let message = format!("{}", deploy_result.as_error().unwrap());
-        assert!(message.contains(&format!(
-            "{}",
-            execution::Error::DeploymentAuthorizationFailure
-        )))
+        assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
     let exec_request_6 = {
         let deploy = DeployItemBuilder::new()
@@ -303,10 +300,7 @@ fn should_raise_deploy_authorization_failure() {
 
         assert!(deploy_result.has_precondition_failure());
         let message = format!("{}", deploy_result.as_error().unwrap());
-        assert!(message.contains(&format!(
-            "{}",
-            execution::Error::DeploymentAuthorizationFailure
-        )))
+        assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
 
     let exec_request_8 = {

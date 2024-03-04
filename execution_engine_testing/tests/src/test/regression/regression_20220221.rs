@@ -145,7 +145,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     let step_request = step_request.build();
 
-    builder.step(step_request).expect("should run step");
+    assert!(builder.step(step_request).is_success(), "should run step");
 
     builder.run_auction(timestamp_millis, Vec::new());
 }
