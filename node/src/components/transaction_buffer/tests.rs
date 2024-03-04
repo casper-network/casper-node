@@ -7,7 +7,7 @@ use casper_types::{
 
 use super::*;
 use crate::{
-    components::tests::TransactionCategory,
+    components::TransactionCategory,
     effect::announcements::TransactionBufferAnnouncement::{self, TransactionsExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::FinalizedBlock,

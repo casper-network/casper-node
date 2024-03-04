@@ -72,6 +72,11 @@ use serde::Deserialize;
 use std::fmt::{Debug, Display};
 use tracing::info;
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
+#[cfg(test)]
+use rand::Rng;
+
 use crate::{
     effect::{EffectBuilder, Effects},
     failpoints::FailpointActivation,
@@ -208,30 +213,26 @@ pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
 }
 
 #[cfg(test)]
-mod tests {
-    use casper_types::testing::TestRng;
-    use rand::Rng;
+#[derive(Debug)]
+pub(crate) enum TransactionCategory {
+    TransferLegacy,
+    Transfer,
+    StandardLegacy,
+    Standard,
+    InstallUpgrade,
+    Staking,
+}
 
-    #[derive(Debug)]
-    pub(crate) enum TransactionCategory {
-        TransferLegacy,
-        Transfer,
-        StandardLegacy,
-        Standard,
-        InstallUpgrade,
-        Staking,
-    }
-
-    impl TransactionCategory {
-        pub(crate) fn random(rng: &mut TestRng) -> Self {
-            match rng.gen_range(0..6) {
-                0 => TransactionCategory::TransferLegacy,
-                1 => TransactionCategory::Transfer,
-                2 => TransactionCategory::StandardLegacy,
-                3 => TransactionCategory::Standard,
-                4 => TransactionCategory::InstallUpgrade,
-                _ => TransactionCategory::Staking,
-            }
+#[cfg(test)]
+impl TransactionCategory {
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..6) {
+            0 => TransactionCategory::TransferLegacy,
+            1 => TransactionCategory::Transfer,
+            2 => TransactionCategory::StandardLegacy,
+            3 => TransactionCategory::Standard,
+            4 => TransactionCategory::InstallUpgrade,
+            _ => TransactionCategory::Staking,
         }
     }
 }

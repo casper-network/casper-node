@@ -643,7 +643,7 @@ mod tests {
 
     use super::{super::tests::*, *};
     use crate::{
-        components::tests::TransactionCategory,
+        components::TransactionCategory,
         types::{DeployExt, TransactionExt, TransactionHashWithApprovals, TransactionV1Ext},
         utils::Loadable,
     };
