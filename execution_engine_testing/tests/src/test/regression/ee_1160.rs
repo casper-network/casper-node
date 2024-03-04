@@ -3,16 +3,14 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE;
-use casper_types::{
-    account::AccountHash, runtime_args, system::mint, Gas, Motes, DEFAULT_WASMLESS_MINT_COST, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, system::mint, Gas, Motes, U512, SystemConfig, MintCosts};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 #[ignore]
 #[test]
 fn ee_1160_wasmless_transfer_should_empty_account() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_MINT_COST);
+    let wasmless_transfer_gas_cost = Gas::from(SystemConfig::default().mint_costs().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -72,7 +70,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
 #[test]
 fn ee_1160_transfer_larger_than_balance_should_fail() {
     let transfer_amount = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - U512::from(DEFAULT_WASMLESS_MINT_COST)
+        - U512::from(MintCosts::default().transfer)
         // One above the available balance to transfer should raise an InsufficientPayment already
         + U512::one();
 
@@ -106,7 +104,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_MINT_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_motes = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -168,7 +166,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_MINT_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_motes = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,

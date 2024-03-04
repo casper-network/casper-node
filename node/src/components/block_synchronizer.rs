@@ -693,7 +693,6 @@ impl BlockSynchronizer {
                 }
                 NeedNext::EnqueueForExecution(block_hash, _, executable_block) => {
                     builder.latch();
-                    info!("{:?}", executable_block);
                     results.extend(
                         effect_builder
                             .enqueue_block_for_execution(

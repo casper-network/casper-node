@@ -551,11 +551,7 @@ impl Deploy {
     ) -> Self {
         let gas_price = rng.gen_range(1..100);
 
-        let dependencies = vec![
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-        ];
+        let dependencies = vec![];
         let chain_name = String::from("casper-example");
 
         // We need "amount" in order to be able to get correct info via `deploy_info()`.

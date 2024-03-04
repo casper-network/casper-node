@@ -2,10 +2,12 @@ use core::fmt::{self, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 
 /// The category of a Transaction.
@@ -33,6 +35,7 @@ pub enum TransactionCategory {
 }
 
 impl TransactionCategory {
+    /// Returns a random transaction category.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0u32..4) {

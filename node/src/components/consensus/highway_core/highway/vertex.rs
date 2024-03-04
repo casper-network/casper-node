@@ -434,7 +434,7 @@ impl<C: Context> Debug for WireUnit<C> {
         }
 
         f.debug_struct("WireUnit")
-            .field("value", &self.value)
+            .field("value", &self.value.as_ref().map(|_| Ellipsis))
             .field("creator.0", &self.creator.0)
             .field("instance_id", &self.instance_id)
             .field("seq_number", &self.seq_number)

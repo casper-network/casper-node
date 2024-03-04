@@ -319,7 +319,7 @@ fn new_payload(random_bit: bool) -> Arc<BlockPayload> {
         BTreeMap::new(),
         vec![],
         Default::default(),
-        false,
+        random_bit,
     ))
 }
 

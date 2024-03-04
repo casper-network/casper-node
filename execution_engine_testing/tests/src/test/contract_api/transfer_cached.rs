@@ -7,12 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
-use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
-    PublicKey, RuntimeArgs, SecretKey, DEFAULT_WASMLESS_MINT_COST, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET}, PublicKey, RuntimeArgs, SecretKey, U512, MintCosts};
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -73,7 +68,7 @@ fn should_transfer_to_account_with_correct_balances() {
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
     let default_expected_balance =
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (U512::one() + DEFAULT_WASMLESS_MINT_COST);
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (U512::one() + MintCosts::default().transfer);
     assert_eq!(
         default_account_balance, default_expected_balance,
         "default account balance should reflect the transfer",
@@ -105,7 +100,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
-           ARG_AMOUNT => *TRANSFER_AMOUNT + DEFAULT_WASMLESS_MINT_COST,
+           ARG_AMOUNT => *TRANSFER_AMOUNT + MintCosts::default().transfer,
            ARG_ID => ID_NONE,
         },
     ));
@@ -164,7 +159,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         .expect("should get account 2");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
-    let double_cost = DEFAULT_WASMLESS_MINT_COST + DEFAULT_WASMLESS_MINT_COST;
+    let double_cost = MintCosts::default().transfer + MintCosts::default().transfer;
     let default_expected_balance =
         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (MAX_PAYMENT_AMOUNT + (double_cost as u64));
     assert_eq!(

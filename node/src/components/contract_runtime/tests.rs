@@ -25,8 +25,6 @@ use crate::{
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
-use crate::types::TransactionExt;
-
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);

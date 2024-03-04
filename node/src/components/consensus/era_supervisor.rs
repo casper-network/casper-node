@@ -336,7 +336,7 @@ impl EraSupervisor {
                 "failed to create era; this is a bug: {:?}",
                 err,
             )
-            .ignore(),
+                .ignore(),
         }
     }
 
@@ -469,7 +469,7 @@ impl EraSupervisor {
 
         // The beginning of the new era is marked by the key block.
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
-        let start_height = key_block.height() + 1;
+            let start_height = key_block.height() + 1;
         let start_time = key_block.timestamp();
 
         // Validators that were inactive in the previous era will be excluded from leader selection
@@ -651,11 +651,11 @@ impl EraSupervisor {
         era_id: EraId,
         f: F,
     ) -> Effects<Event>
-    where
-        F: FnOnce(
-            &mut dyn ConsensusProtocol<ClContext>,
-            &mut NodeRng,
-        ) -> Vec<ProtocolOutcome<ClContext>>,
+        where
+            F: FnOnce(
+                &mut dyn ConsensusProtocol<ClContext>,
+                &mut NodeRng,
+            ) -> Vec<ProtocolOutcome<ClContext>>,
     {
         match self.open_eras.get_mut(&era_id) {
             None => {
@@ -947,8 +947,8 @@ impl EraSupervisor {
         era_id: EraId,
         outcomes: T,
     ) -> Effects<Event>
-    where
-        T: IntoIterator<Item = ProtocolOutcome<ClContext>>,
+        where
+            T: IntoIterator<Item = ProtocolOutcome<ClContext>>,
     {
         outcomes
             .into_iter()
@@ -1016,7 +1016,7 @@ impl EraSupervisor {
                         .broadcast_message_to_validators(message.into(), era_id)
                         .await
                 }
-                .ignore()
+                    .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1031,7 +1031,7 @@ impl EraSupervisor {
                         effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
-                .ignore()
+                    .ignore()
             }
             ProtocolOutcome::CreatedRequestToRandomPeer(payload) => {
                 let message = ConsensusRequestMessage { era_id, payload };
@@ -1042,7 +1042,7 @@ impl EraSupervisor {
                         effect_builder.enqueue_message(to, message.into()).await;
                     }
                 }
-                .ignore()
+                    .ignore()
             }
             ProtocolOutcome::ScheduleTimer(timestamp, timer_id) => {
                 let timediff = timestamp.saturating_diff(Timestamp::now());
@@ -1094,25 +1094,11 @@ impl EraSupervisor {
                             signature_rewards_max_delay,
                         );
 
-                        println!("{:?}", appendable_block.clone());
-
-                        info!("Produced appendable block");
-
                         let block_payload = Arc::new(appendable_block.into_block_payload(
                             accusations,
                             rewarded_signatures,
                             random_bit,
                         ));
-
-                        let payload: Vec<TransactionHash> = {
-                            let mut ret = vec![];
-                            for item in block_payload.all_transaction_hashes() {
-                                ret.push(item);
-                            }
-                            ret
-                        };
-
-                        println!("{:?}", payload);
 
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,
@@ -1123,13 +1109,13 @@ impl EraSupervisor {
                 )
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
-                value,
-                timestamp,
-                relative_height,
-                terminal_block_data,
-                equivocators,
-                proposer,
-            }) => {
+                                                value,
+                                                timestamp,
+                                                relative_height,
+                                                terminal_block_data,
+                                                equivocators,
+                                                proposer,
+                                            }) => {
                 if era_id != current_era {
                     debug!(era = era_id.value(), "finalized block in old era");
                     return Effects::new();
@@ -1157,10 +1143,8 @@ impl EraSupervisor {
                     }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
-                println!("PB {:?}", proposed_block);
                 let finalized_approvals: HashMap<_, _> =
                     proposed_block.all_transactions().cloned().collect();
-                println!("FA {:?}", finalized_approvals);
                 if let Some(era_report) = report.as_ref() {
                     info!(
                         inactive = %DisplayIter::new(&era_report.inactive_validators),
@@ -1177,12 +1161,10 @@ impl EraSupervisor {
                     era.start_height + relative_height,
                     proposer,
                 );
-                let transactions_count = finalized_block.standard.len();
-                warn!(
+                info!(
                     era_id = finalized_block.era_id.value(),
                     height = finalized_block.height,
                     timestamp = %finalized_block.timestamp,
-                    standard_count = %transactions_count,
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -1205,7 +1187,6 @@ impl EraSupervisor {
                 sender,
                 proposed_block,
             } => {
-                println!("validating {:?}", proposed_block);
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < current_era
                     || !self.open_eras.contains_key(&era_id)
                 {
@@ -1249,9 +1230,9 @@ impl EraSupervisor {
                             sender,
                             proposed_block,
                         )
-                        .await
+                            .await
                     }
-                    .event(std::convert::identity),
+                        .event(std::convert::identity),
                 );
                 effects
             }
@@ -1347,16 +1328,16 @@ impl SerializedMessage {
     /// Will panic if serialization fails (which must never happen -- ensure types are
     /// serializable!).
     pub(crate) fn from_message<T>(msg: &T) -> Self
-    where
-        T: ConsensusNetworkMessage + Serialize,
+        where
+            T: ConsensusNetworkMessage + Serialize,
     {
         SerializedMessage(bincode::serialize(msg).expect("should serialize message"))
     }
 
     /// Attempt to deserialize a given type from incoming raw bytes.
     pub(crate) fn deserialize_incoming<T>(&self) -> Result<T, bincode::Error>
-    where
-        T: ConsensusNetworkMessage + DeserializeOwned,
+        where
+            T: ConsensusNetworkMessage + DeserializeOwned,
     {
         bincode::deserialize(&self.0)
     }
@@ -1381,8 +1362,8 @@ impl SerializedMessage {
     /// Will panic if deserialization fails.
     #[track_caller]
     pub(crate) fn deserialize_expect<T>(&self) -> T
-    where
-        T: ConsensusNetworkMessage + DeserializeOwned,
+        where
+            T: ConsensusNetworkMessage + DeserializeOwned,
     {
         self.deserialize_incoming()
             .expect("could not deserialize valid zug message from serialized message")
@@ -1426,9 +1407,6 @@ async fn execute_finalized_block<REv>(
             .store_finalized_approvals(txn_hash, finalized_approvals)
             .await;
     }
-
-    println!("Standard {:?}", finalized_block.standard);
-
     // Get all transactions in order they appear in the finalized block.
     let transactions = get_transactions(
         effect_builder,
@@ -1462,8 +1440,8 @@ async fn check_txns_for_replay_in_previous_eras_and_validate_block<REv>(
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event
-where
-    REv: From<BlockValidationRequest> + From<StorageRequest>,
+    where
+        REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
     let txns_era_ids = effect_builder
         .get_transactions_era_ids(
@@ -1500,9 +1478,6 @@ where
             proposed_block.clone(),
         )
         .await;
-
-    warn!(%valid, "Result of validity check");
-
 
     Event::ResolveValidity(ResolveValidity {
         era_id: proposed_block_era_id,

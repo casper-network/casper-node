@@ -19,7 +19,7 @@ use smallvec::smallvec;
 use casper_types::{execution::{
     execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
     ExecutionResult, ExecutionResultV2,
-}, generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512, Approval};
+}, generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512, Approval, ApprovalsHash};
 use tempfile::tempdir;
 
 use super::{
@@ -352,7 +352,7 @@ fn get_naive_transactions(
     response
         .into_iter()
         .map(|opt_twfa| {
-            if let Some((mut transaction, maybe_approvals)) = opt_twfa {
+            if let Some((transaction, maybe_approvals)) = opt_twfa {
                 let txn = match maybe_approvals {
                     None => { transaction }
                     Some(approvals) => {
@@ -383,7 +383,7 @@ fn get_naive_transaction_and_execution_info(
         .into()
     });
     assert!(harness.is_idle());
-    response.map(|((mut transaction, maybe_approvals), exec_info)| {
+    response.map(|((transaction, maybe_approvals), exec_info)| {
         let txn = if let Some(approvals) = maybe_approvals {
             transaction.with_approvals(approvals)
         } else {
@@ -955,7 +955,7 @@ fn can_retrieve_store_and_load_transactions() {
 
     // Finally try to get the execution info as well. Since we did not store any, we expect to get
     // the block hash and height from the indices.
-    let ((mut transaction_response, maybe_approvals), exec_info_response) = harness
+    let ((transaction_response, maybe_approvals), exec_info_response) = harness
         .send_request(&mut storage, |responder| {
             StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash: transaction.hash(),
@@ -998,7 +998,7 @@ fn can_retrieve_store_and_load_transactions() {
     assert!(put_transaction(&mut harness, &mut storage, &transaction));
     // Don't insert to the transaction hash index. Since we have no execution results
     // either, we should receive a `None` execution info response.
-    let ((mut transaction_response, maybe_approvals), exec_info_response) = harness
+    let ((transaction_response, maybe_approvals), exec_info_response) = harness
         .send_request(&mut storage, |responder| {
             StorageRequest::GetTransactionAndExecutionInfo {
                 transaction_hash: transaction.hash(),
@@ -2953,16 +2953,16 @@ fn check_block_operations_with_node_1_5_2_storage() {
         assert_eq!(block.height(), block_info.height);
 
         let approvals_hashes = get_approvals_hashes(&mut harness, &mut storage, *hash);
-        // if let Some(expected_approvals_hashes) = &block_info.approvals_hashes {
-        //     let stored_approvals_hashes = approvals_hashes.unwrap();
-        //     assert_eq!(
-        //         stored_approvals_hashes.approvals_hashes().to_vec(),
-        //         expected_approvals_hashes
-        //             .iter()
-        //             .map(|approvals_hash| TransactionApprovalsHash::Deploy(*approvals_hash))
-        //             .collect::<Vec<_>>()
-        //     );
-        // }
+        if let Some(expected_approvals_hashes) = &block_info.approvals_hashes {
+            let stored_approvals_hashes = approvals_hashes.unwrap().approvals_hashes().to_vec();
+            assert_eq!(
+                stored_approvals_hashes,
+                expected_approvals_hashes
+                    .iter()
+                    .map(|approvals_hash| ApprovalsHash::compute(approvals_hash).unwrap())
+                    .collect::<Vec<_>>()
+            );
+        }
 
         let transfers = get_block_transfers(&mut harness, &mut storage, *hash);
         if !block_info.deploy_hashes.is_empty() {

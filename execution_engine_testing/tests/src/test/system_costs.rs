@@ -19,7 +19,7 @@ use casper_types::{
     HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
     MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
     StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_MINT_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -169,7 +169,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_MINT_COST;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
@@ -182,7 +181,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+        DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
@@ -459,7 +459,6 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
-    let new_wasmless_transfer_cost = DEFAULT_WASMLESS_MINT_COST;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_auction_costs = AuctionCosts {
@@ -473,7 +472,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+        DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,
@@ -938,15 +938,15 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         MessageLimits::default(),
     );
 
-    let new_wasmless_transfer_cost = 0;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts::default();
+    let new_mint_costs = MintCosts{transfer: 0, ..Default::default() };
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+        DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,

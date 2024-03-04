@@ -357,20 +357,11 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
-        let maybe_unit = self.new_unit(panorama, timestamp, Some(value), state, instance_id);
 
-        match maybe_unit {
-            Some(unit) => {
-                println!("{:#?}", unit);
-                return vec![Effect::NewVertex(ValidVertex(Vertex::Unit(unit)))]
-            }
-            None => panic!("does this ever happen")
-        }
-            //
-            //
-            // .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
-            // .into_iter()
-            // .collect()
+        self.new_unit(panorama, timestamp, Some(value), state, instance_id)
+            .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
+            .into_iter()
+            .collect()
     }
 
     /// Returns whether the incoming message is a proposal that we need to send a confirmation for.
