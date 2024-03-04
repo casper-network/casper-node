@@ -338,7 +338,7 @@ mod session {
     use crate::test::contract_api::get_call_stack::EntityWithKeys;
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_execution_engine::execution::ExecError;
-    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
+    use casper_types::{execution::TransformKindV2, runtime_args, system::mint, Key};
     use num_traits::Zero;
 
     use super::{
@@ -1186,7 +1186,7 @@ mod session {
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
                     == &Key::Package(current_contract_package_hash)
-                    && transform.kind() == &TransformKind::Identity),
+                    && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 
@@ -1367,7 +1367,7 @@ mod session {
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
                     == &Key::contract_entity_key(current_contract_hash.into())
-                    && transform.kind() == &TransformKind::Identity),
+                    && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract being called."
             );
 

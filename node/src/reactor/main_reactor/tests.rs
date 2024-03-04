@@ -24,7 +24,7 @@ use casper_storage::{
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
         AUCTION,
@@ -675,7 +675,7 @@ impl TestFixture {
     ///
     /// Panics if there is no such execution result, or if it is not a `Success` variant.
     #[track_caller]
-    fn successful_execution_transforms(&self, txn_hash: &TransactionHash) -> Vec<Transform> {
+    fn successful_execution_transforms(&self, txn_hash: &TransactionHash) -> Vec<TransformV2> {
         let node_0 = self
             .node_contexts
             .first()
@@ -1521,7 +1521,7 @@ async fn run_withdraw_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for bid");
@@ -1587,7 +1587,7 @@ async fn run_undelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
                 Key::from(bid_kind.bid_addr()) == bid_key
             }
             _ => false,
@@ -1622,7 +1622,7 @@ async fn run_undelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for undelegated bid");
@@ -1702,7 +1702,7 @@ async fn run_redelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
                 Key::from(bid_kind.bid_addr()) == bid_key
             }
             _ => false,
@@ -1739,7 +1739,7 @@ async fn run_redelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for undelegated bid");

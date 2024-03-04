@@ -29,7 +29,7 @@ use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
@@ -318,9 +318,9 @@ pub fn execute_finalized_block(
         )?;
         checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
 
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             Key::ChecksumRegistry,
-            TransformKind::Write(
+            TransformKindV2::Write(
                 CLValue::from_t(checksum_registry)
                     .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                     .into(),
