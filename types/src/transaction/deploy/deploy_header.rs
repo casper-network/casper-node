@@ -18,7 +18,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{DeployConfigFailure, TransactionConfig, TransactionHash};
+use crate::{DeployConfigFailure, TransactionConfig};
 
 /// The header portion of a [`Deploy`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -111,7 +111,7 @@ impl DeployHeader {
         config: &TransactionConfig,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
-        deploy_hash: &TransactionHash,
+        deploy_hash: &DeployHash,
     ) -> Result<(), DeployConfigFailure> {
         if self.dependencies.len() > config.deploy_config.max_dependencies as usize {
             debug!(

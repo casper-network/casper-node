@@ -65,7 +65,15 @@ impl TransactionHeader {
     ) -> bool {
         match self {
             TransactionHeader::Deploy(header) => header
-                .is_valid(config, timestamp_leeway, at, transaction_hash)
+                .is_valid(
+                    config,
+                    timestamp_leeway,
+                    at,
+                    match transaction_hash {
+                        TransactionHash::Deploy(hash) => hash,
+                        _ => panic!("expected deploy hash"),
+                    },
+                )
                 .is_ok(),
             TransactionHeader::V1(header) => header
                 .is_valid(config, timestamp_leeway, at, transaction_hash)
