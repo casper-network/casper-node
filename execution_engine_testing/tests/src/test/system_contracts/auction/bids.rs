@@ -6,17 +6,15 @@ use once_cell::sync::Lazy;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
-    TIMESTAMP_MILLIS_INCREMENT,
+    utils, ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
-    engine_state::{
-        self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfigBuilder, Error,
-    },
+    engine_state::{self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error},
     execution::ExecError,
 };
 use casper_storage::data_access_layer::GenesisRequest;
@@ -882,12 +880,11 @@ fn should_release_founder_stake() {
         )
     };
 
-    let custom_engine_config = EngineConfigBuilder::default()
+    let chainspec = ChainspecConfig::default()
         .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
-        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-        .build();
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
 
     builder.run_genesis(run_genesis_request);
 
@@ -2489,11 +2486,10 @@ fn should_not_undelegate_vfta_holder_stake() {
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )
     };
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-        .build();
+    let chainspec = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
 
     builder.run_genesis(run_genesis_request);
 
@@ -2676,7 +2672,7 @@ fn should_release_vfta_holder_stake() {
     };
 
     let run_genesis_request = {
-        let exec_config = GenesisConfigBuilder::default()
+        let genesis_config = GenesisConfigBuilder::default()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
             .build();
@@ -2684,17 +2680,16 @@ fn should_release_vfta_holder_stake() {
         GenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             *DEFAULT_PROTOCOL_VERSION,
-            exec_config,
+            genesis_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )
     };
 
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+    let chainspec = ChainspecConfig::default()
         .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-        .build();
+        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
 
     builder.run_genesis(run_genesis_request);
 
@@ -3300,12 +3295,12 @@ fn should_delegate_and_redelegate() {
             delegator_1_purse_balance_before,
             delegator_1_redelegate_purse_balance
         );
-
         builder.advance_era()
     }
 
     // Since a redelegation has been processed no funds should have transferred back to the purse.
     let delegator_1_purse_balance_after = builder.get_purse_balance(delegator_1_undelegate_purse);
+
     assert_eq!(
         delegator_1_purse_balance_before,
         delegator_1_purse_balance_after
@@ -3716,12 +3711,10 @@ fn should_allow_delegations_with_minimal_floor_amount() {
 #[ignore]
 #[test]
 fn should_enforce_max_delegators_per_validator_cap() {
-    let engine_config = EngineConfigBuilder::new()
-        .with_max_delegators_per_validator(Some(2u32))
-        .build();
+    let chainspec = ChainspecConfig::default().with_max_delegators_per_validator(2u32);
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), chainspec);
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
@@ -4004,12 +3997,10 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
         delegator_1_validator_2_delegate_request,
     ];
 
-    let engine_config = EngineConfigBuilder::new()
-        .with_max_delegators_per_validator(Some(1u32))
-        .build();
+    let chainspec = ChainspecConfig::default().with_max_delegators_per_validator(1u32);
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), chainspec);
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
@@ -4201,12 +4192,10 @@ fn should_delegate_and_redelegate_with_eviction_regression_test() {
 #[ignore]
 #[test]
 fn should_increase_existing_delegation_when_limit_exceeded() {
-    let engine_config = EngineConfigBuilder::default()
-        .with_max_delegators_per_validator(Some(2))
-        .build();
+    let chainspec = ChainspecConfig::default().with_max_delegators_per_validator(2);
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), chainspec);
 
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 

@@ -938,7 +938,7 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-
+                println!("A");
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
@@ -1251,16 +1251,6 @@ where
 
         if let EntityKind::Account(_) = entity.entity_kind() {
             return Err(ExecError::InvalidContext);
-        }
-
-        let protocol_version = self.context.protocol_version();
-
-        // Check for major version compatibility before calling
-        if !entity.is_compatible_protocol_version(protocol_version) {
-            return Err(ExecError::IncompatibleProtocolMajorVersion {
-                actual: entity.protocol_version().value().major,
-                expected: protocol_version.value().major,
-            });
         }
 
         let entry_point = entity

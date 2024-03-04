@@ -770,8 +770,10 @@ impl reactor::Reactor for Reactor {
                     request: balance_request,
                     responder,
                 } => {
+                    let key = balance_request.identifier().as_key();
+
                     let proof = TrieMerkleProof::new(
-                        balance_request.purse_uref().into(),
+                        key,
                         StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
                         VecDeque::new(),
                     );

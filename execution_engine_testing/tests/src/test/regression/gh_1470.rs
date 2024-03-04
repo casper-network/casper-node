@@ -4,10 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error},
-    execution::ExecError,
-};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -62,14 +59,8 @@ fn setup() -> LmdbWasmTestBuilder {
             .build()
     };
 
-    let strict_argument_checking = true;
-
-    let engine_config = EngineConfigBuilder::new()
-        .with_strict_argument_checking(strict_argument_checking)
-        .build();
-
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     builder
@@ -672,7 +663,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer_args = runtime_args! {
@@ -723,7 +714,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
@@ -756,7 +747,7 @@ fn should_add_bid_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -805,7 +796,7 @@ fn should_add_bid_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -851,7 +842,7 @@ fn should_wasm_transfer_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -899,7 +890,7 @@ fn should_wasm_transfer_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -947,6 +938,6 @@ fn should_upgrade_from_1_3_1_rel_fixture() {
     };
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 }

@@ -13,7 +13,7 @@ use casper_types::{
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
-use tracing::error;
+use tracing::{error, warn};
 
 use super::{
     Auction, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
@@ -207,7 +207,7 @@ where
 /// This function can be called by the system only.
 pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
@@ -434,7 +434,7 @@ enum UnbondRedelegationOutcome {
 fn handle_redelegation<P>(
     provider: &mut P,
     unbonding_purse: &UnbondingPurse,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
 ) -> Result<UnbondRedelegationOutcome, ApiError>
 where
@@ -445,7 +445,7 @@ where
         None => return Ok(UnbondRedelegationOutcome::Withdrawal),
     };
 
-    match handle_delegation(
+    let redelegation = handle_delegation(
         provider,
         unbonding_purse.unbonder_public_key().clone(),
         redelegation_target_public_key.clone(),
@@ -453,7 +453,9 @@ where
         *unbonding_purse.amount(),
         max_delegators_per_validator,
         minimum_delegation_amount,
-    ) {
+    );
+    println!("{:?}", redelegation);
+    match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
         Err(ApiError::AuctionError(err)) if err == Error::BondTooSmall as u8 => {
             Ok(UnbondRedelegationOutcome::RedelegationTargetIsUnstaked)
@@ -480,7 +482,7 @@ pub fn handle_delegation<P>(
     validator_public_key: PublicKey,
     source: URef,
     amount: U512,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
 ) -> Result<U512, ApiError>
 where
@@ -510,10 +512,12 @@ where
     } else {
         // is this validator over the delegator limit?
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;
-        if let Some(cap) = max_delegators_per_validator {
-            if delegator_count >= cap as usize {
-                return Err(Error::ExceededDelegatorSizeLimit.into());
-            }
+        if delegator_count >= max_delegators_per_validator as usize {
+            warn!(
+                "delegator_count {}, max_delegators_per_validator {}",
+                delegator_count, max_delegators_per_validator
+            );
+            return Err(Error::ExceededDelegatorSizeLimit.into());
         }
 
         let bonding_purse = provider.create_purse()?;

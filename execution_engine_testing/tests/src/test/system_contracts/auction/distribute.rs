@@ -3058,7 +3058,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
     let initial_supply = builder.total_supply(None);
 

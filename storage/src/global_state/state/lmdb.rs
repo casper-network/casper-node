@@ -356,16 +356,8 @@ impl StateProvider for LmdbGlobalState {
 }
 
 impl DataAccessLayer<LmdbGlobalState> {
-    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), GlobalStateError> {
-        if self.state().environment().is_manual_sync_enabled() {
-            self.state().environment().sync()?
-        }
-        Ok(())
-    }
-
     /// Provide a local cached-only version of engine-state.
-    pub fn get_scratch_engine_state(&self) -> ScratchGlobalState {
+    pub fn get_scratch_global_state(&self) -> ScratchGlobalState {
         self.state().create_scratch()
     }
 

@@ -5,19 +5,20 @@ use std::{
 };
 
 use log::error;
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
+use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, ProtocolVersion, RefundHandling, SystemConfig, TimeDiff, WasmConfig,
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
+    GenesisConfig, GenesisConfigBuilder, ProtocolVersion, RefundHandling, SystemConfig, TimeDiff,
+    WasmConfig,
 };
 
 use crate::{
     DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_MAX_QUERY_DEPTH,
 };
 
 /// The name of the chainspec file on disk.
@@ -43,49 +44,20 @@ pub enum Error {
     Validation,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub struct CoreConfig {
-    /// The number of validator slots in the auction.
-    pub(crate) validator_slots: u32,
-    /// Number of eras before an auction actually defines the set of validators.
-    /// If you bond with a sufficient bid in era N, you will be a validator in era N +
-    /// auction_delay + 1
-    pub(crate) auction_delay: u64,
-    /// The period after genesis during which a genesis validator's bid is locked.
-    pub(crate) locked_funds_period: TimeDiff,
-    /// The period in which genesis validator's bid is released over time
-    pub(crate) vesting_schedule_period: TimeDiff,
-    /// The delay in number of eras for paying out the unbonding amount.
-    pub(crate) unbonding_delay: u64,
-    /// Round seigniorage rate represented as a fractional number.
-    pub(crate) round_seigniorage_rate: Ratio<u64>,
-    /// Maximum number of associated keys for a single account.
-    pub(crate) max_associated_keys: u32,
-    /// Maximum height of contract runtime call stack.
-    pub(crate) max_runtime_call_stack_height: u32,
-    /// The minimum bound of motes that can be delegated to a validator.
-    pub(crate) minimum_delegation_amount: u64,
-    /// Enables strict arguments checking when calling a contract.
-    pub(crate) strict_argument_checking: bool,
-    /// The maximum amount of delegators per validator.
-    pub(crate) max_delegators_per_validator: Option<u32>,
-    /// Refund handling.
-    pub(crate) refund_handling: RefundHandling,
-    /// Fee handling.
-    pub(crate) fee_handling: FeeHandling,
-}
-
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
 /// chainspec format changes over versions, as long as we maintain the core config in this form
 /// in the chainspec file, it can continue to be parsed as an `ChainspecConfig`.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Default)]
 pub struct ChainspecConfig {
+    /// CoreConfig
     #[serde(rename = "core")]
-    pub(crate) core_config: CoreConfig,
+    pub core_config: CoreConfig,
+    /// WasmConfig.
     #[serde(rename = "wasm")]
-    pub(crate) wasm_config: WasmConfig,
+    pub wasm_config: WasmConfig,
+    /// SystemConfig
     #[serde(rename = "system_costs")]
-    pub(crate) system_costs_config: SystemConfig,
+    pub system_costs_config: SystemConfig,
 }
 
 impl ChainspecConfig {
@@ -145,16 +117,9 @@ impl ChainspecConfig {
             validator_slots,
             auction_delay,
             locked_funds_period,
-            vesting_schedule_period: _,
             unbonding_delay,
             round_seigniorage_rate,
-            max_associated_keys: _,
-            max_runtime_call_stack_height: _,
-            minimum_delegation_amount: _,
-            strict_argument_checking: _,
-            max_delegators_per_validator: _,
-            refund_handling: _,
-            fee_handling: _,
+            ..
         } = core_config;
 
         let genesis_config = GenesisConfigBuilder::new()
@@ -187,6 +152,62 @@ impl ChainspecConfig {
             genesis_accounts,
             protocol_version,
         )
+    }
+
+    /// Sets the vesting schedule period millis config option.
+    pub fn with_max_associated_keys(&mut self, value: u32) -> &mut Self {
+        self.core_config.max_associated_keys = value;
+        self
+    }
+
+    /// Sets the vesting schedule period millis config option.
+    pub fn with_vesting_schedule_period_millis(mut self, value: u64) -> Self {
+        self.core_config.vesting_schedule_period = TimeDiff::from_millis(value);
+        self
+    }
+
+    /// Sets the max delegators per validator config option.
+    pub fn with_max_delegators_per_validator(mut self, value: u32) -> Self {
+        self.core_config.max_delegators_per_validator = value;
+        self
+    }
+
+    /// Sets the minimum delegation amount config option.
+    pub fn with_minimum_delegation_amount(mut self, minimum_delegation_amount: u64) -> Self {
+        self.core_config.minimum_delegation_amount = minimum_delegation_amount;
+        self
+    }
+
+    /// Sets fee handling config option.
+    pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.core_config.fee_handling = fee_handling;
+        self
+    }
+
+    /// Sets refund handling config option.
+    pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        self.core_config.refund_handling = refund_handling;
+        self
+    }
+
+    /// Returns an engine config.
+    pub fn engine_config(&self) -> EngineConfig {
+        EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(self.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(self.core_config.max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(self.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(self.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(self.core_config.vesting_schedule_period.millis())
+            .with_max_delegators_per_validator(self.core_config.max_delegators_per_validator)
+            .with_wasm_config(self.wasm_config)
+            .with_system_config(self.system_costs_config)
+            .with_administrative_accounts(self.core_config.administrators.clone())
+            .with_allow_auction_bids(self.core_config.allow_auction_bids)
+            .with_allow_unrestricted_transfers(self.core_config.allow_unrestricted_transfers)
+            .with_refund_handling(self.core_config.refund_handling)
+            .with_fee_handling(self.core_config.fee_handling)
+            .build()
     }
 }
 

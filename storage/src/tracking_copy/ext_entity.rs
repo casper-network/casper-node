@@ -4,8 +4,8 @@ use tracing::error;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
+        ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
+        Weight,
     },
     bytesrepr,
     package::{EntityVersions, Groups, PackageStatus},
@@ -26,8 +26,14 @@ pub trait TrackingCopyEntityExt<R> {
     /// The type for the returned errors.
     type Error;
 
-    /// Gets an addressable entity by hash.
+    /// Gets an addressable entity by address.
     fn get_addressable_entity(
+        &mut self,
+        entity_addr: EntityAddr,
+    ) -> Result<AddressableEntity, Self::Error>;
+
+    /// Gets an addressable entity by hash.
+    fn get_addressable_entity_by_hash(
         &mut self,
         addressable_entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
@@ -40,13 +46,6 @@ pub trait TrackingCopyEntityExt<R> {
 
     /// Gets the entity for a given account by its account hash.
     fn get_addressable_entity_by_account_hash(
-        &mut self,
-        protocol_version: ProtocolVersion,
-        account_hash: AccountHash,
-    ) -> Result<AddressableEntity, Self::Error>;
-
-    /// Reads the entity by its account hash.
-    fn read_addressable_entity_by_account_hash(
         &mut self,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
@@ -104,18 +103,9 @@ where
 
     fn get_addressable_entity(
         &mut self,
-        entity_hash: AddressableEntityHash,
+        entity_addr: EntityAddr,
     ) -> Result<AddressableEntity, Self::Error> {
-        let package_kind_tag = if self
-            .get_system_entity_registry()?
-            .has_contract_hash(&entity_hash)
-        {
-            EntityKindTag::System
-        } else {
-            EntityKindTag::SmartContract
-        };
-
-        let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
+        let key = Key::AddressableEntity(entity_addr);
 
         match self.read(&key)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
@@ -127,6 +117,22 @@ where
             )),
             None => Err(TrackingCopyError::KeyNotFound(key)),
         }
+    }
+
+    fn get_addressable_entity_by_hash(
+        &mut self,
+        entity_hash: AddressableEntityHash,
+    ) -> Result<AddressableEntity, Self::Error> {
+        let entity_addr = if self
+            .get_system_entity_registry()?
+            .has_contract_hash(&entity_hash)
+        {
+            EntityAddr::new_system_entity_addr(entity_hash.value())
+        } else {
+            EntityAddr::new_contract_entity_addr(entity_hash.value())
+        };
+
+        self.get_addressable_entity(entity_addr)
     }
 
     fn get_entity_hash_by_account_hash(
@@ -232,14 +238,6 @@ where
             )),
             None => Err(TrackingCopyError::KeyNotFound(contract_key)),
         }
-    }
-
-    fn read_addressable_entity_by_account_hash(
-        &mut self,
-        protocol_version: ProtocolVersion,
-        account_hash: AccountHash,
-    ) -> Result<AddressableEntity, Self::Error> {
-        self.get_addressable_entity_by_account_hash(protocol_version, account_hash)
     }
 
     fn get_authorized_addressable_entity(
@@ -411,7 +409,7 @@ where
                     ));
                 }
             };
-            let auction = self.get_addressable_entity(auction_hash)?;
+            let auction = self.get_addressable_entity_by_hash(auction_hash)?;
             let auction_addr =
                 EntityAddr::new_with_tag(auction.entity_kind(), auction_hash.value());
             let auction_named_keys = self.get_named_keys(auction_addr)?;
@@ -429,7 +427,7 @@ where
                     ));
                 }
             };
-            let mint = self.get_addressable_entity(mint_hash)?;
+            let mint = self.get_addressable_entity_by_hash(mint_hash)?;
             let mint_addr = EntityAddr::new_with_tag(mint.entity_kind(), mint_hash.value());
             let mint_named_keys = self.get_named_keys(mint_addr)?;
             let mint_access_rights = mint.extract_access_rights(mint_hash, &mint_named_keys);
@@ -446,7 +444,7 @@ where
                     ));
                 }
             };
-            let payment = self.get_addressable_entity(payment_hash)?;
+            let payment = self.get_addressable_entity_by_hash(payment_hash)?;
             let payment_addr =
                 EntityAddr::new_with_tag(payment.entity_kind(), payment_hash.value());
             let payment_named_keys = self.get_named_keys(payment_addr)?;

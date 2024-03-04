@@ -91,7 +91,7 @@ pub fn execute_finalized_block(
     let approvals_hashes: Vec<TransactionApprovalsHash> =
         txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
-    let scratch_state = data_access_layer.get_scratch_engine_state();
+    let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
     // Pay out fees, if relevant.
@@ -195,21 +195,13 @@ pub fn execute_finalized_block(
                     continue;
                 }
                 TransferResult::Success {
-                    post_state_hash,
-                    transfers,
-                    ..
+                    effects, transfers, ..
                 } => {
-                    // ideally we should be doing something with the transfer records and effects,
-                    // but currently this is auto-commit and if we include the effects in the
-                    // collection they will get double-committed. there's also
-                    // the problem that the execution results type needs to be
-                    // made more expressive / flexible. effects? transfers?
-                    state_root_hash = post_state_hash;
                     let artifact = ExecutionArtifact::new(
                         transaction_hash,
                         transaction.header(),
                         ExecutionResult::V2(ExecutionResultV2::Success {
-                            effects: Effects::new(), // auto commit
+                            effects,
                             cost: U512::zero(),
                             transfers,
                         }),

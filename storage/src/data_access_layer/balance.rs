@@ -1,21 +1,117 @@
 //! Types for balance queries.
-use casper_types::{global_state::TrieMerkleProof, Digest, Key, StoredValue, URef, U512};
+use casper_types::{
+    account::AccountHash, global_state::TrieMerkleProof, Digest, EntityAddr, Key, ProtocolVersion,
+    PublicKey, StoredValue, URef, URefAddr, U512,
+};
 
 use crate::tracking_copy::TrackingCopyError;
+
+/// Represents a way to make a balance inquiry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BalanceIdentifier {
+    Purse(URef),
+    Public(PublicKey),
+    Account(AccountHash),
+    Entity(EntityAddr),
+    Internal(URefAddr),
+}
+
+impl BalanceIdentifier {
+    pub fn as_key(&self) -> Key {
+        match self {
+            BalanceIdentifier::Purse(uref) => Key::URef(*uref),
+            BalanceIdentifier::Public(public_key) => Key::Account(public_key.to_account_hash()),
+            BalanceIdentifier::Account(account_hash) => Key::Account(*account_hash),
+            BalanceIdentifier::Entity(entity_addr) => Key::AddressableEntity(*entity_addr),
+            BalanceIdentifier::Internal(addr) => Key::Balance(*addr),
+        }
+    }
+}
 
 /// Represents a balance request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
     state_hash: Digest,
-    purse_uref: URef,
+    protocol_version: ProtocolVersion,
+    identifier: BalanceIdentifier,
 }
 
 impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
-    pub fn new(state_hash: Digest, purse_uref: URef) -> Self {
+    pub fn new(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        identifier: BalanceIdentifier,
+    ) -> Self {
         BalanceRequest {
             state_hash,
-            purse_uref,
+            protocol_version,
+            identifier,
+        }
+    }
+
+    /// Creates a new [`BalanceRequest`].
+    pub fn from_purse(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        purse_uref: URef,
+    ) -> Self {
+        BalanceRequest {
+            state_hash,
+            protocol_version,
+            identifier: BalanceIdentifier::Purse(purse_uref),
+        }
+    }
+
+    /// Creates a new [`BalanceRequest`].
+    pub fn from_public_key(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        public_key: PublicKey,
+    ) -> Self {
+        BalanceRequest {
+            state_hash,
+            protocol_version,
+            identifier: BalanceIdentifier::Public(public_key),
+        }
+    }
+
+    /// Creates a new [`BalanceRequest`].
+    pub fn from_account_hash(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        account_hash: AccountHash,
+    ) -> Self {
+        BalanceRequest {
+            state_hash,
+            protocol_version,
+            identifier: BalanceIdentifier::Account(account_hash),
+        }
+    }
+
+    /// Creates a new [`BalanceRequest`].
+    pub fn from_entity_addr(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        entity_addr: EntityAddr,
+    ) -> Self {
+        BalanceRequest {
+            state_hash,
+            protocol_version,
+            identifier: BalanceIdentifier::Entity(entity_addr),
+        }
+    }
+
+    /// Creates a new [`BalanceRequest`].
+    pub fn from_internal(
+        state_hash: Digest,
+        protocol_version: ProtocolVersion,
+        balance_addr: URefAddr,
+    ) -> Self {
+        BalanceRequest {
+            state_hash,
+            protocol_version,
+            identifier: BalanceIdentifier::Internal(balance_addr),
         }
     }
 
@@ -24,9 +120,14 @@ impl BalanceRequest {
         self.state_hash
     }
 
-    /// Returns a purse [`URef`].
-    pub fn purse_uref(&self) -> URef {
-        self.purse_uref
+    /// Protocol version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns the identifier [`BalanceIdentifier`].
+    pub fn identifier(&self) -> &BalanceIdentifier {
+        &self.identifier
     }
 }
 

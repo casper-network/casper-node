@@ -240,9 +240,12 @@ impl TransactionAcceptor {
                     let error = Error::parameter_failure(&block_header, parameter_failure);
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
-
-                let balance_request =
-                    BalanceRequest::new(*block_header.state_root_hash(), entity.main_purse());
+                let protocol_version = block_header.protocol_version();
+                let balance_request = BalanceRequest::from_purse(
+                    *block_header.state_root_hash(),
+                    protocol_version,
+                    entity.main_purse(),
+                );
                 effect_builder
                     .get_balance(balance_request)
                     .event(move |balance_result| Event::GetBalanceResult {

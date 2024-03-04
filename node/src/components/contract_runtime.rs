@@ -114,9 +114,6 @@ impl ContractRuntime {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState::default()));
 
-        let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
-            .map_err(ConfigError::GlobalState)?;
-
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
             .with_max_associated_keys(chainspec.core_config.max_associated_keys)
@@ -126,10 +123,7 @@ impl ContractRuntime {
             .with_vesting_schedule_period_millis(
                 chainspec.core_config.vesting_schedule_period.millis(),
             )
-            .with_max_delegators_per_validator(
-                (chainspec.core_config.max_delegators_per_validator != 0)
-                    .then_some(chainspec.core_config.max_delegators_per_validator),
-            )
+            .with_max_delegators_per_validator(chainspec.core_config.max_delegators_per_validator)
             .with_wasm_config(chainspec.wasm_config)
             .with_system_config(chainspec.system_costs_config)
             .with_administrative_accounts(chainspec.core_config.administrators.clone())
@@ -139,15 +133,17 @@ impl ContractRuntime {
             .with_fee_handling(chainspec.core_config.fee_handling)
             .build();
 
-        let engine_state = EngineState::new(data_access_layer, engine_config);
-
-        let engine_state = Arc::new(engine_state);
-
-        let metrics = Arc::new(Metrics::new(registry)?);
         let data_access_layer = Arc::new(
-            Self::data_access_layer(storage_dir, contract_runtime_config)
+            Self::new_data_access_layer(storage_dir, contract_runtime_config)
                 .map_err(ConfigError::GlobalState)?,
         );
+
+        let engine_state = Arc::new(EngineState::new(
+            engine_config,
+            Arc::clone(&data_access_layer),
+        ));
+
+        let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
@@ -172,7 +168,7 @@ impl ContractRuntime {
         debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
-    fn data_access_layer(
+    fn new_data_access_layer(
         storage_dir: &Path,
         contract_runtime_config: &Config,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
@@ -674,15 +670,9 @@ impl ContractRuntime {
         Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
-        &self.engine_state
-    }
-
     /// Returns data_access_layer, for testing only.
     #[cfg(test)]
-    pub(crate) fn data_provider(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
+    pub(crate) fn data_access_layer(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
         Arc::clone(&self.data_access_layer)
     }
 }

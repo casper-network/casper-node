@@ -305,17 +305,8 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
-            cache: Arc::clone(&self.cache),
-            environment: Arc::clone(&self.environment),
-            trie_store: Arc::clone(&self.trie_store),
-            root_hash: state_hash,
-        });
-        txn.commit()?;
-        Ok(maybe_state)
+    fn empty_root(&self) -> Digest {
+        self.empty_root_hash
     }
 
     fn tracking_copy(
@@ -328,8 +319,17 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
+        let txn = self.environment.create_read_txn()?;
+        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
+        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+            cache: Arc::clone(&self.cache),
+            environment: Arc::clone(&self.environment),
+            trie_store: Arc::clone(&self.trie_store),
+            root_hash: state_hash,
+        });
+        txn.commit()?;
+        Ok(maybe_state)
     }
 
     fn trie(&self, request: TrieRequest) -> TrieResult {

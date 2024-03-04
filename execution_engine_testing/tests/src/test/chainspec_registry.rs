@@ -6,7 +6,6 @@ use casper_engine_test_support::{
     LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfig;
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion};
 
@@ -124,10 +123,8 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
             .build()
     };
 
-    let engine_config = EngineConfig::default();
-
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request(&mut upgrade_request)
         .expect_upgrade_success();
 
     let queried_registry = builder

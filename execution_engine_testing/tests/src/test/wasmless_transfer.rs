@@ -2,19 +2,18 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
-    EngineConfigBuilder, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
 use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef,
+    AccessRights, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
@@ -305,6 +304,39 @@ enum InvalidWasmlessTransfer {
     TargetURefNonexistent,
     OtherPurseToSelfPurse,
 }
+
+// fn foo(invalid_wasmless_transfer: InvalidWasmlessTransfer) {
+//     let mut builder = LmdbWasmTestBuilder::default();
+//
+//     // let create_account_1_request = ExecuteRequestBuilder::standard(
+//     //     *DEFAULT_ACCOUNT_ADDR,
+//     //     CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
+//     //     runtime_args! {
+//     //         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
+//     //         mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
+//     //         mint::ARG_ID => id
+//     //     },
+//     // )
+//     //     .build();
+//     let config = NativeRuntimeConfig::default();
+//     let block_time = Instant::now();
+//     let protocol_version = ProtocolVersion::V2_0_0;
+//     //transaction_hash: TransactionHash,
+//     let address = *DEFAULT_ACCOUNT_ADDR;
+//     let authorization_keys = &[*DEFAULT_ACCOUNT_ADDR];
+//     let args = runtime_args! {
+//         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
+//         mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
+//         mint::ARG_ID => None
+//     };
+//     // cost: U512,
+//     let transfer_request = TransferRequest::new();
+//     match builder.data_access_layer().transfer(transfer_request) {
+//         TransferResult::RootNotFound => {}
+//         TransferResult::Success { .. } => {}
+//         TransferResult::Failure(_) => {}
+//     }
+// }
 
 fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer) {
     let create_account_2: bool = true;
@@ -947,7 +979,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+    // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
     let new_wasmless_transfer_cost = Motes::from_gas(
@@ -960,23 +992,23 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-    let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts::default();
-    let new_handle_payment_costs = HandlePaymentCosts::default();
-    let new_standard_payment_costs = StandardPaymentCosts::default();
+    // let new_auction_costs = AuctionCosts::default();
+    // let new_mint_costs = MintCosts::default();
+    // let new_handle_payment_costs = HandlePaymentCosts::default();
+    // let new_standard_payment_costs = StandardPaymentCosts::default();
 
-    let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost_value,
-        new_auction_costs,
-        new_mint_costs,
-        new_handle_payment_costs,
-        new_standard_payment_costs,
-    );
+    // let new_system_config = SystemConfig::new(
+    //     new_wasmless_transfer_cost_value,
+    //     new_auction_costs,
+    //     new_mint_costs,
+    //     new_handle_payment_costs,
+    //     new_standard_payment_costs,
+    // );
 
-    let new_engine_config = EngineConfigBuilder::default()
-        .with_max_associated_keys(new_max_associated_keys)
-        .with_system_config(new_system_config)
-        .build();
+    // let new_engine_config = EngineConfigBuilder::default()
+    //     .with_max_associated_keys(new_max_associated_keys)
+    //     .with_system_config(new_system_config)
+    //     .build();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -1000,7 +1032,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request(&mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

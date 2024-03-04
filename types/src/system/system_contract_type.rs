@@ -121,7 +121,7 @@ pub const AUCTION: &str = "auction";
 
 impl SystemEntityType {
     /// Returns the name of the system contract.
-    pub fn contract_name(&self) -> String {
+    pub fn entity_name(&self) -> String {
         match self {
             SystemEntityType::Mint => MINT.to_string(),
             SystemEntityType::HandlePayment => HANDLE_PAYMENT.to_string(),
@@ -131,7 +131,7 @@ impl SystemEntityType {
     }
 
     /// Returns the entrypoint of the system contract.
-    pub fn contract_entry_points(&self) -> EntryPoints {
+    pub fn entry_points(&self) -> EntryPoints {
         match self {
             SystemEntityType::Mint => mint_entry_points(),
             SystemEntityType::HandlePayment => handle_payment_entry_points(),
