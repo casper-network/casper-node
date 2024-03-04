@@ -21,7 +21,7 @@ use casper_types::{
         self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
         BinaryResponseAndRequest, DbRawBytesSpec, GetRequest, GetTrieFullResult,
         GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-        NodeStatus, RecordId, TransactionWithExecutionInfo,
+        NodeStatus, ReactorStateName, RecordId, TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHeader, BlockIdentifier, Digest, GlobalStateIdentifier, Peers, ProtocolVersion,
@@ -557,7 +557,8 @@ where
             BinaryResponse::from_value(effect_builder.get_last_progress().await, protocol_version)
         }
         InformationRequest::ReactorState => {
-            BinaryResponse::from_value(effect_builder.get_reactor_state().await, protocol_version)
+            let state = effect_builder.get_reactor_state().await;
+            BinaryResponse::from_value(ReactorStateName::new(state), protocol_version)
         }
         InformationRequest::NetworkName => {
             BinaryResponse::from_value(effect_builder.get_network_name().await, protocol_version)
@@ -622,6 +623,7 @@ where
                         consensus_status.round_length(),
                     )
                 });
+            let reactor_state = ReactorStateName::new(reactor_state);
 
             let Ok(uptime) = TimeDiff::try_from(node_uptime) else {
                 return BinaryResponse::new_error(
