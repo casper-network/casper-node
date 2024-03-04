@@ -169,10 +169,7 @@ fn send_a_valid_wire_unit() {
         creator,
         instance_id: ClContext::hash(INSTANCE_ID_DATA),
         value: Some(Arc::new(BlockPayload::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
+            BTreeMap::new(),
             vec![],
             Default::default(),
             false,
@@ -220,10 +217,7 @@ fn detect_doppelganger() {
     let round_exp = 0;
     let now = Timestamp::zero();
     let value = Arc::new(BlockPayload::new(
-        vec![],
-        vec![],
-        vec![],
-        vec![],
+        BTreeMap::new(),
         vec![],
         Default::default(),
         false,

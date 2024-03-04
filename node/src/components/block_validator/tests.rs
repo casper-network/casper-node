@@ -112,19 +112,32 @@ impl MockReactor {
 
 pub(super) fn new_proposed_block(
     timestamp: Timestamp,
-    transfer: Vec<TransactionHashWithApprovals>,
-    staking: Vec<TransactionHashWithApprovals>,
-    install_upgrade: Vec<TransactionHashWithApprovals>,
-    standard: Vec<TransactionHashWithApprovals>,
+    transfer: Vec<TransactionHash>,
+    staking: Vec<TransactionHash>,
+    install_upgrade: Vec<TransactionHash>,
+    standard: Vec<TransactionHash>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
+    let transactions = {
+        let mut ret = BTreeMap::new();
+        ret.insert(TransactionCategory::Mint, transfer.into_iter().map(|txn_hash| {
+            (txn_hash, BTreeSet::new())
+        }).collect());
+        ret.insert(TransactionCategory::Auction, staking.into_iter().map(|txn_hash| {
+            (txn_hash, BTreeSet::new())
+        }).collect());
+        ret.insert(TransactionCategory::InstallUpgrade, install_upgrade.into_iter().map(|txn_hash| {
+            (txn_hash, BTreeSet::new())
+        }).collect());
+        ret.insert(TransactionCategory::Standard, standard.into_iter().map(|txn_hash| {
+            (txn_hash, BTreeSet::new())
+        }).collect());
+        ret
+    };
     let block_payload = BlockPayload::new(
-        transfer,
-        staking,
-        install_upgrade,
-        standard,
+        transactions,
         vec![],
         Default::default(),
         true,
@@ -262,19 +275,19 @@ async fn validate_block(
     // Assemble the block to be validated.
     let transfers_for_block = transfers
         .iter()
-        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .map(|transaction| transaction.hash())
         .collect_vec();
     let standards_for_block = standards
         .iter()
-        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .map(|transaction| transaction.hash())
         .collect_vec();
     let stakings_for_block = stakings
         .iter()
-        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .map(|transaction| transaction.hash())
         .collect_vec();
     let installs_upgrades_for_block = installs_upgrades
         .iter()
-        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .map(|transaction| transaction.hash())
         .collect_vec();
     let proposed_block = new_proposed_block(
         timestamp,
@@ -586,11 +599,11 @@ async fn should_fetch_from_multiple_peers() {
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|transfer| TransactionHashWithApprovals::from(&transfer.clone()))
+            .map(|transfer| transfer.hash())
             .collect_vec();
         let standard_for_block = transactions
             .iter()
-            .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+            .map(|transaction| transaction.hash())
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),

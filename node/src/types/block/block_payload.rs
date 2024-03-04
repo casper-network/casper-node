@@ -44,44 +44,44 @@ impl BlockPayload {
     /// Returns the hashes and approvals of the mint transactions within the block.
     pub fn mint(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        let _ = self.transactions.iter().map(|(k, v)| {
-            if *k == TransactionCategory::Mint {
-                ret.extend(v)
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Mint) {
+            for transaction in transactions {
+                ret.push(transaction)
             }
-        });
+        }
         ret.into_iter()
     }
 
     /// Returns the hashes and approvals of the auction transactions within the block.
     pub fn auction(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        let _ = self.transactions.iter().map(|(k, v)| {
-            if *k == TransactionCategory::Auction {
-                ret.extend(v)
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Auction) {
+            for transaction in transactions {
+                ret.push(transaction)
             }
-        });
+        }
         ret.into_iter()
     }
 
     /// Returns the hashes and approvals of the install / upgrade transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        let _ = self.transactions.iter().map(|(k, v)| {
-            if *k == TransactionCategory::InstallUpgrade {
-                ret.extend(v)
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::InstallUpgrade) {
+            for transaction in transactions {
+                ret.push(transaction)
             }
-        });
+        }
         ret.into_iter()
     }
 
     /// Returns the hashes and approvals of the standard transactions within the block.
     pub fn standard(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];
-        let _ = self.transactions.iter().map(|(k, v)| {
-            if *k == TransactionCategory::Standard {
-                ret.extend(v)
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Standard) {
+            for transaction in transactions {
+                ret.push(transaction)
             }
-        });
+        }
         ret.into_iter()
     }
 

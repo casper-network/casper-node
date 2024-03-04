@@ -493,6 +493,7 @@ impl ContractRuntime {
                 let finalized_block_height = executable_block.height;
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height();
+                println!("{:?}", executable_block);
                 match finalized_block_height.cmp(&next_block_height) {
                     // An old block: it won't be executed:
                     Ordering::Less => {

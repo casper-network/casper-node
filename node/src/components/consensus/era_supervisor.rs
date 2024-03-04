@@ -1094,11 +1094,25 @@ impl EraSupervisor {
                             signature_rewards_max_delay,
                         );
 
+                        println!("{:?}", appendable_block.clone());
+
+                        info!("Produced appendable block");
+
                         let block_payload = Arc::new(appendable_block.into_block_payload(
                             accusations,
                             rewarded_signatures,
                             random_bit,
                         ));
+
+                        let payload: Vec<TransactionHash> = {
+                            let mut ret = vec![];
+                            for item in block_payload.all_transaction_hashes() {
+                                ret.push(item);
+                            }
+                            ret
+                        };
+
+                        println!("{:?}", payload);
 
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,
@@ -1143,8 +1157,10 @@ impl EraSupervisor {
                     }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
+                println!("PB {:?}", proposed_block);
                 let finalized_approvals: HashMap<_, _> =
                     proposed_block.all_transactions().cloned().collect();
+                println!("FA {:?}", finalized_approvals);
                 if let Some(era_report) = report.as_ref() {
                     info!(
                         inactive = %DisplayIter::new(&era_report.inactive_validators),
@@ -1161,10 +1177,12 @@ impl EraSupervisor {
                     era.start_height + relative_height,
                     proposer,
                 );
-                info!(
+                let transactions_count = finalized_block.standard.len();
+                warn!(
                     era_id = finalized_block.era_id.value(),
                     height = finalized_block.height,
                     timestamp = %finalized_block.timestamp,
+                    standard_count = %transactions_count,
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -1187,6 +1205,7 @@ impl EraSupervisor {
                 sender,
                 proposed_block,
             } => {
+                println!("validating {:?}", proposed_block);
                 if era_id.saturating_add(PAST_EVIDENCE_ERAS) < current_era
                     || !self.open_eras.contains_key(&era_id)
                 {
@@ -1373,7 +1392,7 @@ impl SerializedMessage {
 async fn get_transactions<REv>(
     effect_builder: EffectBuilder<REv>,
     hashes: Vec<TransactionHash>,
-) -> Option<Vec<Transaction>>
+) -> Vec<Transaction>
 where
     REv: From<StorageRequest>,
 {
@@ -1392,11 +1411,7 @@ where
         }
     }
 
-    if ret.is_empty() {
-        None
-    } else {
-        Some(ret)
-    }
+    ret
 }
 
 async fn execute_finalized_block<REv>(
@@ -1411,24 +1426,15 @@ async fn execute_finalized_block<REv>(
             .store_finalized_approvals(txn_hash, finalized_approvals)
             .await;
     }
+
+    println!("Standard {:?}", finalized_block.standard);
+
     // Get all transactions in order they appear in the finalized block.
-    let transactions = match get_transactions(
+    let transactions = get_transactions(
         effect_builder,
         finalized_block.all_transactions().copied().collect(),
     )
-    .await
-    {
-        Some(transactions) => transactions,
-        None => {
-            fatal!(
-                effect_builder,
-                "Could not fetch transactions for finalized block: {:?}",
-                finalized_block
-            )
-            .await;
-            return;
-        }
-    };
+    .await;
 
     let executable_block =
         ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions);
@@ -1494,6 +1500,9 @@ where
             proposed_block.clone(),
         )
         .await;
+
+    warn!(%valid, "Result of validity check");
+
 
     Event::ResolveValidity(ResolveValidity {
         era_id: proposed_block_era_id,

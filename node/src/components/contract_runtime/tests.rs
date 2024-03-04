@@ -1,4 +1,5 @@
 use std::{sync::Arc, time::Duration};
+use std::collections::BTreeMap;
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -6,10 +7,7 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_types::{
-    bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
-};
+use casper_types::{bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId, ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512, TransactionCategory};
 
 use super::*;
 use crate::{
@@ -23,11 +21,11 @@ use crate::{
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
     types::{
         BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
-        TransactionHashWithApprovals,
     },
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
+use crate::types::TransactionExt;
 
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -300,7 +298,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-          "amount" => U512::from(chainspec.system_costs_config.wasmless_mint_cost()),
+          "amount" => U512::from(chainspec.system_costs_config.mint_costs().transfer),
         },
     };
 
@@ -327,13 +325,16 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     })
     .take(200)
     .collect();
+
+    let mut txn_set = BTreeMap::new();
+    let val = txns.iter().map(|transaction| {
+        let hash = transaction.hash();
+        let approvals = transaction.approvals();
+        (hash, approvals)
+    }).collect();
+    txn_set.insert(TransactionCategory::Mint, val);
     let block_payload = BlockPayload::new(
-        txns.iter()
-            .map(TransactionHashWithApprovals::from)
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        txn_set,
         vec![],
         Default::default(),
         true,

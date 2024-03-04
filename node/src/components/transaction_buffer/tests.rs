@@ -1,13 +1,10 @@
 use prometheus::Registry;
 use rand::{seq::SliceRandom, Rng};
 
-use casper_types::{
-    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionV1,
-};
+use casper_types::{testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionV1, TransactionCategory, TransactionConfig};
 
 use super::*;
 use crate::{
-    components::tests::TransactionCategory,
     effect::announcements::TransactionBufferAnnouncement::{self, TransactionsExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::FinalizedBlock,
@@ -59,35 +56,41 @@ fn create_valid_transaction(
     };
 
     match transaction_category {
-        TransactionCategory::TransferLegacy => {
-            Transaction::Deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
-                rng,
-                transaction_timestamp,
-                transaction_ttl,
-            ))
+        TransactionCategory::Mint => {
+            if rng.gen() {
+                Transaction::V1(TransactionV1::random_transfer(
+                    rng,
+                    strict_timestamp,
+                    with_ttl,
+                ))
+            } else {
+                Transaction::Deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+                    rng,
+                    transaction_timestamp,
+                    transaction_ttl,
+                ))
+            }
+        },
+        TransactionCategory::Standard => {
+            if rng.gen() {
+                Transaction::Deploy(match (strict_timestamp, with_ttl) {
+                    (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
+                        Deploy::random_expired_deploy(rng)
+                    }
+                    _ => Deploy::random_with_valid_session_package_by_name(rng),
+                })
+            } else {
+                Transaction::V1(TransactionV1::random_standard(
+                    rng,
+                    strict_timestamp,
+                    with_ttl,
+                ))
+            }
         }
-        TransactionCategory::Transfer => Transaction::V1(TransactionV1::random_transfer(
-            rng,
-            strict_timestamp,
-            with_ttl,
-        )),
-        TransactionCategory::StandardLegacy => {
-            Transaction::Deploy(match (strict_timestamp, with_ttl) {
-                (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
-                    Deploy::random_expired_deploy(rng)
-                }
-                _ => Deploy::random_with_valid_session_package_by_name(rng),
-            })
-        }
-        TransactionCategory::Standard => Transaction::V1(TransactionV1::random_standard(
-            rng,
-            strict_timestamp,
-            with_ttl,
-        )),
         TransactionCategory::InstallUpgrade => Transaction::V1(
             TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
         ),
-        TransactionCategory::Staking => Transaction::V1(TransactionV1::random_staking(
+        TransactionCategory::Auction => Transaction::V1(TransactionV1::random_staking(
             rng,
             strict_timestamp,
             with_ttl,
@@ -155,12 +158,10 @@ fn assert_container_sizes(
 
 const fn all_categories() -> &'static [TransactionCategory] {
     &[
+        TransactionCategory::Mint,
         TransactionCategory::InstallUpgrade,
-        TransactionCategory::Staking,
+        TransactionCategory::Auction,
         TransactionCategory::Standard,
-        TransactionCategory::StandardLegacy,
-        TransactionCategory::Transfer,
-        TransactionCategory::TransferLegacy,
     ]
 }
 
@@ -170,7 +171,7 @@ fn register_transaction_and_check_size() {
 
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            TransactionConfig::default(),
+            Arc::new(Chainspec::default()),
             Config::default(),
             &Registry::new(),
         )
@@ -216,7 +217,7 @@ fn register_block_with_valid_transactions() {
 
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            TransactionConfig::default(),
+            Arc::new(Chainspec::default()),
             Config::default(),
             &Registry::new(),
         )
@@ -246,7 +247,7 @@ fn register_finalized_block_with_valid_transactions() {
 
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            TransactionConfig::default(),
+            Arc::new(Chainspec::default()),
             Config::default(),
             &Registry::new(),
         )
@@ -268,7 +269,7 @@ fn get_proposable_transactions() {
 
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            TransactionConfig::default(),
+            Arc::new(Chainspec::default()),
             Config::default(),
             &Registry::new(),
         )
@@ -303,7 +304,7 @@ fn get_proposable_transactions() {
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> = proposable
             .iter()
-            .map(|(th, _)| th.transaction_hash())
+            .map(|(th, _)| *th)
             .collect();
         for transaction in transactions.iter() {
             assert!(proposable_transaction_hashes.contains(&transaction.hash()));
@@ -328,7 +329,7 @@ fn get_proposable_transactions() {
         for transaction in proposable.iter() {
             assert!(!appendable_block
                 .transaction_hashes()
-                .contains(&transaction.0.transaction_hash()));
+                .contains(&transaction.0));
         }
     }
 }
@@ -344,12 +345,13 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
     for category in &[
-        TransactionCategory::TransferLegacy,
-        TransactionCategory::Transfer,
+        TransactionCategory::Mint,
     ] {
+        let chainspec = Arc::new(Chainspec{ transaction_config, ..Default::default()});
         let mut transaction_buffer =
-            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
+            TransactionBuffer::new(chainspec, Config::default(), &Registry::new())
                 .unwrap();
 
         get_appendable_block(
@@ -373,15 +375,16 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         ..Default::default()
     };
 
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
         [
-            TransactionCategory::TransferLegacy,
-            TransactionCategory::Transfer,
+            TransactionCategory::Mint
         ]
         .iter()
         .cycle(),
@@ -400,13 +403,13 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
     for category in &[
         TransactionCategory::Standard,
-        TransactionCategory::StandardLegacy,
     ] {
+        let chainspec = Chainspec{ transaction_config, ..Default::default()};
         let mut transaction_buffer =
-            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
-                .unwrap();
+            TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
         get_appendable_block(
             &mut rng,
             &mut transaction_buffer,
@@ -427,13 +430,15 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
         [
-            TransactionCategory::StandardLegacy,
             TransactionCategory::Standard,
         ]
         .iter()
@@ -461,8 +466,11 @@ fn block_fully_saturated() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Try to register 10 more transactions per each category as allowed by the config.
     let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
@@ -551,8 +559,11 @@ fn block_not_fully_saturated() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Try to register less than max capacity per each category as allowed by the config.
     let actual_transfer_count = rng.gen_range(0..MIN_COUNT - 1);
@@ -645,8 +656,11 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Saturate all buckets but transfers.
     let (transfers, _, _, _) = generate_and_register_transactions(
@@ -699,8 +713,11 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Saturate all buckets but stakings.
     let (_, stakings, _, _) = generate_and_register_transactions(
@@ -753,8 +770,11 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Saturate all buckets but install_upgrades.
     let (_, _, install_upgrades, _) = generate_and_register_transactions(
@@ -807,8 +827,11 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+
+    let chainspec = Chainspec{ transaction_config, ..Default::default()};
+
     let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+        TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
     // Saturate all buckets but standards.
     let (_, _, _, standards) = generate_and_register_transactions(
@@ -872,28 +895,18 @@ fn generate_and_register_transactions(
 ) {
     let transfers: Vec<_> = (0..transfer_count)
         .map(|_| {
-            let category = if rng.gen() {
-                TransactionCategory::Transfer
-            } else {
-                TransactionCategory::TransferLegacy
-            };
-            create_valid_transaction(rng, &category, None, None)
+            create_valid_transaction(rng, &TransactionCategory::Mint, None, None)
         })
         .collect();
     let stakings: Vec<_> = (0..stakings_count)
-        .map(|_| create_valid_transaction(rng, &TransactionCategory::Staking, None, None))
+        .map(|_| create_valid_transaction(rng, &TransactionCategory::Auction, None, None))
         .collect();
     let installs_upgrades: Vec<_> = (0..install_upgrade_count)
         .map(|_| create_valid_transaction(rng, &TransactionCategory::InstallUpgrade, None, None))
         .collect();
     let standards: Vec<_> = (0..standard_count)
         .map(|_| {
-            let category = if rng.gen() {
-                TransactionCategory::Standard
-            } else {
-                TransactionCategory::StandardLegacy
-            };
-            create_valid_transaction(rng, &category, None, None)
+            create_valid_transaction(rng, &TransactionCategory::Standard, None, None)
         })
         .collect();
     transfers
@@ -912,7 +925,7 @@ fn generate_and_register_transactions(
 fn register_transactions_and_blocks() {
     let mut rng = TestRng::new();
     let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
+        Arc::new(Chainspec::default()),
         Config::default(),
         &Registry::new(),
     )
@@ -1073,7 +1086,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_one
 
     for category in all_categories() {
         let mut transaction_buffer = TransactionBuffer::new(
-            TransactionConfig::default(),
+            Arc::new(Chainspec::default()),
             Config::default(),
             &Registry::new(),
         )
@@ -1150,7 +1163,7 @@ async fn expire_transactions_and_check_announcement_when_transactions_are_of_ran
     let mut rng = TestRng::new();
 
     let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
+        Arc::new(Chainspec::default()),
         Config::default(),
         &Registry::new(),
     )

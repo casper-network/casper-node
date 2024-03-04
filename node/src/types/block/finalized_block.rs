@@ -83,8 +83,8 @@ static INTERNAL_ERA_REPORT: Lazy<InternalEraReport> = Lazy::new(|| {
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
-    pub(crate) transfer: Vec<TransactionHash>,
-    pub(crate) staking: Vec<TransactionHash>,
+    pub(crate) mint: Vec<TransactionHash>,
+    pub(crate) auction: Vec<TransactionHash>,
     pub(crate) install_upgrade: Vec<TransactionHash>,
     pub(crate) standard: Vec<TransactionHash>,
     pub(crate) rewarded_signatures: RewardedSignatures,
@@ -117,8 +117,8 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            transfer: block_payload.mint().map(|(x, _)| x).copied().collect(),
-            staking: block_payload.auction().map(|(x, _)| x).copied().collect(),
+            mint: block_payload.mint().map(|(x, _)| x).copied().collect(),
+            auction: block_payload.auction().map(|(x, _)| x).copied().collect(),
             install_upgrade: block_payload
                 .install_upgrade()
                 .map(|(x, _)| x)
@@ -137,9 +137,9 @@ impl FinalizedBlock {
 
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub(crate) fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.transfer
+        self.mint
             .iter()
-            .chain(&self.staking)
+            .chain(&self.auction)
             .chain(&self.install_upgrade)
             .chain(&self.standard)
     }
@@ -221,8 +221,8 @@ impl DocExample for InternalEraReport {
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
-            transfer: block.transfer().copied().collect(),
-            staking: block.staking().copied().collect(),
+            mint: block.transfer().copied().collect(),
+            auction: block.staking().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             timestamp: block.timestamp(),
@@ -248,8 +248,8 @@ impl Display for FinalizedBlock {
             self.height,
             self.era_id,
             self.timestamp,
-            self.transfer.len(),
-            self.staking.len(),
+            self.mint.len(),
+            self.auction.len(),
             self.install_upgrade.len(),
             self.standard.len(),
         )?;
@@ -277,5 +277,46 @@ impl InternalEraReport {
             equivocators,
             inactive_validators,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use casper_types::Deploy;
+    use super::*;
+
+    #[test]
+    fn should_convert_from_proposable_to_finalized_without_dropping_hashes() {
+        let mut rng = TestRng::new();
+
+        let standard = Transaction::Deploy(Deploy::random(&mut rng));
+        let hash = standard.hash();
+        let transactions = {
+            let mut ret = BTreeMap::new();
+            ret.insert(TransactionCategory::Standard, vec![(hash, BTreeSet::new())]);
+            ret.insert(TransactionCategory::Mint, vec![]);
+            ret.insert(TransactionCategory::InstallUpgrade, vec![]);
+            ret.insert(TransactionCategory::Auction, vec![]);
+            ret
+        };
+        let block_payload = BlockPayload::new(
+            transactions,
+            vec![],
+            Default::default(),
+            false
+        );
+
+        let fb = FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::random(&mut rng),
+            90,
+            PublicKey::random(&mut rng)
+        );
+
+        let transactions = fb.standard;
+        assert!(!transactions.is_empty())
     }
 }
