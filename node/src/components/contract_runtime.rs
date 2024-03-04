@@ -429,6 +429,24 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetTaggedValues {
+                request: tagged_values_request,
+                responder,
+            } => {
+                trace!(?tagged_values_request, "tagged values request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.tagged_values(tagged_values_request);
+                    metrics
+                        .get_all_values
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get all values result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             // trie related events
             ContractRuntimeRequest::GetTrie {
                 request: trie_request,
@@ -544,24 +562,6 @@ impl ContractRuntime {
                     .exec_queue_size
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
-            }
-            ContractRuntimeRequest::GetAllValues {
-                all_values_request,
-                responder,
-            } => {
-                trace!(?all_values_request, "get all values request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_all_values(all_values_request);
-                    metrics
-                        .get_all_values
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get all values result");
-                    responder.respond(result).await
-                }
-                .ignore()
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
