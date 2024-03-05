@@ -33,7 +33,9 @@ use casper_types::{
 
 use self::meter::{heap_meter::HeapSize, Meter};
 pub use self::{
-    error::Error as TrackingCopyError, ext::TrackingCopyExt, ext_entity::TrackingCopyEntityExt,
+    error::Error as TrackingCopyError,
+    ext::TrackingCopyExt,
+    ext_entity::{FeesPurseHandling, TrackingCopyEntityExt},
 };
 
 /// Result of a query on a `TrackingCopy`.

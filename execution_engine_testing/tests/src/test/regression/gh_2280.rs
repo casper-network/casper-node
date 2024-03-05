@@ -7,8 +7,9 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AddressableEntityHash, EraId, Gas,
-    HostFunctionCost, Key, Motes, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey,
-    U512,
+    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -110,40 +111,41 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     assert_eq!(gas_cost_1, gas_cost_2);
 
-    let mut upgrade_request = make_upgrade_request();
-    //
-    // // Increase "transfer_to_account" host function call exactly by X, so we can assert that
-    // // transfer cost increased by exactly X without hidden fees.
-    // let default_host_function_costs = HostFunctionCosts::default();
-    //
-    // let default_transfer_to_account_cost =
-    // default_host_function_costs.transfer_to_account.cost(); let new_transfer_to_account_cost
-    // = default_transfer_to_account_cost     .checked_add(HOST_FUNCTION_COST_CHANGE)
-    //     .expect("should add without overflow");
-    // let new_transfer_to_account = HostFunction::fixed(new_transfer_to_account_cost);
+    // Increase "transfer_to_account" host function call exactly by X, so we can assert that
+    // transfer cost increased by exactly X without hidden fees.
+    let default_host_function_costs = HostFunctionCosts::default();
 
-    // let new_host_function_costs = HostFunctionCosts {
-    //     transfer_to_account: new_transfer_to_account,
-    //     ..default_host_function_costs
-    // };
+    let default_transfer_to_account_cost = default_host_function_costs.transfer_to_account.cost();
+    let new_transfer_to_account_cost = default_transfer_to_account_cost
+        .checked_add(HOST_FUNCTION_COST_CHANGE)
+        .expect("should add without overflow");
+    let new_transfer_to_account = HostFunction::fixed(new_transfer_to_account_cost);
 
-    // let new_wasm_config =
-    //     make_wasm_config(new_host_function_costs, *builder.chainspec().wasm_config);
+    let new_host_function_costs = HostFunctionCosts {
+        transfer_to_account: new_transfer_to_account,
+        ..default_host_function_costs
+    };
+
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
-    // let new_mint_create_cost = u32::MAX;
-    // let new_mint_costs = MintCosts {
-    //     create: new_mint_create_cost,
-    //     ..Default::default()
-    // };
+    let new_mint_create_cost = u32::MAX;
+    let new_mint_costs = MintCosts {
+        create: new_mint_create_cost,
+        ..Default::default()
+    };
 
-    // let new_engine_config = make_engine_config(
-    //     new_mint_costs,
-    //     new_wasm_config,
-    //     *builder.get_engine_state().config().system_config(),
-    // );
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.with_chainspec(updated_chainspec);
+
+    let mut upgrade_request = make_upgrade_request();
+    builder.upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -234,39 +236,38 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    // let host_function_costs = builder.chainspec().wasm_config.take_host_function_costs();
-    //
-    // let default_create_purse_cost = host_function_costs.create_purse.cost();
-    // let new_create_purse_cost = default_create_purse_cost
-    //     .checked_add(HOST_FUNCTION_COST_CHANGE)
-    //     .expect("should add without overflow");
-    // let new_create_purse = HostFunction::fixed(new_create_purse_cost);
-    //
-    // let new_host_function_costs = HostFunctionCosts {
-    //     create_purse: new_create_purse,
-    //     ..host_function_costs
-    // };
-    //
-    // let new_wasm_config = make_wasm_config(
-    //     new_host_function_costs,
-    //     *builder.get_engine_state().config().wasm_config(),
-    // );
+    let host_function_costs = builder.chainspec().wasm_config.take_host_function_costs();
+
+    let default_create_purse_cost = host_function_costs.create_purse.cost();
+    let new_create_purse_cost = default_create_purse_cost
+        .checked_add(HOST_FUNCTION_COST_CHANGE)
+        .expect("should add without overflow");
+    let new_create_purse = HostFunction::fixed(new_create_purse_cost);
+
+    let new_host_function_costs = HostFunctionCosts {
+        create_purse: new_create_purse,
+        ..host_function_costs
+    };
+
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
-    // let new_mint_create_cost = u32::MAX;
-    // let new_mint_costs = MintCosts {
-    //     create: new_mint_create_cost,
-    //     ..Default::default()
-    // };
-    //
-    // let new_engine_config = make_engine_config(
-    //     new_mint_costs,
-    //     new_wasm_config,
-    //     *builder.get_engine_state().config().system_config(),
-    // );
+    let new_mint_create_cost = u32::MAX;
+    let new_mint_costs = MintCosts {
+        create: new_mint_create_cost,
+        ..Default::default()
+    };
+
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let fund_request_3 = {
@@ -356,43 +357,44 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
     assert_eq!(gas_cost_1, gas_cost_2);
 
     let mut upgrade_request = make_upgrade_request();
-    //
-    // // Increase "transfer_to_account" host function call exactly by X, so we can assert that
-    // // transfer cost increased by exactly X without hidden fees.
-    // let default_host_function_costs = HostFunctionCosts::default();
-    //
-    // let default_transfer_from_purse_to_account_cost = default_host_function_costs
-    //     .transfer_from_purse_to_account
-    //     .cost();
-    // let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
-    //     .checked_add(HOST_FUNCTION_COST_CHANGE)
-    //     .expect("should add without overflow");
-    // let new_transfer_from_purse_to_account =
-    //     HostFunction::fixed(new_transfer_from_purse_to_account_cost);
-    //
-    // let new_host_function_costs = HostFunctionCosts {
-    //     transfer_from_purse_to_account: new_transfer_from_purse_to_account,
-    //     ..default_host_function_costs
-    // };
-    //
-    // let new_wasm_config = make_wasm_config(
-    //     new_host_function_costs,
-    //     *builder.get_engine_state().config().wasm_config(),
-    // );
-    //
-    // // Inflate affected system contract entry point cost to the maximum
-    // let new_mint_create_cost = u32::MAX;
-    // let new_mint_costs = MintCosts {
-    //     create: new_mint_create_cost,
-    //     ..Default::default()
-    // };
-    // let new_engine_config = make_engine_config(
-    //     new_mint_costs,
-    //     new_wasm_config,
-    //     *builder.get_engine_state().config().system_config(),
-    // );
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    // Increase "transfer_to_account" host function call exactly by X, so we can assert that
+    // transfer cost increased by exactly X without hidden fees.
+    let default_host_function_costs = HostFunctionCosts::default();
+
+    let default_transfer_from_purse_to_account_cost = default_host_function_costs
+        .transfer_from_purse_to_account
+        .cost();
+    let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
+        .checked_add(HOST_FUNCTION_COST_CHANGE)
+        .expect("should add without overflow");
+    let new_transfer_from_purse_to_account =
+        HostFunction::fixed(new_transfer_from_purse_to_account_cost);
+
+    let new_host_function_costs = HostFunctionCosts {
+        transfer_from_purse_to_account: new_transfer_from_purse_to_account,
+        ..default_host_function_costs
+    };
+
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
+
+    // Inflate affected system contract entry point cost to the maximum
+    let new_mint_create_cost = u32::MAX;
+    let new_mint_costs = MintCosts {
+        create: new_mint_create_cost,
+        ..Default::default()
+    };
+
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
+
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -485,44 +487,44 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
     assert_eq!(gas_cost_1, gas_cost_2);
 
     let mut upgrade_request = make_upgrade_request();
-    //
-    // // Increase "transfer_to_account" host function call exactly by X, so we can assert that
-    // // transfer cost increased by exactly X without hidden fees.
-    // let default_host_function_costs = HostFunctionCosts::default();
-    //
-    // let default_transfer_from_purse_to_account_cost = default_host_function_costs
-    //     .transfer_from_purse_to_account
-    //     .cost();
-    // let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
-    //     .checked_add(HOST_FUNCTION_COST_CHANGE)
-    //     .expect("should add without overflow");
-    // let new_transfer_from_purse_to_account =
-    //     HostFunction::fixed(new_transfer_from_purse_to_account_cost);
-    //
-    // let new_host_function_costs = HostFunctionCosts {
-    //     transfer_from_purse_to_account: new_transfer_from_purse_to_account,
-    //     ..default_host_function_costs
-    // };
-    //
-    // let new_wasm_config = make_wasm_config(
-    //     new_host_function_costs,
-    //     *builder.get_engine_state().config().wasm_config(),
-    // );
-    //
-    // // Inflate affected system contract entry point cost to the maximum
-    // let new_mint_create_cost = u32::MAX;
-    // let new_mint_costs = MintCosts {
-    //     create: new_mint_create_cost,
-    //     ..Default::default()
-    // };
-    //
-    // let new_engine_config = make_engine_config(
-    //     new_mint_costs,
-    //     new_wasm_config,
-    //     *builder.get_engine_state().config().system_config(),
-    // );
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    // Increase "transfer_to_account" host function call exactly by X, so we can assert that
+    // transfer cost increased by exactly X without hidden fees.
+    let default_host_function_costs = HostFunctionCosts::default();
+
+    let default_transfer_from_purse_to_account_cost = default_host_function_costs
+        .transfer_from_purse_to_account
+        .cost();
+    let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
+        .checked_add(HOST_FUNCTION_COST_CHANGE)
+        .expect("should add without overflow");
+    let new_transfer_from_purse_to_account =
+        HostFunction::fixed(new_transfer_from_purse_to_account_cost);
+
+    let new_host_function_costs = HostFunctionCosts {
+        transfer_from_purse_to_account: new_transfer_from_purse_to_account,
+        ..default_host_function_costs
+    };
+
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
+
+    // Inflate affected system contract entry point cost to the maximum
+    let new_mint_create_cost = u32::MAX;
+    let new_mint_costs = MintCosts {
+        create: new_mint_create_cost,
+        ..Default::default()
+    };
+
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
+
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -611,44 +613,44 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
     assert_eq!(gas_cost_1, gas_cost_2);
 
     let mut upgrade_request = make_upgrade_request();
-    //
-    // // Increase "transfer_to_account" host function call exactly by X, so we can assert that
-    // // transfer cost increased by exactly X without hidden fees.
-    // let default_host_function_costs = HostFunctionCosts::default();
-    //
-    // let default_transfer_from_purse_to_account_cost = default_host_function_costs
-    //     .transfer_from_purse_to_account
-    //     .cost();
-    // let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
-    //     .checked_add(HOST_FUNCTION_COST_CHANGE)
-    //     .expect("should add without overflow");
-    // let new_transfer_from_purse_to_account =
-    //     HostFunction::fixed(new_transfer_from_purse_to_account_cost);
-    //
-    // let new_host_function_costs = HostFunctionCosts {
-    //     transfer_from_purse_to_account: new_transfer_from_purse_to_account,
-    //     ..default_host_function_costs
-    // };
-    //
-    // let new_wasm_config = make_wasm_config(
-    //     new_host_function_costs,
-    //     *builder.get_engine_state().config().wasm_config(),
-    // );
-    //
-    // // Inflate affected system contract entry point cost to the maximum
-    // let new_mint_create_cost = u32::MAX;
-    // let new_mint_costs = MintCosts {
-    //     create: new_mint_create_cost,
-    //     ..Default::default()
-    // };
-    //
-    // let new_engine_config = make_engine_config(
-    //     new_mint_costs,
-    //     new_wasm_config,
-    //     *builder.get_engine_state().config().system_config(),
-    // );
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    // Increase "transfer_to_account" host function call exactly by X, so we can assert that
+    // transfer cost increased by exactly X without hidden fees.
+    let default_host_function_costs = HostFunctionCosts::default();
+
+    let default_transfer_from_purse_to_account_cost = default_host_function_costs
+        .transfer_from_purse_to_account
+        .cost();
+    let new_transfer_from_purse_to_account_cost = default_transfer_from_purse_to_account_cost
+        .checked_add(HOST_FUNCTION_COST_CHANGE)
+        .expect("should add without overflow");
+    let new_transfer_from_purse_to_account =
+        HostFunction::fixed(new_transfer_from_purse_to_account_cost);
+
+    let new_host_function_costs = HostFunctionCosts {
+        transfer_from_purse_to_account: new_transfer_from_purse_to_account,
+        ..default_host_function_costs
+    };
+
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
+
+    // Inflate affected system contract entry point cost to the maximum
+    let new_mint_create_cost = u32::MAX;
+    let new_mint_costs = MintCosts {
+        create: new_mint_create_cost,
+        ..Default::default()
+    };
+
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
+
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -721,38 +723,20 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
 
     (builder, TestContext { gh_2280_regression })
 }
-//
-// fn make_engine_config(
-//     new_mint_costs: MintCosts,
-//     new_wasm_config: WasmConfig,
-//     old_system_config: SystemConfig,
-// ) -> EngineConfig {
-//     let new_system_config = SystemConfig::new(
-//         old_system_config.wasmless_transfer_cost(),
-//         *old_system_config.auction_costs(),
-//         new_mint_costs,
-//         *old_system_config.handle_payment_costs(),
-//         *old_system_config.standard_payment_costs(),
-//     );
-//     EngineConfigBuilder::default()
-//         .with_wasm_config(new_wasm_config)
-//         .with_system_config(new_system_config)
-//         .build()
-// }
-//
-// fn make_wasm_config(
-//     new_host_function_costs: HostFunctionCosts,
-//     old_wasm_config: WasmConfig,
-// ) -> WasmConfig {
-//     WasmConfig::new(
-//         DEFAULT_WASM_MAX_MEMORY,
-//         DEFAULT_MAX_STACK_HEIGHT,
-//         old_wasm_config.opcode_costs(),
-//         old_wasm_config.storage_costs(),
-//         new_host_function_costs,
-//         old_wasm_config.messages_limits(),
-//     )
-// }
+
+fn make_wasm_config(
+    new_host_function_costs: HostFunctionCosts,
+    old_wasm_config: WasmConfig,
+) -> WasmConfig {
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        old_wasm_config.opcode_costs(),
+        old_wasm_config.storage_costs(),
+        new_host_function_costs,
+        old_wasm_config.messages_limits(),
+    )
+}
 
 fn make_upgrade_request() -> ProtocolUpgradeConfig {
     UpgradeRequestBuilder::new()

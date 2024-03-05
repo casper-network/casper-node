@@ -6,18 +6,17 @@ pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc};
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::error;
 
-use casper_storage::data_access_layer::TransferRequest;
-use casper_storage::system::runtime_native::TransferConfig;
 use casper_storage::{
-    data_access_layer::{FeesPurseRequest, FeesPurseResult},
+    data_access_layer::TransferRequest,
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
+    system::runtime_native::TransferConfig,
+    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyExt},
 };
 
 use casper_types::{
@@ -26,8 +25,8 @@ use casper_types::{
         handle_payment::{self},
         HANDLE_PAYMENT,
     },
-    BlockTime, DeployInfo, Digest, EntityAddr, ExecutableDeployItem, Gas, Key, Motes, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, TransactionHash, U512,
+    BlockTime, DeployInfo, Digest, EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, Motes,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, TransactionHash, U512,
 };
 
 use crate::{
@@ -65,29 +64,20 @@ pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 /// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
 /// Methods implemented on this structure are the external API intended to be used by the users such
 /// as the node, test framework, and others.
-#[derive(Debug)]
-pub struct EngineState<S> {
+#[derive(Debug, Clone, Default)]
+pub struct ExecutionEngineV1 {
     config: EngineConfig,
-    state: Arc<S>,
 }
 
-impl<S> EngineState<S>
-where
-    S: StateProvider,
-{
+impl ExecutionEngineV1 {
     /// Creates new engine state.
-    pub fn new(config: EngineConfig, state: Arc<S>) -> EngineState<S> {
-        EngineState { config, state }
+    pub fn new(config: EngineConfig) -> ExecutionEngineV1 {
+        ExecutionEngineV1 { config }
     }
 
     /// Returns engine config.
-    fn config(&self) -> &EngineConfig {
+    pub fn config(&self) -> &EngineConfig {
         &self.config
-    }
-
-    /// Updates current engine config with a new instance.
-    pub fn update_config(&mut self, new_config: EngineConfig) {
-        self.config = new_config
     }
 
     /// Runs a deploy execution request.
@@ -97,19 +87,25 @@ where
     /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
     ///
     /// Return execution results which contains results from each deploy ran.
-    pub fn run_execute(&self, mut exec_request: ExecuteRequest) -> Result<ExecutionResults, Error> {
+    pub fn exec(
+        &self,
+        state_provider: &impl StateProvider,
+        mut exec_request: ExecuteRequest,
+    ) -> Result<ExecutionResults, Error> {
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
 
         for deploy_item in deploys {
             let result = match deploy_item.session {
                 ExecutableDeployItem::Transfer { .. } => self.transfer(
+                    state_provider,
                     exec_request.protocol_version,
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
                     deploy_item,
                 ),
                 _ => self.deploy(
+                    state_provider,
                     exec_request.protocol_version,
                     exec_request.parent_state_hash,
                     BlockTime::new(exec_request.block_time),
@@ -135,13 +131,17 @@ where
     ///
     /// Returns an [`ExecutionResult`] for a successful native transfer.
     #[allow(clippy::too_many_arguments)]
-    pub fn transfer(
+    fn transfer(
         &self,
+        state_provider: &impl StateProvider,
         protocol_version: ProtocolVersion,
         prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
     ) -> Result<ExecutionResult, Error> {
+        // leaving this method in place for now as a lot of tests rely on it.
+        // TODO: rewrite those tests to use the data access layer instead and
+        // then remove this method.
         let deploy_hash = deploy_item.deploy_hash;
         let transfer_config = TransferConfig::new(
             self.config.administrative_accounts.clone(),
@@ -183,7 +183,7 @@ where
             deploy_item.session.args().clone(),
             wasmless_transfer_gas.value(),
         );
-        let transfer_result = self.state.transfer(transfer_req);
+        let transfer_result = state_provider.transfer(transfer_req);
         ExecutionResult::from_transfer_result(transfer_result, wasmless_transfer_gas)
             .map_err(|_| Error::RootNotFound(prestate_hash))
     }
@@ -201,13 +201,14 @@ where
     #[allow(clippy::too_many_arguments)]
     fn deploy(
         &self,
+        state_provider: &impl StateProvider,
         protocol_version: ProtocolVersion,
         prestate_hash: Digest,
         blocktime: BlockTime,
         deploy_item: DeployItem,
         proposer: PublicKey,
     ) -> Result<ExecutionResult, Error> {
-        let tracking_copy = match self.state.tracking_copy(prestate_hash) {
+        let tracking_copy = match state_provider.tracking_copy(prestate_hash) {
             Err(gse) => return Ok(ExecutionResult::precondition_failure(Error::Storage(gse))),
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
@@ -363,32 +364,23 @@ where
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
-        let fees_purse_request = FeesPurseRequest::to_proposer(
-            prestate_hash,
-            protocol_version,
-            proposer.to_account_hash(),
-        );
+        let rewards_target_purse = {
+            let fees_purse_handling = match self.config.fee_handling {
+                FeeHandling::PayToProposer => {
+                    FeesPurseHandling::ToProposer(proposer.to_account_hash())
+                }
+                FeeHandling::None => FeesPurseHandling::None(payment_purse_uref),
+                FeeHandling::Accumulate => FeesPurseHandling::Accumulate,
+                FeeHandling::Burn => FeesPurseHandling::Burn,
+            };
 
-        let rewards_target_purse = match self.state.fees_purse(fees_purse_request) {
-            FeesPurseResult::RootNotFound => {
-                return Err(Error::RootNotFound(prestate_hash));
+            match tracking_copy
+                .borrow_mut()
+                .fees_purse(protocol_version, fees_purse_handling)
+            {
+                Err(tce) => return Ok(ExecutionResult::precondition_failure(tce.into())),
+                Ok(purse) => purse,
             }
-            FeesPurseResult::SystemContractRegistryNotFound => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::MissingSystemContractRegistry,
-                ))
-            }
-            FeesPurseResult::NamedEntityNotFound(name) => {
-                return Ok(ExecutionResult::precondition_failure(
-                    Error::MissingSystemContractHash(name),
-                ))
-            }
-            FeesPurseResult::Failure(tce) => {
-                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
-                    tce,
-                )))
-            }
-            FeesPurseResult::Success { purse } => purse,
         };
 
         let rewards_target_purse_balance_key = {
@@ -398,10 +390,10 @@ where
                 .borrow_mut()
                 .get_purse_balance_key(rewards_target_purse.into())
             {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                Err(tce) => {
+                    return Ok(ExecutionResult::precondition_failure(tce.into()));
                 }
+                Ok(key) => key,
             }
         };
 

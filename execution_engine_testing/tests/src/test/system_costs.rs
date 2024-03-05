@@ -191,7 +191,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -490,7 +490,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -921,8 +921,10 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let mut core_config = CoreConfig::default();
-    core_config.max_associated_keys = new_max_associated_keys;
+    let core_config = CoreConfig {
+        max_associated_keys: new_max_associated_keys,
+        ..Default::default()
+    };
 
     let chainspec = ChainspecConfig {
         system_costs_config,
@@ -939,7 +941,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

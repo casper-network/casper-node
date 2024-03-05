@@ -285,7 +285,7 @@ fn should_accumulate_fees_after_upgrade() {
     builder.with_chainspec(updated_chainspec);
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();

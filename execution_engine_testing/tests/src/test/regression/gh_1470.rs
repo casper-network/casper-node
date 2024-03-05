@@ -51,6 +51,11 @@ fn setup() -> LmdbWasmTestBuilder {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_strict_argument_checking(true);
+
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
             .with_current_protocol_version(PROTOCOL_VERSION)
@@ -60,7 +65,8 @@ fn setup() -> LmdbWasmTestBuilder {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     builder
@@ -577,7 +583,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
             .build()
     };
 
-    builder.exec(call_contract_request).commit();
+    builder
+        .exec(call_contract_request)
+        .expect_failure()
+        .commit();
 
     let response = builder
         .get_last_exec_result()
@@ -663,7 +672,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer_args = runtime_args! {
@@ -714,7 +723,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
@@ -747,7 +756,7 @@ fn should_add_bid_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -796,7 +805,7 @@ fn should_add_bid_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -842,7 +851,7 @@ fn should_wasm_transfer_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -890,7 +899,7 @@ fn should_wasm_transfer_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -938,6 +947,6 @@ fn should_upgrade_from_1_3_1_rel_fixture() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 }

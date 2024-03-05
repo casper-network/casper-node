@@ -124,7 +124,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let queried_registry = builder

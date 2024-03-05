@@ -19,8 +19,8 @@ use crate::{
     global_state::{
         error::Error as GlobalStateError,
         state::{
-            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider,
+            ScratchProvider, StateProvider, StateReader,
         },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
@@ -29,7 +29,7 @@ use crate::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
                 keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-                PruneResult as OpPruneResult, PruneResult, ReadResult,
+                ReadResult, TriePruneResult,
             },
         },
         DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
@@ -222,7 +222,6 @@ impl CommitProvider for LmdbGlobalState {
             prestate_hash,
             effects,
         )
-        .map_err(Into::into)
     }
 }
 
@@ -355,14 +354,14 @@ impl StateProvider for LmdbGlobalState {
     }
 }
 
-impl DataAccessLayer<LmdbGlobalState> {
+impl ScratchProvider for DataAccessLayer<LmdbGlobalState> {
     /// Provide a local cached-only version of engine-state.
-    pub fn get_scratch_global_state(&self) -> ScratchGlobalState {
+    fn get_scratch_global_state(&self) -> ScratchGlobalState {
         self.state().create_scratch()
     }
 
     /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
-    pub fn write_scratch_to_db(
+    fn write_scratch_to_db(
         &self,
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
@@ -376,24 +375,21 @@ impl DataAccessLayer<LmdbGlobalState> {
         }
         let prune_keys = keys_to_prune.iter().cloned().collect_vec();
         match self.prune_keys(post_state_hash, &prune_keys) {
-            Ok(result) => match result {
-                OpPruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
-                OpPruneResult::MissingKey => Err(GlobalStateError::FailedToPrune(prune_keys)),
-                OpPruneResult::RootNotFound => Err(GlobalStateError::RootNotFound),
-            },
-            Err(err) => Err(err),
+            TriePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+            TriePruneResult::MissingKey => Err(GlobalStateError::FailedToPrune(prune_keys)),
+            TriePruneResult::RootNotFound => Err(GlobalStateError::RootNotFound),
+            TriePruneResult::Failure(gse) => Err(gse),
         }
     }
 
     /// Prune keys.
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys: &[Key],
-    ) -> Result<PruneResult, GlobalStateError> {
+    fn prune_keys(&self, mut state_root_hash: Digest, keys: &[Key]) -> TriePruneResult {
         let scratch_trie_store = self.state().get_scratch_store();
 
-        let mut txn = scratch_trie_store.create_read_write_txn()?;
+        let mut txn = match scratch_trie_store.create_read_write_txn() {
+            Ok(scratch) => scratch,
+            Err(gse) => return TriePruneResult::Failure(gse),
+        };
 
         for key in keys {
             let prune_results = prune::<Key, StoredValue, _, _, GlobalStateError>(
@@ -402,18 +398,24 @@ impl DataAccessLayer<LmdbGlobalState> {
                 &state_root_hash,
                 key,
             );
-            match prune_results? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
+            match prune_results {
+                Ok(TriePruneResult::Pruned(new_root)) => {
+                    state_root_hash = new_root;
                 }
-                other => return Ok(other),
+                Ok(other) => return other,
+                Err(gse) => return TriePruneResult::Failure(gse),
             }
         }
 
-        txn.commit()?;
+        if let Err(gse) = txn.commit() {
+            return TriePruneResult::Failure(gse);
+        }
 
-        scratch_trie_store.write_root_to_db(state_root_hash)?;
-        Ok(PruneResult::Pruned(state_root_hash))
+        if let Err(gse) = scratch_trie_store.write_root_to_db(state_root_hash) {
+            TriePruneResult::Failure(gse)
+        } else {
+            TriePruneResult::Pruned(state_root_hash)
+        }
     }
 }
 

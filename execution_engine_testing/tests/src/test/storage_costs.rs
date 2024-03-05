@@ -1,4 +1,5 @@
 use num_rational::Ratio;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 #[cfg(not(feature = "use-as-wasm"))]
@@ -11,8 +12,9 @@ use casper_engine_test_support::{
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    AddressableEntityHash, CLValue, EraId, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
-    U512,
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts,
+    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
+    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -49,54 +51,54 @@ const WRITE_LARGE_VALUE: &[u8] = b"111111111111111111111111111111111111111111111
 
 const ADD_SMALL_VALUE: u64 = 1;
 const ADD_LARGE_VALUE: u64 = u64::max_value();
-//
-// const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
-//     bit: 0,
-//     add: 0,
-//     mul: 0,
-//     div: 0,
-//     load: 0,
-//     store: 0,
-//     op_const: 0,
-//     local: 0,
-//     global: 0,
-//     control_flow: ControlFlowCosts {
-//         block: 0,
-//         op_loop: 0,
-//         op_if: 0,
-//         op_else: 0,
-//         end: 0,
-//         br: 0,
-//         br_if: 0,
-//         br_table: BrTableCost {
-//             cost: 0,
-//             size_multiplier: 0,
-//         },
-//         op_return: 0,
-//         call: 0,
-//         call_indirect: 0,
-//         drop: 0,
-//         select: 0,
-//     },
-//     integer_comparison: 0,
-//     conversion: 0,
-//     unreachable: 0,
-//     nop: 0,
-//     current_memory: 0,
-//     grow_memory: 0,
-// };
-//
-// static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(HostFunctionCosts::zero);
-// static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
-//     WasmConfig::new(
-//         DEFAULT_WASM_MAX_MEMORY,
-//         DEFAULT_MAX_STACK_HEIGHT,
-//         NEW_OPCODE_COSTS,
-//         StorageCosts::default(),
-//         *NEW_HOST_FUNCTION_COSTS,
-//         MessageLimits::default(),
-//     )
-// });
+
+const NEW_OPCODE_COSTS: OpcodeCosts = OpcodeCosts {
+    bit: 0,
+    add: 0,
+    mul: 0,
+    div: 0,
+    load: 0,
+    store: 0,
+    op_const: 0,
+    local: 0,
+    global: 0,
+    control_flow: ControlFlowCosts {
+        block: 0,
+        op_loop: 0,
+        op_if: 0,
+        op_else: 0,
+        end: 0,
+        br: 0,
+        br_if: 0,
+        br_table: BrTableCost {
+            cost: 0,
+            size_multiplier: 0,
+        },
+        op_return: 0,
+        call: 0,
+        call_indirect: 0,
+        drop: 0,
+        select: 0,
+    },
+    integer_comparison: 0,
+    conversion: 0,
+    unreachable: 0,
+    nop: 0,
+    current_memory: 0,
+    grow_memory: 0,
+};
+
+static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(HostFunctionCosts::zero);
+static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        NEW_OPCODE_COSTS,
+        StorageCosts::default(),
+        *NEW_HOST_FUNCTION_COSTS,
+        MessageLimits::default(),
+    )
+});
 
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     ProtocolVersion::from_parts(
@@ -121,11 +123,14 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    // let new_engine_config = EngineConfigBuilder::default()
-    //     .with_wasm_config(*STORAGE_COSTS_ONLY)
-    //     .build();
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(*STORAGE_COSTS_ONLY);
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     builder
 }

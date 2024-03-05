@@ -26,7 +26,7 @@ use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, EngineState};
+use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, ExecutionEngineV1};
 
 use casper_storage::{
     data_access_layer::{
@@ -88,7 +88,7 @@ pub(crate) struct ContractRuntime {
     state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     #[data_size(skip)]
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+    execution_engine_v1: Arc<ExecutionEngineV1>,
     metrics: Arc<Metrics>,
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -138,17 +138,14 @@ impl ContractRuntime {
                 .map_err(ConfigError::GlobalState)?,
         );
 
-        let engine_state = Arc::new(EngineState::new(
-            engine_config,
-            Arc::clone(&data_access_layer),
-        ));
+        let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
 
         let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
             execution_pre_state,
-            engine_state,
+            execution_engine_v1,
             metrics,
             exec_queue: Default::default(),
             chainspec,
@@ -531,15 +528,15 @@ impl ContractRuntime {
                             finalized_block_height,
                             executable_block.transactions.len()
                         );
-                        let engine_state = Arc::clone(&self.engine_state);
                         let data_access_layer = Arc::clone(&self.data_access_layer);
+                        let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         effects.extend(
                             exec_or_requeue(
-                                engine_state,
                                 data_access_layer,
+                                execution_engine_v1,
                                 chainspec,
                                 metrics,
                                 exec_queue,
@@ -565,13 +562,13 @@ impl ContractRuntime {
                 responder,
             } => {
                 if let Transaction::Deploy(deploy) = *transaction {
-                    let engine_state = Arc::clone(&self.engine_state);
+                    let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
                     let data_access_layer = Arc::clone(&self.data_access_layer);
                     async move {
                         let result = run_intensive_task(move || {
                             speculatively_execute(
-                                engine_state.as_ref(),
                                 data_access_layer.as_ref(),
+                                execution_engine_v1.as_ref(),
                                 execution_prestate,
                                 DeployItem::from(deploy.clone()),
                             )

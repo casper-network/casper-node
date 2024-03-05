@@ -97,7 +97,7 @@ fn should_upgrade_only_protocol_version() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // let upgraded_engine_config = builder.get_engine_state().config();
@@ -131,7 +131,7 @@ fn should_allow_only_wasm_costs_patch_version() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // let upgraded_engine_config = builder.get_engine_state().config();
@@ -169,7 +169,7 @@ fn should_allow_only_wasm_costs_minor_version() {
     //     .build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     //
     // let upgraded_engine_config = builder.get_engine_state().config();
@@ -201,7 +201,7 @@ fn should_not_downgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let mut downgrade_request = {
@@ -212,7 +212,7 @@ fn should_not_downgrade() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut downgrade_request);
+    builder.upgrade(&mut downgrade_request);
 
     let upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
@@ -243,7 +243,7 @@ fn should_not_skip_major_versions() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -271,7 +271,7 @@ fn should_allow_skip_minor_versions() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -317,7 +317,7 @@ fn should_upgrade_only_validator_slots() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
@@ -374,7 +374,7 @@ fn should_upgrade_only_auction_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
@@ -431,7 +431,7 @@ fn should_upgrade_only_locked_funds_period() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_locked_funds_period_millis: u64 = builder
@@ -485,7 +485,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
@@ -549,7 +549,7 @@ fn should_upgrade_only_unbonding_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -615,7 +615,7 @@ fn should_apply_global_state_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -655,8 +655,10 @@ fn should_increase_max_associated_keys_after_upgrade() {
     };
 
     let max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS + 1;
-    let mut core_config = CoreConfig::default();
-    core_config.max_associated_keys = max_associated_keys;
+    let core_config = CoreConfig {
+        max_associated_keys,
+        ..Default::default()
+    };
 
     let chainspec = ChainspecConfig {
         core_config,
@@ -666,7 +668,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     builder.with_chainspec(chainspec);
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {
@@ -737,7 +739,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
         .build();
 
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let system_names = vec![system::MINT, system::AUCTION, system::HANDLE_PAYMENT];

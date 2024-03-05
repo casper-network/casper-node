@@ -12,8 +12,8 @@ use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, GenesisConfigBuilder, ProtocolVersion, RefundHandling, SystemConfig, TimeDiff,
-    WasmConfig,
+    GenesisConfig, GenesisConfigBuilder, MintCosts, ProtocolVersion, RefundHandling, SystemConfig,
+    TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -184,9 +184,33 @@ impl ChainspecConfig {
         self
     }
 
+    /// Sets wasm config option.
+    pub fn with_wasm_config(mut self, wasm_config: WasmConfig) -> Self {
+        self.wasm_config = wasm_config;
+        self
+    }
+
+    /// Sets mint costs.
+    pub fn with_mint_costs(self, mint_costs: MintCosts) -> Self {
+        self.system_costs_config.with_mint_costs(mint_costs);
+        self
+    }
+
+    /// Sets wasm max stack height.
+    pub fn with_wasm_max_stack_height(mut self, max_stack_height: u32) -> Self {
+        self.wasm_config.max_stack_height = max_stack_height;
+        self
+    }
+
     /// Sets refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         self.core_config.refund_handling = refund_handling;
+        self
+    }
+
+    /// Sets strict argument checking.
+    pub fn with_strict_argument_checking(mut self, strict_argument_checking: bool) -> Self {
+        self.core_config.strict_argument_checking = strict_argument_checking;
         self
     }
 

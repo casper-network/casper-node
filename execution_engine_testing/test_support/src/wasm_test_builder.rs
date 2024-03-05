@@ -15,7 +15,7 @@ use num_rational::Ratio;
 use num_traits::{CheckedMul, Zero};
 
 use casper_execution_engine::engine_state::{
-    execute_request::ExecuteRequest, execution_result::ExecutionResult, EngineState, Error,
+    execute_request::ExecuteRequest, execution_result::ExecutionResult, Error, ExecutionEngineV1,
     DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
@@ -30,14 +30,15 @@ use casper_storage::{
     },
     global_state::{
         state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
+            StateProvider, StateReader,
         },
         transaction_source::lmdb::LmdbEnvironment,
         trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
     system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+    tracking_copy::TrackingCopyExt,
 };
 use casper_types::{
     account::AccountHash,
@@ -116,8 +117,9 @@ impl EntityWithNamedKeys {
 pub struct WasmTestBuilder<S> {
     /// Data access layer.
     data_access_layer: Arc<S>,
-    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
-    engine_state: Rc<EngineState<S>>,
+    /// [`ExecutionEngineV1`] is wrapped in [`Rc`] to work around a missing [`Clone`]
+    /// implementation.
+    execution_engine: Rc<ExecutionEngineV1>,
     /// The chainspec.
     chainspec: ChainspecConfig,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
@@ -142,13 +144,73 @@ pub struct WasmTestBuilder<S> {
     temp_dir: Option<Rc<TempDir>>,
 }
 
+impl<S: ScratchProvider> WasmTestBuilder<S> {
+    /// Commit scratch to global state, and reset the scratch cache.
+    pub fn write_scratch_to_db(&mut self) -> &mut Self {
+        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
+        if let Some(scratch) = self.scratch_global_state.take() {
+            let new_state_root = self
+                .data_access_layer
+                .write_scratch_to_db(prestate_hash, scratch)
+                .unwrap();
+            self.post_state_hash = Some(new_state_root);
+        }
+        self
+    }
+    /// Flushes the LMDB environment to disk.
+    pub fn flush_environment(&self) {
+        let request = FlushRequest::new();
+        if let FlushResult::Failure(gse) = self.data_access_layer.flush(request) {
+            panic!("flush failed: {:?}", gse)
+        }
+    }
+
+    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
+    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+        if self.scratch_global_state.is_none() {
+            self.scratch_global_state = Some(self.data_access_layer.get_scratch_global_state());
+        }
+
+        let cached_state = self
+            .scratch_global_state
+            .as_ref()
+            .expect("scratch state should exist");
+
+        // Scratch still requires that one deploy be executed and committed at a time.
+        let exec_request = {
+            let hash = self.post_state_hash.expect("expected post_state_hash");
+            exec_request.parent_state_hash = hash;
+            exec_request
+        };
+
+        let mut exec_results = Vec::new();
+        // First execute the request against our scratch global state.
+        let maybe_exec_results = self.execution_engine.exec(cached_state, exec_request);
+        for execution_result in maybe_exec_results.unwrap() {
+            let _post_state_hash = cached_state
+                .commit(
+                    self.post_state_hash.expect("requires a post_state_hash"),
+                    execution_result.effects().clone(),
+                )
+                .expect("should commit");
+
+            // Save transforms and execution results for WasmTestBuilder.
+            self.effects.push(execution_result.effects().clone());
+            exec_results.push(Rc::new(execution_result))
+        }
+        self.exec_results.push(exec_results);
+        self
+    }
+}
+
 // TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
 // implemented by hand here.  Try to derive in the future with a different compiler version.
 impl<S> Clone for WasmTestBuilder<S> {
     fn clone(&self) -> Self {
         WasmTestBuilder {
             data_access_layer: Arc::clone(&self.data_access_layer),
-            engine_state: Rc::clone(&self.engine_state),
+            execution_engine: Rc::clone(&self.execution_engine),
             chainspec: self.chainspec.clone(),
             exec_results: self.exec_results.clone(),
             upgrade_results: self.upgrade_results.clone(),
@@ -192,44 +254,6 @@ impl Default for LmdbWasmTestBuilder {
 }
 
 impl LmdbWasmTestBuilder {
-    /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
-    /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
-    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
-        if self.scratch_global_state.is_none() {
-            self.scratch_global_state = Some(self.data_access_layer.get_scratch_global_state());
-        }
-
-        let cached_state = self
-            .scratch_global_state
-            .as_ref()
-            .expect("scratch state should exist");
-
-        // Scratch still requires that one deploy be executed and committed at a time.
-        let exec_request = {
-            let hash = self.post_state_hash.expect("expected post_state_hash");
-            exec_request.parent_state_hash = hash;
-            exec_request
-        };
-
-        let mut exec_results = Vec::new();
-        // First execute the request against our scratch global state.
-        let maybe_exec_results = self.engine_state.run_execute(exec_request);
-        for execution_result in maybe_exec_results.unwrap() {
-            let _post_state_hash = cached_state
-                .commit(
-                    self.post_state_hash.expect("requires a post_state_hash"),
-                    execution_result.effects().clone(),
-                )
-                .expect("should commit");
-
-            // Save transforms and execution results for WasmTestBuilder.
-            self.effects.push(execution_result.effects().clone());
-            exec_results.push(Rc::new(execution_result))
-        }
-        self.exec_results.push(exec_results);
-        self
-    }
-
     /// Upgrades the execution engine using the scratch trie.
     pub fn upgrade_using_scratch(
         &mut self,
@@ -295,11 +319,11 @@ impl LmdbWasmTestBuilder {
         });
 
         let engine_config = chainspec.engine_config();
-        let engine_state = EngineState::new(engine_config, Arc::clone(&data_access_layer));
+        let engine_state = ExecutionEngineV1::new(engine_config);
 
         WasmTestBuilder {
             data_access_layer,
-            engine_state: Rc::new(engine_state),
+            execution_engine: Rc::new(engine_state),
             chainspec,
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -365,13 +389,13 @@ impl LmdbWasmTestBuilder {
             max_query_depth,
         });
         let engine_config = chainspec.engine_config();
-        let engine_state = EngineState::new(engine_config, Arc::clone(&data_access_layer));
+        let engine_state = ExecutionEngineV1::new(engine_config);
 
         let post_state_hash = mode.post_state_hash();
 
         let builder = WasmTestBuilder {
             data_access_layer,
-            engine_state: Rc::new(engine_state),
+            execution_engine: Rc::new(engine_state),
             chainspec,
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -405,14 +429,6 @@ impl LmdbWasmTestBuilder {
     /// the production chainspec.
     pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
         Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
-    }
-
-    /// Flushes the LMDB environment to disk.
-    pub fn flush_environment(&self) {
-        let request = FlushRequest::new();
-        if let FlushResult::Failure(gse) = self.data_access_layer.flush(request) {
-            panic!("flush failed: {:?}", gse)
-        }
     }
 
     /// Returns a new [`LmdbWasmTestBuilder`].
@@ -500,19 +516,6 @@ impl LmdbWasmTestBuilder {
             return path.as_path().size_on_disk().ok();
         }
         None
-    }
-
-    /// Commit scratch to global state, and reset the scratch cache.
-    pub fn write_scratch_to_db(&mut self) -> &mut Self {
-        let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
-        if let Some(scratch) = self.scratch_global_state.take() {
-            let new_state_root = self
-                .data_access_layer
-                .write_scratch_to_db(prestate_hash, scratch)
-                .unwrap();
-            self.post_state_hash = Some(new_state_root);
-        }
-        self
     }
 
     /// run step against scratch global state.
@@ -740,7 +743,9 @@ where
             exec_request
         };
 
-        let maybe_exec_results = self.engine_state.run_execute(exec_request);
+        let maybe_exec_results = self
+            .execution_engine
+            .exec(self.data_access_layer.as_ref(), exec_request);
         assert!(maybe_exec_results.is_ok());
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();
@@ -780,10 +785,7 @@ where
     /// Upgrades the execution engine.
     ///
     /// If `engine_config` is set to None, then it is defaulted to the current one.
-    pub fn upgrade_with_upgrade_request(
-        &mut self,
-        upgrade_config: &mut ProtocolUpgradeConfig,
-    ) -> &mut Self {
+    pub fn upgrade(&mut self, upgrade_config: &mut ProtocolUpgradeConfig) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
@@ -1055,14 +1057,13 @@ where
     /// Update chainspec
     pub fn with_chainspec(&mut self, chainspec: ChainspecConfig) -> &mut Self {
         self.chainspec = chainspec;
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(self.chainspec.engine_config());
+        self.execution_engine = Rc::new(ExecutionEngineV1::new(self.chainspec.engine_config()));
         self
     }
 
     /// Returns the engine state.
-    pub fn get_engine_state(&self) -> &EngineState<S> {
-        &self.engine_state
+    pub fn get_engine_state(&self) -> &ExecutionEngineV1 {
+        &self.execution_engine
     }
 
     /// Returns the engine state.
@@ -1425,30 +1426,15 @@ where
     pub fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
         let state_root_hash = self.get_post_state_hash();
 
-        let tracking_copy = self
+        let mut tracking_copy = self
             .data_access_layer
             .tracking_copy(state_root_hash)
             .unwrap()
             .unwrap();
 
-        let prefix = entity_addr.named_keys_prefix().expect("must get prefix");
-
-        let reader = tracking_copy.reader();
-
-        let entries = reader.keys_with_prefix(&prefix).unwrap_or_default();
-
-        let mut named_keys = NamedKeys::new();
-
-        for entry in entries.iter() {
-            let read_result = reader.read(entry);
-            if let Ok(Some(StoredValue::NamedKey(named_key))) = read_result {
-                let key = named_key.get_key().unwrap();
-                let name = named_key.get_name().unwrap();
-                named_keys.insert(name, key);
-            }
-        }
-
-        named_keys
+        tracking_copy
+            .get_named_keys(entity_addr)
+            .expect("should have named keys")
     }
 
     /// Gets [`UnbondingPurses`].

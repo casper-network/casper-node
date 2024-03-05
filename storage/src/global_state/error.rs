@@ -16,7 +16,7 @@ pub enum Error {
 
     /// (De)serialization error.
     #[error("{0}")]
-    BytesRepr(bytesrepr::Error),
+    BytesRepr(#[from] bytesrepr::Error),
 
     /// Concurrency error.
     #[error("Another thread panicked while holding a lock")]
@@ -24,7 +24,7 @@ pub enum Error {
 
     /// Error committing to execution engine.
     #[error(transparent)]
-    CommitError(#[from] CommitError),
+    Commit(#[from] CommitError),
 
     /// Invalid state root hash.
     #[error("RootNotFound")]
@@ -39,11 +39,11 @@ pub enum Error {
     FailedToPrune(Vec<Key>),
 }
 
-impl From<bytesrepr::Error> for Error {
-    fn from(error: bytesrepr::Error) -> Self {
-        Error::BytesRepr(error)
-    }
-}
+// impl From<bytesrepr::Error> for Error {
+//     fn from(error: bytesrepr::Error) -> Self {
+//         Error::BytesRepr(error)
+//     }
+// }
 
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {

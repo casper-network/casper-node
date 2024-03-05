@@ -360,99 +360,12 @@ impl ExecutionResult {
                 effects: _,
                 messages: _,
             } => match error {
-                Error::Exec(err) => match err {
-                    ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
-                    ExecError::Storage(_)
-                    | ExecError::InvalidByteCode(_)
-                    | ExecError::WasmOptimizer
-                    | ExecError::ParityWasm(_)
-                    | ExecError::Interpreter(_)
-                    | ExecError::BytesRepr(_)
-                    | ExecError::NamedKeyNotFound(_)
-                    | ExecError::KeyNotFound(_)
-                    | ExecError::AccountNotFound(_)
-                    | ExecError::TypeMismatch(_)
-                    | ExecError::InvalidAccess { .. }
-                    | ExecError::ForgedReference(_)
-                    | ExecError::URefNotFound(_)
-                    | ExecError::FunctionNotFound(_)
-                    | ExecError::GasLimit
-                    | ExecError::Ret(_)
-                    | ExecError::Resolver(_)
-                    | ExecError::Revert(_)
-                    | ExecError::AddKeyFailure(_)
-                    | ExecError::RemoveKeyFailure(_)
-                    | ExecError::UpdateKeyFailure(_)
-                    | ExecError::SetThresholdFailure(_)
-                    | ExecError::SystemContract(_)
-                    | ExecError::DeploymentAuthorizationFailure
-                    | ExecError::UpgradeAuthorizationFailure
-                    | ExecError::ExpectedReturnValue
-                    | ExecError::UnexpectedReturnValue
-                    | ExecError::InvalidContext
-                    | ExecError::IncompatibleProtocolMajorVersion { .. }
-                    | ExecError::CLValue(_)
-                    | ExecError::HostBufferEmpty
-                    | ExecError::NoActiveEntityVersions(_)
-                    | ExecError::InvalidEntityVersion(_)
-                    | ExecError::NoSuchMethod(_)
-                    | ExecError::TemplateMethod(_)
-                    | ExecError::KeyIsNotAURef(_)
-                    | ExecError::UnexpectedStoredValueVariant
-                    | ExecError::LockedEntity(_)
-                    | ExecError::InvalidPackage(_)
-                    | ExecError::InvalidEntity(_)
-                    | ExecError::MissingArgument { .. }
-                    | ExecError::DictionaryItemKeyExceedsLength
-                    | ExecError::MissingSystemContractRegistry
-                    | ExecError::MissingSystemContractHash(_)
-                    | ExecError::RuntimeStackOverflow
-                    | ExecError::ValueTooLarge
-                    | ExecError::MissingRuntimeStack
-                    | ExecError::DisabledEntity(_)
-                    | ExecError::UnexpectedKeyVariant(_)
-                    | ExecError::InvalidEntityKind(_)
-                    | ExecError::TrackingCopy(_)
-                    | ExecError::Transform(_)
-                    | ExecError::InvalidEntryPointType
-                    | ExecError::InvalidMessageTopicOperation
-                    | ExecError::InvalidUtf8Encoding(_) => false,
-                    ExecError::DisabledUnrestrictedTransfers => false,
-                },
-                Error::WasmPreprocessing(_) => true,
-                Error::WasmSerialization(_) => true,
-                Error::RootNotFound(_)
-                | Error::InvalidProtocolVersion(_)
-                | Error::Genesis(_)
-                | Error::Storage(_)
-                | Error::Authorization
-                | Error::MissingContractByAccountHash(_)
-                | Error::MissingEntityPackage(_)
-                | Error::InsufficientPayment
-                | Error::GasConversionOverflow
-                | Error::Deploy
-                | Error::Finalization
-                | Error::Bytesrepr(_)
-                | Error::Mint(_)
-                | Error::InvalidKeyVariant
-                | Error::ProtocolUpgrade(_)
-                | Error::InvalidDeployItemVariant(_)
-                | Error::CommitError(_)
-                | Error::MissingSystemContractRegistry
-                | Error::MissingSystemContractHash(_)
-                | Error::MissingChecksumRegistry
-                | Error::RuntimeStackOverflow
-                | Error::FailedToGetKeys(_)
-                | Error::FailedToGetStoredWithdraws
-                | Error::FailedToGetWithdrawPurses
-                | Error::FailedToRetrieveUnbondingDelay
-                | Error::FailedToRetrieveEraId
-                | Error::MissingTrieNodeChildren(_)
-                | Error::FailedToRetrieveAccumulationPurse
-                | Error::FailedToPrune(_)
-                | Error::Transfer(_)
-                | Error::TrackingCopy(_)
-                | Error::Deprecated(_) => false,
+                Error::Exec(err) => matches!(
+                    err,
+                    ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart
+                ),
+                Error::WasmPreprocessing(_) | Error::WasmSerialization(_) => true,
+                _ => false,
             },
             ExecutionResult::Success { .. } => false,
         }

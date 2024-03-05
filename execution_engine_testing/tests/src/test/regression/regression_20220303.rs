@@ -94,7 +94,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     };
     let start = Instant::now();
     builder
-        .upgrade_with_upgrade_request(&mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     let elapsed = start.elapsed();
     assert!(

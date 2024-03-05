@@ -44,22 +44,21 @@ use crate::{
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockRewardsError,
         BlockRewardsRequest, BlockRewardsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
-        FeeResult, FeesPurseHandling, FeesPurseRequest, FeesPurseResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
-        PruneResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepError, StepRequest,
-        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
-        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
+        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
+        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
+        state::scratch::ScratchGlobalState,
         transaction_source::{Transaction, TransactionSource},
         trie::Trie,
         trie_store::{
-            operations::{
-                prune, read, write, PruneResult as OpPruneResult, ReadResult, WriteResult,
-            },
+            operations::{prune, read, write, ReadResult, TriePruneResult, WriteResult},
             TrieStore,
         },
     },
@@ -113,6 +112,16 @@ pub enum CommitError {
     /// Trie not found while attempting to validate cache write.
     #[error("Trie not found in cache {0}")]
     TrieNotFoundInCache(Digest),
+}
+
+pub trait ScratchProvider: CommitProvider {
+    fn get_scratch_global_state(&self) -> ScratchGlobalState;
+    fn write_scratch_to_db(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, GlobalStateError>;
+    fn prune_keys(&self, state_root_hash: Digest, keys: &[Key]) -> TriePruneResult;
 }
 
 /// Provides `commit` method.
@@ -298,7 +307,6 @@ pub trait CommitProvider: StateProvider {
         let max_delegators_per_validator = config.max_delegators_per_validator();
         let minimum_delegation_amount = config.minimum_delegation_amount();
 
-        println!("B {:?}", max_delegators_per_validator);
         if let Err(err) = runtime.run_auction(
             era_end_timestamp_millis,
             evicted_validators,
@@ -661,7 +669,7 @@ pub trait CommitProvider: StateProvider {
             } => runtime
                 .add_bid(public_key, delegation_rate, amount)
                 .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Revert),
+                .map_err(TrackingCopyError::Api),
             AuctionMethod::WithdrawBid { public_key, amount } => runtime
                 .withdraw_bid(public_key, amount)
                 .map(AuctionMethodRet::UpdatedAmount)
@@ -683,7 +691,7 @@ pub trait CommitProvider: StateProvider {
                     minimum_delegation_amount,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Revert),
+                .map_err(TrackingCopyError::Api),
             AuctionMethod::Undelegate {
                 delegator_public_key,
                 validator_public_key,
@@ -1125,98 +1133,6 @@ pub trait StateProvider {
         }
     }
 
-    /// Returns the reward purse for fee processing.
-    fn fees_purse(&self, request: FeesPurseRequest) -> FeesPurseResult {
-        let state_hash = request.state_hash();
-        let mut tc = match self.tracking_copy(state_hash) {
-            Ok(Some(tc)) => tc,
-            Ok(None) => return FeesPurseResult::RootNotFound,
-            Err(err) => return FeesPurseResult::Failure(TrackingCopyError::Storage(err)),
-        };
-        let protocol_version = request.protocol_version();
-        let fee_handling = request.fees_purse_handling();
-        match fee_handling {
-            FeesPurseHandling::ToProposer(proposer) => {
-                let proposer_account: AddressableEntity =
-                    match tc.get_addressable_entity_by_account_hash(protocol_version, *proposer) {
-                        Ok(account) => account,
-                        Err(tce) => return FeesPurseResult::Failure(tce),
-                    };
-
-                FeesPurseResult::Success {
-                    purse: proposer_account.main_purse(),
-                }
-            }
-            FeesPurseHandling::Accumulate => {
-                let reg_request = SystemEntityRegistryRequest::new(
-                    state_hash,
-                    protocol_version,
-                    SystemEntityRegistrySelector::handle_payment(),
-                );
-                let payload = match self.system_entity_registry(reg_request) {
-                    SystemEntityRegistryResult::RootNotFound => {
-                        return FeesPurseResult::RootNotFound;
-                    }
-                    SystemEntityRegistryResult::SystemEntityRegistryNotFound => {
-                        return FeesPurseResult::SystemContractRegistryNotFound;
-                    }
-                    SystemEntityRegistryResult::NamedEntityNotFound(name) => {
-                        return FeesPurseResult::NamedEntityNotFound(name);
-                    }
-                    SystemEntityRegistryResult::Failure(tce) => {
-                        return FeesPurseResult::Failure(tce);
-                    }
-                    SystemEntityRegistryResult::Success { payload, .. } => payload,
-                };
-
-                let entity_addr = match payload {
-                    SystemEntityRegistryPayload::All(_) => {
-                        return FeesPurseResult::Failure(
-                            TrackingCopyError::UnexpectedStoredValueVariant,
-                        );
-                    }
-                    SystemEntityRegistryPayload::EntityKey(key) => match key.as_entity_addr() {
-                        Some(entity_addr) => entity_addr,
-                        None => {
-                            return FeesPurseResult::Failure(
-                                TrackingCopyError::UnexpectedKeyVariant(key),
-                            );
-                        }
-                    },
-                };
-
-                let named_keys = match tc.get_named_keys(entity_addr) {
-                    Ok(named_keys) => named_keys,
-                    Err(tce) => return FeesPurseResult::Failure(tce),
-                };
-
-                let accumulation_purse_uref = match named_keys.get(ACCUMULATION_PURSE_KEY) {
-                    Some(Key::URef(accumulation_purse)) => *accumulation_purse,
-                    Some(_) | None => {
-                        error!(
-                            "fee handling is configured to accumulate but handle payment does not \
-                            have accumulation purse"
-                        );
-                        return FeesPurseResult::Failure(TrackingCopyError::NamedKeyNotFound(
-                            ACCUMULATION_PURSE_KEY.to_string(),
-                        ));
-                    }
-                };
-
-                // Ok(*accumulation_purse_uref)
-                FeesPurseResult::Success {
-                    purse: accumulation_purse_uref,
-                }
-            }
-            FeesPurseHandling::Burn => {
-                // TODO: replace this with new burn logic once it merges
-                FeesPurseResult::Success {
-                    purse: casper_types::URef::default(),
-                }
-            }
-        }
-    }
-
     /// Gets the current round seigniorage rate.
     fn round_seigniorage_rate(
         &self,
@@ -1544,7 +1460,12 @@ where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    E: From<R::Error>
+        + From<S::Error>
+        + From<bytesrepr::Error>
+        + From<CommitError>
+        + From<GlobalStateError>, /* even tho E is currently always GSE, this is required to
+                                   * satisfy the compiler */
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -1630,15 +1551,18 @@ where
                 let prune_result = prune::<_, _, _, _, E>(&mut txn, store, &state_root, &key)?;
 
                 match prune_result {
-                    OpPruneResult::Pruned(root_hash) => {
+                    TriePruneResult::Pruned(root_hash) => {
                         state_root = root_hash;
                     }
-                    OpPruneResult::MissingKey => {
+                    TriePruneResult::MissingKey => {
                         warn!("commit: pruning attempt failed for {}", key);
                     }
-                    OpPruneResult::RootNotFound => {
+                    TriePruneResult::RootNotFound => {
                         error!(?state_root, ?key, "commit: root not found");
                         return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                    TriePruneResult::Failure(gse) => {
+                        return Err(gse.into()); // currently this is always reflexive
                     }
                 }
             }

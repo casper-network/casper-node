@@ -698,16 +698,18 @@ impl Package {
         &self,
         entity_version_key: EntityVersionKey,
     ) -> Option<&AddressableEntityHash> {
-        if !self.is_version_enabled(entity_version_key) {
-            return None;
-        }
         self.versions.0.get(&entity_version_key)
+    }
+
+    /// Checks if the given entity version exists.
+    pub fn is_version_missing(&self, entity_version_key: EntityVersionKey) -> bool {
+        !self.versions.0.contains_key(&entity_version_key)
     }
 
     /// Checks if the given entity version exists and is available for use.
     pub fn is_version_enabled(&self, entity_version_key: EntityVersionKey) -> bool {
-        !self.disabled_versions.contains(&entity_version_key)
-            && self.versions.0.contains_key(&entity_version_key)
+        !self.is_version_missing(entity_version_key)
+            && !self.disabled_versions.contains(&entity_version_key)
     }
 
     /// Returns `true` if the given entity hash exists and is enabled.

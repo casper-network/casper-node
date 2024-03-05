@@ -9,10 +9,10 @@ use casper_types::{
     },
     bytesrepr,
     package::{EntityVersions, Groups, PackageStatus},
-    system::{AUCTION, HANDLE_PAYMENT, MINT},
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT},
     AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
     ContextAccessRights, EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch,
+    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -20,6 +20,15 @@ use crate::{
     tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
     AddressGenerator,
 };
+
+/// Fees purse handling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FeesPurseHandling {
+    ToProposer(AccountHash),
+    Accumulate,
+    Burn,
+    None(URef),
+}
 
 /// Higher-level operations on the state via a `TrackingCopy`.
 pub trait TrackingCopyEntityExt<R> {
@@ -93,6 +102,13 @@ pub trait TrackingCopyEntityExt<R> {
         authorization_keys: &BTreeSet<AccountHash>,
         administrative_accounts: &BTreeSet<AccountHash>,
     ) -> Result<(AddressableEntity, NamedKeys, ContextAccessRights), TrackingCopyError>;
+
+    /// Returns fee purse.
+    fn fees_purse(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        fees_purse_handling: FeesPurseHandling,
+    ) -> Result<URef, TrackingCopyError>;
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
@@ -488,5 +504,58 @@ where
         let access_rights = entity
             .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
         Ok((entity, named_keys, access_rights))
+    }
+
+    fn fees_purse(
+        &mut self,
+        protocol_version: ProtocolVersion,
+        fees_purse_handling: FeesPurseHandling,
+    ) -> Result<URef, TrackingCopyError> {
+        let protocol_version = protocol_version;
+        let fee_handling = fees_purse_handling;
+        match fee_handling {
+            FeesPurseHandling::None(uref) => Ok(uref),
+            FeesPurseHandling::ToProposer(proposer) => {
+                let proposer_account: AddressableEntity =
+                    self.get_addressable_entity_by_account_hash(protocol_version, proposer)?;
+
+                Ok(proposer_account.main_purse())
+            }
+            FeesPurseHandling::Accumulate => {
+                let registry = self.get_system_entity_registry()?;
+                let entity_addr = {
+                    let hash = match registry.get(HANDLE_PAYMENT) {
+                        Some(hash) => hash,
+                        None => {
+                            return Err(TrackingCopyError::MissingSystemContractHash(
+                                HANDLE_PAYMENT.to_string(),
+                            ))
+                        }
+                    };
+                    EntityAddr::new_system_entity_addr(hash.value())
+                };
+
+                let named_keys = self.get_named_keys(entity_addr)?;
+
+                let accumulation_purse_uref = match named_keys.get(ACCUMULATION_PURSE_KEY) {
+                    Some(Key::URef(accumulation_purse)) => *accumulation_purse,
+                    Some(_) | None => {
+                        error!(
+                            "fee handling is configured to accumulate but handle payment does not \
+                            have accumulation purse"
+                        );
+                        return Err(TrackingCopyError::NamedKeyNotFound(
+                            ACCUMULATION_PURSE_KEY.to_string(),
+                        ));
+                    }
+                };
+
+                Ok(accumulation_purse_uref)
+            }
+            FeesPurseHandling::Burn => {
+                // TODO: replace this with new burn logic once it merges
+                Ok(casper_types::URef::default())
+            }
+        }
     }
 }

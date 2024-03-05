@@ -12,24 +12,25 @@ use casper_execution_engine::{
     execution::ExecError,
 };
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, ProtocolVersion,
-    RuntimeArgs, DEFAULT_WASM_MAX_MEMORY,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
+    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
 };
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
 const MINIMUM_INITIAL_MEMORY: u32 = 16;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(0);
 
-// static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
-//     WasmConfig::new(
-//         DEFAULT_WASM_MAX_MEMORY * 2,
-//         DEFAULT_MAX_STACK_HEIGHT,
-//         OpcodeCosts::default(),
-//         StorageCosts::default(),
-//         HostFunctionCosts::default(),
-//         MessageLimits::default(),
-//     )
-// });
+static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
+    WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY * 2,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::default(),
+        StorageCosts::default(),
+        HostFunctionCosts::default(),
+        MessageLimits::default(),
+    )
+});
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
     ProtocolVersion::from_parts(
         DEFAULT_PROTOCOL_VERSION.value().major,
@@ -265,11 +266,14 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    // let engine_config = EngineConfigBuilder::default()
-    //     .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
-    //     .build();
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT);
 
-    builder.upgrade_with_upgrade_request(&mut upgrade_request);
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

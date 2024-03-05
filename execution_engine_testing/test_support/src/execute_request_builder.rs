@@ -10,7 +10,10 @@ use casper_types::{
     ProtocolVersion, RuntimeArgs,
 };
 
-use crate::{DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY};
+use crate::{
+    DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
+    DEFAULT_PROTOCOL_VERSION,
+};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -246,7 +249,7 @@ impl Default for ExecuteRequestBuilder {
     fn default() -> Self {
         let execute_request = ExecuteRequest {
             block_time: DEFAULT_BLOCK_TIME,
-            protocol_version: ProtocolVersion::V1_0_0,
+            protocol_version: *DEFAULT_PROTOCOL_VERSION,
             proposer: DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
             ..Default::default()
         };

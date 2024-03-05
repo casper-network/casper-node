@@ -14,7 +14,6 @@ pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
-mod fees_purse;
 mod flush;
 mod genesis;
 mod protocol_upgrade;
@@ -39,7 +38,6 @@ pub use execution_results_checksum::{
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 pub use fee::{FeeError, FeeRequest, FeeResult};
-pub use fees_purse::{FeesPurseHandling, FeesPurseRequest, FeesPurseResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
