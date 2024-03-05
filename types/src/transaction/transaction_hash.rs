@@ -17,14 +17,9 @@ use crate::{
 
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;

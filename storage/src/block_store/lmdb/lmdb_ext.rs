@@ -18,12 +18,11 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::block_store::types::{ApprovalsHashes, DeployMetadataV1};
-use crate::{storage::deploy_metadata_v1::DeployMetadataV1, types::ApprovalsHashes};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     execution::ExecutionResult,
     system::auction::UnbondingPurse,
-    Approval, BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, FinalizedApprovals, Transfer,
+    Approval, BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];

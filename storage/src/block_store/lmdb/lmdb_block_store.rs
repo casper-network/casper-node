@@ -18,18 +18,15 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use std::collections::BTreeSet;
 
 use tracing::{debug, error};
 
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::types::ApprovalsHashes;
-use casper_types::{
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
-    },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, FinalizedApprovals,
-    StoredValue, Transaction, TransactionHash, Transfer,
-};
+use casper_types::{execution::{
+    execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
+}, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue, Transaction, TransactionHash, Transfer, Approval};
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
@@ -79,7 +76,7 @@ pub struct LmdbBlockStore {
     state_store_db: Database,
     /// The finalized transaction approvals databases.
     pub(crate) finalized_transaction_approvals_dbs:
-        VersionedDatabases<TransactionHash, FinalizedApprovals>,
+        VersionedDatabases<TransactionHash, BTreeSet<Approval>>,
 }
 
 impl LmdbBlockStore {
@@ -681,11 +678,11 @@ where
     }
 }
 
-impl<'a, T> DataReader<TransactionHash, FinalizedApprovals> for LmdbBlockStoreTransaction<'a, T>
+impl<'a, T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTransaction<'a, T>
 where
     T: LmdbTransaction,
 {
-    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+    fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
             .finalized_transaction_approvals_dbs
             .get(&self.txn, &key)

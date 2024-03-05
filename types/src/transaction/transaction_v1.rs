@@ -256,7 +256,7 @@ impl TransactionV1 {
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 unreachable!("this must be programmer error");
                             }
-                            TransactionEntryPoint::AddBid => costs.auction_costs().add_bid,
+                            TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => costs.auction_costs().add_bid,
                             TransactionEntryPoint::WithdrawBid => {
                                 costs.auction_costs().withdraw_bid
                             }
@@ -572,6 +572,7 @@ impl TransactionV1 {
                 TransactionEntryPoint::Transfer => TransactionCategory::Mint,
                 TransactionEntryPoint::AddBid
                 | TransactionEntryPoint::WithdrawBid
+                | TransactionEntryPoint::ActivateBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,

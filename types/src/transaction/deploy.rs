@@ -6,7 +6,6 @@ mod deploy_header;
 mod deploy_id;
 mod error;
 mod executable_deploy_item;
-mod finalized_deploy_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -17,7 +16,6 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-pub use finalized_deploy_approvals::FinalizedDeployApprovals;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(any(feature = "std", test))]

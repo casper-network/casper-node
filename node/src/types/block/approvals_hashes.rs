@@ -8,11 +8,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ApprovalsHash, Block, BlockHash, BlockV1, BlockV2, DeployId, Digest, Key, StoredValue,
-    TransactionId,
+    TransactionId,global_state::TrieMerkleProof
 };
 
 use crate::{
@@ -22,6 +21,8 @@ use crate::{
     },
     types::{self, VariantMismatch},
 };
+
+use casper_storage::global_state::trie_store::operations::compute_state_hash;
 
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,8 +56,7 @@ impl ApprovalsHashes {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        let proof_state_root_hash = merkle_proof_approvals
-            .compute_state_hash()
+        let proof_state_root_hash = compute_state_hash(merkle_proof_approvals)
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
         if proof_state_root_hash != *block.state_root_hash() {
@@ -232,13 +232,12 @@ pub(crate) enum ApprovalsHashesValidationError {
 mod specimen_support {
     use std::collections::BTreeMap;
 
-    use casper_storage::global_state::trie::{
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        Pointer,
+    use casper_types::{
+        bytesrepr::Bytes,
+        global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
+        CLValue, Digest, Key, StoredValue,
     };
-    use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
 
-    use super::ApprovalsHashes;
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
         utils::specimen::{
@@ -246,6 +245,7 @@ mod specimen_support {
             SizeEstimator,
         },
     };
+    use casper_storage::block_store::types::ApprovalsHashes;
 
     impl LargestSpecimen for ApprovalsHashes {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
@@ -267,11 +267,11 @@ mod specimen_support {
                 // 2^64/2^13 = 2^51, so 51 items:
                 vec_of_largest_specimen(estimator, 51, cache).into(),
             );
-            ApprovalsHashes {
-                block_hash: LargestSpecimen::largest_specimen(estimator, cache),
-                approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes", cache),
+            ApprovalsHashes::new(
+                LargestSpecimen::largest_specimen(estimator, cache),
+                vec_prop_specimen(estimator, "approvals_hashes", cache),
                 merkle_proof_approvals,
-            }
+            )
         }
     }
 

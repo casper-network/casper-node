@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use datasize::DataSize;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, RwCursor, RwTransaction,
@@ -8,21 +9,13 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::marker::PhantomData;
 
-use casper_types::{
-    binary_port::DbRawBytesSpec,
-    bytesrepr::{FromBytes, ToBytes},
-    execution::ExecutionResult,
-    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, Deploy, DeployHash, Digest, FinalizedApprovals, FinalizedDeployApprovals,
-    Transaction, TransactionHash,
-};
+use casper_types::{binary_port::DbRawBytesSpec, bytesrepr::{FromBytes, ToBytes}, execution::ExecutionResult, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures, BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash, Approval};
 
 use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
 use crate::block_store::{
     error::BlockStoreError,
     types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
 };
-use crate::types::ApprovalsHashes;
 
 pub(crate) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;
@@ -81,6 +74,9 @@ impl VersionedValue for ExecutionResult {
     type Legacy = DeployMetadataV1;
 }
 
+impl VersionedValue for BTreeSet<Approval> {
+    type Legacy = BTreeSet<Approval>;
+}
 
 impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;

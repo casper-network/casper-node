@@ -185,13 +185,13 @@ pub use transaction::{
     AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
     DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
-    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals,InitiatorAddr, NamedArg,
+    InitiatorAddr, NamedArg,
     PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
     TransactionConfigFailure, TransactionEntryPoint, TransactionHash, TransactionHeader,
     TransactionId, TransactionInvocationTarget, TransactionRuntime, TransactionScheduling,
     TransactionSessionKind, TransactionTarget, TransactionV1, TransactionV1Body,
     TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,TransactionWithFinalizedApprovals, TransferTarget,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

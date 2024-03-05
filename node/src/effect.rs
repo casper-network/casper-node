@@ -98,13 +98,14 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
     sync::Arc,
     time::{Duration, Instant},
 };
+use std::collections::BTreeSet;
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
@@ -125,17 +126,10 @@ use casper_storage::data_access_layer::{
     ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
     RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
-use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
-    execution::{Effects as ExecutionEffects, ExecutionResult},
-    package::Package,
-    Approval, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
-};
+use casper_types::{binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
+    RecordId, SpeculativeExecutionResult, Uptime,
+}, execution::{Effects as ExecutionEffects, ExecutionResult}, package::Package, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512, Approval, SignedBlock};
 
 use crate::{
     components::{
@@ -154,10 +148,9 @@ use crate::{
     failpoints::FailpointActivation,
     reactor::{EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
-        NodeId, SignedBlock,
+        appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -168,17 +161,18 @@ use announcements::{
     ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement, TransactionBufferAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, SetNodeStopRequest,
-    StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
-    UpgradeWatcherRequest,
+    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest,
+    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
+    TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
+use crate::effect::requests::TransactionBufferRequest;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1649,46 +1643,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction and associated execution info if available.
-    pub(crate) async fn get_transaction_and_execution_info_from_storage(
-        self,
-        transaction_hash: TransactionHash,
-    ) -> Option<(
-        (Transaction, Option<BTreeSet<Approval>>),
-        Option<ExecutionInfo>,
-    )>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
 
-    /// Gets the requested block and its finality signatures.
-    pub(crate) async fn get_signed_block_at_height_from_storage(
-        self,
-        block_height: u64,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
 
     /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(

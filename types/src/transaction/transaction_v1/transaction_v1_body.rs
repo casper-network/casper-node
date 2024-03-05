@@ -102,6 +102,7 @@ impl TransactionV1Body {
             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::ActivateBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate => true,

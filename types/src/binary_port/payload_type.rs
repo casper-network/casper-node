@@ -18,8 +18,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
-    FinalizedDeployApprovals, Peers, ReactorState, SignedBlock, StoredValue, Transaction, Transfer,
+    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, Peers, ReactorState, SignedBlock, StoredValue, Transaction, Transfer,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -419,13 +418,7 @@ impl PayloadEntity for ExecutionResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResult;
 }
 
-impl PayloadEntity for FinalizedApprovals {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedApprovals;
-}
 
-impl PayloadEntity for FinalizedDeployApprovals {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedDeployApprovals;
-}
 
 impl PayloadEntity for ExecutionResultV1 {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResultV1;

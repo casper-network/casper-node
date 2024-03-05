@@ -25,14 +25,7 @@ use casper_storage::{
     },
     system::runtime_native::Config as NativeRuntimeConfig,
 };
-use casper_types::{
-    binary_port::SpeculativeExecutionResult,
-    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
-    ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
-};
+use casper_types::{binary_port::SpeculativeExecutionResult, bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH}, contract_messages::Messages, execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind}, BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key, ProtocolVersion, PublicKey, Transaction, U512, ApprovalsHash};
 
 use crate::{
     components::{
@@ -88,7 +81,7 @@ pub fn execute_finalized_block(
         .collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
-    let approvals_hashes: Vec<TransactionApprovalsHash> =
+    let approvals_hashes: Vec<ApprovalsHash> =
         txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
     let scratch_state = data_access_layer.get_scratch_engine_state();

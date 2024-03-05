@@ -29,7 +29,7 @@ use casper_types::{
     AvailableBlockRange, ApprovalsHash, Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2,BlockV2,
     ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo,FinalitySignature,FinalitySignatureV2, Key,
     ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder,
-    TimeDiff, Transaction, TransactionHash, TransactionV1Hash,TransactionWithFinalizedApprovals, Transfer, U512,
+    TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, U512,
 };
 use tempfile::tempdir;
 
@@ -979,7 +979,7 @@ fn can_retrieve_store_and_load_transactions() {
 
     // Finally try to get the execution info as well. Since we did not store any, we expect to get
     // the block hash and height from the indices.
-    let ((transaction_response, maybe_approvals), exec_info_response) =
+    let (transaction_response, exec_info_response) =
         get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
             .expect("no transaction with execution info returned");
 
@@ -1010,7 +1010,7 @@ fn can_retrieve_store_and_load_transactions() {
     assert!(put_transaction(&mut harness, &mut storage, &transaction));
     // Don't insert to the transaction hash index. Since we have no execution results
     // either, we should receive a `None` execution info response.
-    let ((transaction_response, maybe_approvals), exec_info_response) =
+    let (transaction, exec_info_response) =
         get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
             .expect("no transaction with execution info returned");
 

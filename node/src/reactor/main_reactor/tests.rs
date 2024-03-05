@@ -34,7 +34,7 @@ use casper_types::{
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
     ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
     Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionWithFinalizedApprovals, ValidatorConfig, U512,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -58,7 +58,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{AvailableBlockRange, BlockPayload, ExitCode, NodeId, SyncHandling},
+    types::{BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
