@@ -37,9 +37,10 @@ pub(super) fn create_rpc_builder(
     ack_timeout: TimeDiff,
     bubble_timeouts: bool,
     error_timeout: Duration,
+    max_frame_size: u32,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
-        juliet::protocol::ProtocolBuilder::new(),
+        juliet::protocol::ProtocolBuilder::new().max_frame_size(max_frame_size),
         |protocol, (channel, juliet_config)| {
             protocol.channel_config(channel.into_channel_id(), juliet_config.into())
         },

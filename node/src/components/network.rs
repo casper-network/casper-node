@@ -281,6 +281,7 @@ where
             self.config.ack_timeout,
             self.config.bubble_timeouts,
             self.config.error_timeout.into(),
+            self.config.max_frame_size,
         );
 
         // Setup connection manager, then learn all known addresses.
