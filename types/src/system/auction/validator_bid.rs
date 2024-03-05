@@ -8,7 +8,7 @@ use crate::{
     system::auction::{
         bid::VestingSchedule, DelegationRate, Error, VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    CLType, CLTyped, PublicKey, URef, U512,
+    CLType, CLTyped, EraId, PublicKey, URef, U512,
 };
 
 use crate::system::auction::Bid;
@@ -36,6 +36,10 @@ pub struct ValidatorBid {
     vesting_schedule: Option<VestingSchedule>,
     /// `true` if validator has been "evicted"
     inactive: bool,
+    /// New public key if validator key was changed.
+    new_validator_public_key: Option<PublicKey>,
+    /// Era when validator public key was changed.
+    key_change_era_id: Option<EraId>,
 }
 
 impl ValidatorBid {
@@ -56,6 +60,8 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            new_validator_public_key: None,
+            key_change_era_id: None,
         }
     }
 
@@ -75,6 +81,8 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            new_validator_public_key: None,
+            key_change_era_id: None,
         }
     }
 
@@ -91,6 +99,8 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            new_validator_public_key: None,
+            key_change_era_id: None,
         }
     }
 
@@ -248,6 +258,8 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(&mut result)?;
         self.vesting_schedule.write_bytes(&mut result)?;
         self.inactive.write_bytes(&mut result)?;
+        self.new_validator_public_key.write_bytes(&mut result)?;
+        self.key_change_era_id.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -258,6 +270,8 @@ impl ToBytes for ValidatorBid {
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
             + self.inactive.serialized_length()
+            + self.new_validator_public_key.serialized_length()
+            + self.key_change_era_id.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -267,6 +281,8 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
+        self.new_validator_public_key.write_bytes(writer)?;
+        self.key_change_era_id.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -279,6 +295,8 @@ impl FromBytes for ValidatorBid {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
+        let (new_validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
+        let (key_change_era_id, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -287,6 +305,8 @@ impl FromBytes for ValidatorBid {
                 delegation_rate,
                 vesting_schedule,
                 inactive,
+                new_validator_public_key,
+                key_change_era_id,
             },
             bytes,
         ))
@@ -302,6 +322,8 @@ impl From<Bid> for ValidatorBid {
             delegation_rate: *bid.delegation_rate(),
             vesting_schedule: bid.vesting_schedule().cloned(),
             inactive: bid.inactive(),
+            new_validator_public_key: None,
+            key_change_era_id: None,
         }
     }
 }
@@ -325,6 +347,8 @@ mod tests {
             delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
+            new_validator_public_key: None,
+            key_change_era_id: None,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -340,6 +364,8 @@ mod tests {
             delegation_rate: DelegationRate::max_value(),
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: true,
+            new_validator_public_key: None,
+            key_change_era_id: None,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
