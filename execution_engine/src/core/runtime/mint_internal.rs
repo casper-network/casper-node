@@ -9,11 +9,10 @@ use super::Runtime;
 use crate::{
     core::{
         engine_state::SystemContractRegistry, execution,
-        runtime_context::RuntimeContext,
     },
     storage::global_state::StateReader,
     system::mint::{
-        detail, runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider, Mint,
     },
 };
@@ -93,9 +92,13 @@ where
     ) -> Result<Option<StoredValue>, execution::Error> {
         self.context.read_account(&Key::Account(*account_hash))
     }
-
-    fn get_context<G>(&self) -> &RuntimeContext<'a, G> {
-        &self.context
+    
+    fn validate_writeable(&self, key: &Key) -> Result<(), execution::Error> {
+        self.context.validate_writeable(key)
+    }
+    
+    fn validate_key(&self, key: &Key) -> Result<(), execution::Error> {
+        self.context.validate_key(key)
     }
 }
 

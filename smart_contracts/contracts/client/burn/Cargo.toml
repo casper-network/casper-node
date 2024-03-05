@@ -1,11 +1,11 @@
 [package]
-name = "main-purse-burn"
+name = "burn"
 version = "0.1.0"
 authors = ["Igor Bunar <igor@casper.network>", "Jan Hoffmann <jan@casper.network>"]
 edition = "2021"
 
 [[bin]]
-name = "main_purse_burn"
+name = "burn"
 path = "src/main.rs"
 bench = false
 doctest = false

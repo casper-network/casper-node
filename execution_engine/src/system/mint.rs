@@ -16,8 +16,6 @@ use casper_types::{
     Key, Phase, PublicKey, StoredValue, URef, U512,
 };
 
-use detail::reduce_total_supply_unchecked;
-
 use crate::{
     core::engine_state::SystemContractRegistry,
     system::mint::{
@@ -60,12 +58,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Burns native tokens.
     fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
         let purse_key = Key::URef(purse);
-        self.context
-            .validate_writeable(&purse_key)
-            .map_err(|_| Error::InvalidAccessRights)?;
-        self.context
-            .validate_key(&purse_key)
-            .map_err(|_| Error::InvalidURef)?;
+        self.validate_writeable(&purse_key)
+            .map_err(|_| Error::ForgedReference)?;
+        self.validate_key(&purse_key)
+            .map_err(|_| Error::ForgedReference)?;
 
         let source_balance: U512 = match self.read_balance(purse)? {
             Some(source_balance) => source_balance,
@@ -94,7 +90,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 
-        reduce_total_supply_unchecked(self, amount)
+        detail::reduce_total_supply_unchecked(self, amount)
     }
 
     /// Read balance of given `purse`.

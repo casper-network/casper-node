@@ -656,8 +656,8 @@ where
 
                 let purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
-                let x = mint_runtime.burn(purse, amount).map_err(Self::reverter)?;
-                CLValue::from_t(x).map_err(Self::reverter)
+                let result: Result<(), mint::Error> = mint_runtime.burn(purse, amount);
+                CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => (|| {

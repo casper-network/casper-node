@@ -75,12 +75,12 @@ impl ToBytes for MintCosts {
 
         ret.append(&mut mint.to_bytes()?);
         ret.append(&mut reduce_total_supply.to_bytes()?);
-        ret.append(&mut burn.to_bytes()?);
         ret.append(&mut create.to_bytes()?);
         ret.append(&mut balance.to_bytes()?);
         ret.append(&mut transfer.to_bytes()?);
         ret.append(&mut read_base_round_reward.to_bytes()?);
         ret.append(&mut mint_into_existing_purse.to_bytes()?);
+        ret.append(&mut burn.to_bytes()?);
 
         Ok(ret)
     }
@@ -111,14 +111,14 @@ impl ToBytes for MintCosts {
 impl FromBytes for MintCosts {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
         let (mint, rem) = FromBytes::from_bytes(bytes)?;
-        let (reduce_total_supply, _) = FromBytes::from_bytes(rem)?;
-        let (burn, rem) = FromBytes::from_bytes(bytes)?;
+        let (reduce_total_supply, rem) = FromBytes::from_bytes(rem)?;
         let (create, rem) = FromBytes::from_bytes(rem)?;
         let (balance, rem) = FromBytes::from_bytes(rem)?;
         let (transfer, rem) = FromBytes::from_bytes(rem)?;
         let (read_base_round_reward, rem) = FromBytes::from_bytes(rem)?;
         let (mint_into_existing_purse, rem) = FromBytes::from_bytes(rem)?;
-
+        let (burn, _) = FromBytes::from_bytes(bytes)?;
+        
         Ok((
             Self {
                 mint,

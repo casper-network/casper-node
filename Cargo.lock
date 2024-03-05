@@ -417,6 +417,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f30e7476521f6f8af1a1c4c0b8cc94f0bee37d91763d0ca2665f299b6cd8aec"
 
 [[package]]
+name = "burn"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3421,14 +3429,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "main-purse-burn"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "manage-groups"
 version = "0.1.0"
 dependencies = [
@@ -3624,14 +3624,6 @@ dependencies = [
 
 [[package]]
 name = "named-keys-stored-call"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
-name = "named-purse-burn"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

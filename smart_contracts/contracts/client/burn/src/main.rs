@@ -26,7 +26,7 @@ fn burn(uref: URef, amount: U512) {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let purse_uref = match get_named_arg_option::<String>(ARG_PURSE_NAME) {
+    let purse_uref = match get_named_arg_if_exists::<String>(ARG_PURSE_NAME) {
         Some(name) => {
             // if a key was provided and there is no value under it we revert
             // to prevent user from accidentaly burning tokens from the main purse
@@ -43,24 +43,22 @@ pub extern "C" fn call() {
     burn(purse_uref, amount);
 }
 
-fn get_named_arg_size(name: &str) -> Option<usize> {
-    let mut arg_size: usize = 0;
-    let ret = unsafe {
-        ext_ffi::casper_get_named_arg_size(
-            name.as_bytes().as_ptr(),
-            name.len(),
-            &mut arg_size as *mut usize,
-        )
-    };
-    match api_error::result_from(ret) {
-        Ok(_) => Some(arg_size),
-        Err(ApiError::MissingArgument) => None,
-        Err(e) => runtime::revert(e),
-    }
-}
-
-pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
-    let arg_size = get_named_arg_size(name).unwrap_or_revert_with(ApiError::MissingArgument);
+fn get_named_arg_if_exists<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
+    let arg_size = {
+        let mut arg_size: usize = 0;
+        let ret = unsafe {
+            ext_ffi::casper_get_named_arg_size(
+                name.as_bytes().as_ptr(),
+                name.len(),
+                &mut arg_size as *mut usize,
+            )
+        };
+        match api_error::result_from(ret) {
+            Ok(_) => Some(arg_size),
+            Err(ApiError::MissingArgument) => None,
+            Err(e) => runtime::revert(e),
+        }
+    }?;
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = alloc_bytes(arg_size);
@@ -74,18 +72,14 @@ pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
             };
             let data =
                 unsafe { Vec::from_raw_parts(data_non_null_ptr.as_ptr(), arg_size, arg_size) };
-            if ret != 0 {
-                return None;
-            }
-            data
+            api_error::result_from(ret).map(|_| data)
         };
-        res
+        // Assumed to be safe as `get_named_arg_size` checks the argument already
+        res.unwrap_or_revert()
     } else {
         // Avoids allocation with 0 bytes and a call to get_named_arg
         Vec::new()
     };
-
-    let deserialized_data =
-        bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
-    Some(deserialized_data)
+    let value = bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
+    Some(value)
 }

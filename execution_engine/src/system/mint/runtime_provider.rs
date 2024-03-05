@@ -49,6 +49,12 @@ pub trait RuntimeProvider {
     /// chains.
     fn allow_unrestricted_transfers(&self) -> bool;
 
-    fn get_context<R>(&self) -> &RuntimeContext<'a, R>;
+    /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
+    fn validate_writeable(&self, key: &Key) -> Result<(), execution::Error>;
 
+    /// Validates whether key is not forged (whether it can be found in the
+    /// `named_keys`) and whether the version of a key that contract wants
+    /// to use, has access rights that are less powerful than access rights'
+    /// of the key in the `named_keys`.
+    fn validate_key(&self, key: &Key) -> Result<(), execution::Error>;
 }
