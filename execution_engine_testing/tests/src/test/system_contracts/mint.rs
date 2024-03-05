@@ -51,9 +51,7 @@ fn should_burn_tokens_from_provided_purse() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let account = builder
-        .get_account(source)
-        .expect("should have account");
+    let account = builder.get_account(source).expect("should have account");
 
     let purse_uref: URef = account.named_keys()[purse_name]
         .into_uref()
@@ -161,9 +159,7 @@ fn should_not_burn_excess_tokens() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let account = builder
-        .get_account(source)
-        .expect("should have account");
+    let account = builder.get_account(source).expect("should have account");
 
     let purse_uref: URef = account.named_keys()[purse_name]
         .into_uref()
