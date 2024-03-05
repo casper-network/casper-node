@@ -133,6 +133,12 @@ def start_network():
         chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
 
+        path_to_config = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/config.toml".format(
+            node)
+        config = toml.load(path_to_config)
+        config['network']['conman']['permanent_error_backoff'] = "1 second"
+        toml.dump(config, open(path_to_config, 'w'))
+
     command = "RUST_LOG=debug,juliet=info nctl-start"
     invoke(command)
 
