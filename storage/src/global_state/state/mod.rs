@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::HashMap, convert::TryFrom, rc::Rc};
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    addressable_entity::{EntityKindTag, NamedKeys},
+    addressable_entity::{EntityKindTag},
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     system::{
@@ -19,7 +19,7 @@ use casper_types::{
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, MINT,
     },
-    Account, AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
+    AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
     Phase, PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
@@ -298,12 +298,9 @@ pub trait CommitProvider: StateProvider {
                         return TransferResult::Failure(TransferError::Mint(mint_error))
                     }
                 };
-                // TODO: KARAN TO FIX: this should create a shiny new addressable entity instance,
-                // not create a legacy account and then uplift it.
-                let account = Account::create(account_hash, NamedKeys::new(), main_purse);
                 if let Err(tce) = tc
                     .borrow_mut()
-                    .create_addressable_entity_from_account(account, protocol_version)
+                    .create_new_addressable_entity_on_transfer(account_hash, main_purse, protocol_version)
                 {
                     return TransferResult::Failure(tce.into());
                 }

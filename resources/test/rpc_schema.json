@@ -166,16 +166,17 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2",
+                  "hash": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
                     "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
                     "pricing_mode": {
-                      "GasPriceMultiplier": 1
+                      "Fixed": {
+                        "gas_price_tolerance": 5
+                      }
                     },
-                    "payment_amount": null,
                     "initiator_addr": {
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     }
@@ -236,7 +237,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012152c1eab67f63faa6a482ec4847ecd145c3b2c3e2affe763303ecb4ccf8618a1b2d24de7313fbf8a2ac1b5256471cc6bbf21745af15516331e5fc3d4a2fa201"
+                      "signature": "017650934fca4d5f4107058c68b1c4ce66aac965164a3c6f8070753c4bb2623119ea1fb9046b8324dcba20c9fd141bb1364953638ecd65d57c283132845134e50c"
                     }
                   ]
                 }
@@ -248,7 +249,7 @@
             "value": {
               "api_version": "1.5.3",
               "transaction_hash": {
-                "Version1": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2"
+                "Version1": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5"
               }
             }
           }
@@ -483,7 +484,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2"
+                "Version1": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5"
               }
             },
             {
@@ -497,16 +498,17 @@
               "api_version": "1.5.3",
               "transaction": {
                 "Version1": {
-                  "hash": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2",
+                  "hash": "2576738ea0aac682f434cdee280ccfbc8aa208cfc110460f612a23c297acdce5",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
                     "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
                     "pricing_mode": {
-                      "GasPriceMultiplier": 1
+                      "Fixed": {
+                        "gas_price_tolerance": 5
+                      }
                     },
-                    "payment_amount": null,
                     "initiator_addr": {
                       "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
                     }
@@ -567,7 +569,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012152c1eab67f63faa6a482ec4847ecd145c3b2c3e2affe763303ecb4ccf8618a1b2d24de7313fbf8a2ac1b5256471cc6bbf21745af15516331e5fc3d4a2fa201"
+                      "signature": "017650934fca4d5f4107058c68b1c4ce66aac965164a3c6f8070753c4bb2623119ea1fb9046b8324dcba20c9fd141bb1364953638ecd65d57c283132845134e50c"
                     }
                   ]
                 }
@@ -1434,12 +1436,12 @@
                     },
                     "body": {
                       "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "transfer": [
+                      "mint": [
                         {
                           "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
                         }
                       ],
-                      "staking": [
+                      "auction": [
                         {
                           "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
                         }
@@ -2074,7 +2076,7 @@
           "approvals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DeployApproval"
+              "$ref": "#/components/schemas/Approval"
             },
             "uniqueItems": true
           }
@@ -2714,8 +2716,8 @@
         "description": "The hex-encoded address of the Package.",
         "type": "string"
       },
-      "DeployApproval": {
-        "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
+      "Approval": {
+        "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
         "type": "object",
         "required": [
           "signature",
@@ -2788,7 +2790,7 @@
           "approvals": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TransactionV1Approval"
+              "$ref": "#/components/schemas/Approval"
             },
             "uniqueItems": true
           }
@@ -2830,14 +2832,6 @@
           "pricing_mode": {
             "$ref": "#/components/schemas/PricingMode"
           },
-          "payment_amount": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint64",
-            "minimum": 0.0
-          },
           "initiator_addr": {
             "$ref": "#/components/schemas/InitiatorAddr"
           }
@@ -2848,35 +2842,103 @@
         "description": "Pricing mode of a Transaction.",
         "oneOf": [
           {
-            "description": "Multiplies the gas used by the given amount.\n\nThis is the same behaviour as for the `Deploy::gas_price`.",
+            "description": "The original payment model, where the creator of the transaction specifies how much they will pay, at what gas price.",
             "type": "object",
             "required": [
-              "GasPriceMultiplier"
+              "Classic"
             ],
             "properties": {
-              "GasPriceMultiplier": {
-                "type": "integer",
-                "format": "uint64",
-                "minimum": 0.0
+              "Classic": {
+                "type": "object",
+                "required": [
+                  "gas_price",
+                  "payment_amount"
+                ],
+                "properties": {
+                  "payment_amount": {
+                    "description": "User-specified payment amount.",
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  },
+                  "gas_price": {
+                    "description": "User-specified gas_price tolerance (minimum 1).",
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "First-in-first-out handling of transactions, i.e. pricing mode is irrelevant to ordering.",
-            "type": "string",
-            "enum": [
+            "description": "The cost of the transaction is determined by the cost table, per the transaction kind.",
+            "type": "object",
+            "required": [
               "Fixed"
-            ]
+            ],
+            "properties": {
+              "Fixed": {
+                "type": "object",
+                "required": [
+                  "gas_price_tolerance"
+                ],
+                "properties": {
+                  "gas_price_tolerance": {
+                    "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
           },
           {
-            "description": "The payment for this transaction was previously reserved.",
-            "type": "string",
-            "enum": [
+            "description": "The payment for this transaction was previously reserved, as proven by the receipt hash (this is for future use, not currently implemented).",
+            "type": "object",
+            "required": [
               "Reserved"
-            ]
+            ],
+            "properties": {
+              "Reserved": {
+                "type": "object",
+                "required": [
+                  "paid_amount",
+                  "receipt"
+                ],
+                "properties": {
+                  "receipt": {
+                    "description": "Pre-paid receipt.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Digest"
+                      }
+                    ]
+                  },
+                  "paid_amount": {
+                    "description": "Price paid in the past to reserve space in a future block.",
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/U512"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
           }
         ]
+      },
+      "U512": {
+        "description": "Decimal representation of a 512-bit integer.",
+        "type": "string"
       },
       "InitiatorAddr": {
         "description": "The address of the initiator of a TransactionV1.",
@@ -3274,23 +3336,6 @@
         "type": "integer",
         "format": "uint64",
         "minimum": 0.0
-      },
-      "TransactionV1Approval": {
-        "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
-        "type": "object",
-        "required": [
-          "signature",
-          "signer"
-        ],
-        "properties": {
-          "signer": {
-            "$ref": "#/components/schemas/PublicKey"
-          },
-          "signature": {
-            "$ref": "#/components/schemas/Signature"
-          }
-        },
-        "additionalProperties": false
       },
       "TransactionHash": {
         "description": "A versioned wrapper for a transaction hash or deploy hash.",
@@ -3903,10 +3948,6 @@
       },
       "URef": {
         "description": "Hex-encoded, formatted URef.",
-        "type": "string"
-      },
-      "U512": {
-        "description": "Decimal representation of a 512-bit integer.",
         "type": "string"
       },
       "EraInfo": {
@@ -6809,12 +6850,12 @@
         "description": "The body portion of a block. Version 2.",
         "type": "object",
         "required": [
+          "auction",
           "install_upgrade",
+          "mint",
           "proposer",
           "rewarded_signatures",
-          "staking",
-          "standard",
-          "transfer"
+          "standard"
         ],
         "properties": {
           "proposer": {
@@ -6825,15 +6866,15 @@
               }
             ]
           },
-          "transfer": {
-            "description": "The hashes of the transfer transactions within the block.",
+          "mint": {
+            "description": "The hashes of the mint transactions within the block.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TransactionHash"
             }
           },
-          "staking": {
-            "description": "The hashes of the non-transfer, native transactions within the block.",
+          "auction": {
+            "description": "The hashes of the auction transactions within the block.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TransactionHash"

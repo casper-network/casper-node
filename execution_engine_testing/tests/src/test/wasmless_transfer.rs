@@ -582,7 +582,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
        mint::ARG_ID => <Option<u64>>::None
     };
 
-    let no_wasm_transfer_request = {
+    let native_transfer_request = {
         let deploy_item = DeployItemBuilder::new()
             .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! {})
@@ -594,7 +594,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     };
 
     builder
-        .exec(no_wasm_transfer_request)
+        .exec(native_transfer_request)
         .expect_success()
         .commit();
 

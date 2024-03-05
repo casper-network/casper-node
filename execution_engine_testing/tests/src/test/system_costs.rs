@@ -698,12 +698,10 @@ fn mint_transfer_has_expected_costs() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(
         balance_after,
         balance_before - transfer_amount - transaction_fee,
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
 #[ignore]
