@@ -322,5 +322,4 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         self.add(total_supply_uref, amount)?;
         Ok(())
     }
-
 }

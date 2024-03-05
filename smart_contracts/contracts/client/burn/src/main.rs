@@ -89,4 +89,3 @@ pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
         bytesrepr::deserialize(arg_bytes).unwrap_or_revert_with(ApiError::InvalidArgument);
     Some(deserialized_data)
 }
-

@@ -7,9 +7,7 @@ use casper_types::{
 
 use super::Runtime;
 use crate::{
-    core::{
-        engine_state::SystemContractRegistry, execution,
-    },
+    core::{engine_state::SystemContractRegistry, execution},
     storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
@@ -92,11 +90,11 @@ where
     ) -> Result<Option<StoredValue>, execution::Error> {
         self.context.read_account(&Key::Account(*account_hash))
     }
-    
+
     fn validate_writeable(&self, key: &Key) -> Result<(), execution::Error> {
         self.context.validate_writeable(key)
     }
-    
+
     fn validate_key(&self, key: &Key) -> Result<(), execution::Error> {
         self.context.validate_key(key)
     }
@@ -198,4 +196,5 @@ impl<'a, R> Mint for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
-{}
+{
+}

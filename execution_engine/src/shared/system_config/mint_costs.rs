@@ -118,7 +118,7 @@ impl FromBytes for MintCosts {
         let (read_base_round_reward, rem) = FromBytes::from_bytes(rem)?;
         let (mint_into_existing_purse, rem) = FromBytes::from_bytes(rem)?;
         let (burn, _) = FromBytes::from_bytes(bytes)?;
-        
+
         Ok((
             Self {
                 mint,
