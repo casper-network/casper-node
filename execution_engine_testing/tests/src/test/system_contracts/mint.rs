@@ -19,7 +19,7 @@ const ARG_PURSE_NAME: &str = "purse_name";
 fn should_burn_tokens_from_provided_purse() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
-    let source = DEFAULT_ACCOUNT_ADDR.clone();
+    let source = *DEFAULT_ACCOUNT_ADDR;
 
     let delegator_keys = auction::generate_public_keys(1);
     let validator_keys = auction::generate_public_keys(1);
@@ -52,7 +52,7 @@ fn should_burn_tokens_from_provided_purse() {
     builder.exec(exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(source.clone())
+        .get_account(source)
         .expect("should have account");
 
     let purse_uref: URef = account.named_keys()[purse_name]
@@ -61,7 +61,7 @@ fn should_burn_tokens_from_provided_purse() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(purse_uref.clone())
+            .get_purse_balance_result(purse_uref)
             .motes()
             .cloned()
             .unwrap(),
@@ -86,7 +86,7 @@ fn should_burn_tokens_from_provided_purse() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(purse_uref.clone())
+            .get_purse_balance_result(purse_uref)
             .motes()
             .cloned()
             .unwrap(),
@@ -111,7 +111,7 @@ fn should_burn_tokens_from_provided_purse() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(purse_uref.clone())
+            .get_purse_balance_result(purse_uref)
             .motes()
             .cloned()
             .unwrap(),
@@ -129,7 +129,7 @@ fn should_burn_tokens_from_provided_purse() {
 fn should_not_burn_excess_tokens() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
-    let source = DEFAULT_ACCOUNT_ADDR.clone();
+    let source = *DEFAULT_ACCOUNT_ADDR;
 
     let delegator_keys = auction::generate_public_keys(1);
     let validator_keys = auction::generate_public_keys(1);
@@ -162,7 +162,7 @@ fn should_not_burn_excess_tokens() {
     builder.exec(exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(source.clone())
+        .get_account(source)
         .expect("should have account");
 
     let purse_uref: URef = account.named_keys()[purse_name]
@@ -171,7 +171,7 @@ fn should_not_burn_excess_tokens() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(purse_uref.clone())
+            .get_purse_balance_result(purse_uref)
             .motes()
             .cloned()
             .unwrap(),
@@ -196,7 +196,7 @@ fn should_not_burn_excess_tokens() {
 
     assert_eq!(
         builder
-            .get_purse_balance_result(purse_uref.clone())
+            .get_purse_balance_result(purse_uref)
             .motes()
             .cloned()
             .unwrap(),
