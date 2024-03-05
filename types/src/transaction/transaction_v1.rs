@@ -331,7 +331,7 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(config, timestamp_leeway, at, &self.hash.into())?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(

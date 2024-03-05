@@ -7,6 +7,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "std", test))]
+use tracing::error;
 
 #[cfg(any(feature = "std", test))]
 use crate::{TimeDiff, TransactionConfig, TransactionHash};
@@ -63,21 +65,20 @@ impl TransactionHeader {
         at: Timestamp,
         transaction_hash: &TransactionHash,
     ) -> bool {
-        match self {
-            TransactionHeader::Deploy(header) => header
-                .is_valid(
-                    config,
-                    timestamp_leeway,
-                    at,
-                    match transaction_hash {
-                        TransactionHash::Deploy(hash) => hash,
-                        _ => panic!("expected deploy hash"),
-                    },
-                )
+        match (self, transaction_hash) {
+            (TransactionHeader::Deploy(deploy_header), TransactionHash::Deploy(deploy_hash)) => {
+                deploy_header
+                    .is_valid(config, timestamp_leeway, at, deploy_hash)
+                    .is_ok()
+            }
+            (TransactionHeader::V1(v1_header), TransactionHash::V1(v1_hash)) => v1_header
+                .is_valid(config, timestamp_leeway, at, v1_hash)
                 .is_ok(),
-            TransactionHeader::V1(header) => header
-                .is_valid(config, timestamp_leeway, at, transaction_hash)
-                .is_ok(),
+            (TransactionHeader::V1(_), TransactionHash::Deploy(_))
+            | (TransactionHeader::Deploy(_), TransactionHash::V1(_)) => {
+                error!(%transaction_hash, "header and hash type mismatch");
+                false
+            }
         }
     }
 }
