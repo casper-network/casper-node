@@ -16,7 +16,7 @@ const ARG_PURSE_NAME: &str = "purse_name";
 
 #[ignore]
 #[test]
-fn should_burn_tokens_from_provided_purse() {
+fn should_empty_purse_when_burning_above_balance() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
     let source = *DEFAULT_ACCOUNT_ADDR;

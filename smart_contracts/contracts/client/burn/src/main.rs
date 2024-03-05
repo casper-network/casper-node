@@ -59,7 +59,7 @@ fn get_named_arg_size(name: &str) -> Option<usize> {
     }
 }
 
-pub fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
+fn get_named_arg_option<T: bytesrepr::FromBytes>(name: &str) -> Option<T> {
     let arg_size = get_named_arg_size(name).unwrap_or_revert_with(ApiError::MissingArgument);
     let arg_bytes = if arg_size > 0 {
         let res = {
