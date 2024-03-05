@@ -550,7 +550,9 @@ mod tests {
     use futures::channel::oneshot;
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash};
+    use casper_types::{
+        testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash,
+    };
 
     use super::{super::tests::*, *};
     use crate::{types::TransactionExt, utils::Loadable};
@@ -574,7 +576,14 @@ mod tests {
         fn footprints(&self) -> Vec<(TransactionHash, TransactionFootprint)> {
             self.transactions
                 .iter()
-                .map(|transaction| (transaction.hash(), transaction.footprint(&self.chainspec).expect("must create footprint")))
+                .map(|transaction| {
+                    (
+                        transaction.hash(),
+                        transaction
+                            .footprint(&self.chainspec)
+                            .expect("must create footprint"),
+                    )
+                })
                 .collect()
         }
 
@@ -847,8 +856,10 @@ mod tests {
         let timestamp = Timestamp::from(1000);
         let transfers = vec![new_transfer(fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
-        let transfers_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> =
-            transfers.iter().map(|transaction| (transaction.hash(), transaction.approvals().clone())).collect();
+        let transfers_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> = transfers
+            .iter()
+            .map(|transaction| (transaction.hash(), transaction.approvals()))
+            .collect();
 
         let proposed_block =
             new_proposed_block(timestamp, transfers_for_block, vec![], vec![], vec![]);
@@ -1226,10 +1237,14 @@ mod tests {
         fixture.transactions.push(invalid_transaction.clone());
         let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
-        if let BlockValidationState::InProgress { ref mut missing_transactions, ..} = state {
-            let approvals = invalid_transaction.approvals().clone();
-            let approvals_hash = ApprovalsHash::compute(&approvals)
-                .expect("must get approvals hash");
+        if let BlockValidationState::InProgress {
+            ref mut missing_transactions,
+            ..
+        } = state
+        {
+            let approvals = invalid_transaction.approvals();
+            let approvals_hash =
+                ApprovalsHash::compute(&approvals).expect("must get approvals hash");
             let info = ApprovalInfo::new(approvals, approvals_hash);
             missing_transactions.insert(invalid_transaction_hash, info);
         };

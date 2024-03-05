@@ -39,7 +39,7 @@ use {
         AddressableEntityHash, TransactionConfig,
         {testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES},
     },
-    rand::{Rng},
+    rand::Rng,
     tracing::{debug, warn},
 };
 #[cfg(feature = "json-schema")]

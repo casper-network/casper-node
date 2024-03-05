@@ -16,10 +16,19 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
-use casper_types::{execution::{
-    execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
-    ExecutionResult, ExecutionResultV2,
-}, generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512, ApprovalsHash};
+use casper_types::{
+    execution::{
+        execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
+        ExecutionResult, ExecutionResultV2,
+    },
+    generate_ed25519_keypair,
+    system::auction::UnbondingPurse,
+    testing::TestRng,
+    AccessRights, ApprovalsHash, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
+    Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key,
+    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder,
+    TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512,
+};
 use tempfile::tempdir;
 
 use super::{
@@ -354,10 +363,8 @@ fn get_naive_transactions(
         .map(|opt_twfa| {
             if let Some((transaction, maybe_approvals)) = opt_twfa {
                 let txn = match maybe_approvals {
-                    None => { transaction }
-                    Some(approvals) => {
-                        transaction.with_approvals(approvals)
-                    }
+                    None => transaction,
+                    Some(approvals) => transaction.with_approvals(approvals),
                 };
                 Some(txn)
             } else {
@@ -1007,7 +1014,6 @@ fn can_retrieve_store_and_load_transactions() {
             .into()
         })
         .expect("no transaction with execution info returned");
-
 
     let txn = if let Some(approvals) = maybe_approvals {
         transaction_response.with_approvals(approvals)
@@ -2955,13 +2961,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
         let approvals_hashes = get_approvals_hashes(&mut harness, &mut storage, *hash);
         if let Some(expected_approvals_hashes) = &block_info.approvals_hashes {
             let stored_approvals_hashes = approvals_hashes.unwrap().approvals_hashes().to_vec();
-            assert_eq!(
-                stored_approvals_hashes,
-                expected_approvals_hashes
-                    .iter()
-                    .map(|approvals_hash| *approvals_hash)
-                    .collect::<Vec<_>>()
-            );
+            assert_eq!(stored_approvals_hashes, expected_approvals_hashes.clone());
         }
 
         let transfers = get_block_transfers(&mut harness, &mut storage, *hash);

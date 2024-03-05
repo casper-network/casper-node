@@ -1,9 +1,17 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
-use casper_types::{account::AccountHash, addressable_entity::{
-    ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
-    NamedKeyValue, NamedKeys, Weight,
-}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef};
+use casper_types::{
+    account::AccountHash,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
+    },
+    bytesrepr,
+    package::{EntityVersions, Groups, PackageStatus},
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
+    EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase, ProtocolVersion,
+    StoredValue, StoredValueTypeMismatch, URef,
+};
 
 use crate::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -305,8 +313,7 @@ where
         main_purse: URef,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        let mut generator =
-            AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
+        let mut generator = AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
 
         let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
@@ -359,9 +366,7 @@ where
             StoredValue::CLValue(contract_by_account),
         );
         Ok(())
-
     }
-
 
     fn create_addressable_entity_from_account(
         &mut self,

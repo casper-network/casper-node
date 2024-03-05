@@ -21,8 +21,6 @@ pub use message_limits::MessageLimits;
 pub use mint_costs::{MintCosts, DEFAULT_TRANSFER_COST};
 pub use opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts};
 #[cfg(any(feature = "testing", test))]
-pub use system_config::{DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT};
-#[cfg(any(feature = "testing", test))]
 pub use opcode_costs::{
     DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_IF_OPCODE, DEFAULT_CONTROL_FLOW_BR_OPCODE,
@@ -39,4 +37,8 @@ pub use opcode_costs::{
 pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
 pub use system_config::SystemConfig;
+#[cfg(any(feature = "testing", test))]
+pub use system_config::{
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
+};
 pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

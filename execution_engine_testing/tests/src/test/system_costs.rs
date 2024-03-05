@@ -19,8 +19,8 @@ use casper_types::{
     HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
     MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
     StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
-    DEFAULT_WASM_MAX_MEMORY, U512,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -938,7 +938,10 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts{transfer: 0, ..Default::default() };
+    let new_mint_costs = MintCosts {
+        transfer: 0,
+        ..Default::default()
+    };
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 

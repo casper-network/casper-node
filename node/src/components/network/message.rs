@@ -541,9 +541,7 @@ impl<'a> NetworkMessageEstimator<'a> {
                     + self.chainspec.transaction_config.block_max_standard_count)
                     as i64
             }
-            "max_mint_per_block" => {
-                self.chainspec.transaction_config.block_max_mint_count as i64
-            }
+            "max_mint_per_block" => self.chainspec.transaction_config.block_max_mint_count as i64,
             "max_auctions_per_block" => {
                 self.chainspec.transaction_config.block_max_auction_count as i64
             }

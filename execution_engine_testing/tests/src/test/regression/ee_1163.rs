@@ -6,7 +6,12 @@ use casper_execution_engine::engine_state::{
     Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
 use casper_storage::system::transfer::TransferError;
-use casper_types::{account::AccountHash, runtime_args, system::{handle_payment, mint}, Gas, Motes, RuntimeArgs, U512, SystemConfig};
+use casper_types::{
+    account::AccountHash,
+    runtime_args,
+    system::{handle_payment, mint},
+    Gas, Motes, RuntimeArgs, SystemConfig, U512,
+};
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
@@ -76,7 +81,8 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
     let id: Option<u64> = None;
 
     let create_account_request = {
-        let transfer_amount = Motes::new(U512::from(SystemConfig::default().mint_costs().transfer) + U512::one());
+        let transfer_amount =
+            Motes::new(U512::from(SystemConfig::default().mint_costs().transfer) + U512::one());
 
         let transfer_args = runtime_args! {
 

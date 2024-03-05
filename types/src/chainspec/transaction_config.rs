@@ -67,7 +67,7 @@ pub struct TransactionConfig {
     pub transaction_v1_config: TransactionV1Config,
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 impl TransactionConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -106,7 +106,7 @@ impl TransactionConfig {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 impl Default for TransactionConfig {
     fn default() -> Self {
         let eighteeen_hours = TimeDiff::from_seconds(18 * 60 * 60);

@@ -1,5 +1,4 @@
-use std::{sync::Arc, time::Duration};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -7,7 +6,10 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_types::{bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId, ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512, TransactionCategory};
+use casper_types::{
+    bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory, U512,
+};
 
 use super::*;
 use crate::{
@@ -19,9 +21,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{
-        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
-    },
+    types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -325,18 +325,16 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     .collect();
 
     let mut txn_set = BTreeMap::new();
-    let val = txns.iter().map(|transaction| {
-        let hash = transaction.hash();
-        let approvals = transaction.approvals();
-        (hash, approvals)
-    }).collect();
+    let val = txns
+        .iter()
+        .map(|transaction| {
+            let hash = transaction.hash();
+            let approvals = transaction.approvals();
+            (hash, approvals)
+        })
+        .collect();
     txn_set.insert(TransactionCategory::Mint, val);
-    let block_payload = BlockPayload::new(
-        txn_set,
-        vec![],
-        Default::default(),
-        true,
-    );
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true);
     let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             block_payload,

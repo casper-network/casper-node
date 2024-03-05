@@ -349,7 +349,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                 }
                 return outcomes;
             } else {
-
                 self.log_proposal(vertex, "proposal does not need validation");
             }
         }

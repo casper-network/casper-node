@@ -9,7 +9,14 @@ use casper_execution_engine::engine_state::{
     EngineConfigBuilder, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
 use casper_storage::system::transfer::TransferError;
-use casper_types::{account::AccountHash, runtime_args, system::{handle_payment, mint}, AccessRights, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef, U512, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT};
+use casper_types::{
+    account::AccountHash,
+    runtime_args,
+    system::{handle_payment, mint},
+    AccessRights, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, U512,
+};
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
 const CONTRACT_NEW_NAMED_UREF: &str = "new_named_uref.wasm";
@@ -954,7 +961,10 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
     let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts{ transfer: new_wasmless_transfer_cost_value, ..Default::default()};
+    let new_mint_costs = MintCosts {
+        transfer: new_wasmless_transfer_cost_value,
+        ..Default::default()
+    };
     let new_handle_payment_costs = HandlePaymentCosts::default();
     let new_standard_payment_costs = StandardPaymentCosts::default();
 

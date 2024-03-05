@@ -12,7 +12,7 @@ use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
@@ -124,7 +124,7 @@ impl TransactionV1Body {
         !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
     }
 
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn is_valid(
         &self,
         config: &TransactionConfig,

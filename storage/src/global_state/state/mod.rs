@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::HashMap, convert::TryFrom, rc::Rc};
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    addressable_entity::{EntityKindTag},
+    addressable_entity::EntityKindTag,
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     system::{
@@ -19,8 +19,8 @@ use casper_types::{
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, MINT,
     },
-    AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag,
-    Phase, PublicKey, RuntimeArgs, StoredValue, U512,
+    AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
+    PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 #[cfg(test)]
@@ -298,10 +298,11 @@ pub trait CommitProvider: StateProvider {
                         return TransferResult::Failure(TransferError::Mint(mint_error))
                     }
                 };
-                if let Err(tce) = tc
-                    .borrow_mut()
-                    .create_new_addressable_entity_on_transfer(account_hash, main_purse, protocol_version)
-                {
+                if let Err(tce) = tc.borrow_mut().create_new_addressable_entity_on_transfer(
+                    account_hash,
+                    main_purse,
+                    protocol_version,
+                ) {
                     return TransferResult::Failure(tce.into());
                 }
             }

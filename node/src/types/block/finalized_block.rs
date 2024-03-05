@@ -280,11 +280,10 @@ impl InternalEraReport {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use casper_types::Deploy;
     use super::*;
+    use casper_types::Deploy;
 
     #[test]
     fn should_convert_from_proposable_to_finalized_without_dropping_hashes() {
@@ -300,12 +299,7 @@ mod tests {
             ret.insert(TransactionCategory::Auction, vec![]);
             ret
         };
-        let block_payload = BlockPayload::new(
-            transactions,
-            vec![],
-            Default::default(),
-            false
-        );
+        let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false);
 
         let fb = FinalizedBlock::new(
             block_payload,
@@ -313,7 +307,7 @@ mod tests {
             Timestamp::now(),
             EraId::random(&mut rng),
             90,
-            PublicKey::random(&mut rng)
+            PublicKey::random(&mut rng),
         );
 
         let transactions = fb.standard;

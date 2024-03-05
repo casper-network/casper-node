@@ -1,5 +1,7 @@
 use core::fmt::{self, Formatter};
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -7,8 +9,6 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::testing::TestRng;
 
 /// The category of a Transaction.
 #[derive(
@@ -43,10 +43,9 @@ impl TransactionCategory {
             1 => Self::Auction,
             2 => Self::InstallUpgrade,
             3 => Self::Standard,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
-
 }
 
 impl fmt::Display for TransactionCategory {

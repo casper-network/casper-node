@@ -1,7 +1,11 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_types::{runtime_args, system::{handle_payment::ACCUMULATION_PURSE_KEY, mint}, EntityAddr, FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, U512, MintCosts};
+use casper_types::{
+    runtime_args,
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
+    EntityAddr, FeeHandling, MintCosts, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, U512,
+};
 use num_rational::Ratio;
 use num_traits::{One, Zero};
 

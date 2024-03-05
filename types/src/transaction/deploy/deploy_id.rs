@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// The unique identifier of a [`Deploy`], comprising its [`DeployHash`] and
-/// [`DeployApprovalsHash`].
+/// [`ApprovalsHash`].
 #[derive(
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]

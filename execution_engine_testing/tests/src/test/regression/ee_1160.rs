@@ -3,7 +3,9 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE;
-use casper_types::{account::AccountHash, runtime_args, system::mint, Gas, Motes, U512, SystemConfig, MintCosts};
+use casper_types::{
+    account::AccountHash, runtime_args, system::mint, Gas, MintCosts, Motes, SystemConfig, U512,
+};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 

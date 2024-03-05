@@ -49,9 +49,10 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Transaction> + Clone>(
 
 fn get_transaction_id(transaction: &Transaction) -> TransactionId {
     match transaction {
-        Transaction::Deploy(deploy) => {
-            TransactionId::new(TransactionHash::Deploy(*deploy.hash()), deploy.compute_approvals_hash().unwrap())
-        }
+        Transaction::Deploy(deploy) => TransactionId::new(
+            TransactionHash::Deploy(*deploy.hash()),
+            deploy.compute_approvals_hash().unwrap(),
+        ),
         Transaction::V1(transaction_v1) => TransactionId::new(
             TransactionHash::V1(*transaction_v1.hash()),
             transaction_v1.compute_approvals_hash().unwrap(),

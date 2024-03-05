@@ -122,26 +122,37 @@ pub(super) fn new_proposed_block(
     let block_context = BlockContext::new(timestamp, vec![]);
     let transactions = {
         let mut ret = BTreeMap::new();
-        ret.insert(TransactionCategory::Mint, transfer.into_iter().map(|(txn_hash, approvals)| {
-            (txn_hash, approvals)
-        }).collect());
-        ret.insert(TransactionCategory::Auction, staking.into_iter().map(|(txn_hash, approvals)| {
-            (txn_hash, approvals)
-        }).collect());
-        ret.insert(TransactionCategory::InstallUpgrade, install_upgrade.into_iter().map(|(txn_hash, approvals)| {
-            (txn_hash, approvals)
-        }).collect());
-        ret.insert(TransactionCategory::Standard, standard.into_iter().map(|(txn_hash, approvals)| {
-            (txn_hash, approvals)
-        }).collect());
+        ret.insert(
+            TransactionCategory::Mint,
+            transfer
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::Auction,
+            staking
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::InstallUpgrade,
+            install_upgrade
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::Standard,
+            standard
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
         ret
     };
-    let block_payload = BlockPayload::new(
-        transactions,
-        vec![],
-        Default::default(),
-        true,
-    );
+    let block_payload = BlockPayload::new(transactions, vec![], Default::default(), true);
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
@@ -275,19 +286,19 @@ async fn validate_block(
     // Assemble the block to be validated.
     let transfers_for_block = transfers
         .iter()
-        .map(|transaction| (transaction.hash(), transaction.approvals().clone()))
+        .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let standards_for_block = standards
         .iter()
-        .map(|transaction| (transaction.hash(), transaction.approvals().clone()))
+        .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let stakings_for_block = stakings
         .iter()
-        .map(|transaction| (transaction.hash(), transaction.approvals().clone()))
+        .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let installs_upgrades_for_block = installs_upgrades
         .iter()
-        .map(|transaction| (transaction.hash(), transaction.approvals().clone()))
+        .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let proposed_block = new_proposed_block(
         timestamp,
@@ -599,11 +610,11 @@ async fn should_fetch_from_multiple_peers() {
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|transfer| (transfer.hash(), transfer.approvals().clone()))
+            .map(|transfer| (transfer.hash(), transfer.approvals()))
             .collect_vec();
         let standard_for_block = transactions
             .iter()
-            .map(|transaction| (transaction.hash(), transaction.approvals().clone()))
+            .map(|transaction| (transaction.hash(), transaction.approvals()))
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
