@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error},
-    execution,
+    execution::ExecError,
 };
 use casper_types::{
     account::AccountHash,
@@ -175,20 +175,17 @@ fn gh_1470_call_contract_should_verify_group_access() {
     let call_versioned_contract_error = exec_response.as_error().expect("should have error");
 
     match (&call_contract_error, &call_versioned_contract_error) {
-        (
-            Error::Exec(execution::Error::InvalidContext),
-            Error::Exec(execution::Error::InvalidContext),
-        ) => (),
+        (Error::Exec(ExecError::InvalidContext), Error::Exec(ExecError::InvalidContext)) => (),
         _ => panic!("Both variants should raise same error."),
     }
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::InvalidContext)
+        Error::Exec(ExecError::InvalidContext)
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::InvalidContext)
+        Error::Exec(ExecError::InvalidContext)
     ));
 }
 
@@ -271,8 +268,8 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
 //     match (&call_contract_error, &call_versioned_contract_error) {
 //         (
-//             Error::Exec(execution::Error::MissingArgument { name: lhs_name }),
-//             Error::Exec(execution::Error::MissingArgument { name: rhs_name }),
+//             Error::Exec(ExecError::MissingArgument { name: lhs_name }),
+//             Error::Exec(ExecError::MissingArgument { name: rhs_name }),
 //         ) if lhs_name == rhs_name => (),
 //         _ => panic!(
 //             "Both variants should raise same error: lhs={:?} rhs={:?}",
@@ -283,7 +280,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
 //     assert!(
 //         matches!(
 //             &call_versioned_contract_error,
-//             Error::Exec(execution::Error::MissingArgument {
+//             Error::Exec(ExecError::MissingArgument {
 //                 name,
 //             })
 //             if name == gh_1470_regression::ARG1
@@ -294,7 +291,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
 //     assert!(
 //         matches!(
 //             &call_contract_error,
-//             Error::Exec(execution::Error::MissingArgument {
+//             Error::Exec(ExecError::MissingArgument {
 //                 name,
 //             })
 //             if name == gh_1470_regression::ARG1
@@ -520,8 +517,8 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
-            Error::Exec(execution::Error::TypeMismatch(lhs_type_mismatch)),
-            Error::Exec(execution::Error::TypeMismatch(rhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(lhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(rhs_type_mismatch)),
         ) if lhs_type_mismatch == &expected_type_mismatch
             && rhs_type_mismatch == &expected_type_mismatch => {}
         _ => panic!(
@@ -532,12 +529,12 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
             if *type_mismatch == expected_type_mismatch
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
             if type_mismatch == expected_type_mismatch
     ));
 }
@@ -627,8 +624,8 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
-            Error::Exec(execution::Error::TypeMismatch(lhs_type_mismatch)),
-            Error::Exec(execution::Error::TypeMismatch(rhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(lhs_type_mismatch)),
+            Error::Exec(ExecError::TypeMismatch(rhs_type_mismatch)),
         ) if lhs_type_mismatch == &expected_type_mismatch
             && rhs_type_mismatch == &expected_type_mismatch => {}
         _ => panic!(
@@ -639,12 +636,12 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     assert!(matches!(
         call_versioned_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
         if *type_mismatch == expected_type_mismatch
     ));
     assert!(matches!(
         call_contract_error,
-        Error::Exec(execution::Error::TypeMismatch(type_mismatch))
+        Error::Exec(ExecError::TypeMismatch(type_mismatch))
         if type_mismatch == expected_type_mismatch
     ));
 }

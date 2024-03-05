@@ -6,7 +6,7 @@ extern crate alloc;
 
 use core::iter;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec::Vec};
 
 use casper_contract::{
     contract_api::{account, runtime, storage, system},
@@ -400,7 +400,11 @@ pub extern "C" fn call() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(HASH_KEY_NAME.into(), contract_package_hash.into());
 
-    let (contract_hash, _version) =
-        storage::add_contract_version(contract_package_hash, entry_points, named_keys);
+    let (contract_hash, _version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        BTreeMap::new(),
+    );
     runtime::put_key(CONTRACT_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

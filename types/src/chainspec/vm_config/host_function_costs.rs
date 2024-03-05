@@ -303,7 +303,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
     /// Cost of calling the `add_contract_version` host function.
-    pub add_contract_version: HostFunction<[Cost; 9]>,
+    pub add_contract_version: HostFunction<[Cost; 11]>,
     /// Cost of calling the `disable_contract_version` host function.
     pub disable_contract_version: HostFunction<[Cost; 4]>,
     /// Cost of calling the `call_contract` host function.

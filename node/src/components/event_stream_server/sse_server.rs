@@ -172,11 +172,7 @@ impl SseData {
 
     /// Returns a random `SseData::FinalitySignature`.
     pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
-        SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
-            BlockHash::random(rng),
-            EraId::random(rng),
-            rng,
-        )))
+        SseData::FinalitySignature(Box::new(FinalitySignature::random(rng)))
     }
 
     /// Returns a random `SseData::Step`.

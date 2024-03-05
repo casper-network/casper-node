@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
     AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
-    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
-    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, SystemConfig, Transaction,
+    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedApprovals,
+    InitiatorAddr, Key, PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, SystemConfig, Transaction,
     TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
@@ -579,7 +579,8 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => None,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => None,
             },
         };
 

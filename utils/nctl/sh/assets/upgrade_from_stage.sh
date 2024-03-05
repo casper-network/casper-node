@@ -76,6 +76,7 @@ function _main()
     local VERBOSE=${3}
     local CHAINSPEC_PATH=${4}
     local CONFIG_PATH=${5}
+    local SIDECAR_CONFIG_PATH=${6}
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
@@ -92,6 +93,10 @@ function _main()
         CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
     fi
 
+    if [ -z "$SIDECAR_CONFIG_PATH" ]; then
+        SIDECAR_CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/sidecar.toml"
+    fi
+
     if [ "$PROTOCOL_VERSION" != "" ]; then
         if [ $VERBOSE == true ]; then
             log "stage $STAGE_ID :: upgrade assets -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT"
@@ -103,6 +108,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
+                             "$NCTL_CASPER_SIDECAR_HOME/target/$NCTL_COMPILE_TARGET/casper-sidecar" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
         setup_asset_chainspec "$COUNT_NODES" \
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
@@ -112,11 +118,19 @@ function _main()
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
                                  "$CONFIG_PATH" \
+                                 "$SIDECAR_CONFIG_PATH" \
                                  false
 
         # Protocol version parameter is currently unused
         setup_asset_global_state_toml "$COUNT_NODES" \
                                       "$PROTOCOL_VERSION"
+
+        # Sidecar isn't managed by the casper node launcher, so we need to restart it manually
+        for NODE_ID in $(seq 1 "$COUNT_NODES"); do
+            PROCESS_NAME=$(get_process_name_of_sidecar_in_group "$NODE_ID")
+            supervisorctl -c "$(get_path_net_supervisord_cfg)" restart "$PROCESS_NAME" > /dev/null 2>&1
+        done
+
         sleep 10.0
     else
         log "ATTENTION :: no more staged upgrades to rollout !!!"
@@ -133,6 +147,7 @@ unset STAGE_ID
 unset VERBOSE
 unset CHAINSPEC_PATH
 unset CONFIG_PATH
+unset SIDECAR_CONFIG_PATH
 
 for ARGUMENT in "$@"
 do
@@ -145,6 +160,7 @@ do
         verbose) VERBOSE=${VALUE} ;;
         chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
         config_path) CONFIG_PATH=${VALUE} ;;
+        sidecar_config_path) SIDECAR_CONFIG_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -161,4 +177,5 @@ _main "${STAGE_ID:-1}" \
       "${ACTIVATION_POINT}" \
       "${VERBOSE:-true}" \
       "${CHAINSPEC_PATH}" \
-      "${CONFIG_PATH}"
+      "${CONFIG_PATH}" \
+      "${SIDECAR_CONFIG_PATH}"

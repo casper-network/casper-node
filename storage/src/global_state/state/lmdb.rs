@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     execution::{Effects, Transform, TransformKind},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
@@ -23,9 +24,7 @@ use crate::{
         },
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{
-            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
-        },
+        trie::{operations::create_hashed_empty_trie, Trie, TrieRaw},
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
@@ -110,6 +109,11 @@ impl LmdbGlobalState {
         )
     }
 
+    /// Gets a scratch trie store.
+    pub(crate) fn get_scratch_store(&self) -> ScratchTrieStore {
+        ScratchTrieStore::new(Arc::clone(&self.trie_store), Arc::clone(&self.environment))
+    }
+
     /// Write stored values to LMDB.
     pub fn put_stored_values(
         &self,
@@ -125,11 +129,6 @@ impl LmdbGlobalState {
         )?;
         scratch_trie.write_root_to_db(new_state_root)?;
         Ok(new_state_root)
-    }
-
-    /// Gets a scratch trie store.
-    fn get_scratch_store(&self) -> ScratchTrieStore {
-        ScratchTrieStore::new(Arc::clone(&self.trie_store), Arc::clone(&self.environment))
     }
 
     /// Get a reference to the lmdb global state's environment.
@@ -354,37 +353,6 @@ impl StateProvider for LmdbGlobalState {
         txn.commit()?;
         Ok(missing_hashes)
     }
-
-    /// Prune keys.
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys: &[Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        let scratch_trie_store = self.get_scratch_store();
-
-        let mut txn = scratch_trie_store.create_read_write_txn()?;
-
-        for key in keys {
-            let prune_results = prune::<Key, StoredValue, _, _, GlobalStateError>(
-                &mut txn,
-                &scratch_trie_store,
-                &state_root_hash,
-                key,
-            );
-            match prune_results? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
-                }
-                other => return Ok(other),
-            }
-        }
-
-        txn.commit()?;
-
-        scratch_trie_store.write_root_to_db(state_root_hash)?;
-        Ok(PruneResult::Pruned(state_root_hash))
-    }
 }
 
 impl DataAccessLayer<LmdbGlobalState> {
@@ -415,14 +383,45 @@ impl DataAccessLayer<LmdbGlobalState> {
             return Ok(post_state_hash);
         }
         let prune_keys = keys_to_prune.iter().cloned().collect_vec();
-        match self.state().prune_keys(post_state_hash, &prune_keys) {
+        match self.prune_keys(post_state_hash, &prune_keys) {
             Ok(result) => match result {
                 OpPruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
-                OpPruneResult::DoesNotExist => Err(GlobalStateError::FailedToPrune(prune_keys)),
+                OpPruneResult::MissingKey => Err(GlobalStateError::FailedToPrune(prune_keys)),
                 OpPruneResult::RootNotFound => Err(GlobalStateError::RootNotFound),
             },
             Err(err) => Err(err),
         }
+    }
+
+    /// Prune keys.
+    fn prune_keys(
+        &self,
+        mut state_root_hash: Digest,
+        keys: &[Key],
+    ) -> Result<PruneResult, GlobalStateError> {
+        let scratch_trie_store = self.state().get_scratch_store();
+
+        let mut txn = scratch_trie_store.create_read_write_txn()?;
+
+        for key in keys {
+            let prune_results = prune::<Key, StoredValue, _, _, GlobalStateError>(
+                &mut txn,
+                &scratch_trie_store,
+                &state_root_hash,
+                key,
+            );
+            match prune_results? {
+                PruneResult::Pruned(root) => {
+                    state_root_hash = root;
+                }
+                other => return Ok(other),
+            }
+        }
+
+        txn.commit()?;
+
+        scratch_trie_store.write_root_to_db(state_root_hash)?;
+        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 

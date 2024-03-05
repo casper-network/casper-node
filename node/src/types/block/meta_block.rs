@@ -181,7 +181,7 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![ExecutionArtifact::new(
+        let execution_results = vec![ExecutionArtifact::deploy(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -236,7 +236,7 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![ExecutionArtifact::new(
+        let execution_results = vec![ExecutionArtifact::deploy(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -274,7 +274,7 @@ mod tests {
                 .build(rng),
         );
         let deploy = Deploy::random(rng);
-        let execution_results = vec![ExecutionArtifact::new(
+        let execution_results = vec![ExecutionArtifact::deploy(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -307,14 +307,14 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy1 = Deploy::random(rng);
-        let execution_results1 = vec![ExecutionArtifact::new(
+        let execution_results1 = vec![ExecutionArtifact::deploy(
             *deploy1.hash(),
             deploy1.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
         let deploy2 = Deploy::random(rng);
-        let execution_results2 = vec![ExecutionArtifact::new(
+        let execution_results2 = vec![ExecutionArtifact::deploy(
             *deploy2.hash(),
             deploy2.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),

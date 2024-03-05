@@ -72,6 +72,7 @@ pub extern "C" fn call() {
             None,
             Some(HASH_KEY_NAME.to_string()),
             Some(ACCESS_KEY_NAME.to_string()),
+            None,
         )
     } else {
         storage::new_locked_contract(
@@ -79,6 +80,7 @@ pub extern "C" fn call() {
             None,
             Some(HASH_KEY_NAME.to_string()),
             Some(ACCESS_KEY_NAME.to_string()),
+            None,
         )
     };
 

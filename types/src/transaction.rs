@@ -2,6 +2,8 @@ mod addressable_entity_identifier;
 mod approval;
 mod approvals_hash;
 mod deploy;
+mod execution_info;
+mod finalized_approvals;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
 mod initiator_addr_and_secret_key;
@@ -19,6 +21,7 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transaction_with_finalized_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
@@ -52,10 +55,12 @@ pub use approvals_hash::ApprovalsHash;
 pub use deploy::{
     Deploy, DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-    TransferTarget,
+   FinalizedDeployApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use execution_info::ExecutionInfo;
+pub use finalized_approvals::FinalizedApprovals;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
 use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
@@ -78,6 +83,7 @@ pub use transaction_v1::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -198,6 +204,14 @@ impl Transaction {
         }
     }
 
+    /// Returns the header.
+    pub fn header(&self) -> TransactionHeader {
+        match self {
+            Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
+            Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
+        }
+    }
+
     /// Returns the computed approvals hash identifying this transaction's approvals.
     pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
@@ -291,6 +305,70 @@ impl Transaction {
             Transaction::V1(transaction_v1) => {
                 Transaction::V1(transaction_v1.with_approvals(approvals))
             }
+        }
+    }
+
+    /// Is this a native mint transaction.
+    pub fn is_native_mint(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => {
+                    &TransactionEntryPoint::Transfer == transaction_v1.entry_point()
+                }
+            },
+        }
+    }
+
+    /// Is this a native auction transaction.
+    pub fn is_native_auction(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => false,
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => match transaction_v1.entry_point() {
+                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+                    TransactionEntryPoint::AddBid
+                    | TransactionEntryPoint::WithdrawBid
+                    | TransactionEntryPoint::Delegate
+                    | TransactionEntryPoint::Undelegate
+                    | TransactionEntryPoint::Redelegate
+                    | TransactionEntryPoint::ActivateBid => true,
+                },
+            },
+        }
+    }
+
+    /// Authorization keys.
+    pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(transaction_v1) => transaction_v1
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+        }
+    }
+
+    /// The session args.
+    pub fn session_args(&self) -> &RuntimeArgs {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().args(),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+        }
+    }
+
+    /// The entry point.
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().into(),
+            Transaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
         }
     }
 

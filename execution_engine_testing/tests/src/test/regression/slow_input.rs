@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs,
     DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
@@ -74,7 +74,7 @@ fn should_measure_slow_input() {
     .build();
     builder.exec(exec_request).commit();
     let error = builder.get_error().expect("must have an error");
-    assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
+    assert!(matches!(error, Error::Exec(ExecError::GasLimit)));
 }
 
 #[ignore]
@@ -92,7 +92,7 @@ fn should_measure_slow_input_with_infinite_br_loop() {
     .build();
     builder.exec(exec_request).commit();
     let error = builder.get_error().expect("must have an error");
-    assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
+    assert!(matches!(error, Error::Exec(ExecError::GasLimit)));
 }
 
 #[ignore]
@@ -109,7 +109,7 @@ fn should_measure_br_if_cpu_burner_with_br_if_iterations() {
     .build();
     builder.exec(exec_request).commit();
     let error = builder.get_error().expect("must have an error");
-    assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
+    assert!(matches!(error, Error::Exec(ExecError::GasLimit)));
 }
 
 #[ignore]
@@ -127,7 +127,7 @@ fn should_measure_br_table_cpu_burner_with_br_table_iterations() {
     .build();
     builder.exec(exec_request).commit();
     let error = builder.get_error().expect("must have an error");
-    assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
+    assert!(matches!(error, Error::Exec(ExecError::GasLimit)));
 }
 
 #[ignore]

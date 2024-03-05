@@ -90,7 +90,7 @@ impl reactor::Reactor for Reactor {
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
@@ -374,33 +374,32 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .crank_until(rng, execution_completed, TEST_TIMEOUT)
         .await;
 
+    let actual = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state
+        .lock()
+        .unwrap()
+        .next_block_height();
+
+    let expected = next_block_height;
+
     // Check that the next block height expected by the contract runtime is `next_block_height` and
     // not 3.
-    assert_eq!(
-        runner
-            .reactor()
-            .inner()
-            .contract_runtime
-            .execution_pre_state
-            .lock()
-            .unwrap()
-            .next_block_height(),
-        next_block_height
-    );
+    assert_eq!(actual, expected);
 }
 
 #[cfg(test)]
 mod trie_chunking_tests {
     use std::sync::Arc;
 
-    use casper_storage::global_state::{
-        state::StateProvider,
-        trie::{Pointer, Trie},
-    };
+    use casper_storage::global_state::{state::StateProvider, trie::Trie};
     use casper_types::{
         account::AccountHash,
         bytesrepr,
         execution::{Transform, TransformKind},
+        global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
         ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,

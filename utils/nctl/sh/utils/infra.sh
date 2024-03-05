@@ -206,15 +206,15 @@ function get_node_port()
 }
 
 #######################################
-# Calculates speculative execution port.
+# Calculates binary port.
 # Arguments:
 #   Node ordinal identifier.
 #######################################
-function get_node_port_speculative_exec()
+function get_node_port_binary()
 {
     local NODE_ID=${1}
 
-    get_node_port "$NCTL_BASE_PORT_SPEC_EXEC" "$NODE_ID"
+    get_node_port "$NCTL_BASE_PORT_BINARY" "$NODE_ID"
 }
 
 #######################################
@@ -239,6 +239,18 @@ function get_node_port_rpc()
     local NODE_ID=${1}
 
     get_node_port "$NCTL_BASE_PORT_RPC" "$NODE_ID"
+}
+
+#######################################
+# Calculates speculative exec port.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_port_speculative_exec()
+{
+    local NODE_ID=${1}
+
+    get_node_port "$NCTL_BASE_PORT_SPEC_EXEC" "$NODE_ID"
 }
 
 #######################################
@@ -297,7 +309,7 @@ function get_process_group_members()
         if [ "$NODE_ID" -gt "$SEQ_START" ]; then
             RESULT=$RESULT", "
         fi
-        RESULT=$RESULT$(get_process_name_of_node "$NODE_ID")
+        RESULT=$RESULT$(get_process_name_of_node "$NODE_ID"),$(get_process_name_of_sidecar "$NODE_ID")
     done
 
     echo "$RESULT"
@@ -318,6 +330,20 @@ function get_process_name_of_node()
 }
 
 #######################################
+# Returns name of a daemonized sidecar process within a group.
+# Arguments:
+#   Network ordinal identifier.
+#   Node ordinal identifier.
+#######################################
+function get_process_name_of_sidecar()
+{
+    local NODE_ID=${1}
+    local NET_ID=${NET_ID:-1}
+
+    echo "casper-net-$NET_ID-sidecar-$NODE_ID"
+}
+
+#######################################
 # Returns name of a daemonized node process within a group.
 # Arguments:
 #   Node ordinal identifier.
@@ -329,6 +355,23 @@ function get_process_name_of_node_in_group()
     local PROCESS_GROUP_NAME
 
     NODE_PROCESS_NAME=$(get_process_name_of_node "$NODE_ID")
+    PROCESS_GROUP_NAME=$(get_process_name_of_node_group "$NODE_ID")
+
+    echo "$PROCESS_GROUP_NAME:$NODE_PROCESS_NAME"
+}
+
+#######################################
+# Returns name of a daemonized node process within a group.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_process_name_of_sidecar_in_group()
+{
+    local NODE_ID=${1}
+    local NODE_PROCESS_NAME
+    local PROCESS_GROUP_NAME
+
+    NODE_PROCESS_NAME=$(get_process_name_of_sidecar "$NODE_ID")
     PROCESS_GROUP_NAME=$(get_process_name_of_node_group "$NODE_ID")
 
     echo "$PROCESS_GROUP_NAME:$NODE_PROCESS_NAME"

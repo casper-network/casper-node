@@ -5,7 +5,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Display, Formatter},
     mem,
     sync::Arc,
 };
@@ -17,7 +17,7 @@ use static_assertions::const_assert;
 
 use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
-    get_bids::{BidsRequest, BidsResult},
+    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
     AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
     EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
     QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
@@ -36,20 +36,17 @@ use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
-            TrieAccumulatorError, TrieAccumulatorResponse,
+            GlobalStateSynchronizerError, GlobalStateSynchronizerResponse, TrieAccumulatorError,
+            TrieAccumulatorResponse,
         },
-        consensus::{ClContext, ProposedBlock, ValidatorChange},
+        consensus::{ClContext, ProposedBlock},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
-        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
-    reactor::main_reactor::ReactorState,
-    rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
@@ -58,9 +55,10 @@ use crate::{
     },
     utils::Source,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_STORAGE_REQUEST_SIZE < 97);
+const_assert!(_STORAGE_REQUEST_SIZE < 129);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -330,6 +328,16 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Retrieve block header with given hash.
+    GetRawData {
+        /// Which record to get.
+        record_id: RecordId,
+        /// bytesrepr serialized key.
+        key: Vec<u8>,
+        /// Responder to call with the result.  Returns `None` if the data doesn't exist in
+        /// local storage.
+        responder: Responder<Option<DbRawBytesSpec>>,
+    },
     GetBlockHeaderByHeight {
         /// Height of block to get header of.
         block_height: u64,
@@ -378,6 +386,11 @@ pub(crate) enum StorageRequest {
     IsTransactionStored {
         transaction_id: TransactionId,
         responder: Responder<bool>,
+    },
+    GetTransactionAndExecutionInfo {
+        transaction_hash: TransactionHash,
+        with_finalized_approvals: bool,
+        responder: Responder<Option<(Transaction, Option<ExecutionInfo>)>>,
     },
     /// Store execution results for a set of transactions of a single block.
     ///
@@ -436,16 +449,6 @@ pub(crate) enum StorageRequest {
         id: Box<FinalitySignatureId>,
         responder: Responder<bool>,
     },
-    /// Retrieve block and its signatures at a given height.
-    GetSignedBlockByHeight {
-        /// The height of the block.
-        block_height: BlockHeight,
-        /// If true, only return `Some` if the block is in the available block range, i.e. the
-        /// highest contiguous range of complete blocks.
-        only_from_available_block_range: bool,
-        /// The responder to call with the results.
-        responder: Responder<Option<SignedBlock>>,
-    },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
         /// The height of the block.
@@ -455,14 +458,6 @@ pub(crate) enum StorageRequest {
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
-    },
-    /// Get the highest block and its signatures.
-    GetHighestSignedBlock {
-        /// If true, only consider blocks in the available block range, i.e. the highest contiguous
-        /// range of complete blocks.
-        only_from_available_block_range: bool,
-        /// The responder to call the results with.
-        responder: Responder<Option<SignedBlock>>,
     },
     /// Get a single finality signature for a block hash.
     GetBlockSignature {
@@ -578,6 +573,15 @@ impl Display for StorageRequest {
             StorageRequest::GetTransaction { transaction_id, .. } => {
                 write!(formatter, "get transaction {}", transaction_id)
             }
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transaction and exec info {}",
+                    transaction_hash
+                )
+            }
             StorageRequest::IsTransactionStored { transaction_id, .. } => {
                 write!(formatter, "is transaction {} stored", transaction_id)
             }
@@ -590,28 +594,11 @@ impl Display for StorageRequest {
             StorageRequest::GetBlockExecutionResultsOrChunk { id, .. } => {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
-
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash, ..
-            } => {
-                write!(
-                    formatter,
-                    "get transaction and metadata for {}",
-                    transaction_hash
-                )
-            }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
             }
             StorageRequest::IsFinalitySignatureStored { id, .. } => {
                 write!(formatter, "is finality signature {} stored", id)
-            }
-            StorageRequest::GetSignedBlockByHash { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get signed block for block with hash: {}",
-                    block_hash
-                )
             }
             StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
                 write!(
@@ -619,16 +606,6 @@ impl Display for StorageRequest {
                     "get block and metadata for block at height: {}",
                     block_height
                 )
-            }
-            StorageRequest::GetSignedBlockByHeight { block_height, .. } => {
-                write!(
-                    formatter,
-                    "get signed block for block at height: {}",
-                    block_height
-                )
-            }
-            StorageRequest::GetHighestSignedBlock { .. } => {
-                write!(formatter, "get highest signed block")
             }
             StorageRequest::GetBlockSignature {
                 block_hash,
@@ -670,6 +647,13 @@ impl Display for StorageRequest {
                     formatter,
                     "get key block height for current activation point"
                 )
+            }
+            StorageRequest::GetRawData {
+                key,
+                responder: _responder,
+                record_id,
+            } => {
+                write!(formatter, "get raw data {}::{:?}", record_id, key)
             }
         }
     }
@@ -731,117 +715,6 @@ impl Display for TransactionBufferRequest {
     }
 }
 
-/// Abstract RPC request.
-///
-/// An RPC request is an abstract request that does not concern itself with serialization or
-/// transport.
-#[derive(Debug)]
-#[must_use]
-pub(crate) enum RpcRequest {
-    /// Return transfers for block by hash (if any).
-    GetBlockTransfers {
-        /// The hash of the block to retrieve transfers for.
-        block_hash: BlockHash,
-        /// Responder to call with the result.
-        responder: Responder<Option<Vec<Transfer>>>,
-    },
-    /// Query the global state at the given root hash.
-    QueryGlobalState {
-        /// The state root hash.
-        state_root_hash: Digest,
-        /// Hex-encoded `casper_types::Key`.
-        base_key: Key,
-        /// The path components starting from the key as base.
-        path: Vec<String>,
-        /// Responder to call with the result.
-        responder: Responder<QueryResult>,
-    },
-    /// Query the global state at the given root hash.
-    QueryEraValidators {
-        /// The global state hash.
-        state_root_hash: Digest,
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<EraValidatorsResult>,
-    },
-    /// Get the bids at the given root hash.
-    GetBids {
-        /// The global state hash.
-        state_root_hash: Digest,
-        /// Responder to call with the result.
-        responder: Responder<BidsResult>,
-    },
-
-    /// Query the global state at the given root hash.
-    GetBalance {
-        /// The state root hash.
-        state_root_hash: Digest,
-        /// The purse URef.
-        purse_uref: URef,
-        /// Responder to call with the result.
-        responder: Responder<BalanceResult>,
-    },
-    /// Return the connected peers.
-    GetPeers {
-        /// Responder to call with the result.
-        responder: Responder<BTreeMap<NodeId, String>>,
-    },
-    /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
-        /// Responder to call with the result.
-        responder: Responder<StatusFeed>,
-    },
-    /// Return the height range of fully available blocks.
-    GetAvailableBlockRange {
-        /// Responder to call with the result.
-        responder: Responder<AvailableBlockRange>,
-    },
-}
-
-impl Display for RpcRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RpcRequest::GetBlockTransfers { block_hash, .. } => {
-                write!(formatter, "get transfers {}", block_hash)
-            }
-
-            RpcRequest::QueryGlobalState {
-                state_root_hash,
-                base_key,
-                path,
-                ..
-            } => write!(
-                formatter,
-                "query {}, base_key: {}, path: {:?}",
-                state_root_hash, base_key, path
-            ),
-            RpcRequest::QueryEraValidators {
-                state_root_hash, ..
-            } => write!(formatter, "auction {}", state_root_hash),
-            RpcRequest::GetBids {
-                state_root_hash, ..
-            } => {
-                write!(formatter, "bids {}", state_root_hash)
-            }
-            RpcRequest::GetBalance {
-                state_root_hash,
-                purse_uref,
-                ..
-            } => write!(
-                formatter,
-                "balance {}, purse_uref: {}",
-                state_root_hash, purse_uref
-            ),
-            RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
-            RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetAvailableBlockRange { .. } => {
-                write!(formatter, "get available block range")
-            }
-        }
-    }
-}
-
 /// Abstract REST request.
 ///
 /// An REST request is an abstract request that does not concern itself with serialization or
@@ -859,11 +732,6 @@ pub(crate) enum RestRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
-    /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
-    RpcSchema {
-        /// Responder to call with the result
-        responder: Responder<OpenRpcSchema>,
-    },
 }
 
 impl Display for RestRequest {
@@ -871,7 +739,6 @@ impl Display for RestRequest {
         match self {
             RestRequest::Status { .. } => write!(formatter, "get status"),
             RestRequest::Metrics { .. } => write!(formatter, "get metrics"),
-            RestRequest::RpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }
@@ -924,13 +791,13 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<EraValidatorsResult>,
     },
-    /// Return bids at a given state root hash
-    GetBids {
-        /// Get bids request.
+    /// Return all values at a given state root hash and given key tag.
+    GetTaggedValues {
+        /// Get tagged values request.
         #[serde(skip_serializing)]
-        request: BidsRequest,
+        request: TaggedValuesRequest,
         /// Responder to call with the result.
-        responder: Responder<BidsResult>,
+        responder: Responder<TaggedValuesResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
@@ -970,7 +837,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
+        responder: Responder<Result<SpeculativeExecutionResult, engine_state::Error>>,
     },
 }
 
@@ -1011,11 +878,15 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
-            ContractRuntimeRequest::GetBids {
-                request: get_bids_request,
+            ContractRuntimeRequest::GetTaggedValues {
+                request: get_all_values_request,
                 ..
             } => {
-                write!(formatter, "get bids request: {:?}", get_bids_request)
+                write!(
+                    formatter,
+                    "get all values request: {:?}",
+                    get_all_values_request
+                )
             }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash, ..
@@ -1144,9 +1015,9 @@ type BlockHeight = u64;
 /// Consensus component requests.
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
-    Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    Status(Responder<Option<ConsensusStatus>>),
     /// Request for a list of validator status changes, by public key.
-    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
+    ValidatorChanges(Responder<ConsensusValidatorChanges>),
 }
 
 /// ChainspecLoader component requests.
@@ -1178,11 +1049,37 @@ impl Display for UpgradeWatcherRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ReactorStatusRequest(pub(crate) Responder<(ReactorState, Timestamp)>);
+pub(crate) enum ReactorInfoRequest {
+    ReactorState {
+        responder: Responder<ReactorState>,
+    },
+    LastProgress {
+        responder: Responder<LastProgress>,
+    },
+    Uptime {
+        responder: Responder<Uptime>,
+    },
+    NetworkName {
+        responder: Responder<NetworkName>,
+    },
+    ProtocolVersion {
+        responder: Responder<ProtocolVersion>,
+    },
+}
 
-impl Display for ReactorStatusRequest {
+impl Display for ReactorInfoRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "get reactor status")
+        write!(
+            f,
+            "get reactor status: {}",
+            match self {
+                ReactorInfoRequest::ReactorState { .. } => "ReactorState",
+                ReactorInfoRequest::LastProgress { .. } => "LastProgress",
+                ReactorInfoRequest::Uptime { .. } => "Uptime",
+                ReactorInfoRequest::NetworkName { .. } => "NetworkName",
+                ReactorInfoRequest::ProtocolVersion { .. } => "ProtocolVersion",
+            }
+        )
     }
 }
 

@@ -26,6 +26,13 @@ pub enum FeeHandling {
     Burn,
 }
 
+impl FeeHandling {
+    /// Is the Accumulate variant selected?
+    pub fn is_accumulate(&self) -> bool {
+        matches!(self, FeeHandling::Accumulate)
+    }
+}
+
 impl ToBytes for FeeHandling {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         match self {

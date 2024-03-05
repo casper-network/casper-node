@@ -11,7 +11,6 @@ mod utils;
 mod catch_up;
 mod genesis_instruction;
 mod keep_up;
-mod reactor_state;
 #[cfg(test)]
 mod tests;
 mod upgrade_shutdown;
@@ -34,6 +33,7 @@ use casper_types::{
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
+        binary_port::BinaryPort,
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
@@ -45,7 +45,6 @@ use crate::{
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
-        rpc_server::RpcServer,
         shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
@@ -63,7 +62,7 @@ use crate::{
             TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorInfoRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -84,7 +83,6 @@ use crate::{
 pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
-pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
 ///
@@ -138,8 +136,8 @@ pub(crate) struct MainReactor {
     storage: Storage,
     contract_runtime: ContractRuntime,
     upgrade_watcher: UpgradeWatcher,
-    rpc_server: RpcServer,
     rest_server: RestServer,
+    binary_port: BinaryPort,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
     shutdown_trigger: ShutdownTrigger,
@@ -160,7 +158,7 @@ pub(crate) struct MainReactor {
     transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
-        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
+        Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -193,6 +191,10 @@ pub(crate) struct MainReactor {
     upgrade_timeout: TimeDiff,
     sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
+    /// The instant at which the node has started.
+    node_startup_instant: Instant,
+
+    finality_signature_creation: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -238,12 +240,30 @@ impl reactor::Reactor for MainReactor {
             // PRIMARY REACTOR STATE CONTROL LOGIC
             MainEvent::ReactorCrank => self.crank(effect_builder, rng),
 
-            MainEvent::MainReactorRequest(req) => {
-                req.0.respond((self.state, self.last_progress)).ignore()
-            }
-            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
-                self.handle_meta_block(effect_builder, rng, meta_block)
-            }
+            MainEvent::MainReactorRequest(req) => match req {
+                ReactorInfoRequest::ReactorState { responder } => {
+                    responder.respond(self.state).ignore()
+                }
+                ReactorInfoRequest::LastProgress { responder } => responder
+                    .respond(LastProgress::new(self.last_progress))
+                    .ignore(),
+                ReactorInfoRequest::Uptime { responder } => responder
+                    .respond(Uptime::new(self.node_startup_instant.elapsed().as_secs()))
+                    .ignore(),
+                ReactorInfoRequest::NetworkName { responder } => responder
+                    .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
+                    .ignore(),
+                ReactorInfoRequest::ProtocolVersion { responder } => responder
+                    .respond(self.chainspec.protocol_version())
+                    .ignore(),
+            },
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
+                .handle_meta_block(
+                    effect_builder,
+                    rng,
+                    self.finality_signature_creation,
+                    meta_block,
+                ),
             MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
                 let only_from_available_block_range = true;
                 if let Ok(Some(block_header)) = self
@@ -307,10 +327,6 @@ impl reactor::Reactor for MainReactor {
                     ),
                 )
             }
-            MainEvent::RpcServer(event) => reactor::wrap_effects(
-                MainEvent::RpcServer,
-                self.rpc_server.handle_event(effect_builder, rng, event),
-            ),
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -513,7 +529,9 @@ impl reactor::Reactor for MainReactor {
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::FinalitySignature(finality_signature),
+                        event_stream_server::Event::FinalitySignature(Box::new(
+                            (*finality_signature).into(),
+                        )),
                     ),
                 ));
 
@@ -669,17 +687,25 @@ impl reactor::Reactor for MainReactor {
                     finality_signature,
                     peer,
                 },
-            ) => reactor::wrap_effects(
-                MainEvent::BlockAccumulator,
-                self.block_accumulator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_accumulator::Event::ReceivedFinalitySignature {
-                        finality_signature,
-                        sender: peer,
-                    },
-                ),
-            ),
+            ) => {
+                // If the signature is not convertible to the current version it means
+                // that it is historical.
+                if let FinalitySignature::V2(sig) = *finality_signature {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedFinalitySignature {
+                                finality_signature: Box::new(sig),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
+            }
 
             // TRANSACTIONS
             MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
@@ -905,6 +931,10 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::BinaryPort(req) => reactor::wrap_effects(
+                MainEvent::BinaryPort,
+                self.binary_port.handle_event(effect_builder, rng, req),
+            ),
 
             // This event gets emitted when we manage to read the era validators from the global
             // states of a block after an upgrade and its parent. Once that happens, we can check
@@ -1029,6 +1059,7 @@ impl reactor::Reactor for MainReactor {
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let validator_matrix = ValidatorMatrix::new(
             chainspec.core_config.finality_threshold_fraction,
+            chainspec.name_hash(),
             chainspec
                 .protocol_config
                 .global_state_update
@@ -1077,19 +1108,12 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let rpc_server = RpcServer::new(
-            config.rpc_server.clone(),
-            config.speculative_exec_server.clone(),
-            protocol_version,
-            chainspec.network_config.name.clone(),
-            node_startup_instant,
-        );
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             protocol_version,
             chainspec.network_config.name.clone(),
-            node_startup_instant,
         );
+        let binary_port = BinaryPort::new(config.binary_port_server.clone(), registry)?;
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
@@ -1114,12 +1138,12 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
-        let finality_signature_gossiper =
-            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
-                "finality_signature_gossiper",
-                config.gossip,
-                registry,
-            )?;
+        let finality_signature_gossiper = Gossiper::<
+            { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
+            _,
+        >::new(
+            "finality_signature_gossiper", config.gossip, registry
+        )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -1168,8 +1192,8 @@ impl reactor::Reactor for MainReactor {
             net: network,
             address_gossiper,
 
-            rpc_server,
             rest_server,
+            binary_port,
             event_stream_server,
             transaction_acceptor,
             fetchers,
@@ -1203,6 +1227,8 @@ impl reactor::Reactor for MainReactor {
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
+            node_startup_instant,
+            finality_signature_creation: true,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1223,6 +1249,9 @@ impl reactor::Reactor for MainReactor {
                 &mut self.consensus,
                 activation,
             );
+        }
+        if activation.key().starts_with("finality_signature_creation") {
+            self.finality_signature_creation = false;
         }
     }
 }
@@ -1256,6 +1285,7 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
+        create_finality_signatures: bool,
         mut meta_block: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
@@ -1372,6 +1402,7 @@ impl MainReactor {
                 .mut_state()
                 .register_we_have_tried_to_sign()
                 .was_updated()
+                && create_finality_signatures
             {
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
@@ -1388,7 +1419,7 @@ impl MainReactor {
                     effects.extend(reactor::wrap_effects(
                         MainEvent::Storage,
                         effect_builder
-                            .put_finality_signature_to_storage(finality_signature.clone())
+                            .put_finality_signature_to_storage(finality_signature.clone().into())
                             .ignore(),
                     ));
 
@@ -1613,10 +1644,8 @@ impl MainReactor {
             MetaBlock::Forward(fwd_meta_block) => {
                 for exec_artifact in fwd_meta_block.execution_results.iter() {
                     let event = event_stream_server::Event::TransactionProcessed {
-                        transaction_hash: TransactionHash::Deploy(exec_artifact.deploy_hash),
-                        transaction_header: Box::new(TransactionHeader::Deploy(
-                            exec_artifact.deploy_header.clone(),
-                        )),
+                        transaction_hash: exec_artifact.transaction_hash,
+                        transaction_header: Box::new(exec_artifact.header.clone()),
                         block_hash: *fwd_meta_block.block.hash(),
                         execution_result: Box::new(exec_artifact.execution_result.clone()),
                         messages: exec_artifact.messages.clone(),

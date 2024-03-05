@@ -6,58 +6,75 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use std::{cell::RefCell, collections::HashMap, convert::TryFrom, rc::Rc};
-
-use tracing::{debug, error, warn};
-
-use casper_types::{
-    addressable_entity::EntityKindTag,
-    bytesrepr,
-    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    system::{
-        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        AUCTION, MINT,
-    },
-    AddressableEntity, AddressableEntityHash, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, U512,
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap},
+    convert::TryFrom,
+    rc::Rc,
 };
+use tracing::{debug, error, warn};
 
 #[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
 
+use casper_types::{
+    addressable_entity::EntityKindTag,
+    bytesrepr,
+    bytesrepr::{FromBytes, ToBytes},
+    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    global_state::TrieMerkleProof,
+    system,
+    system::{
+        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        handle_payment::ACCUMULATION_PURSE_KEY,
+        mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        AUCTION, HANDLE_PAYMENT, MINT,
+    },
+    AddressableEntity, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
+    PublicKey,
+    RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+};
+
 use crate::{
     data_access_layer::{
+        bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
         era_validators::EraValidatorsResult,
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         transfer::{TransferRequest, TransferRequestArgs, TransferResult},
-        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BalanceResult,
-        BidsRequest, BidsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
-        ExecutionResultsChecksumResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PutTrieRequest, PutTrieResult, QueryRequest,
-        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceRequest,
+        BalanceResult, BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest,
+        BlockRewardsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
+        ExecutionResultsChecksumResult, FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepError, StepRequest,
+        StepResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie::Trie,
         trie_store::{
-            operations::{prune, read, write, ReadResult, WriteResult},
+            operations::{
+                prune, read, write, PruneResult as OpPruneResult, ReadResult, WriteResult,
+            },
             TrieStore,
         },
     },
     system::{
         auction,
-        auction::bidding::{BiddingRequest, BiddingResult},
+        auction::Auction,
         genesis::{GenesisError, GenesisInstaller},
-        mint::{Mint, NativeMintRuntime},
+        mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
-        transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
+        runtime_native::RuntimeNative,
+        transfer::{
+            NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
+        },
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
-
-use super::trie_store::operations::PruneResult;
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -103,6 +120,7 @@ pub trait CommitProvider: StateProvider {
     /// block_hash is used for computing a deterministic and unique keys.
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError>;
 
+    /// Runs and commits the genesis process, once per network.
     fn genesis(&self, request: GenesisRequest) -> GenesisResult {
         let initial_root = self.empty_root();
         let tc = match self.tracking_copy(initial_root) {
@@ -110,7 +128,7 @@ pub trait CommitProvider: StateProvider {
             Ok(None) => return GenesisResult::Fatal("state uninitialized".to_string()),
             Err(err) => {
                 return GenesisResult::Failure(GenesisError::TrackingCopy(
-                    crate::tracking_copy::TrackingCopyError::Storage(err),
+                    TrackingCopyError::Storage(err),
                 ))
             }
         };
@@ -138,6 +156,7 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
+    /// Runs and commits the protocol upgrade process.
     fn protocol_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
         let pre_state_hash = request.pre_state_hash();
         let tc = match self.tracking_copy(pre_state_hash) {
@@ -171,6 +190,405 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
+    /// Safely prune specified keys from global state, using a tracking copy.
+    fn prune(&self, request: PruneRequest) -> PruneResult {
+        let pre_state_hash = request.state_hash();
+        let tc = match self.tracking_copy(pre_state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return PruneResult::RootNotFound,
+            Err(err) => return PruneResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let keys_to_delete = request.keys_to_prune();
+        if keys_to_delete.is_empty() {
+            // effectively a noop
+            return PruneResult::Success {
+                post_state_hash: pre_state_hash,
+                effects: Effects::default(),
+            };
+        }
+
+        for key in keys_to_delete {
+            tc.borrow_mut().prune(*key)
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(pre_state_hash, effects.clone()) {
+            Ok(post_state_hash) => PruneResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(tce) => PruneResult::Failure(tce.into()),
+        }
+    }
+
+    /// Step auction state at era end.
+    fn step(&self, request: StepRequest) -> StepResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return StepResult::RootNotFound,
+            Err(err) => {
+                return StepResult::Failure(StepError::TrackingCopy(TrackingCopyError::Storage(
+                    err,
+                )))
+            }
+        };
+        let protocol_version = request.protocol_version();
+
+        let seed = {
+            // seeds address generator w/ era_end_timestamp_millis
+            let mut bytes = match request.era_end_timestamp_millis().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return StepResult::Failure(StepError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return StepResult::Failure(StepError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+            match &mut request.next_era_id().into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return StepResult::Failure(StepError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        let config = request.config();
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => return StepResult::Failure(StepError::TrackingCopy(tce)),
+        };
+
+        let slashed_validators: Vec<PublicKey> = request.slashed_validators();
+        if !slashed_validators.is_empty() {
+            if let Err(err) = runtime.slash(slashed_validators) {
+                error!("{}", err);
+                return StepResult::Failure(StepError::SlashingError);
+            }
+        }
+
+        let era_end_timestamp_millis = request.era_end_timestamp_millis();
+        let evicted_validators = request
+            .evict_items()
+            .iter()
+            .map(|item| item.validator_id.clone())
+            .collect::<Vec<PublicKey>>();
+        let max_delegators_per_validator = config.max_delegators_per_validator();
+        let minimum_delegation_amount = config.minimum_delegation_amount();
+
+        if let Err(err) = runtime.run_auction(
+            era_end_timestamp_millis,
+            evicted_validators,
+            max_delegators_per_validator,
+            minimum_delegation_amount,
+        ) {
+            error!("{}", err);
+            return StepResult::Failure(StepError::Auction);
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => StepResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => StepResult::Failure(gse.into()),
+        }
+    }
+
+    /// Distribute block rewards.
+    fn distribute_block_rewards(&self, request: BlockRewardsRequest) -> BlockRewardsResult {
+        let state_hash = request.state_hash();
+        let rewards = request.rewards();
+        if rewards.is_empty() {
+            warn!("rewards are empty");
+            // if there are no rewards to distribute, this is effectively a noop
+            return BlockRewardsResult::Success {
+                post_state_hash: state_hash,
+                effects: Effects::new(),
+            };
+        }
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return BlockRewardsResult::RootNotFound,
+            Err(err) => {
+                return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let config = request.config();
+        let protocol_version = request.protocol_version();
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(tce));
+            }
+        };
+
+        if let Err(auction_error) = runtime.distribute(rewards.clone()) {
+            error!(
+                "distribute block rewards failed due to auction error {:?}",
+                auction_error
+            );
+            return BlockRewardsResult::Failure(BlockRewardsError::Auction(auction_error));
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => BlockRewardsResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
+                TrackingCopyError::Storage(gse),
+            )),
+        }
+    }
+
+    /// Distribute fees, if relevant to the chainspec configured behavior.
+    fn distribute_fees(&self, request: FeeRequest) -> FeeResult {
+        let state_hash = request.state_hash();
+        if !request.should_distribute_fees() {
+            // effectively noop
+            return FeeResult::Success {
+                post_state_hash: state_hash,
+                effects: Effects::new(),
+                transfers: vec![],
+            };
+        }
+
+        let administrative_accounts = match request.administrative_accounts() {
+            Some(administrative_accounts) => administrative_accounts,
+            None => {
+                return FeeResult::Failure(FeeError::AdministrativeAccountsNotFound);
+            }
+        };
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return FeeResult::RootNotFound,
+            Err(gse) => {
+                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)))
+            }
+        };
+
+        // need the accumulation purse
+        let entity_hash = match tc.borrow_mut().get_system_entity_registry() {
+            Ok(scr) => match scr.get(HANDLE_PAYMENT).copied() {
+                Some(entity_hash) => entity_hash,
+                None => {
+                    return FeeResult::Failure(FeeError::RegistryEntryNotFound(
+                        HANDLE_PAYMENT.to_string(),
+                    ))
+                }
+            },
+            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
+        };
+        let named_keys = match tc
+            .borrow_mut()
+            .get_named_keys(EntityAddr::System(entity_hash.value()))
+        {
+            Ok(named_keys) => named_keys,
+            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
+        };
+
+        let accumulation_purse = match named_keys.get(ACCUMULATION_PURSE_KEY) {
+            Some(key) => {
+                if let Key::URef(uref) = key {
+                    *uref
+                } else {
+                    return FeeResult::Failure(FeeError::TrackingCopy(
+                        TrackingCopyError::UnexpectedKeyVariant(*key),
+                    ));
+                }
+            }
+            None => {
+                return FeeResult::Failure(FeeError::TrackingCopy(
+                    TrackingCopyError::NamedKeyNotFound(ACCUMULATION_PURSE_KEY.to_string()),
+                ))
+            }
+        };
+
+        let accumulated_balance = {
+            let balance_req = BalanceRequest::new(state_hash, accumulation_purse);
+            let balance_result = self.balance(balance_req);
+            match balance_result {
+                BalanceResult::RootNotFound => {
+                    return FeeResult::RootNotFound;
+                }
+                BalanceResult::Failure(tce) => {
+                    return FeeResult::Failure(FeeError::TrackingCopy(tce));
+                }
+                BalanceResult::Success { motes, .. } => motes,
+            }
+        };
+
+        let mut current_state_hash = state_hash;
+        let mut effects = Effects::new();
+        let mut transfers = vec![];
+        let recipient_count = U512::from(administrative_accounts.len());
+
+        // distribute fees to administrators
+        // this is basically just a series of transfers from the accumulated purse to
+        // configured accounts. this is a behavior used by some (but not all) private chains.
+        if let Some(fee_portion) = accumulated_balance.checked_div(recipient_count) {
+            if fee_portion.is_zero() {
+                // If there are no fees to be paid out, it is effectively noop
+                return FeeResult::Success {
+                    effects: Effects::default(),
+                    post_state_hash: state_hash,
+                    transfers: vec![],
+                };
+            }
+
+            let protocol_version = request.protocol_version();
+            let system_account_key = PublicKey::System;
+            let id = {
+                let mut bytes = match request.block_time().into_bytes() {
+                    Ok(bytes) => bytes,
+                    Err(bre) => {
+                        return FeeResult::Failure(FeeError::TrackingCopy(
+                            TrackingCopyError::BytesRepr(bre),
+                        ))
+                    }
+                };
+                match &mut state_hash.into_bytes() {
+                    Ok(more_bytes) => bytes.append(more_bytes),
+                    Err(bre) => {
+                        return FeeResult::Failure(FeeError::TrackingCopy(
+                            TrackingCopyError::BytesRepr(*bre),
+                        ))
+                    }
+                };
+
+                crate::system::runtime_native::Id::Seed(bytes)
+            };
+
+            let config = request.config();
+            let block_time = request.block_time();
+            let authorization_keys = {
+                let mut auth_keys = BTreeSet::new();
+                auth_keys.insert(system_account_key.to_account_hash());
+                auth_keys
+            };
+
+            // TODO: the transfer logic needs to be tweaked once Fraser's logic w/ version handling
+            // merges
+            let tmp_hash = match TransactionV1Hash::from_bytes(&id.seed()) {
+                Ok((hash, _rem)) => TransactionHash::V1(hash),
+                Err(bre) => {
+                    return FeeResult::Failure(FeeError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            for target in administrative_accounts {
+                let target_purse = match tc
+                    .borrow_mut()
+                    .get_addressable_entity_by_account_hash(protocol_version, *target)
+                {
+                    Ok(entity) => entity.main_purse(),
+                    Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
+                };
+                let args = TransferArgs::new(
+                    Some(*target),
+                    accumulation_purse,
+                    target_purse,
+                    fee_portion,
+                    None,
+                );
+
+                let transfer_req = TransferRequest::new(
+                    config.clone(),
+                    current_state_hash,
+                    block_time,
+                    protocol_version,
+                    tmp_hash,
+                    system_account_key.to_account_hash(),
+                    authorization_keys.clone(),
+                    args,
+                    U512::zero(),
+                );
+                match self.transfer(transfer_req) {
+                    TransferResult::RootNotFound => return FeeResult::RootNotFound,
+                    TransferResult::Failure(transfer_error) => {
+                        return FeeResult::Failure(FeeError::Transfer(transfer_error))
+                    }
+                    TransferResult::Success {
+                        post_state_hash,
+                        effects: more_effects,
+                        transfers: more_transfers,
+                    } => {
+                        current_state_hash = post_state_hash;
+                        effects.append(more_effects);
+                        transfers.extend(more_transfers);
+                    }
+                }
+            }
+
+            return FeeResult::Success {
+                post_state_hash: current_state_hash,
+                effects,
+                transfers,
+            };
+        }
+        FeeResult::Failure(FeeError::NoFeesDistributed)
+    }
+
     /// Direct transfer.
     fn transfer(&self, request: TransferRequest) -> TransferResult {
         let state_hash = request.state_hash();
@@ -184,11 +602,11 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        let account_hash = request.address();
+        let source_account_hash = request.address();
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
-            .migrate_account(account_hash, protocol_version)
+            .migrate_account(source_account_hash, protocol_version)
         {
             return TransferResult::Failure(tce.into());
         }
@@ -196,7 +614,8 @@ pub trait CommitProvider: StateProvider {
         let authorization_keys = request.authorization_keys();
 
         let config = request.config();
-        let administrative_accounts = config.administrative_accounts();
+        let transfer_config = config.transfer_config();
+        let administrative_accounts = transfer_config.administrative_accounts();
 
         let runtime_args = match request.args() {
             TransferRequestArgs::Raw(runtime_args) => runtime_args.clone(),
@@ -225,74 +644,67 @@ pub trait CommitProvider: StateProvider {
             Err(error) => return TransferResult::Failure(error),
         };
 
-        if config.enforce_transfer_restrictions(&account_hash) {
-            // We need to make sure that either the source or target is an admin.
-            match transfer_target_mode {
-                NewTransferTargetMode::ExistingAccount {
-                    target_account_hash,
-                    ..
-                }
-                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
+        // On some private networks, transfers are restricted.
+        // This means that they must either the source or target are an admin account.
+        // This behavior is not used on public networks.
+        if transfer_config.enforce_transfer_restrictions(&source_account_hash) {
+            // if the source is an admin, enforce_transfer_restrictions == false
+            // if the source is not an admin, enforce_transfer_restrictions == true
+            // and we must check to see if the target is an admin.
+            // if the target is also not an admin, this transfer is not permitted.
+            match transfer_target_mode.target_account_hash() {
+                Some(target_account_hash) => {
                     let is_target_system_account =
                         target_account_hash == PublicKey::System.to_account_hash();
-                    let is_target_administrator = config.is_administrator(&target_account_hash);
+                    let is_target_administrator =
+                        transfer_config.is_administrator(&target_account_hash);
                     if !(is_target_system_account || is_target_administrator) {
                         // Transferring from normal account to a purse doesn't work.
-                        return TransferResult::Failure(
-                            TransferError::DisabledUnrestrictedTransfers,
-                        );
+                        return TransferResult::Failure(TransferError::RestrictedTransferAttempted);
                     }
                 }
-                NewTransferTargetMode::PurseExists(_) => {
-                    // We don't know who is the target and we can't simply reverse search
-                    // account/contract that owns it. We also can't know if purse is owned exactly
-                    // by one entity in the system.
-                    return TransferResult::Failure(TransferError::DisabledUnrestrictedTransfers);
+                None => {
+                    // can't allow this transfer because we are not sure if the target is an admin.
+                    return TransferResult::Failure(TransferError::UnableToVerifyTargetIsAdmin);
                 }
             }
         }
 
-        let (entity, entity_addr) = match tc.borrow_mut().get_authorized_addressable_entity(
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                source_account_hash,
+                authorization_keys,
+                &administrative_accounts,
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return TransferResult::Failure(TransferError::TrackingCopy(tce));
+                }
+            };
+
+        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
+        // IMPORTANT: this runtime _must_ use the payer's context.
+        let mut runtime = RuntimeNative::new(
             protocol_version,
-            account_hash,
-            authorization_keys,
-            &administrative_accounts,
-        ) {
-            Ok((entity, entity_hash)) => {
-                let entity_addr =
-                    EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
-                (entity, entity_addr)
-            }
-            Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
-        };
-
-        let named_keys = match tc.borrow_mut().get_named_keys(entity_addr) {
-            Ok(named_keys) => named_keys,
-            Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),
-        };
-        let access_rights = entity
-            .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);
-
-        let mut mint_provider = NativeMintRuntime::new(
             config.clone(),
-            protocol_version,
+            id,
             Rc::clone(&tc),
-            account_hash,
+            source_account_hash,
             entity.clone(),
-            named_keys.clone(),
-            access_rights,
+            entity_named_keys.clone(),
+            entity_access_rights,
             remaining_spending_limit,
-            request.transaction_hash(),
             Phase::Session,
         );
 
         match transfer_target_mode {
             NewTransferTargetMode::ExistingAccount { .. }
-            | NewTransferTargetMode::PurseExists(_) => {
+            | NewTransferTargetMode::PurseExists { .. } => {
                 // Noop
             }
             NewTransferTargetMode::CreateAccount(account_hash) => {
-                let main_purse = match mint_provider.mint(U512::zero()) {
+                let main_purse = match runtime.mint(U512::zero()) {
                     Ok(uref) => uref,
                     Err(mint_error) => {
                         return TransferResult::Failure(TransferError::Mint(mint_error))
@@ -309,13 +721,17 @@ pub trait CommitProvider: StateProvider {
         }
 
         let transfer_args = {
-            match runtime_args_builder.build(&entity, named_keys, protocol_version, Rc::clone(&tc))
-            {
+            match runtime_args_builder.build(
+                &entity,
+                entity_named_keys,
+                protocol_version,
+                Rc::clone(&tc),
+            ) {
                 Ok(transfer_args) => transfer_args,
                 Err(error) => return TransferResult::Failure(error),
             }
         };
-        if let Err(mint_error) = mint_provider.transfer(
+        if let Err(mint_error) = runtime.transfer(
             transfer_args.to(),
             transfer_args.source(),
             transfer_args.target(),
@@ -325,16 +741,15 @@ pub trait CommitProvider: StateProvider {
             return TransferResult::Failure(TransferError::Mint(mint_error));
         }
 
-        let transfers = mint_provider.into_transfers();
+        let transfers = runtime.into_transfers();
 
         {
-            // TODO: this block needs to be updated with version management for new style
-            // Transactions
-            let deploy_hash = DeployHash::new(request.transaction_hash());
+            // TODO: this lexical block needs to be updated with the new versioned transaction types
+            let deploy_hash = DeployHash::new(request.transaction_hash().digest());
             let deploy_info = casper_types::DeployInfo::new(
                 deploy_hash,
                 &transfers,
-                account_hash,
+                source_account_hash,
                 entity.main_purse(),
                 request.cost(),
             );
@@ -357,8 +772,135 @@ pub trait CommitProvider: StateProvider {
         }
     }
 
-    fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
-        unimplemented!()
+    /// Direct biddings.
+    fn bidding(&self, request: BiddingRequest) -> BiddingResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return BiddingResult::RootNotFound,
+            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let protocol_version = request.protocol_version();
+        let config = request.config();
+        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
+
+        let initiating_address = request.address();
+        let authorization_keys = request.authorization_keys();
+        let transfer_config = config.transfer_config();
+        let administrative_accounts = transfer_config.administrative_accounts();
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                initiating_address,
+                authorization_keys,
+                &administrative_accounts,
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return BiddingResult::Failure(tce);
+                }
+            };
+
+        // IMPORTANT: this runtime _must_ use the initiators's context.
+        let mut runtime = RuntimeNative::new(
+            protocol_version,
+            config.clone(),
+            id,
+            Rc::clone(&tc),
+            initiating_address,
+            entity,
+            entity_named_keys,
+            entity_access_rights,
+            U512::MAX,
+            Phase::Session,
+        );
+
+        let auction_method = request.auction_method();
+
+        let result = match auction_method {
+            AuctionMethod::ActivateBid {
+                validator_public_key,
+            } => runtime
+                .activate_bid(validator_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::AddBid {
+                public_key,
+                delegation_rate,
+                amount,
+            } => runtime
+                .add_bid(public_key, delegation_rate, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Revert),
+            AuctionMethod::WithdrawBid { public_key, amount } => runtime
+                .withdraw_bid(public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Delegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                max_delegators_per_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .delegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    max_delegators_per_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Revert),
+            AuctionMethod::Undelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+            } => runtime
+                .undelegate(delegator_public_key, validator_public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Redelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                new_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .redelegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    new_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        // commit
+        match result {
+            Ok(ret) => match self.commit(state_hash, effects.clone()) {
+                Ok(post_state_hash) => BiddingResult::Success {
+                    ret,
+                    post_state_hash,
+                    effects,
+                },
+                Err(tce) => BiddingResult::Failure(tce.into()),
+            },
+            Err(tce) => BiddingResult::Failure(tce),
+        }
     }
 }
 
@@ -433,11 +975,18 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(AUCTION).copied() {
-                Some(auction_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, auction_hash),
-                    vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
-                ),
+                Some(auction_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(auction_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, auction_hash)
+                    };
+                    QueryRequest::new(
+                        state_hash,
+                        key,
+                        vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+                    )
+                }
                 None => return EraValidatorsResult::AuctionNotFound,
             },
             Err(err) => return EraValidatorsResult::Failure(err),
@@ -643,11 +1192,14 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
-                Some(mint_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
-                    vec![TOTAL_SUPPLY_KEY.to_string()],
-                ),
+                Some(mint_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(mint_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                    };
+                    QueryRequest::new(state_hash, key, vec![TOTAL_SUPPLY_KEY.to_string()])
+                }
                 None => {
                     error!("unexpected query failure; mint not found");
                     return TotalSupplyResult::MintNotFound;
@@ -695,11 +1247,18 @@ pub trait StateProvider {
 
         let query_request = match tc.get_system_entity_registry() {
             Ok(scr) => match scr.get(MINT).copied() {
-                Some(mint_hash) => QueryRequest::new(
-                    state_hash,
-                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
-                    vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
-                ),
+                Some(mint_hash) => {
+                    let key = if request.protocol_version().value().major < 2 {
+                        Key::Hash(mint_hash.value())
+                    } else {
+                        Key::addressable_entity_key(EntityKindTag::System, mint_hash)
+                    };
+                    QueryRequest::new(
+                        state_hash,
+                        key,
+                        vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
+                    )
+                }
                 None => {
                     error!("unexpected query failure; mint not found");
                     return RoundSeigniorageRateResult::MintNotFound;
@@ -733,6 +1292,38 @@ pub trait StateProvider {
         }
     }
 
+    /// Gets all values under a given key tag.
+    fn tagged_values(&self, request: TaggedValuesRequest) -> TaggedValuesResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return TaggedValuesResult::RootNotFound,
+            Err(gse) => return TaggedValuesResult::Failure(TrackingCopyError::Storage(gse)),
+        };
+
+        let key_tag = request.key_tag();
+        let keys = match tc.get_keys(&key_tag) {
+            Ok(keys) => keys,
+            Err(tce) => return TaggedValuesResult::Failure(tce),
+        };
+
+        let mut values = vec![];
+        for key in keys {
+            match tc.get(&key) {
+                Ok(Some(value)) => {
+                    values.push(value);
+                }
+                Ok(None) => {}
+                Err(error) => return TaggedValuesResult::Failure(error),
+            }
+        }
+
+        TaggedValuesResult::Success {
+            values,
+            selection: request.selection(),
+        }
+    }
+
     /// Reads a `Trie` from the state if it is present
     fn trie(&self, request: TrieRequest) -> TrieResult;
 
@@ -741,13 +1332,6 @@ pub trait StateProvider {
 
     /// Finds all the children of `trie_raw` which aren't present in the state.
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
-
-    /// Prunes key from the global state.
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
@@ -883,13 +1467,13 @@ where
                 let prune_result = prune::<_, _, _, _, E>(&mut txn, store, &state_root, &key)?;
 
                 match prune_result {
-                    PruneResult::Pruned(root_hash) => {
+                    OpPruneResult::Pruned(root_hash) => {
                         state_root = root_hash;
                     }
-                    PruneResult::DoesNotExist => {
+                    OpPruneResult::MissingKey => {
                         warn!("commit: pruning attempt failed for {}", key);
                     }
-                    PruneResult::RootNotFound => {
+                    OpPruneResult::RootNotFound => {
                         error!(?state_root, ?key, "commit: root not found");
                         return Err(CommitError::WriteRootNotFound(state_root).into());
                     }

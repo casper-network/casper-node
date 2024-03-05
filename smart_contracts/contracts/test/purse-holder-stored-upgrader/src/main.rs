@@ -4,7 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::string::String;
+use alloc::{collections::BTreeMap, string::String};
 
 use casper_contract::{
     contract_api::{runtime, storage, system},
@@ -86,8 +86,12 @@ pub extern "C" fn call() {
         entry_points
     };
     // this should overwrite the previous contract obj with the new contract obj at the same uref
-    let (new_contract_hash, new_contract_version) =
-        storage::add_contract_version(contract_package, entry_points, NamedKeys::new());
+    let (new_contract_hash, new_contract_version) = storage::add_contract_version(
+        contract_package,
+        entry_points,
+        NamedKeys::new(),
+        BTreeMap::new(),
+    );
     runtime::put_key(
         PURSE_HOLDER_STORED_CONTRACT_NAME,
         Key::contract_entity_key(new_contract_hash),

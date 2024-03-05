@@ -10,7 +10,16 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::TransactionV1;
 use super::{DeployHash, TransactionV1Hash};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest,
+};
+
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
@@ -34,13 +43,21 @@ pub enum TransactionHash {
 }
 
 impl TransactionHash {
-    /// Returns a random `TransactionV1Hash`.
+    /// Digest representation of hash.
+    pub fn digest(&self) -> Digest {
+        match self {
+            TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
+            TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
+        }
+    }
+
+    /// Returns a random `TransactionHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        if rng.gen() {
-            TransactionHash::Deploy(DeployHash::random(rng))
-        } else {
-            TransactionHash::V1(TransactionV1Hash::random(rng))
+        match rng.gen_range(0..2) {
+            0 => TransactionHash::from(DeployHash::random(rng)),
+            1 => TransactionHash::from(TransactionV1Hash::random(rng)),
+            _ => panic!(),
         }
     }
 }

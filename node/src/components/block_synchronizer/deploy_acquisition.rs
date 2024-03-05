@@ -9,9 +9,8 @@ use std::{
 use datasize::DataSize;
 use tracing::debug;
 
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{TransactionHash, TransactionId};
-
-use crate::types::ApprovalsHashes;
 
 use super::block_acquisition::Acceptance;
 

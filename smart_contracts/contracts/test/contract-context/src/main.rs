@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{string::ToString, vec::Vec};
+use alloc::{collections::BTreeMap, string::ToString, vec::Vec};
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -123,7 +123,12 @@ fn install_version_1(package_hash: PackageHash) -> (AddressableEntityHash, Entit
     };
 
     let entry_points = create_entrypoints_1();
-    storage::add_contract_version(package_hash, entry_points, contract_named_keys)
+    storage::add_contract_version(
+        package_hash,
+        entry_points,
+        contract_named_keys,
+        BTreeMap::new(),
+    )
 }
 
 #[no_mangle]

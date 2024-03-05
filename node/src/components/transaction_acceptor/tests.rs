@@ -21,14 +21,12 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_storage::{
-    data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult},
-    global_state::trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
+    global_state::TrieMerkleProof,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
     EraId, HashAddr, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,
@@ -661,7 +659,7 @@ impl reactor::Reactor for Reactor {
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
         let transaction_acceptor =
