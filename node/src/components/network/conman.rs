@@ -271,8 +271,8 @@ impl ConMan {
         our_id: NodeId,
         protocol_handler: Box<dyn ProtocolHandler>,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
+        cfg: Config,
     ) -> Self {
-        let cfg = Config::default();
         let ctx = Arc::new(ConManContext {
             cfg,
             protocol_handler,

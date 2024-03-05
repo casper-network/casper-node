@@ -298,6 +298,7 @@ where
             self.our_id,
             Box::new(protocol_handler),
             rpc_builder,
+            self.config.conman,
         );
         self.conman = Some(conman);
         self.learn_known_addresses();
