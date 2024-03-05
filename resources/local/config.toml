@@ -245,6 +245,9 @@ blocklist_retain_duration = '1 minute'
 # Used to control if a timed-out request should make the consecutive reqeusts to fail.
 bubble_timeouts = false
 
+# The maximum time a peer is allowed to take to receive an error.
+error_timeout = '10 seconds'
+
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.

@@ -280,6 +280,7 @@ where
             self.config.send_buffer_size,
             self.config.ack_timeout,
             self.config.bubble_timeouts,
+            self.config.error_timeout.into(),
         );
 
         // Setup connection manager, then learn all known addresses.

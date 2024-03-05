@@ -35,6 +35,9 @@ const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 /// Default value for timeout bubbling.
 const DEFAULT_BUBBLE_TIMEOUTS: bool = false;
 
+/// Default value for error timeout.
+const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -58,6 +61,7 @@ impl Default for Config {
             identity: None,
             conman: Default::default(),
             bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
+            error_timeout: DEFAULT_ERROR_TIMEOUT,
         }
     }
 }
@@ -129,6 +133,8 @@ pub struct Config {
     pub conman: ConmanConfig,
     /// Used to control if a timed-out request should make the consecutive requests to fail.
     pub bubble_timeouts: bool,
+    /// The maximum time a peer is allowed to take to receive an error.
+    pub error_timeout: TimeDiff,
 }
 
 #[cfg(test)]

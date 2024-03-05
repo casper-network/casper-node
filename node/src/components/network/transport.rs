@@ -3,7 +3,7 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{marker::PhantomData, pin::Pin};
+use std::{marker::PhantomData, pin::Pin, time::Duration};
 
 use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
@@ -36,6 +36,7 @@ pub(super) fn create_rpc_builder(
     buffer_size: PerChannel<Option<usize>>,
     ack_timeout: TimeDiff,
     bubble_timeouts: bool,
+    error_timeout: Duration,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
         juliet::protocol::ProtocolBuilder::new(),
@@ -50,7 +51,7 @@ pub(super) fn create_rpc_builder(
     });
 
     let io_core = buffer_size.into_iter().fold(
-        juliet::io::IoCoreBuilder::new(protocol),
+        juliet::io::IoCoreBuilder::new(protocol).error_timeout(error_timeout),
         |io_core, (channel, buffer_size)| {
             io_core.buffer_size(channel.into_channel_id(), buffer_size)
         },
