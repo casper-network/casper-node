@@ -12,13 +12,15 @@ use bincode::{
     DefaultOptions, Options,
 };
 use erased_serde::Serializer as ErasedSerializer;
-use futures::future::{self, Either};
+use futures::{
+    future::{self, Either},
+    pin_mut,
+};
 use serde::Serialize;
 use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     net::{unix::OwnedWriteHalf, UnixListener, UnixStream},
-    sync::watch,
 };
 use tracing::{debug, info, info_span, warn, Instrument};
 
@@ -39,7 +41,7 @@ use crate::{
     },
     failpoints::FailpointActivation,
     logging,
-    utils::{display_error, opt_display::OptDisplay},
+    utils::{display_error, opt_display::OptDisplay, ObservableFuse, Peel},
 };
 
 /// Success or failure response.
@@ -496,7 +498,7 @@ fn set_log_filter(filter_str: &str) -> Result<(), SetLogFilterError> {
 async fn handler<REv>(
     effect_builder: EffectBuilder<REv>,
     stream: UnixStream,
-    mut shutdown_receiver: watch::Receiver<()>,
+    shutdown_fuse: ObservableFuse,
 ) -> io::Result<()>
 where
     REv: From<DumpConsensusStateRequest>
@@ -513,14 +515,17 @@ where
 
     let mut keep_going = true;
     while keep_going {
-        let shutdown_messages = async { while shutdown_receiver.changed().await.is_ok() {} };
+        let shutdown = shutdown_fuse.wait();
+        pin_mut!(shutdown);
+        let next_line = lines.next_line();
+        pin_mut!(next_line);
 
-        match future::select(Box::pin(shutdown_messages), Box::pin(lines.next_line())).await {
+        match future::select(shutdown, next_line).await.peel() {
             Either::Left(_) => {
                 info!("shutting down diagnostics port connection to client");
                 return Ok(());
             }
-            Either::Right((line_result, _)) => {
+            Either::Right(line_result) => {
                 if let Some(line) = line_result? {
                     keep_going = session
                         .process_line(effect_builder, &mut writer, line.as_str())
@@ -541,7 +546,7 @@ pub(super) async fn server<REv>(
     effect_builder: EffectBuilder<REv>,
     socket_path: PathBuf,
     listener: UnixListener,
-    mut shutdown_receiver: watch::Receiver<()>,
+    shutdown_fuse: ObservableFuse,
 ) where
     REv: From<DumpConsensusStateRequest>
         + From<ControlAnnouncement>
@@ -549,8 +554,8 @@ pub(super) async fn server<REv>(
         + From<SetNodeStopRequest>
         + Send,
 {
-    let handling_shutdown_receiver = shutdown_receiver.clone();
     let mut next_client_id: u64 = 0;
+    let acceptor_fuse = shutdown_fuse.clone();
     let accept_connections = async move {
         loop {
             match listener.accept().await {
@@ -566,8 +571,7 @@ pub(super) async fn server<REv>(
                     next_client_id += 1;
 
                     tokio::spawn(
-                        handler(effect_builder, stream, handling_shutdown_receiver.clone())
-                            .instrument(span),
+                        handler(effect_builder, stream, acceptor_fuse.clone()).instrument(span),
                     );
                 }
                 Err(err) => {
@@ -577,11 +581,13 @@ pub(super) async fn server<REv>(
         }
     };
 
-    let shutdown_messages = async move { while shutdown_receiver.changed().await.is_ok() {} };
+    let shutdown = shutdown_fuse.wait();
+    pin_mut!(shutdown);
+    pin_mut!(accept_connections);
 
     // Now we can wait for either the `shutdown` channel's remote end to do be dropped or the
     // infinite loop to terminate, which never happens.
-    match future::select(Box::pin(shutdown_messages), Box::pin(accept_connections)).await {
+    match future::select(shutdown, accept_connections).await {
         Either::Left(_) => info!("shutting down diagnostics port"),
         Either::Right(_) => unreachable!("server accept returns `!`"),
     }

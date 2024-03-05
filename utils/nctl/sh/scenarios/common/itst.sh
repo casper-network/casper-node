@@ -39,7 +39,7 @@ function clean_up() {
             tar -cvzf "${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz * > /dev/null 2>&1
             aws s3 cp ./"${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz s3://nctl.casperlabs.io/nightly-logs/ > /dev/null 2>&1
             log "Download the dump file: curl -O https://s3.us-east-2.amazonaws.com/nctl.casperlabs.io/nightly-logs/${DRONE_BUILD_NUMBER}_nctl_dump.tar.gz"
-            log "\nextra log lines to push\ndownload instructions above\nserver license expired banner\n"
+            log "\nextra log lines push\ndownload instructions above\nlicense expired\n"
             popd
         fi
     fi
@@ -612,23 +612,4 @@ function assert_chain_stalled() {
         log "node-2 LFB: $LFB_2_PRE = $LFB_2_POST"
         log "Stall successfully detected, continuing..."
     fi
-}
-
-function slow_down_node_network() {
-    local NODE=${1}
-    local DELAY=${2:-3000}
-    local PV=$(get_node_protocol_version $NODE | sed -e 's/\./_/g')
-
-    echo "set-failpoint consensus.message_delay=$DELAY" \
-        | socat - unix-client:"$(get_path_to_node $NODE)"/config/$PV/debug.socket
-}
-
-function dump_consensus() {
-    local NODE=${1}
-    local ERA=${2}
-    local PV=$(get_node_protocol_version $NODE | sed -e 's/\./_/g')
-
-    echo -e "set -o bincode -q true\ndump-consensus $ERA" \
-        | socat - unix-client:"$(get_path_to_node $NODE)"/config/$PV/debug.socket \
-        > /tmp/consensus-dump-n$NODE-e$ERA.bincode
 }

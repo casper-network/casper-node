@@ -28,6 +28,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::{info, trace};
 
 use casper_types::{EraId, Timestamp};
@@ -42,16 +43,19 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{ConsensusDemand, ConsensusMessageIncoming},
         requests::{
-            BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, DeployBufferRequest, NetworkInfoRequest, NetworkRequest,
-            StorageRequest,
+            ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+            DeployBufferRequest, NetworkInfoRequest, NetworkRequest,
+            ProposedBlockValidationRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
     failpoints::FailpointActivation,
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockHash, BlockHeader, BlockPayload, NodeId},
+    types::{
+        appendable_block::AddError, BlockHash, BlockHeader, BlockPayload, DeployHash,
+        DeployOrTransferHash, NodeId,
+    },
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -134,11 +138,130 @@ pub struct NewBlockPayload {
 
 /// The result of validation of a ProposedBlock.
 #[derive(DataSize, Debug, From)]
-pub struct ResolveValidity {
+pub struct ValidationResult {
     era_id: EraId,
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
-    valid: bool,
+    error: Option<ValidationError>,
+}
+
+#[derive(Clone, DataSize, Debug, Error, Serialize)]
+/// A proposed block validation error.
+// TODO: This error probably needs to move to a different component.
+pub enum ValidationError {
+    /// A deploy hash in the proposed block has been found in an ancestor block.
+    #[error("deploy hash {0} has been replayed")]
+    ContainsReplayedDeploy(DeployHash),
+    /// A deploy could not be fetched from any of the identified holders.
+    #[error("exhausted potential holders of proposed block, missing {} deploys", missing_deploys.len())]
+    ExhaustedBlockHolders {
+        /// The deploys still missing.
+        missing_deploys: Vec<DeployOrTransferHash>,
+    },
+    /// An already invalid block was submitted for validation.
+    ///
+    /// This is likely a bug in the node itself.
+    #[error("validation of failed block, likely a bug")]
+    ValidationOfFailedBlock,
+    /// The submitted block is already in process of being validated.
+    ///
+    /// This is likely a bug, since no block should be submitted for validation twice.
+    #[error("duplicate validation attempt, likely a bug")]
+    DuplicateValidationAttempt,
+    /// Found deploy in storage, but did not match the hash requested.
+    ///
+    /// This indicates a corrupted storage.
+    // Note: It seems rather mean to ban peers for our own corrupted storage.
+    #[error("local storage appears corrupted, deploy mismatch when asked for deploy {0}")]
+    InternalDataCorruption(DeployOrTransferHash),
+    /// The deploy we received
+    ///
+    /// This is likely a bug, since the deploy fetcher should ensure that this does not happen.
+    #[error("received wrong or invalid deploy from peer when asked for deploy {0}")]
+    WrongDeploySent(DeployOrTransferHash),
+    /// A contained deploy has no valid deploy footprint.
+    #[error("no valid deploy footprint for deploy {deploy_hash}: {error}")]
+    DeployHasInvalidFootprint {
+        /// Hash of deploy that failed.
+        deploy_hash: DeployOrTransferHash,
+        /// The error reported when trying to footprint it.
+        // Note: The respective error is hard to serialize and make `Sync`-able, so it is inlined
+        //       in string form here.
+        error: String,
+    },
+    /// Too many non-transfer deploys in block.
+    #[error("block exceeds limit of non-transfer deploys of {0}")]
+    ExceedsNonTransferDeployLimit(usize),
+    /// Too many non-transfer deploys in block.
+    #[error("block exceeds limit of transfers of {0}")]
+    ExceedsTransferLimit(usize),
+    /// The approvals hash could not be serialized.
+    // Note: `bytesrepr::Error` does not implement `std::error::Error`.
+    #[error("failed to serialize approvals hash: {0}")]
+    CannotSerializeApprovalsHash(String),
+    /// A duplicated deploy was found within the block.
+    #[error("duplicate deploy {0} in block")]
+    DuplicateDeploy(DeployOrTransferHash),
+    /// Exhausted all peers while trying to validate block.
+    #[error("peers exhausted")]
+    PeersExhausted,
+    /// Failed to construct a `GetRequest`.
+    #[error("could not construct GetRequest for {id}, peer {peer}")]
+    CouldNotConstructGetRequest {
+        /// The `GetRequest`'s ID, serialized as string
+        id: String,
+        /// The peer ID the `GetRequest` was directed at.
+        peer: Box<NodeId>,
+    },
+    /// Validation data mismatch.
+    #[error("validation data mismatch on {id}, peer {peer}")]
+    ValidationMetadataMismatch {
+        /// The item's ID for which validation data did not match.
+        id: String,
+        /// The peer ID involved.
+        peer: Box<NodeId>,
+    },
+    /// The validation state was found to be `InProgress`.
+    #[error("encountered in-progress validation state after completion, likely a bug")]
+    InProgressAfterCompletion,
+    /// A given deploy could not be included in the block by adding it to the appendable block.
+    #[error("failed to include deploy {deploy_hash} in block")]
+    DeployInclusionFailure {
+        /// Hash of the deploy that was rejected.
+        deploy_hash: DeployOrTransferHash,
+        /// The underlying error of the appendable block.
+        #[source]
+        error: AddError,
+    },
+}
+
+impl ValidationResult {
+    /// Creates a new valid `ValidationResult`.
+    #[inline(always)]
+    fn new_valid(era_id: EraId, sender: NodeId, proposed_block: ProposedBlock<ClContext>) -> Self {
+        Self {
+            era_id,
+            sender,
+            proposed_block,
+            error: None,
+        }
+    }
+
+    /// Creates a new invalid `ValidationResult`.
+    #[inline(always)]
+    fn new_invalid(
+        era_id: EraId,
+        sender: NodeId,
+        proposed_block: ProposedBlock<ClContext>,
+        error: ValidationError,
+    ) -> Self {
+        Self {
+            era_id,
+            sender,
+            proposed_block,
+            error: Some(error),
+        }
+    }
 }
 
 /// Consensus component event.
@@ -171,7 +294,7 @@ pub(crate) enum Event {
         header_hash: BlockHash,
     },
     /// The proposed block has been validated.
-    ResolveValidity(ResolveValidity),
+    ResolveValidity(ValidationResult),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
         era_id: EraId,
@@ -237,10 +360,18 @@ impl Display for ConsensusRequestMessage {
 impl Display for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+            Event::Incoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket: _,
+            }) => {
                 write!(f, "message from {:?}: {}", sender, message)
             }
-            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
+            Event::DelayedIncoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket: _,
+            }) => {
                 write!(f, "delayed message from {:?}: {}", sender, message)
             }
             Event::DemandIncoming(demand) => {
@@ -280,19 +411,28 @@ impl Display for Event {
                 "A block has been added to the linear chain: {}",
                 header_hash,
             ),
-            Event::ResolveValidity(ResolveValidity {
+            Event::ResolveValidity(ValidationResult {
                 era_id,
                 sender,
                 proposed_block,
-                valid,
-            }) => write!(
-                f,
-                "Proposed block received from {:?} for {} is {}: {:?}",
-                sender,
-                era_id,
-                if *valid { "valid" } else { "invalid" },
-                proposed_block,
-            ),
+                error,
+            }) => {
+                write!(
+                    f,
+                    "Proposed block received from {:?} for {} is ",
+                    sender, era_id
+                )?;
+
+                if let Some(err) = error {
+                    write!(f, "invalid ({})", err)?;
+                } else {
+                    f.write_str("valid")?;
+                };
+
+                write!(f, ": {:?}", proposed_block)?;
+
+                Ok(())
+            }
             Event::DeactivateEra {
                 era_id, faulty_num, ..
             } => write!(
@@ -316,7 +456,7 @@ pub(crate) trait ReactorEventT:
     + From<NetworkInfoRequest>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
-    + From<BlockValidationRequest>
+    + From<ProposedBlockValidationRequest>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<ChainspecRawBytesRequest>
@@ -335,7 +475,7 @@ impl<REv> ReactorEventT for REv where
         + From<NetworkInfoRequest>
         + From<DeployBufferRequest>
         + From<ConsensusAnnouncement>
-        + From<BlockValidationRequest>
+        + From<ProposedBlockValidationRequest>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<ChainspecRawBytesRequest>
@@ -433,21 +573,33 @@ where
             Event::Action { era_id, action_id } => {
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
-            Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+            Event::Incoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket,
+            }) => {
                 let delay_by = self.message_delay_failpoint.fire(rng).cloned();
                 if let Some(delay) = delay_by {
                     effect_builder
                         .set_timeout(Duration::from_millis(delay))
                         .event(move |_| {
-                            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message })
+                            Event::DelayedIncoming(ConsensusMessageIncoming {
+                                sender,
+                                message,
+                                ticket,
+                            })
                         })
                 } else {
-                    self.handle_message(effect_builder, rng, sender, *message)
+                    let rv = self.handle_message(effect_builder, rng, sender, *message);
+                    drop(ticket); // TODO: drop ticket in `handle_message` effect instead
+                    rv
                 }
             }
-            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
-                self.handle_message(effect_builder, rng, sender, *message)
-            }
+            Event::DelayedIncoming(ConsensusMessageIncoming {
+                sender,
+                message,
+                ticket: _, // TODO: drop ticket in `handle_message` effect instead
+            }) => self.handle_message(effect_builder, rng, sender, *message),
             Event::DemandIncoming(ConsensusDemand {
                 sender,
                 request_msg: demand,
@@ -514,5 +666,6 @@ where
 
     fn activate_failpoint(&mut self, activation: &FailpointActivation) {
         self.message_delay_failpoint.update_from(activation);
+        self.proposal_delay_failpoint.update_from(activation);
     }
 }

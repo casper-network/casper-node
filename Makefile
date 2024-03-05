@@ -101,6 +101,10 @@ test-contracts-as: build-contracts-rs build-contracts-as
 .PHONY: test-contracts
 test-contracts: test-contracts-rs
 
+.PHONY: check-no-default-features
+check-no-default-features:
+	cd types && $(CARGO) check --all-targets --no-default-features
+
 .PHONY: check-std-features
 check-std-features:
 	cd types && $(CARGO) check --all-targets --no-default-features --features=std
@@ -136,7 +140,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2022-0093
+	$(CARGO) audit
 
 .PHONY: audit-as
 audit-as:
@@ -157,6 +161,7 @@ check-rs: \
 	doc \
 	lint \
 	audit \
+	check-no-default-features \
 	check-std-features \
 	test-rs \
 	test-rs-no-default-features \

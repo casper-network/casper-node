@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.4")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.5.5")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -26,6 +26,7 @@ pub mod cli;
 pub(crate) mod components;
 mod config_migration;
 mod data_migration;
+mod dead_metrics;
 pub(crate) mod effect;
 #[cfg_attr(not(feature = "failpoints"), path = "failpoints_disabled.rs")]
 pub(crate) mod failpoints;
@@ -54,7 +55,6 @@ use tracing::warn;
 pub(crate) use components::{
     block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
-    block_validator::Config as BlockValidatorConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
@@ -64,6 +64,7 @@ pub(crate) use components::{
     fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig,
     network::Config as NetworkConfig,
+    proposed_block_validator::Config as ProposedBlockValidatorConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     upgrade_watcher::Config as UpgradeWatcherConfig,

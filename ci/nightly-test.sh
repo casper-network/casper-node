@@ -51,6 +51,9 @@ function start_run_teardown() {
         SETUP_ARGS+=("config_path=$CONFIG_TOML")
     fi
 
+    # Github actions hint for grouping log lines
+    echo "::group::{$RUN_CMD}"
+
     # Setup nctl files for test
     echo "Setting up network: nctl-assets-setup ${SETUP_ARGS[@]}"
     nctl-assets-setup "${SETUP_ARGS[@]}"
@@ -70,6 +73,8 @@ function start_run_teardown() {
     # Cleanup after test completion
     popd
     nctl-assets-teardown
+    # End Github actions hint for grouping tests
+    echo "::endgroup::"
     sleep 1
 }
 
@@ -119,8 +124,6 @@ start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "swap_validator_set.sh"
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
 start_run_teardown "validators_disconnect.sh"
-start_run_teardown "slow-node-01.sh"
-start_run_teardown "slow-node-02.sh"
 # Without start_run_teardown - these ones perform their own assets setup, network start and teardown
 source "$SCENARIOS_DIR/upgrade_after_emergency_upgrade_test_pre_1.5.sh"
 source "$SCENARIOS_DIR/regression_3976.sh"

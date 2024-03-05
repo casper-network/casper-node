@@ -49,7 +49,6 @@ pub enum External {
     /// Value that should be loaded from an external path.
     Path(PathBuf),
     /// The value has not been specified, but a default has been requested.
-    #[serde(skip)]
     #[default]
     Missing,
 }
@@ -94,10 +93,11 @@ pub trait Loadable: Sized {
     /// Load a test-only instance from the local path.
     #[cfg(test)]
     fn from_resources<P: AsRef<Path>>(rel_path: P) -> Self {
-        Self::from_path(RESOURCES_PATH.join(rel_path.as_ref())).unwrap_or_else(|error| {
+        let full_path = RESOURCES_PATH.join(rel_path.as_ref());
+        Self::from_path(&full_path).unwrap_or_else(|error| {
             panic!(
                 "could not load resources from {}: {}",
-                rel_path.as_ref().display(),
+                full_path.display(),
                 error
             )
         })

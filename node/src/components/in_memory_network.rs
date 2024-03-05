@@ -284,15 +284,14 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use casper_types::testing::TestRng;
 use rand::seq::IteratorRandom;
 use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
-use casper_types::testing::TestRng;
-
 use crate::{
-    components::Component,
+    components::{network::Ticket, Component},
     effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     logging,
     reactor::{EventQueueHandle, QueueKind},
@@ -538,8 +537,7 @@ where
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_after_queueing: _,
-                auto_closing_responder,
+                message_queued_responder,
             } => {
                 if *dest == self.node_id {
                     panic!("can't send message to self");
@@ -551,7 +549,11 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                auto_closing_responder.respond(()).ignore()
+                if let Some(responder) = message_queued_responder {
+                    responder.respond(()).ignore()
+                } else {
+                    Effects::new()
+                }
             }
             NetworkRequest::ValidatorBroadcast {
                 payload,
@@ -609,10 +611,11 @@ async fn receiver_task<REv, P>(
     P: 'static + Send,
 {
     while let Some((sender, payload)) = receiver.recv().await {
-        let announce: REv = REv::from_incoming(sender, payload);
+        // We do not use backpressure in the in-memory network, so provide a dummy ticket.
+        let announce: REv = REv::from_incoming(sender, payload, Ticket::create_dummy());
 
         event_queue
-            .schedule(announce, QueueKind::NetworkIncoming)
+            .schedule(announce, QueueKind::MessageIncoming)
             .await;
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "1.5.4" # when updating, also update 'html_root_url' in lib.rs
+version = "1.5.5" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2021"
 description = "The Casper blockchain node"
@@ -16,6 +16,7 @@ exclude = ["proptest-regressions"]
 ansi_term = "0.12.1"
 anyhow = "1"
 aquamarine = "0.1.12"
+array-init = "2.0.1"
 async-trait = "0.1.50"
 backtrace = "0.3.50"
 base16 = "0.2.1"
@@ -25,15 +26,14 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "7.0.0", path = "../execution_engine" }
 casper-hashing = { version = "3.0.0", path = "../hashing" }
 casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
-casper-types = { version = "4.0.1", path = "../types", features = ["datasize", "json-schema", "std"] }
+casper-types = { version = "4.0.1", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
 enum-iterator = "0.6.0"
 erased-serde = "0.3.18"
 fs2 = "0.4.3"
-futures = "0.3.5"
-futures-io = "0.3.5"
+futures = "0.3.21"
 hex-buffer-serde = "0.3.0"
 hex_fmt = "0.3.0"
 hostname = "0.3.0"
@@ -41,6 +41,7 @@ http = "0.2.1"
 humantime = "2.1.0"
 hyper = "0.14.26"
 itertools = "0.10.0"
+juliet = { version = "0.2.0", features = ["tracing"] }
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
 lmdb-rkv = "0.14"
@@ -65,7 +66,7 @@ serde-big-array = "0.3.0"
 serde_bytes = "0.11.5"
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_repr = "0.1.6"
-shlex = "1.0.0"
+shlex = "1.3.0"
 signal-hook = "0.3.4"
 signature = "1"
 smallvec = { version = "1", features = ["serde"] }
@@ -78,9 +79,8 @@ tempfile = "3.4.0"
 thiserror = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-openssl = "0.6.1"
-tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
-tokio-util = { version = "0.6.4", features = ["codec"] }
+tokio-util = { version = "0.6.4", features = ["codec", "compat"] }
 toml = "0.5.6"
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
@@ -97,7 +97,7 @@ vergen = { version = "8.2.1", default-features = false, features = ["git", "gito
 [dev-dependencies]
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
-casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std-fs-io", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"

@@ -6,11 +6,10 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    sync::atomic::Ordering,
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use casper_types::{EraId, PublicKey};
@@ -35,16 +34,10 @@ pub(crate) struct NetworkInsights {
     network_ca: bool,
     /// The public address of the node.
     public_addr: Option<SocketAddr>,
-    /// Whether or not the node is syncing.
-    is_syncing: bool,
+    /// The fingerprint of a consensus key installed.
+    node_key_pair: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
-    /// The list of node IDs that are being preferred due to being active validators.
-    privileged_active_outgoing_nodes: Option<HashSet<PublicKey>>,
-    /// The list of node IDs that are being preferred due to being upcoming validators.
-    privileged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
-    /// The amount of bandwidth allowance currently buffered, ready to be spent.
-    unspent_bandwidth_allowance_bytes: Option<i64>,
     /// Map of outgoing connections, along with their current state.
     outgoing_connections: Vec<(SocketAddr, OutgoingInsight)>,
     /// Map of incoming connections.
@@ -75,10 +68,6 @@ enum OutgoingStateInsight {
     Connected {
         peer_id: NodeId,
         peer_addr: SocketAddr,
-        last_ping_sent: Option<SystemTime>,
-        last_pong_received: Option<SystemTime>,
-        invalid_pong_count: u32,
-        rtt: Option<Duration>,
     },
     Blocked {
         since: SystemTime,
@@ -98,9 +87,9 @@ fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
 
 impl OutgoingStateInsight {
     /// Constructs a new outgoing state insight from a given outgoing state.
-    fn from_outgoing_state<P>(
+    fn from_outgoing_state(
         anchor: &TimeAnchor,
-        state: &OutgoingState<OutgoingHandle<P>, ConnectionError>,
+        state: &OutgoingState<OutgoingHandle, ConnectionError>,
     ) -> Self {
         match state {
             OutgoingState::Connecting {
@@ -119,21 +108,9 @@ impl OutgoingStateInsight {
                 error: error.as_ref().map(ToString::to_string),
                 last_failure: anchor.convert(*last_failure),
             },
-            OutgoingState::Connected {
-                peer_id,
-                handle,
-                health,
-            } => OutgoingStateInsight::Connected {
+            OutgoingState::Connected { peer_id, handle } => OutgoingStateInsight::Connected {
                 peer_id: *peer_id,
                 peer_addr: handle.peer_addr,
-                last_ping_sent: health
-                    .last_ping_sent
-                    .map(|tt| anchor.convert(tt.timestamp())),
-                last_pong_received: health
-                    .last_pong_received
-                    .map(|tt| anchor.convert(tt.timestamp())),
-                invalid_pong_count: health.invalid_pong_count,
-                rtt: health.calc_rrt(),
             },
             OutgoingState::Blocked {
                 since,
@@ -169,26 +146,8 @@ impl OutgoingStateInsight {
                 OptDisplay::new(error.as_ref(), "none"),
                 time_delta(now, *last_failure)
             ),
-            OutgoingStateInsight::Connected {
-                peer_id,
-                peer_addr,
-                last_ping_sent,
-                last_pong_received,
-                invalid_pong_count,
-                rtt,
-            } => {
-                let rtt_ms = rtt.map(|duration| duration.as_millis());
-
-                write!(
-                    f,
-                    "connected -> {} @ {} (rtt {}, invalid {}, last ping/pong {}/{})",
-                    peer_id,
-                    peer_addr,
-                    OptDisplay::new(rtt_ms, "?"),
-                    invalid_pong_count,
-                    OptDisplay::new(last_ping_sent.map(|t| time_delta(now, t)), "-"),
-                    OptDisplay::new(last_pong_received.map(|t| time_delta(now, t)), "-"),
-                )
+            OutgoingStateInsight::Connected { peer_id, peer_addr } => {
+                write!(f, "connected -> {} @ {}", peer_id, peer_addr,)
             }
             OutgoingStateInsight::Blocked {
                 since,
@@ -268,15 +227,6 @@ impl NetworkInsights {
     where
         P: Payload,
     {
-        // Since we are at the top level of the component, we gain access to inner values of the
-        // respective structs. We abuse this to gain debugging insights. Note: If limiters are no
-        // longer a `trait`, the trait methods can be removed as well in favor of direct access.
-        let (privileged_active_outgoing_nodes, privileged_upcoming_outgoing_nodes) = net
-            .outgoing_limiter
-            .debug_inspect_validators(&net.active_era)
-            .map(|(a, b)| (Some(a), Some(b)))
-            .unwrap_or_default();
-
         let anchor = TimeAnchor::now();
 
         let outgoing_connections = net
@@ -310,13 +260,11 @@ impl NetworkInsights {
             our_id: net.context.our_id(),
             network_ca: net.context.network_ca().is_some(),
             public_addr: net.context.public_addr(),
-            is_syncing: net.context.is_syncing().load(Ordering::Relaxed),
+            node_key_pair: net
+                .context
+                .node_key_pair()
+                .map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
-            privileged_active_outgoing_nodes,
-            privileged_upcoming_outgoing_nodes,
-            unspent_bandwidth_allowance_bytes: net
-                .outgoing_limiter
-                .debug_inspect_unspent_allowance(),
             outgoing_connections,
             connection_symmetries,
         }
@@ -334,34 +282,9 @@ impl Display for NetworkInsights {
         }
         writeln!(
             f,
-            "node {} @ {:?} (syncing: {})",
-            self.our_id, self.public_addr, self.is_syncing
-        )?;
-        writeln!(
-            f,
-            "active era: {} unspent_bandwidth_allowance_bytes: {}",
-            self.net_active_era,
-            OptDisplay::new(self.unspent_bandwidth_allowance_bytes, "inactive"),
-        )?;
-        let active = self
-            .privileged_active_outgoing_nodes
-            .as_ref()
-            .map(HashSet::iter)
-            .map(DisplayIter::new);
-        writeln!(
-            f,
-            "privileged active: {}",
-            OptDisplay::new(active, "inactive")
-        )?;
-        let upcoming = self
-            .privileged_upcoming_outgoing_nodes
-            .as_ref()
-            .map(HashSet::iter)
-            .map(DisplayIter::new);
-        writeln!(
-            f,
-            "privileged upcoming: {}",
-            OptDisplay::new(upcoming, "inactive")
+            "node {} @ {}",
+            self.our_id,
+            OptDisplay::new(self.public_addr, "no listen addr")
         )?;
 
         f.write_str("outgoing connections:\n")?;

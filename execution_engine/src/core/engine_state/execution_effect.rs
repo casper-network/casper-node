@@ -31,6 +31,7 @@ impl From<ExecutionJournal> for ExecutionEffect {
                 | Transform::AddUInt256(_)
                 | Transform::AddUInt512(_)
                 | Transform::AddKeys(_) => ops.insert_add(key, Op::Add),
+                Transform::Prune => ops.insert_add(key, Op::Prune),
             };
             transforms.insert_add(key, transform);
         }

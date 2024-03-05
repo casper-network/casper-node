@@ -31,7 +31,7 @@ use crate::{
 type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
-    cached_values: HashMap<Key, (bool, StoredValue)>,
+    cached_values: HashMap<Key, (bool, Option<StoredValue>)>,
 }
 
 impl Cache {
@@ -41,21 +41,24 @@ impl Cache {
         }
     }
 
-    fn insert_write(&mut self, key: Key, value: StoredValue) {
+    fn insert_write(&mut self, key: Key, value: Option<StoredValue>) {
         self.cached_values.insert(key, (true, value));
     }
 
     fn insert_read(&mut self, key: Key, value: StoredValue) {
-        self.cached_values.entry(key).or_insert((false, value));
+        self.cached_values
+            .entry(key)
+            .or_insert((false, Some(value)));
     }
 
     fn get(&self, key: &Key) -> Option<&StoredValue> {
-        self.cached_values.get(key).map(|(_dirty, value)| value)
+        let maybe_value = self.cached_values.get(key).map(|(_dirty, value)| value)?;
+        maybe_value.as_ref()
     }
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
+    fn into_dirty_writes(self) -> HashMap<Key, Option<StoredValue>> {
         self.cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
@@ -104,7 +107,7 @@ impl ScratchGlobalState {
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> HashMap<Key, StoredValue> {
+    pub fn into_inner(self) -> HashMap<Key, Option<StoredValue>> {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }
@@ -204,7 +207,7 @@ impl CommitProvider for ScratchGlobalState {
         for (key, transform) in effects.into_iter() {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let value = match (cached_value, transform) {
-                (None, Transform::Write(new_value)) => new_value,
+                (None, Transform::Write(new_value)) => Some(new_value),
                 (None, transform) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
@@ -328,7 +331,7 @@ impl StateProvider for ScratchGlobalState {
         Ok(missing_descendants)
     }
 
-    fn delete_keys(
+    fn prune_keys(
         &self,
         correlation_id: CorrelationId,
         mut state_root_hash: Digest,
@@ -376,14 +379,18 @@ mod tests {
         value: StoredValue,
     }
 
+    const KEY_ACCOUNT_1: Key = Key::Account(AccountHash::new([1u8; 32]));
+    const KEY_ACCOUNT_2: Key = Key::Account(AccountHash::new([2u8; 32]));
+    const KEY_ACCOUNT_3: Key = Key::Account(AccountHash::new([3u8; 32]));
+
     fn create_test_pairs() -> [TestPair; 2] {
         [
             TestPair {
-                key: Key::Account(AccountHash::new([1_u8; 32])),
+                key: KEY_ACCOUNT_1,
                 value: StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
             },
             TestPair {
-                key: Key::Account(AccountHash::new([2_u8; 32])),
+                key: KEY_ACCOUNT_2,
                 value: StoredValue::CLValue(CLValue::from_t(2_i32).unwrap()),
             },
         ]
@@ -392,15 +399,15 @@ mod tests {
     fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
-                key: Key::Account(AccountHash::new([1u8; 32])),
+                key: KEY_ACCOUNT_1,
                 value: StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
             },
             TestPair {
-                key: Key::Account(AccountHash::new([2u8; 32])),
+                key: KEY_ACCOUNT_2,
                 value: StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
             },
             TestPair {
-                key: Key::Account(AccountHash::new([3u8; 32])),
+                key: KEY_ACCOUNT_3,
                 value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
             },
         ]
@@ -428,7 +435,11 @@ mod tests {
         root_hash: Digest,
     }
 
-    fn create_test_state() -> TestState {
+    fn create_test_state<T, F>(pairs_creator: F) -> TestState
+    where
+        T: AsRef<[TestPair]>,
+        F: FnOnce() -> T,
+    {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
@@ -448,7 +459,7 @@ mod tests {
         {
             let mut txn = state.environment.create_read_write_txn().unwrap();
 
-            for TestPair { key, value } in &create_test_pairs() {
+            for TestPair { key, value } in pairs_creator().as_ref() {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
@@ -482,7 +493,7 @@ mod tests {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
-        let TestState { state, root_hash } = create_test_state();
+        let TestState { state, root_hash } = create_test_state(create_test_pairs);
 
         let scratch = state.create_scratch();
 
@@ -515,13 +526,10 @@ mod tests {
 
         for key in all_keys {
             assert!(stored_values.get(&key).is_some());
-            assert_eq!(
-                stored_values.get(&key),
-                updated_checkout
-                    .read(correlation_id, &key)
-                    .unwrap()
-                    .as_ref()
-            );
+            let lhs = stored_values.get(&key);
+            let stored_value = updated_checkout.read(correlation_id, &key).unwrap();
+            let rhs = Some(&stored_value);
+            assert_eq!(lhs, rhs,);
         }
 
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
@@ -533,16 +541,93 @@ mod tests {
     }
 
     #[test]
+    fn commit_updates_state_with_delete() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs_updated = create_test_pairs_updated();
+
+        let TestState { state, root_hash } = create_test_state(create_test_pairs_updated);
+
+        let scratch = state.create_scratch();
+
+        let effects: AdditiveMap<Key, Transform> = {
+            let mut tmp = AdditiveMap::new();
+
+            let head = test_pairs_updated[..test_pairs_updated.len() - 1].to_vec();
+            let tail = test_pairs_updated[test_pairs_updated.len() - 1..].to_vec();
+            assert_eq!(head.len() + tail.len(), test_pairs_updated.len());
+
+            for TestPair { key, value } in &head {
+                tmp.insert(*key, Transform::Write(value.to_owned()));
+            }
+            for TestPair { key, .. } in &tail {
+                tmp.insert(*key, Transform::Prune);
+            }
+
+            tmp
+        };
+
+        let scratch_root_hash = scratch
+            .commit(correlation_id, root_hash, effects.clone())
+            .unwrap();
+
+        assert_eq!(
+            scratch_root_hash, root_hash,
+            "ScratchGlobalState should not modify the state root, as it does no hashing"
+        );
+
+        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
+
+        let all_keys = updated_checkout
+            .keys_with_prefix(correlation_id, &[])
+            .unwrap();
+
+        let stored_values = scratch.into_inner();
+        assert_eq!(
+            all_keys.len(),
+            stored_values.len() - 1,
+            "Should delete one key from the global state"
+        );
+
+        for key in all_keys {
+            assert!(stored_values.get(&key).is_some());
+            let lhs = stored_values.get(&key).cloned();
+            let rhs = updated_checkout.read(correlation_id, &key).unwrap();
+
+            assert_eq!(lhs, Some(rhs));
+        }
+
+        let account_1 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_1)
+            .unwrap();
+        assert_eq!(account_1, Some(test_pairs_updated[0].clone().value));
+
+        let account_2 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_2)
+            .unwrap();
+        assert_eq!(account_2, Some(test_pairs_updated[1].clone().value));
+
+        let account_3 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_3)
+            .unwrap();
+        assert_eq!(
+            account_3, None,
+            "Account {:?} should be deleted",
+            KEY_ACCOUNT_3
+        );
+    }
+
+    #[test]
     fn commit_updates_state_with_add() {
         let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         // create two lmdb instances, with a scratch instance on the first
-        let TestState { state, root_hash } = create_test_state();
+        let TestState { state, root_hash } = create_test_state(create_test_pairs);
         let TestState {
             state: state2,
             root_hash: state_2_root_hash,
-        } = create_test_state();
+        } = create_test_state(create_test_pairs);
 
         let scratch = state.create_scratch();
 
@@ -599,7 +684,7 @@ mod tests {
 
         let TestState {
             state, root_hash, ..
-        } = create_test_state();
+        } = create_test_state(create_test_pairs);
 
         let scratch = state.create_scratch();
 

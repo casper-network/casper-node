@@ -11,9 +11,31 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## Unreleased
+
+### Changed
+* Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+
+### Remove
+* The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.
+
+
+
+## 1.5.5
+
+### Added
+* New chainspec setting `highway.performance_meter.blocks_to_consider` with a value of 10, meaning that nodes will take 10 most recent blocks into account when determining their performance in Highway for the purpose of choosing their round lengths.
+
+
+
 ## 1.5.4
 
 ### Added
+* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
+* Add an `identity` option to load existing network identity certificates signed by a CA.
+* TLS connection keys can now be logged using the `network.keylog_location` setting (similar to `SSLKEYLOGFILE` envvar found in other applications).
+* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
+* Unit tests can be run with JSON log output by setting a `NODE_TEST_LOG=json` environment variable.
 * New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
 * Add initial support for private chains.
 * Add support for CA signed client certificates for private chains.
@@ -25,6 +47,8 @@ All notable changes to this project will be documented in this file.  The format
   * `core.round_seigniorage_rate` reduced to `[7, 175070816]`.
   * `highway.block_gas_limit` reduced to `4_000_000_000_000`.
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
+* The underlying network protocol has been changed, now supports multiplexing for better latency and proper backpressuring across nodes.
+* Any metrics containing queue names "network_low_priority" and "network_incoming" have had said portion renamed to "message_low_priority" and "message_incoming".
 * `state_get_account_info` RPC handler can now handle an `AccountIdentifier` as a parameter.
 * Replace the `sync_to_genesis` node config field with `sync_handling`.
   * The new `sync_handling` field accepts three values:
@@ -32,6 +56,7 @@ All notable changes to this project will be documented in this file.  The format
     - `ttl` - node will attempt to acquire all block data to comply with time to live enforcement
     - `nosync` - node will only acquire blocks moving forward
 * Make the `network.estimator_weights` section of the node config more fine-grained to provide more precise throttling of non-validator traffic.
+* Any IPv6 address resolved for the node's own public IP will now be ignored, resulting in fewer connectivity issues on nodes misconfigured due to using an older installation script.
 
 ### Removed
 * The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
@@ -43,6 +68,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Update `openssl` to version 0.10.55 as mitigation for [RUSTSEC-2023-0044](https://rustsec.org/advisories/RUSTSEC-2023-0044).
+
+### Removed
+* There is no more weighted rate limiting on incoming traffic, instead the nodes dynamically adjusts allowed rates from peers based on available resources. This resulted in the removal of the `estimator_weights` configuration option and the `accumulated_incoming_limiter_delay` metric.
 
 
 

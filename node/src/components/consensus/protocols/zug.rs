@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 //! # The Zug consensus protocol.
 //!
 //! This protocol requires that at most _f_ out of _n > 3 f_ validators (by weight) are faulty. It
@@ -96,6 +97,7 @@ use crate::{
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
+    consensus::ValidationError,
     types::{Chainspec, NodeId},
     utils, NodeRng,
 };
@@ -1706,8 +1708,8 @@ impl<C: Context + 'static> Zug<C> {
         true
     }
 
-    /// Sends a proposal to the `BlockValidator` component for validation. If no validation is
-    /// needed, immediately calls `insert_proposal`.
+    /// Sends a proposal to the `ProposedBlockValidator` component for validation. If no validation
+    /// is needed, immediately calls `insert_proposal`.
     fn validate_proposal(
         &mut self,
         round_id: RoundId,
@@ -2257,7 +2259,7 @@ where
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let rounds_and_node_ids = self
@@ -2266,7 +2268,7 @@ where
             .into_iter()
             .flatten();
         let mut outcomes = vec![];
-        if valid {
+        if validation_error.is_none() {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(our_idx = self.our_idx(), %round_id, %proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
@@ -2281,9 +2283,9 @@ where
             outcomes.extend(self.update(now));
         } else {
             for (round_id, proposal, sender) in rounds_and_node_ids {
-                // We don't disconnect from the faulty sender here: The block validator considers
-                // the value "invalid" even if it just couldn't download the deploys, which could
-                // just be because the original sender went offline.
+                // We don't disconnect from the faulty sender here: The proposed block validator
+                // considers the value "invalid" even if it just couldn't download the deploys,
+                // which could just be because the original sender went offline.
                 let validator_index = self.leader(round_id).0;
                 info!(
                     our_idx = self.our_idx(),

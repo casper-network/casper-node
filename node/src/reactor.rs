@@ -34,12 +34,10 @@ pub(crate) mod main_reactor;
 mod queue_kind;
 
 use std::{
-    any,
     collections::HashMap,
     env,
     fmt::{Debug, Display},
     io::Write,
-    mem,
     num::NonZeroU64,
     str::FromStr,
     sync::{atomic::Ordering, Arc},
@@ -51,7 +49,7 @@ use erased_serde::Serialize as ErasedSerialize;
 use fake_instant::FakeClock;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
+use prometheus::{self, Histogram, IntCounter, IntGauge, Registry};
 use quanta::{Clock, IntoNanoseconds};
 use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
@@ -60,6 +58,8 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(test)]
+use crate::components::ComponentState;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
@@ -85,8 +85,11 @@ use crate::{
         ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
         TrieOrChunk,
     },
-    unregister_metric,
-    utils::{self, SharedFlag, WeightedRoundRobin},
+    utils::{
+        self,
+        registered_metric::{RegisteredMetric, RegistryExt},
+        Fuse, SharedFuse, WeightedRoundRobin,
+    },
     NodeRng, TERMINATION_REQUESTED,
 };
 pub(crate) use queue_kind::QueueKind;
@@ -184,7 +187,7 @@ where
     /// A reference to the scheduler of the event queue.
     scheduler: &'static Scheduler<REv>,
     /// Flag indicating whether or not the reactor processing this event queue is shutting down.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
@@ -197,7 +200,7 @@ impl<REv> Copy for EventQueueHandle<REv> {}
 
 impl<REv> EventQueueHandle<REv> {
     /// Creates a new event queue handle.
-    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFlag) -> Self {
+    pub(crate) fn new(scheduler: &'static Scheduler<REv>, is_shutting_down: SharedFuse) -> Self {
         EventQueueHandle {
             scheduler,
             is_shutting_down,
@@ -209,7 +212,7 @@ impl<REv> EventQueueHandle<REv> {
     /// This method is used in tests, where we are never disabling shutdown warnings anyway.
     #[cfg(test)]
     pub(crate) fn without_shutdown(scheduler: &'static Scheduler<REv>) -> Self {
-        EventQueueHandle::new(scheduler, SharedFlag::global_shared())
+        EventQueueHandle::new(scheduler, SharedFuse::global_shared())
     }
 
     /// Schedule an event on a specific queue.
@@ -242,7 +245,7 @@ impl<REv> EventQueueHandle<REv> {
     }
 
     /// Returns whether the associated reactor is currently shutting down.
-    pub(crate) fn shutdown_flag(&self) -> SharedFlag {
+    pub(crate) fn shutdown_flag(&self) -> SharedFuse {
         self.is_shutting_down
     }
 }
@@ -295,6 +298,15 @@ pub(crate) trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+
+    /// Returns the state of a named components.
+    ///
+    /// May return `None` if the component cannot be found, or if the reactor does not support
+    /// querying component states.
+    #[cfg(test)]
+    fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
+        None
+    }
 
     /// Activate/deactivate a failpoint.
     fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
@@ -376,41 +388,37 @@ where
     clock: Clock,
 
     /// Flag indicating the reactor is being shut down.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 /// Metric data for the Runner
 #[derive(Debug)]
 struct RunnerMetrics {
     /// Total number of events processed.
-    events: IntCounter,
+    events: RegisteredMetric<IntCounter>,
     /// Histogram of how long it took to dispatch an event.
-    event_dispatch_duration: Histogram,
+    event_dispatch_duration: RegisteredMetric<Histogram>,
     /// Total allocated RAM in bytes, as reported by stats_alloc.
-    allocated_ram_bytes: IntGauge,
+    allocated_ram_bytes: RegisteredMetric<IntGauge>,
     /// Total consumed RAM in bytes, as reported by sys-info.
-    consumed_ram_bytes: IntGauge,
+    consumed_ram_bytes: RegisteredMetric<IntGauge>,
     /// Total system RAM in bytes, as reported by sys-info.
-    total_ram_bytes: IntGauge,
-    /// Handle to the metrics registry, in case we need to unregister.
-    registry: Registry,
+    total_ram_bytes: RegisteredMetric<IntGauge>,
 }
 
 impl RunnerMetrics {
     /// Create and register new runner metrics.
     fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let events = IntCounter::new(
+        let events = registry.new_int_counter(
             "runner_events",
             "running total count of events handled by this reactor",
         )?;
 
         // Create an event dispatch histogram, putting extra emphasis on the area between 1-10 us.
-        let event_dispatch_duration = Histogram::with_opts(
-            HistogramOpts::new(
-                "event_dispatch_duration",
-                "time in nanoseconds to dispatch an event",
-            )
-            .buckets(vec![
+        let event_dispatch_duration = registry.new_histogram(
+            "event_dispatch_duration",
+            "time in nanoseconds to dispatch an event",
+            vec![
                 100.0,
                 500.0,
                 1_000.0,
@@ -430,39 +438,23 @@ impl RunnerMetrics {
                 1_000_000.0,
                 2_000_000.0,
                 5_000_000.0,
-            ]),
+            ],
         )?;
 
         let allocated_ram_bytes =
-            IntGauge::new("allocated_ram_bytes", "total allocated ram in bytes")?;
+            registry.new_int_gauge("allocated_ram_bytes", "total allocated ram in bytes")?;
         let consumed_ram_bytes =
-            IntGauge::new("consumed_ram_bytes", "total consumed ram in bytes")?;
-        let total_ram_bytes = IntGauge::new("total_ram_bytes", "total system ram in bytes")?;
-
-        registry.register(Box::new(events.clone()))?;
-        registry.register(Box::new(event_dispatch_duration.clone()))?;
-        registry.register(Box::new(allocated_ram_bytes.clone()))?;
-        registry.register(Box::new(consumed_ram_bytes.clone()))?;
-        registry.register(Box::new(total_ram_bytes.clone()))?;
+            registry.new_int_gauge("consumed_ram_bytes", "total consumed ram in bytes")?;
+        let total_ram_bytes =
+            registry.new_int_gauge("total_ram_bytes", "total system ram in bytes")?;
 
         Ok(RunnerMetrics {
             events,
             event_dispatch_duration,
-            registry: registry.clone(),
             allocated_ram_bytes,
             consumed_ram_bytes,
             total_ram_bytes,
         })
-    }
-}
-
-impl Drop for RunnerMetrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.events);
-        unregister_metric!(self.registry, self.event_dispatch_duration);
-        unregister_metric!(self.registry, self.allocated_ram_bytes);
-        unregister_metric!(self.registry, self.consumed_ram_bytes);
-        unregister_metric!(self.registry, self.total_ram_bytes);
     }
 }
 
@@ -489,18 +481,6 @@ where
     ) -> Result<Self, R::Error> {
         adjust_open_files_limit();
 
-        let event_size = mem::size_of::<R::Event>();
-
-        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
-        // right now, since storage size of events is not an issue per se, but copying might be
-        // expensive if events get too large.
-        if event_size > 16 * mem::size_of::<usize>() {
-            warn!(
-                %event_size, type_name = ?any::type_name::<R::Event>(),
-                "large event size, consider reducing it or boxing"
-            );
-        }
-
         let event_queue_dump_threshold =
             env::var("CL_EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
 
@@ -508,7 +488,7 @@ where
             QueueKind::weights(),
             event_queue_dump_threshold,
         ));
-        let is_shutting_down = SharedFlag::new();
+        let is_shutting_down = SharedFuse::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(
             cfg,

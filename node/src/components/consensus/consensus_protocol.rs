@@ -17,7 +17,7 @@ use crate::{
     NodeRng,
 };
 
-use super::era_supervisor::SerializedMessage;
+use super::{era_supervisor::SerializedMessage, ValidationError};
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -281,7 +281,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
 

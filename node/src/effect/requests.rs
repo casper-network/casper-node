@@ -46,6 +46,7 @@ use crate::{
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
+    consensus::ValidationError,
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
@@ -97,12 +98,9 @@ pub(crate) enum NetworkRequest<P> {
         dest: Box<NodeId>,
         /// Message payload.
         payload: Box<P>,
-        /// If `true`, the responder will be called early after the message has been queued, not
-        /// waiting until it has passed to the kernel.
-        respond_after_queueing: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
-        auto_closing_responder: AutoClosingResponder<()>,
+        message_queued_responder: Option<AutoClosingResponder<()>>,
     },
     /// Send a message on the network to validator peers in the given era.
     ValidatorBroadcast {
@@ -143,13 +141,11 @@ impl<P> NetworkRequest<P> {
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_after_queueing,
-                auto_closing_responder,
+                message_queued_responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
-                respond_after_queueing,
-                auto_closing_responder,
+                message_queued_responder,
             },
             NetworkRequest::ValidatorBroadcast {
                 payload,
@@ -205,6 +201,7 @@ pub(crate) enum NetworkInfoRequest {
     },
     /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
+        /// Responder to be called with all connected in random order peers.
         count: usize,
         /// Responder to be called with the peers.
         responder: Responder<Vec<NodeId>>,
@@ -1040,24 +1037,28 @@ impl Display for SyncGlobalStateRequest {
     }
 }
 
-/// A block validator request.
+/// A proposed block validator request.
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct BlockValidationRequest {
-    /// The block to be validated.
-    pub(crate) block: ProposedBlock<ClContext>,
+pub(crate) struct ProposedBlockValidationRequest {
+    /// The proposed block to be validated.
+    pub(crate) proposed_block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
     ///
     /// Indicates whether or not validation was successful.
-    pub(crate) responder: Responder<bool>,
+    pub(crate) responder: Responder<Result<(), ValidationError>>,
 }
 
-impl Display for BlockValidationRequest {
+impl Display for ProposedBlockValidationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidationRequest { block, sender, .. } = self;
-        write!(f, "validate block {} from {}", block, sender)
+        let ProposedBlockValidationRequest {
+            proposed_block,
+            sender,
+            ..
+        } = self;
+        write!(f, "validate {} from {}", proposed_block, sender)
     }
 }
 

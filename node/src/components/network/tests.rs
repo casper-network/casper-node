@@ -22,7 +22,7 @@ use casper_types::SecretKey;
 
 use super::{
     chain_info::ChainInfo, Config, Event as NetworkEvent, FromIncoming, GossipedAddress, Identity,
-    MessageKind, Network, Payload,
+    MessageKind, Network, Payload, Ticket,
 };
 use crate::{
     components::{
@@ -123,11 +123,12 @@ impl From<ContractRuntimeRequest> for Event {
 }
 
 impl FromIncoming<Message> for Event {
-    fn from_incoming(sender: NodeId, payload: Message) -> Self {
+    fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
         match payload {
             Message::AddressGossiper(message) => Event::AddressGossiperIncoming(GossiperIncoming {
                 sender,
                 message: Box::new(message),
+                ticket: Arc::new(ticket),
             }),
         }
     }
@@ -159,12 +160,8 @@ impl Payload for Message {
         }
     }
 
-    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
-        0
-    }
-
-    fn is_unsafe_for_syncing_peers(&self) -> bool {
-        false
+    fn get_channel(&self) -> super::Channel {
+        super::Channel::Network
     }
 }
 
@@ -294,7 +291,7 @@ impl Finalize for TestReactor {
 /// Checks whether or not a given network with potentially blocked nodes is completely connected.
 fn network_is_complete(
     blocklist: &HashSet<NodeId>,
-    nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<TestReactor>>>,
+    nodes: &HashMap<NodeId, Box<Runner<ConditionCheckReactor<TestReactor>>>>,
 ) -> bool {
     // Collect expected nodes.
     let expected: HashSet<_> = nodes
@@ -446,6 +443,10 @@ async fn check_varying_size_network_connects() {
 
     // Try with a few predefined sets of network sizes.
     for &number_of_nodes in &[2u16, 3, 5, 9, 15] {
+        info!(
+            number_of_nodes,
+            "begin varying size network connection test"
+        );
         let timeout = Duration::from_secs(3 * number_of_nodes as u64);
 
         let mut net = TestingNetwork::new();
@@ -487,6 +488,11 @@ async fn check_varying_size_network_connects() {
 
         // This test will run multiple times, so ensure we cleanup all ports.
         net.finalize().await;
+
+        info!(
+            number_of_nodes,
+            "finished varying size network connection test"
+        );
     }
 }
 

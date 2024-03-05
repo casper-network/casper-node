@@ -87,6 +87,8 @@ pub enum Transform {
     ///
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Prunes a key.
+    Prune,
     /// Represents the case where applying a transform would cause an error.
     #[data_size(skip)]
     Failure(Error),
@@ -168,24 +170,26 @@ where
 impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
-    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
-    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
+    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant. If a
+    /// given transform is a [`Transform::Prune`] then `None` is returned as the [`StoredValue`] is
+    /// consumed but no new value is produced.
+    pub fn apply(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
         match self {
-            Transform::Identity => Ok(stored_value),
-            Transform::Write(new_value) => Ok(new_value),
-            Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
+            Transform::Identity => Ok(Some(stored_value)),
+            Transform::Write(new_value) => Ok(Some(new_value)),
+            Transform::AddInt32(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt64(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt128(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt256(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
+            Transform::AddUInt512(to_add) => Ok(Some(wrapping_addition(stored_value, to_add)?)),
             Transform::AddKeys(mut keys) => match stored_value {
                 StoredValue::Contract(mut contract) => {
                     contract.named_keys_append(&mut keys);
-                    Ok(StoredValue::Contract(contract))
+                    Ok(Some(StoredValue::Contract(contract)))
                 }
                 StoredValue::Account(mut account) => {
                     account.named_keys_append(&mut keys);
-                    Ok(StoredValue::Account(account))
+                    Ok(Some(StoredValue::Account(account)))
                 }
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
@@ -233,6 +237,11 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
+            Transform::Prune => {
+                // Prune does not produce new values, it just consumes a stored value that it
+                // receives.
+                Ok(None)
+            }
             Transform::Failure(error) => Err(error),
         }
     }
@@ -276,11 +285,14 @@ impl Add for Transform {
             (a @ Transform::Failure(_), _) => a,
             (_, b @ Transform::Failure(_)) => b,
             (_, b @ Transform::Write(_)) => b,
+            (_, Transform::Prune) => Transform::Prune,
+            (Transform::Prune, b) => b,
             (Transform::Write(v), b) => {
                 // second transform changes value being written
                 match b.apply(v) {
+                    Ok(Some(new_value)) => Transform::Write(new_value),
+                    Ok(None) => Transform::Prune,
                     Err(error) => Transform::Failure(error),
-                    Ok(new_value) => Transform::Write(new_value),
                 }
             }
             (Transform::AddInt32(i), b) => match b {
@@ -384,6 +396,7 @@ impl From<&Transform> for casper_types::Transform {
                     .collect(),
             ),
             Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
+            Transform::Prune => casper_types::Transform::Prune,
         }
     }
 }
@@ -414,6 +427,7 @@ pub mod gens {
                 buf.copy_from_slice(&u);
                 Transform::AddUInt512(buf.into())
             }),
+            Just(Transform::Prune)
         ]
     }
 }
@@ -429,7 +443,7 @@ mod tests {
     };
 
     use super::*;
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, convert::TryInto};
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
     const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
@@ -474,6 +488,16 @@ mod tests {
     const ONE_U512: U512 = U512([1, 0, 0, 0, 0, 0, 0, 0]);
     const MAX_U512: U512 = U512([MAX_U64; 8]);
 
+    fn add_transforms(value: u32) -> Vec<Transform> {
+        vec![
+            Transform::AddInt32(value.try_into().expect("positive value")),
+            Transform::AddUInt64(value.into()),
+            Transform::AddUInt128(value.into()),
+            Transform::AddUInt256(value.into()),
+            Transform::AddUInt512(value.into()),
+        ]
+    }
+
     #[test]
     fn i32_overflow() {
         let max = std::i32::MAX;
@@ -488,8 +512,18 @@ mod tests {
         let transform_overflow = Transform::AddInt32(max) + Transform::AddInt32(1);
         let transform_underflow = Transform::AddInt32(min) + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow.expect("Unexpected overflow"), min_value);
-        assert_eq!(apply_underflow.expect("Unexpected underflow"), max_value);
+        assert_eq!(
+            apply_overflow
+                .expect("Unexpected overflow")
+                .expect("New value"),
+            min_value
+        );
+        assert_eq!(
+            apply_underflow
+                .expect("Unexpected underflow")
+                .expect("New value"),
+            max_value
+        );
 
         assert_eq!(transform_overflow, min.into());
         assert_eq!(transform_underflow, max.into());
@@ -522,9 +556,9 @@ mod tests {
         let transform_overflow_uint = max_transform + one_transform;
         let transform_underflow = min_transform + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow, Ok(zero_value.clone()));
-        assert_eq!(apply_overflow_uint, Ok(zero_value));
-        assert_eq!(apply_underflow, Ok(max_value));
+        assert_eq!(apply_overflow, Ok(Some(zero_value.clone())));
+        assert_eq!(apply_overflow_uint, Ok(Some(zero_value)));
+        assert_eq!(apply_underflow, Ok(Some(max_value)));
 
         assert_eq!(transform_overflow, zero.into());
         assert_eq!(transform_overflow_uint, zero.into());
@@ -862,5 +896,58 @@ mod tests {
         assert_eq!(ONE_U512, add(ZERO_U512, ONE_U512));
         assert_eq!(ZERO_U512, add(MAX_U512, ONE_U512));
         assert_eq!(MAX_U512 - 1, add(MAX_U512, MAX_U512));
+    }
+
+    #[test]
+    fn delete_should_produce_correct_transform() {
+        {
+            // prune + write == write
+            let lhs = Transform::Prune;
+            let rhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
+
+            let new_transform = lhs + rhs.clone();
+            assert_eq!(new_transform, rhs);
+        }
+
+        {
+            // prune + identity == prune (prune modifies the global state, identity does not
+            // modify, so we need to preserve prune)
+            let new_transform = Transform::Prune + Transform::Identity;
+            assert_eq!(new_transform, Transform::Prune);
+        }
+
+        {
+            // prune + failure == failure
+            let failure = Transform::Failure(Error::Serialization(bytesrepr::Error::Formatting));
+            let new_transform = Transform::Prune + failure.clone();
+            assert_eq!(new_transform, failure);
+        }
+
+        {
+            // write + prune == prune
+            let lhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
+            let rhs = Transform::Prune;
+
+            let new_transform = lhs + rhs.clone();
+            assert_eq!(new_transform, rhs);
+        }
+
+        {
+            // add + prune == prune
+            for lhs in add_transforms(123) {
+                let rhs = Transform::Prune;
+                let new_transform = lhs + rhs.clone();
+                assert_eq!(new_transform, rhs);
+            }
+        }
+
+        {
+            // prune + add == add
+            for rhs in add_transforms(123) {
+                let lhs = Transform::Prune;
+                let new_transform = lhs + rhs.clone();
+                assert_eq!(new_transform, rhs);
+            }
+        }
     }
 }

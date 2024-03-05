@@ -1,6 +1,7 @@
-use std::{error, io, net::SocketAddr, result};
+use std::{io, net::SocketAddr};
 
 use datasize::DataSize;
+use juliet::rpc::{IncomingRequest, RpcServerError};
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -13,7 +14,7 @@ use crate::{
     utils::ResolveAddressError,
 };
 
-pub(super) type Result<T> = result::Result<T, Error>;
+use super::Channel;
 
 /// Error type returned by the `Network` component.
 #[derive(Debug, Error, Serialize)]
@@ -51,12 +52,20 @@ pub enum Error {
         io::Error,
     ),
     /// Could not resolve root node address.
-    #[error("failed to resolve network address")]
+    #[error("failed to resolve network address as ipv4")]
     ResolveAddr(
         #[serde(skip_serializing)]
         #[source]
         ResolveAddressError,
     ),
+    /// Could not open the specified keylog file for appending.
+    #[error("could not open keylog for appending")]
+    CannotAppendToKeylog(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+
     /// Instantiating metrics failed.
     #[error(transparent)]
     Metrics(
@@ -95,7 +104,7 @@ impl DataSize for ConnectionError {
     }
 }
 
-/// An error related to an incoming or outgoing connection.
+/// An error related to the establishment of an incoming or outgoing connection.
 #[derive(Debug, Error, Serialize)]
 pub enum ConnectionError {
     /// Failed to create TLS acceptor.
@@ -112,6 +121,9 @@ pub enum ConnectionError {
         #[source]
         io::Error,
     ),
+    /// TCP connection did not finish in time.
+    #[error("TCP connection timeout")]
+    TcpConnectionTimeout,
     /// Did not succeed setting TCP_NODELAY on the connection.
     #[error("Could not set TCP_NODELAY on outgoing connection")]
     TcpNoDelay(
@@ -134,18 +146,10 @@ pub enum ConnectionError {
     PeerCertificateInvalid(#[source] ValidationError),
     /// Failed to send handshake.
     #[error("handshake send failed")]
-    HandshakeSend(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeSend(#[source] RawFrameIoError),
     /// Failed to receive handshake.
     #[error("handshake receive failed")]
-    HandshakeRecv(
-        #[serde(skip_serializing)]
-        #[source]
-        IoError<io::Error>,
-    ),
+    HandshakeRecv(#[source] RawFrameIoError),
     /// Peer reported a network name that does not match ours.
     #[error("peer is on different network: {0}")]
     WrongNetwork(String),
@@ -162,12 +166,15 @@ pub enum ConnectionError {
     /// Peer did not send any message, or a non-handshake as its first message.
     #[error("peer did not send handshake")]
     DidNotSendHandshake,
+    /// Handshake did not complete in time.
+    #[error("could not complete handshake in time")]
+    HandshakeTimeout,
     /// Failed to encode our handshake.
     #[error("could not encode our handshake")]
     CouldNotEncodeOurHandshake(
         #[serde(skip_serializing)]
         #[source]
-        io::Error,
+        rmp_serde::encode::Error,
     ),
     /// A background sender for our handshake panicked or crashed.
     ///
@@ -183,7 +190,7 @@ pub enum ConnectionError {
     InvalidRemoteHandshakeMessage(
         #[serde(skip_serializing)]
         #[source]
-        io::Error,
+        rmp_serde::decode::Error,
     ),
     /// The peer sent a consensus certificate, but it was invalid.
     #[error("invalid consensus certificate")]
@@ -192,26 +199,59 @@ pub enum ConnectionError {
         #[source]
         crypto::Error,
     ),
-    /// Failed to reunite handshake sink/stream.
-    ///
-    /// This is usually a bug.
-    #[error("handshake sink/stream could not be reunited")]
-    FailedToReuniteHandshakeSinkAndStream,
 }
 
-/// IO operation that can time out or close.
+/// IO error sending a raw frame.
+///
+/// Raw frame IO is used only during the handshake, but comes with its own error conditions.
+#[derive(Debug, Error, Serialize)]
+pub enum RawFrameIoError {
+    /// Could not send or receive the raw frame.
+    #[error("io error")]
+    Io(
+        #[serde(skip_serializing)]
+        #[source]
+        io::Error,
+    ),
+
+    /// Length limit violation.
+    #[error("advertised length of {0} exceeds configured maximum raw frame size")]
+    MaximumLengthExceeded(usize),
+}
+
+/// An error produced by reading messages.
 #[derive(Debug, Error)]
-pub enum IoError<E>
-where
-    E: error::Error + 'static,
-{
-    /// IO operation timed out.
-    #[error("io timeout")]
-    Timeout,
-    /// Non-timeout IO error.
+pub enum MessageReceiverError {
+    /// The message receival stack returned an error.
     #[error(transparent)]
-    Error(#[from] E),
-    /// Unexpected close/end-of-file.
-    #[error("closed unexpectedly")]
-    UnexpectedEof,
+    ReceiveError(#[from] RpcServerError),
+    /// Empty request sent.
+    ///
+    /// This should never happen with a well-behaved client, since the current protocol always
+    /// expects a request to carry a payload.
+    #[error("empty request")]
+    EmptyRequest,
+    /// Error deserializing message.
+    #[error("message deserialization error")]
+    DeserializationError(bincode::Error),
+    /// Invalid channel.
+    #[error("invalid channel: {0}")]
+    InvalidChannel(u8),
+    /// Wrong channel for received message.
+    #[error("received a {got} message on channel {expected}")]
+    WrongChannel {
+        /// The channel the message was actually received on.
+        got: Channel,
+        /// The channel on which the message should have been sent.
+        expected: Channel,
+    },
+}
+
+/// Error produced by sending messages.
+#[derive(Debug, Error)]
+pub enum MessageSenderError {
+    #[error("received a request on a send-only channel: {0}")]
+    UnexpectedIncomingRequest(IncomingRequest),
+    #[error(transparent)]
+    JulietRpcServerError(#[from] RpcServerError),
 }

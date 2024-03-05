@@ -1,4 +1,5 @@
 //! The implementation of the Highway consensus protocol.
+#![allow(clippy::arithmetic_side_effects)]
 
 mod vertex;
 
@@ -112,6 +113,9 @@ impl<C: Context> ValidVertex<C> {
         &self.0
     }
 
+    pub(crate) fn is_proposal(&self) -> bool {
+        self.0.value().is_some()
+    }
     pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
         match &self.0 {
             Vertex::Endorsements(endorsements) => Some(endorsements),
@@ -219,16 +223,6 @@ impl<C: Context> Highway<C> {
     /// Turns this instance into a passive observer, that does not create any new vertices.
     pub(crate) fn deactivate_validator(&mut self) {
         self.active_validator = None;
-    }
-
-    /// Gets the round exponent for the next message this instance will create.
-    #[cfg(test)]
-    #[allow(clippy::arithmetic_side_effects)]
-    pub(crate) fn get_round_exp(&self) -> Option<u8> {
-        self.active_validator.as_ref().map(|av| {
-            (av.next_round_length().millis() / self.state.params().min_round_length().millis())
-                .trailing_zeros() as u8
-        })
     }
 
     /// Switches the active validator to a new round length.

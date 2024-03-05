@@ -141,9 +141,10 @@ use crate::{
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
-        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights, Ticket},
         upgrade_watcher::NextUpgrade,
     },
+    consensus::ValidationError,
     contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
@@ -155,7 +156,7 @@ use crate::{
         FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
     },
-    utils::{fmt_limit::FmtLimit, SharedFlag, Source},
+    utils::{fmt_limit::FmtLimit, SharedFuse, Source},
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
@@ -167,10 +168,11 @@ use announcements::{
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
-    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ProposedBlockValidationRequest, ReactorStatusRequest,
+    SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -215,7 +217,7 @@ pub(crate) struct Responder<T> {
     /// Sender through which the response ultimately should be sent.
     sender: Option<oneshot::Sender<T>>,
     /// Reactor flag indicating shutdown.
-    is_shutting_down: SharedFlag,
+    is_shutting_down: SharedFuse,
 }
 
 /// A responder that will automatically send a `None` on drop.
@@ -257,10 +259,6 @@ impl<T: Debug> AutoClosingResponder<T> {
 impl<T> Drop for AutoClosingResponder<T> {
     fn drop(&mut self) {
         if let Some(sender) = self.0.sender.take() {
-            debug!(
-                sending_value = %self.0,
-                "responding None by dropping auto-close responder"
-            );
             // We still haven't answered, send an answer.
             if let Err(_unsent_value) = sender.send(None) {
                 debug!(
@@ -275,7 +273,7 @@ impl<T> Drop for AutoClosingResponder<T> {
 impl<T: 'static + Send> Responder<T> {
     /// Creates a new `Responder`.
     #[inline]
-    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFlag) -> Self {
+    fn new(sender: oneshot::Sender<T>, is_shutting_down: SharedFuse) -> Self {
         Responder {
             sender: Some(sender),
             is_shutting_down,
@@ -289,7 +287,7 @@ impl<T: 'static + Send> Responder<T> {
     #[cfg(test)]
     #[inline]
     pub(crate) fn without_shutdown(sender: oneshot::Sender<T>) -> Self {
-        Responder::new(sender, SharedFlag::global_shared())
+        Responder::new(sender, SharedFuse::global_shared())
     }
 }
 
@@ -672,8 +670,20 @@ impl<REv> EffectBuilder<REv> {
 
     /// Sends a network message.
     ///
-    /// The message is queued and sent, but no delivery guaranteed. Will return after the message
-    /// has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
+    /// The message is queued and sent, without any delivery guarantees. Will return after the
+    /// message has been buffered by the networking stack and is thus subject to backpressure
+    /// from the receiving peer.
+    ///
+    /// If the message cannot be buffered immediately, `send_message` will wait until there is room
+    /// in the networking layer's buffer available. This means that messages will be buffered
+    /// outside the networking component without any limit, when this method is used. The calling
+    /// component is responsible for ensuring that not too many instances of `send_message` are
+    /// awaited at any one point in time.
+    ///
+    /// If the peer is not reachable, the message will be discarded.
+    ///
+    /// See `try_send_message` for a method that does not buffer messages outside networking if
+    /// buffers are full, but discards them instead.
     pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
@@ -682,32 +692,45 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
-                respond_after_queueing: false,
-                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                message_queued_responder: Some(AutoClosingResponder::from_opt_responder(responder)),
             },
             QueueKind::Network,
         )
         .await;
+
+        // Note: It does not matter to use whether `Some()` (indicating buffering) or `None`
+        //       (indicating a lost message) was returned, since we do not guarantee anything about
+        //       delivery.
     }
 
-    /// Enqueues a network message.
+    /// Sends a network message with best effort.
     ///
-    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
-    /// will receive it. Returns as soon as the message is queued inside the networking component.
-    pub(crate) async fn enqueue_message<P>(self, dest: NodeId, payload: P)
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer will
+    /// receive it. It may also be dropped if the outbound message queue for the specific peer is
+    /// full as well, instead of backpressure being propagated.
+    ///
+    /// Returns immediately. If called at extreme rates, this function may blow up the event queue,
+    /// since messages are only discarded once they have made their way to a networking component,
+    /// while this method returns earlier.
+    ///
+    /// A more heavyweight message sending function is available in `send_message`.
+    pub(crate) async fn try_send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
     {
-        self.make_request(
-            |responder| NetworkRequest::SendMessage {
-                dest: Box::new(dest),
-                payload: Box::new(payload),
-                respond_after_queueing: true,
-                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
-            },
-            QueueKind::Network,
-        )
-        .await;
+        // Note: Since we do not expect any response to our request, we can avoid spawning an extra
+        //       task awaiting the responder.
+
+        self.event_queue
+            .schedule(
+                NetworkRequest::SendMessage {
+                    dest: Box::new(dest),
+                    payload: Box::new(payload),
+                    message_queued_responder: None,
+                },
+                QueueKind::Network,
+            )
+            .await
     }
 
     /// Broadcasts a network message to validator peers in the given era.
@@ -810,15 +833,29 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces an incoming network message.
-    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P)
+    pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P, ticket: Ticket)
     where
-        REv: FromIncoming<P>,
+        REv: FromIncoming<P> + From<NetworkRequest<P>> + Send,
+        P: 'static + Send,
     {
+        // TODO: Remove demands entirely as they are no longer needed with tickets.
+        let reactor_event =
+            match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
+                Ok((rev, demand_has_been_satisfied)) => {
+                    tokio::spawn(async move {
+                        if let Some(answer) = demand_has_been_satisfied.await {
+                            self.send_message(sender, answer).await;
+                        }
+
+                        drop(ticket);
+                    });
+                    rev
+                }
+                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket),
+            };
+
         self.event_queue
-            .schedule(
-                <REv as FromIncoming<P>>::from_incoming(sender, payload),
-                QueueKind::NetworkIncoming,
-            )
+            .schedule::<REv>(reactor_event, QueueKind::MessageIncoming)
             .await
     }
 
@@ -1759,14 +1796,14 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
-        block: ProposedBlock<ClContext>,
-    ) -> bool
+        proposed_block: ProposedBlock<ClContext>,
+    ) -> Result<(), ValidationError>
     where
-        REv: From<BlockValidationRequest>,
+        REv: From<ProposedBlockValidationRequest>,
     {
         self.make_request(
-            |responder| BlockValidationRequest {
-                block,
+            |responder| ProposedBlockValidationRequest {
+                proposed_block,
                 sender,
                 responder,
             },

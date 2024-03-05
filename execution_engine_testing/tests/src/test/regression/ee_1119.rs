@@ -233,11 +233,11 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder.exec(slash_request_2).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbond_purses.len(), 1);
+    assert!(unbond_purses.is_empty());
 
     assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
-    assert!(unbond_purses.get(&VALIDATOR_1_ADDR).unwrap().is_empty());
+    assert!(!unbond_purses.contains_key(&VALIDATOR_1_ADDR));
 
     let bids: Bids = builder.get_bids();
     let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();

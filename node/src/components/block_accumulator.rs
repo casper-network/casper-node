@@ -59,10 +59,6 @@ pub(crate) use sync_instruction::SyncInstruction;
 
 const COMPONENT_NAME: &str = "block_accumulator";
 
-/// If a peer "informs" us about more than the expected number of new blocks times this factor,
-/// they are probably spamming, and we refuse to create new block acceptors for them.
-const PEER_RATE_LIMIT_MULTIPLIER: usize = 2;
-
 /// A cache of pending blocks and finality signatures that are gossiped to this node.
 ///
 /// Announces new blocks and finality signatures once they become valid.
@@ -240,18 +236,9 @@ impl BlockAccumulator {
                 block_timestamps.pop_front();
             }
 
-            // Assume a block time of at least 1 millisecond, so we don't divide by zero.
-            let min_block_time = self.min_block_time.max(TimeDiff::from_millis(1));
-            let expected_blocks = (purge_interval / min_block_time) as usize;
-            let max_block_count = PEER_RATE_LIMIT_MULTIPLIER.saturating_mul(expected_blocks);
-            if block_timestamps.len() >= max_block_count {
-                warn!(
-                    ?sender, %block_hash,
-                    "rejecting block hash from peer who sent us more than {} within {}",
-                    max_block_count, self.purge_interval,
-                );
-                return;
-            }
+            // Rate limiting has has been removed here, as it was incorrectly triggered by block
+            // hashes passed in through historical sync.
+
             block_timestamps.push_back((block_hash, Timestamp::now()));
         }
 

@@ -44,13 +44,14 @@ use crate::{
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
-            Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
+            Event, HighwayProtocol, NewBlockPayload, ReactorEventT, TimerId, ValidationResult, Zug,
         },
         network::blocklist::BlocklistJustification,
     },
+    consensus::ValidationError,
     effect::{
         announcements::FatalAnnouncement,
-        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, ProposedBlockValidationRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
     failpoints::Failpoint,
@@ -117,6 +118,7 @@ pub struct EraSupervisor {
 
     /// Failpoints
     pub(super) message_delay_failpoint: Failpoint<u64>,
+    pub(super) proposal_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -154,6 +156,7 @@ impl EraSupervisor {
             next_executed_height: 0,
             last_progress: Timestamp::now(),
             message_delay_failpoint: Failpoint::new("consensus.message_delay"),
+            proposal_delay_failpoint: Failpoint::new("consensus.proposal_delay"),
         };
 
         Ok(era_supervisor)
@@ -876,36 +879,38 @@ impl EraSupervisor {
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
-        resolve_validity: ResolveValidity,
+        result: ValidationResult,
     ) -> Effects<Event> {
-        let ResolveValidity {
-            era_id,
-            sender,
-            proposed_block,
-            valid,
-        } = resolve_validity;
         self.metrics.proposed_block();
         let mut effects = Effects::new();
-        if !valid {
+        if let Some(ref error) = result.error {
             effects.extend({
                 effect_builder
                     .announce_block_peer_with_justification(
-                        sender,
-                        BlocklistJustification::SentInvalidConsensusValue { era: era_id },
+                        result.sender,
+                        BlocklistJustification::SentInvalidConsensusValue {
+                            era: result.era_id,
+                            cause: error.clone(),
+                        },
                     )
                     .ignore()
             });
         }
-        if self
-            .open_eras
-            .get_mut(&era_id)
-            .map_or(false, |era| era.resolve_validity(&proposed_block, valid))
-        {
-            effects.extend(
-                self.delegate_to_era(effect_builder, rng, era_id, |consensus, _| {
-                    consensus.resolve_validity(proposed_block.clone(), valid, Timestamp::now())
-                }),
-            );
+        if self.open_eras.get_mut(&result.era_id).map_or(false, |era| {
+            era.resolve_validity(&result.proposed_block, result.error.as_ref())
+        }) {
+            effects.extend(self.delegate_to_era(
+                effect_builder,
+                rng,
+                result.era_id,
+                |consensus, _| {
+                    consensus.resolve_validity(
+                        result.proposed_block.clone(),
+                        result.error,
+                        Timestamp::now(),
+                    )
+                },
+            ));
         }
         effects
     }
@@ -994,7 +999,7 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder.enqueue_message(to, message.into()).ignore()
+                effect_builder.try_send_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1002,7 +1007,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.enqueue_message(to, message.into()).await;
+                        effect_builder.try_send_message(to, message.into()).await;
                     }
                 }
                 .ignore()
@@ -1013,7 +1018,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.enqueue_message(to, message.into()).await;
+                        effect_builder.try_send_message(to, message.into()).await;
                     }
                 }
                 .ignore()
@@ -1040,18 +1045,24 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                let timestamp = block_context.timestamp();
+                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    let appendable_block = effect_builder.request_appendable_block(timestamp).await;
+                    Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                }
+                .event(move |block_payload| {
+                    Event::NewBlockPayload(NewBlockPayload {
+                        era_id,
+                        block_payload,
+                        block_context,
                     })
-                    .event(move |block_payload| {
-                        Event::NewBlockPayload(NewBlockPayload {
-                            era_id,
-                            block_payload,
-                            block_context,
-                        })
-                    })
+                })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
@@ -1157,12 +1168,12 @@ impl EraSupervisor {
                     return self.resolve_validity(
                         effect_builder,
                         rng,
-                        ResolveValidity {
+                        ValidationResult::new_invalid(
                             era_id,
                             sender,
                             proposed_block,
-                            valid: false,
-                        },
+                            ValidationError::ContainsReplayedDeploy(deploy_hash),
+                        ),
                     );
                 }
                 let mut effects = Effects::new();
@@ -1204,7 +1215,7 @@ impl EraSupervisor {
                             rng,
                             e_id,
                             |consensus, _| {
-                                consensus.resolve_validity(proposed_block, true, Timestamp::now())
+                                consensus.resolve_validity(proposed_block, None, Timestamp::now())
                             },
                         ));
                     }
@@ -1385,7 +1396,7 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event
 where
-    REv: From<BlockValidationRequest> + From<StorageRequest>,
+    REv: From<ProposedBlockValidationRequest> + From<StorageRequest>,
 {
     let deploys_era_ids = effect_builder
         .get_deploys_era_ids(
@@ -1405,25 +1416,25 @@ where
         // block_payload within the current era to determine if we are facing a replay
         // attack.
         if deploy_era_id < proposed_block_era_id {
-            return Event::ResolveValidity(ResolveValidity {
-                era_id: proposed_block_era_id,
+            return Event::ResolveValidity(ValidationResult::new_valid(
+                proposed_block_era_id,
                 sender,
-                proposed_block: proposed_block.clone(),
-                valid: false,
-            });
+                proposed_block.clone(),
+            ));
         }
     }
 
     let sender_for_validate_block: NodeId = sender;
-    let valid = effect_builder
+    let error = effect_builder
         .validate_block(sender_for_validate_block, proposed_block.clone())
-        .await;
+        .await
+        .err();
 
-    Event::ResolveValidity(ResolveValidity {
+    Event::ResolveValidity(ValidationResult {
         era_id: proposed_block_era_id,
         sender,
         proposed_block,
-        valid,
+        error,
     })
 }
 

@@ -484,6 +484,7 @@ steps:
 
 - name: nctl-nightly-tests
   <<: *buildenv
+  image: casperlabs/node-build-u2004
   environment:
     AWS_ACCESS_KEY_ID:
       from_secret: put-drone-aws-ak
@@ -517,4 +518,4 @@ volumes:
   temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron ]
+  cron: [ nightly-tests-cron, nightly-tests-cron-1-6 ]

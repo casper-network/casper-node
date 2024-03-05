@@ -63,6 +63,7 @@ enum OpTag {
     Write = 1,
     Add = 2,
     NoOp = 3,
+    Delete = 4,
 }
 
 impl TryFrom<u8> for OpTag {
@@ -95,6 +96,7 @@ enum TransformTag {
     AddKeys = 16,
     Failure = 17,
     WriteUnbonding = 18,
+    Prune = 19,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -438,6 +440,8 @@ pub enum OpKind {
     Add,
     /// An operation which has no effect.
     NoOp,
+    /// A delete operation.
+    Delete,
 }
 
 impl OpKind {
@@ -447,6 +451,7 @@ impl OpKind {
             OpKind::Write => OpTag::Write,
             OpKind::Add => OpTag::Add,
             OpKind::NoOp => OpTag::NoOp,
+            OpKind::Delete => OpTag::Delete,
         }
     }
 }
@@ -471,6 +476,7 @@ impl FromBytes for OpKind {
             OpTag::Write => Ok((OpKind::Write, remainder)),
             OpTag::Add => Ok((OpKind::Add, remainder)),
             OpTag::NoOp => Ok((OpKind::NoOp, remainder)),
+            OpTag::Delete => Ok((OpKind::Delete, remainder)),
         }
     }
 }
@@ -554,6 +560,8 @@ pub enum Transform {
     Failure(String),
     /// Writes the given Unbonding to global state.
     WriteUnbonding(Vec<UnbondingPurse>),
+    /// Prunes a key.
+    Prune,
 }
 
 impl Transform {
@@ -578,6 +586,7 @@ impl Transform {
             Transform::AddKeys(_) => TransformTag::AddKeys,
             Transform::Failure(_) => TransformTag::Failure,
             Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
+            Transform::Prune => TransformTag::Prune,
         }
     }
 }
@@ -638,6 +647,7 @@ impl ToBytes for Transform {
             Transform::WriteUnbonding(value) => {
                 buffer.extend(value.to_bytes()?);
             }
+            Transform::Prune => {}
         }
         Ok(buffer)
     }
@@ -663,6 +673,7 @@ impl ToBytes for Transform {
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
             Transform::WriteUnbonding(value) => value.serialized_length(),
+            Transform::Prune => 0,
         };
         U8_SERIALIZED_LENGTH + body_len
     }
@@ -738,6 +749,7 @@ impl FromBytes for Transform {
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
                 Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
             }
+            TransformTag::Prune => Ok((Transform::Prune, remainder)),
         }
     }
 }
@@ -745,7 +757,7 @@ impl FromBytes for Transform {
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
-        match rng.gen_range(0..13) {
+        match rng.gen_range(0..14) {
             0 => Transform::Identity,
             1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
             2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
@@ -768,6 +780,7 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            13 => Transform::Prune,
             _ => unreachable!(),
         }
     }

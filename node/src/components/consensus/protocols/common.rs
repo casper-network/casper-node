@@ -1,4 +1,5 @@
 //! Utilities common to different consensus algorithms.
+#![allow(clippy::arithmetic_side_effects)]
 
 use itertools::Itertools;
 use num_rational::Ratio;

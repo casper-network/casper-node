@@ -1,7 +1,7 @@
-//! Block validator
+//! Proposed Block Validator
 //!
-//! The block validator checks whether all the deploys included in the block payload exist, either
-//! locally or on the network.
+//! The proposed block validator checks whether all the deploys included in the block payload exist,
+//! either locally or on the network.
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
@@ -26,8 +26,9 @@ use crate::{
         fetcher::{self, EmptyValidationMetadata, FetchResult, FetchedData},
         Component,
     },
+    consensus::ValidationError,
     effect::{
-        requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
+        requests::{FetcherRequest, ProposedBlockValidationRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
@@ -40,7 +41,7 @@ pub use config::Config;
 pub(crate) use event::Event;
 use state::{AddResponderResult, BlockValidationState, MaybeStartFetching};
 
-const COMPONENT_NAME: &str = "block_validator";
+const COMPONENT_NAME: &str = "proposed_block_validator";
 
 impl ProposedBlock<ClContext> {
     fn timestamp(&self) -> Timestamp {
@@ -61,11 +62,11 @@ enum MaybeHandled {
     /// The request is already being handled - return the wrapped effects and finish.
     Handled(Effects<Event>),
     /// The request is new - it still needs to be handled.
-    NotHandled(BlockValidationRequest),
+    NotHandled(ProposedBlockValidationRequest),
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidator {
+pub(crate) struct ProposedBlockValidator {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
@@ -74,10 +75,10 @@ pub(crate) struct BlockValidator {
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
 }
 
-impl BlockValidator {
-    /// Creates a new block validator instance.
+impl ProposedBlockValidator {
+    /// Creates a new proposed block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>, config: Config) -> Self {
-        BlockValidator {
+        ProposedBlockValidator {
             chainspec,
             config,
             validation_states: HashMap::new(),
@@ -89,25 +90,28 @@ impl BlockValidator {
     fn try_handle_as_existing_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request: BlockValidationRequest,
+        request: ProposedBlockValidationRequest,
     ) -> MaybeHandled
     where
         REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
     {
-        if let Some(state) = self.validation_states.get_mut(&request.block) {
-            let BlockValidationRequest {
-                block,
+        if let Some(state) = self.validation_states.get_mut(&request.proposed_block) {
+            let ProposedBlockValidationRequest {
+                proposed_block,
                 sender,
                 responder,
             } = request;
-            debug!(%sender, %block, "already validating proposed block");
+            debug!(%sender, %proposed_block, "already validating proposed block");
             match state.add_responder(responder) {
                 AddResponderResult::Added => {}
                 AddResponderResult::ValidationCompleted {
                     responder,
                     response_to_send,
                 } => {
-                    debug!(%response_to_send, "proposed block validation already completed");
+                    debug!(
+                        ?response_to_send,
+                        "proposed block validation already completed"
+                    );
                     return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
                 }
             }
@@ -122,10 +126,10 @@ impl BlockValidator {
                     debug!("ongoing fetches while validating proposed block - noop");
                     Effects::new()
                 }
-                MaybeStartFetching::Unable => {
-                    debug!("no new info while validating proposed block - responding `false`");
-                    respond(false, state.take_responders())
-                }
+                MaybeStartFetching::Unable { missing_deploys } => respond(
+                    Err(ValidationError::ExhaustedBlockHolders { missing_deploys }),
+                    state.take_responders(),
+                ),
                 MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
                     // If validation is already completed, we should have exited in the
                     // `AddResponderResult::ValidationCompleted` branch above.
@@ -142,41 +146,49 @@ impl BlockValidator {
     fn handle_new_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        BlockValidationRequest {
-            block,
+        ProposedBlockValidationRequest {
+            proposed_block,
             sender,
             responder,
-        }: BlockValidationRequest,
+        }: ProposedBlockValidationRequest,
     ) -> Effects<Event>
     where
         REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
     {
-        debug!(%sender, %block, "validating new proposed block");
-        debug_assert!(!self.validation_states.contains_key(&block));
+        debug!(%sender, %proposed_block, "validating new proposed block");
+        debug_assert!(!self.validation_states.contains_key(&proposed_block));
         let (mut state, maybe_responder) =
-            BlockValidationState::new(&block, sender, responder, self.chainspec.as_ref());
+            BlockValidationState::new(&proposed_block, sender, responder, self.chainspec.as_ref());
         let effects = match state.start_fetching() {
             MaybeStartFetching::Start {
                 holder,
                 missing_deploys,
             } => fetch_deploys(effect_builder, holder, missing_deploys),
             MaybeStartFetching::ValidationSucceeded => {
-                debug!("no deploys - block validation complete");
+                debug!("no deploys - proposed block validation complete");
                 debug_assert!(maybe_responder.is_some());
-                respond(true, maybe_responder)
+                respond(Ok(()), maybe_responder)
             }
             MaybeStartFetching::ValidationFailed => {
                 debug_assert!(maybe_responder.is_some());
-                respond(false, maybe_responder)
+                respond(
+                    Err(ValidationError::ValidationOfFailedBlock),
+                    maybe_responder,
+                )
             }
-            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
+            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable { .. } => {
+                // Programmer error, we should only request each validation once!
+
                 // This `MaybeStartFetching` variant should never be returned here.
-                error!(%state, "invalid state while handling new block validation");
+                error!(%state, "invalid state while handling new proposed block validation");
                 debug_assert!(false, "invalid state {}", state);
-                respond(false, state.take_responders())
+                respond(
+                    Err(ValidationError::DuplicateValidationAttempt),
+                    state.take_responders(),
+                )
             }
         };
-        self.validation_states.insert(block, state);
+        self.validation_states.insert(proposed_block, state);
         self.purge_oldest_complete();
         effects
     }
@@ -202,7 +214,7 @@ impl BlockValidator {
                     debug!(
                         %state,
                         num_completed_remaining = (completed_times.len() - 1),
-                        "purging completed block validation state"
+                        "purging completed proposed block validation state"
                     );
                     let _ = completed_times.pop();
                     return false;
@@ -229,36 +241,52 @@ impl BlockValidator {
             Err(error) => warn!(%dt_hash, %error, "could not fetch deploy"),
         }
         match result {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+            Ok(FetchedData::FromStorage { ref item })
+            | Ok(FetchedData::FromPeer { ref item, .. }) => {
+                // This whole branch _should_ never be taken, as it means that the fetcher returned
+                // an item that does not match the actual fetch request.
                 if item.deploy_or_transfer_hash() != dt_hash {
-                    warn!(
-                        deploy = %item,
-                        expected_deploy_or_transfer_hash = %dt_hash,
-                        actual_deploy_or_transfer_hash = %item.deploy_or_transfer_hash(),
-                        "deploy has incorrect deploy-or-transfer hash"
-                    );
                     // Hard failure - change state to Invalid.
                     let responders = self
                         .validation_states
                         .values_mut()
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                    return respond(false, responders);
+
+                    // Not ideal, would be preferrable to refactor this entire section instead. For
+                    // now, we make do by matching on `result` again.
+                    if matches!(result, Ok(FetchedData::FromStorage { .. })) {
+                        // Data corruption, we got an invalid deploy from storage.
+                        return respond(
+                            Err(ValidationError::InternalDataCorruption(
+                                item.deploy_or_transfer_hash(),
+                            )),
+                            responders,
+                        );
+                    } else {
+                        // Malicious peer, should not have been able to sneak by the fetcher.
+                        return respond(
+                            Err(ValidationError::WrongDeploySent(
+                                item.deploy_or_transfer_hash(),
+                            )),
+                            responders,
+                        );
+                    }
                 }
                 let deploy_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
                     Err(error) => {
-                        warn!(
-                            deploy = %item,
-                            %dt_hash,
-                            %error,
-                            "could not convert deploy",
-                        );
                         // Hard failure - change state to Invalid.
                         let responders = self
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        return respond(false, responders);
+                        return respond(
+                            Err(ValidationError::DeployHasInvalidFootprint {
+                                deploy_hash: dt_hash,
+                                error: error.to_string(),
+                            }),
+                            responders,
+                        );
                     }
                 };
 
@@ -266,8 +294,15 @@ impl BlockValidator {
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
                     if !responders.is_empty() {
-                        let is_valid = matches!(state, BlockValidationState::Valid(_));
-                        effects.extend(respond(is_valid, responders));
+                        let response = match state {
+                            BlockValidationState::InProgress { .. } => {
+                                Err(ValidationError::InProgressAfterCompletion)
+                            }
+                            BlockValidationState::Valid(_) => Ok(()),
+                            BlockValidationState::Invalid { error, .. } => Err(error.clone()),
+                        };
+
+                        effects.extend(respond(response, responders));
                     }
                 }
                 effects
@@ -298,12 +333,11 @@ impl BlockValidator {
                                         missing_deploys,
                                     ))
                                 }
-                                MaybeStartFetching::Unable => {
-                                    debug!(
-                                        "exhausted peers while validating proposed block - \
-                                        responding `false`"
-                                    );
-                                    effects.extend(respond(false, state.take_responders()));
+                                MaybeStartFetching::Unable { .. } => {
+                                    effects.extend(respond(
+                                        Err(ValidationError::PeersExhausted),
+                                        state.take_responders(),
+                                    ));
                                 }
                                 MaybeStartFetching::Ongoing
                                 | MaybeStartFetching::ValidationSucceeded
@@ -312,14 +346,33 @@ impl BlockValidator {
                         });
                         effects
                     }
-                    fetcher::Error::CouldNotConstructGetRequest { .. }
-                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
-                        // Hard failure - change state to Invalid.
+                    fetcher::Error::CouldNotConstructGetRequest { id, peer } => {
+                        // Hard failure.
                         let responders = self
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        respond(false, responders)
+                        respond(
+                            Err(ValidationError::CouldNotConstructGetRequest {
+                                id: id.to_string(),
+                                peer: Box::new(peer),
+                            }),
+                            responders,
+                        )
+                    }
+                    fetcher::Error::ValidationMetadataMismatch { id, peer, .. } => {
+                        // Hard failure.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        respond(
+                            Err(ValidationError::ValidationMetadataMismatch {
+                                id: id.to_string(),
+                                peer: Box::new(peer),
+                            }),
+                            responders,
+                        )
                     }
                 }
             }
@@ -327,10 +380,10 @@ impl BlockValidator {
     }
 }
 
-impl<REv> Component<REv> for BlockValidator
+impl<REv> Component<REv> for ProposedBlockValidator
 where
     REv: From<Event>
-        + From<BlockValidationRequest>
+        + From<ProposedBlockValidationRequest>
         + From<FetcherRequest<Deploy>>
         + From<StorageRequest>
         + Send,
@@ -383,11 +436,11 @@ where
 }
 
 fn respond(
-    is_valid: bool,
-    responders: impl IntoIterator<Item = Responder<bool>>,
+    response: Result<(), ValidationError>,
+    responders: impl IntoIterator<Item = Responder<Result<(), ValidationError>>>,
 ) -> Effects<Event> {
     responders
         .into_iter()
-        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .flat_map(move |responder| responder.respond(response.clone()).ignore())
         .collect()
 }

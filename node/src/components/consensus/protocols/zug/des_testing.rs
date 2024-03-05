@@ -601,7 +601,7 @@ where
                     self.call_validator(delivery_time, &validator_id, |consensus| {
                         consensus
                             .zug_mut()
-                            .resolve_validity(proposed_block, true, delivery_time)
+                            .resolve_validity(proposed_block, None, delivery_time)
                     })?
                 }
                 ZugMessage::NewEvidence(_) => vec![], // irrelevant to consensus

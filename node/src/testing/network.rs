@@ -4,7 +4,10 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     mem,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -12,13 +15,14 @@ use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
 use tokio::time::{self, error::Elapsed};
-use tracing::{debug, error_span};
+use tracing::{debug, error_span, field, Span};
 use tracing_futures::Instrument;
 
 use casper_types::testing::TestRng;
 
 use super::ConditionCheckReactor;
 use crate::{
+    components::ComponentState,
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
@@ -30,7 +34,7 @@ use crate::{
 /// Type alias for set of nodes inside a network.
 ///
 /// Provided as a convenience for writing condition functions for `settle_on` and friends.
-pub(crate) type Nodes<R> = HashMap<NodeId, Runner<ConditionCheckReactor<R>>>;
+pub(crate) type Nodes<R> = HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>>;
 
 /// A reactor with networking functionality.
 ///
@@ -60,7 +64,9 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[derive(Debug, Default)]
 pub(crate) struct TestingNetwork<R: Reactor + NetworkedReactor> {
     /// Current network.
-    nodes: HashMap<NodeId, Runner<ConditionCheckReactor<R>>>,
+    nodes: HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>>,
+    /// Mapping of node IDs to spans.
+    spans: HashMap<NodeId, Span>,
 }
 
 impl<R> TestingNetwork<R>
@@ -69,7 +75,7 @@ where
     R::Config: Default,
     <R as Reactor>::Error: Debug,
     R::Event: Serialize,
-    R::Error: From<prometheus::Error>,
+    R::Error: From<prometheus::Error> + Send,
 {
     /// Creates a new networking node on the network using the default root node port.
     ///
@@ -99,12 +105,13 @@ impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Event: Serialize,
-    R::Error: From<prometheus::Error> + From<R::Error>,
+    R::Error: From<prometheus::Error> + From<R::Error> + Send,
 {
     /// Creates a new network.
     pub(crate) fn new() -> Self {
         TestingNetwork {
             nodes: HashMap::new(),
+            spans: HashMap::new(),
         }
     }
 
@@ -141,10 +148,17 @@ where
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
         rng: &'b mut NodeRng,
     ) -> Result<(NodeId, &mut Runner<ConditionCheckReactor<R>>), R::Error> {
-        let runner: Runner<ConditionCheckReactor<R>> =
-            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng).await?;
+        let node_idx = self.nodes.len();
+        let span = error_span!("node", node_idx, node_id = field::Empty);
+        let runner: Box<Runner<ConditionCheckReactor<R>>> = Box::new(
+            Runner::new(cfg, chainspec, chainspec_raw_bytes, rng)
+                .instrument(span.clone())
+                .await?,
+        );
 
         let node_id = runner.reactor().node_id();
+        span.record("node_id", field::display(node_id));
+        self.spans.insert(node_id, span.clone());
 
         let node_ref = match self.nodes.entry(node_id) {
             Entry::Occupied(_) => {
@@ -162,7 +176,7 @@ where
     pub(crate) fn remove_node(
         &mut self,
         node_id: &NodeId,
-    ) -> Option<Runner<ConditionCheckReactor<R>>> {
+    ) -> Option<Box<Runner<ConditionCheckReactor<R>>>> {
         self.nodes.remove(node_id)
     }
 
@@ -170,10 +184,9 @@ where
     pub(crate) async fn crank(&mut self, node_id: &NodeId, rng: &mut TestRng) -> TryCrankOutcome {
         let runner = self.nodes.get_mut(node_id).expect("should find node");
         let node_id = runner.reactor().node_id();
-        runner
-            .try_crank(rng)
-            .instrument(error_span!("crank", node_id = %node_id))
-            .await
+        let span = self.spans.get(&node_id).expect("should find span");
+
+        runner.try_crank(rng).instrument(span.clone()).await
     }
 
     /// Crank only the specified runner until `condition` is true or until `within` has elapsed.
@@ -204,11 +217,9 @@ where
         let mut event_count = 0;
         for node in self.nodes.values_mut() {
             let node_id = node.reactor().node_id();
-            match node
-                .try_crank(rng)
-                .instrument(error_span!("crank", node_id = %node_id))
-                .await
-            {
+            let span = self.spans.get(&node_id).expect("span disappeared").clone();
+
+            match node.try_crank(rng).instrument(span).await {
                 TryCrankOutcome::NoEventsToProcess => (),
                 TryCrankOutcome::ProcessedAnEvent => event_count += 1,
                 TryCrankOutcome::ShouldExit(exit_code) => {
@@ -346,6 +357,10 @@ where
     /// Panics if the `condition` is not reached inside of `within`, or if any node returns an exit
     /// code.
     ///
+    /// If the `condition` is not reached inside of `within`, panics.
+    // Note: `track_caller` will not have an effect until
+    //       <https://github.com/rust-lang/rust/issues/87417> is fixed.
+    // #[track_caller]
     /// To settle on an exit code, use `settle_on_exit` instead.
     pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
     where
@@ -361,6 +376,7 @@ where
             })
     }
 
+    // #[track_caller]
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
     where
         F: Fn(&Nodes<R>) -> bool,
@@ -392,6 +408,64 @@ where
         time::timeout(within, self.settle_on_exit_indefinitely(rng, expected))
             .await
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    /// Keeps cranking the network until every reactor's specified component is in the given state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any reactor returns `None` on its [`Reactor::get_component_state()`] call.
+    pub(crate) async fn settle_on_component_state(
+        &mut self,
+        rng: &mut TestRng,
+        name: &str,
+        state: &ComponentState,
+        timeout: Duration,
+    ) {
+        self.settle_on(
+            rng,
+            |net| {
+                net.values()
+                    .all(|runner| match runner.reactor().get_component_state(name) {
+                        Some(actual_state) => actual_state == state,
+                        None => panic!("unknown or unsupported component: {}", name),
+                    })
+            },
+            timeout,
+        )
+        .await;
+    }
+
+    /// Starts a background process that will crank all nodes until stopped.
+    ///
+    /// Returns a future that will, once polled, stop all cranking and return the network and the
+    /// the random number generator. Note that the stop command will be sent as soon as the returned
+    /// future is polled (awaited), but no sooner.
+    pub(crate) fn crank_until_stopped(
+        mut self,
+        mut rng: TestRng,
+    ) -> impl futures::Future<Output = (Self, TestRng)>
+    where
+        R: Send + 'static,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = tokio::spawn({
+            let stop = stop.clone();
+            async move {
+                while !stop.load(Ordering::Relaxed) {
+                    if self.crank_all(&mut rng).await == 0 {
+                        time::sleep(POLL_INTERVAL).await;
+                    };
+                }
+                (self, rng)
+            }
+        });
+
+        async move {
+            // Trigger the background process stop.
+            stop.store(true, Ordering::Relaxed);
+            handle.await.expect("failed to join background crank")
+        }
     }
 
     async fn settle_on_exit_indefinitely(&mut self, rng: &mut TestRng, expected: ExitCode) {
@@ -435,12 +509,14 @@ where
     }
 
     /// Returns the internal map of nodes.
-    pub(crate) fn nodes(&self) -> &HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes(&self) -> &HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>> {
         &self.nodes
     }
 
     /// Returns the internal map of nodes, mutable.
-    pub(crate) fn nodes_mut(&mut self) -> &mut HashMap<NodeId, Runner<ConditionCheckReactor<R>>> {
+    pub(crate) fn nodes_mut(
+        &mut self,
+    ) -> &mut HashMap<NodeId, Box<Runner<ConditionCheckReactor<R>>>> {
         &mut self.nodes
     }
 
@@ -448,7 +524,7 @@ where
     pub(crate) fn runners_mut(
         &mut self,
     ) -> impl Iterator<Item = &mut Runner<ConditionCheckReactor<R>>> {
-        self.nodes.values_mut()
+        self.nodes.values_mut().map(|bx| &mut **bx)
     }
 
     /// Returns an iterator over all reactors, mutable.
@@ -481,7 +557,7 @@ impl<R> Finalize for TestingNetwork<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize + Send + Sync,
-    R::Error: From<prometheus::Error>,
+    R::Error: From<prometheus::Error> + Send,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {
         // We support finalizing networks where the reactor itself can be finalized.

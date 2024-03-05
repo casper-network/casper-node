@@ -21,47 +21,20 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     qps_limit: u64,
     max_body_bytes: u32,
-    cors_origin: String,
+    cors_origin: Option<CorsOrigin>,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     SpeculativeExec::register_as_handler(effect_builder, api_version, &mut handlers);
     let handlers = handlers.build();
 
-    match cors_origin.as_str() {
-        "" => {
-            super::rpcs::run(
-                builder,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                SPECULATIVE_EXEC_API_PATH,
-                SPECULATIVE_EXEC_SERVER_NAME,
-            )
-            .await;
-        }
-        "*" => {
-            super::rpcs::run_with_cors(
-                builder,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                SPECULATIVE_EXEC_API_PATH,
-                SPECULATIVE_EXEC_SERVER_NAME,
-                CorsOrigin::Any,
-            )
-            .await
-        }
-        _ => {
-            super::rpcs::run_with_cors(
-                builder,
-                handlers,
-                qps_limit,
-                max_body_bytes,
-                SPECULATIVE_EXEC_API_PATH,
-                SPECULATIVE_EXEC_SERVER_NAME,
-                CorsOrigin::Specified(cors_origin),
-            )
-            .await
-        }
-    }
+    super::rpcs::run(
+        builder,
+        handlers,
+        qps_limit,
+        max_body_bytes,
+        SPECULATIVE_EXEC_API_PATH,
+        SPECULATIVE_EXEC_SERVER_NAME,
+        cors_origin,
+    )
+    .await;
 }

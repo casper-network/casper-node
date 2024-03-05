@@ -1,4 +1,11 @@
-use std::{collections::BTreeMap, iter, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs, iter,
+    net::SocketAddr,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 
 use either::Either;
 use num::Zero;
@@ -22,6 +29,7 @@ use crate::{
         },
         gossiper, network, storage,
         upgrade_watcher::NextUpgrade,
+        ComponentState,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -41,7 +49,7 @@ use crate::{
         ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockPayload,
         Chainspec, ChainspecRawBytes, Deploy, ExitCode, NodeId, SyncHandling,
     },
-    utils::{External, Loadable, Source, RESOURCES_PATH},
+    utils::{extract_metric_names, External, Fuse, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
 
@@ -205,6 +213,12 @@ impl TestFixture {
             .await;
 
         fixture
+    }
+
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
     }
 
     /// Returns the highest complete block from node 0.
@@ -435,6 +449,18 @@ impl TestFixture {
                 })
                 .await;
         }
+    }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
     }
 }
 
@@ -1130,6 +1156,122 @@ async fn empty_block_validation_regression() {
         [inactive_validator] if malicious_validator == *inactive_validator => {}
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
+}
+
+#[tokio::test]
+#[ignore] // Disabled until fixed, after the issue with `TestFixture` and multiple `TestRng`s was fixed.
+async fn all_metrics_from_1_5_are_present() {
+    testing::init_logging();
+
+    let mut fixture = TestFixture::new(
+        InitialStakes::AllEqual {
+            count: 4,
+            stake: 100,
+        },
+        None,
+    )
+    .await;
+    let mut rng = fixture.rng_mut().create_child();
+
+    let net = fixture.network_mut();
+
+    net.settle_on_component_state(
+        &mut rng,
+        "rest_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(59),
+    )
+    .await;
+
+    // Get the node ID.
+    let node_id = *net.nodes().keys().next().unwrap();
+
+    let rest_addr = net.nodes()[&node_id]
+        .main_reactor()
+        .rest_server
+        .bind_address();
+
+    // We let the entire network run in the background, until our request completes.
+    let finish_cranking = fixture.run_until_stopped(rng);
+
+    let metrics_response = reqwest::Client::builder()
+        .build()
+        .expect("failed to build client")
+        .get(format!("http://localhost:{}/metrics", rest_addr.port()))
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .expect("request failed")
+        .error_for_status()
+        .expect("error response on metrics request")
+        .text()
+        .await
+        .expect("error retrieving text on metrics request");
+
+    let (_net, _rng) = finish_cranking.await;
+
+    let actual = extract_metric_names(&metrics_response);
+    let raw_1_5 = fs::read_to_string(RESOURCES_PATH.join("metrics-1.5.txt"))
+        .expect("could not read 1.5 metrics snapshot");
+    let metrics_1_5 = extract_metric_names(&raw_1_5);
+
+    let missing: HashSet<_> = metrics_1_5.difference(&actual).collect();
+    assert!(
+        missing.is_empty(),
+        "missing 1.5 metrics in current metrics set: {:?}",
+        missing
+    );
+}
+
+#[tokio::test]
+#[ignore] // Disabled, until the issue with `TestFixture` and multiple `TestRng`s is fixed.
+async fn port_bound_components_report_ready() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let mut fixture = TestFixture::new(
+        InitialStakes::AllEqual {
+            count: 4,
+            stake: 100,
+        },
+        None,
+    )
+    .await;
+    let net = fixture.network_mut();
+
+    // Ensure all `PortBoundComponent` implementors report readiness eventually.
+    net.settle_on_component_state(
+        &mut rng,
+        "rest_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "rpc_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "event_stream_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "diagnostics_port",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
 }
 
 #[tokio::test]

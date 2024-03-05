@@ -493,7 +493,7 @@ where
 
         match self
             .state
-            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+            .prune_keys(correlation_id, state_root_hash, keys_to_delete)
         {
             Ok(DeleteResult::Deleted(post_state_hash)) => {
                 Ok(PruneResult::Success { post_state_hash })

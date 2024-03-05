@@ -85,24 +85,31 @@ def invoke(command, quiet=False):
 
     try:
         start = time.time()
-        result = subprocess.check_output([
-            '/bin/bash', '-c',
+        completed = subprocess.run([
+            '/usr/bin/env', 'bash', '-c',
             'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
-                command, timeout=60)
-        ]).decode("utf-8").rstrip()
+                command)
+        ], timeout=60, capture_output=True)
         end = time.time()
+        stdout = completed.stdout.decode("utf-8").rstrip()
+        stderr = completed.stderr.decode("utf-8").rstrip()
         elapsed = end - start
         if elapsed > COMMAND_EXECUTION_TIME_SECS:
             log("command took {:.2f} seconds to execute: {}".format(
                 end - start, command))
-        return result
+        completed.check_returncode()
+        return stdout
     except subprocess.CalledProcessError as err:
         log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down: {}"
             .format(err))
+        log("command stdout: {}".format(ellipsize(stdout)))
+        log("command stderr: {}".format(ellipsize(stderr)))
         return ""
     except subprocess.TimeoutExpired as err:
         log("subprocess timeout - this can be a transitory error if the node is temporarily down: {}"
             .format(err))
+        log("command stdout: {}".format(ellipsize(stdout)))
+        log("command stderr: {}".format(ellipsize(stderr)))
         return ""
     finally:
         invoke_lock.release()
@@ -196,9 +203,9 @@ def huge_deploy_sender_thread(count, interval):
         for i in range(count):
             random_node = random.randint(1, current_node_count)
             huge_deploy_path = make_huge_deploy(random_node)
-            command = "{} send-deploy --input {} --node-address http://{} > /dev/null 2>&1".format(
+            command = "{} send-deploy -v --input {} --node-address http://{}".format(
                 path_to_client, huge_deploy_path,
-                get_node_rpc_endpoint(random_node))
+                get_node_rpc_address(random_node))
             invoke(command)
 
         log("sent " + str(count) + " huge deploys and sleeping " +
@@ -218,12 +225,12 @@ def get_node_metrics_endpoint(node):
     return
 
 
-def get_node_rpc_endpoint(node):
+def get_node_rpc_address(node):
     command = "nctl-view-node-ports node={}".format(node)
     result = invoke(command, True)
     m = re.match(r'.*RPC @ (\d*).*', result)
     if m and m.group(1):
-        return "localhost:{}/rpc/".format(int(m.group(1)))
+        return "localhost:{}".format(int(m.group(1)))
     return
 
 
@@ -359,7 +366,7 @@ def make_huge_deploy(node):
 
     if os.path.exists(output):
         os.remove(output)
-    command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {} > /dev/null 2>&1".format(
+    command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {}".format(
         path_to_client, output, chain_name, huge_deploy_payment_amount, ttl,
         secret_key, session_path)
     invoke(command)
@@ -480,6 +487,14 @@ def join_node(current_node_count):
     log("*** joining node {} ***".format(current_node_count))
     start_node(current_node_count)
     return current_node_count
+
+
+def ellipsize(s, max_length=4096):
+    if len(s) > max_length:
+        chunk = int((max_length-5) / 2)
+        s = s[:chunk] + " ... " + s[-chunk:]
+
+    return s
 
 
 path_to_client = invoke("get_path_to_client")
