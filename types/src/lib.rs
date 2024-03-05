@@ -184,9 +184,8 @@ pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::{
     AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
-    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
-    InitiatorAddr, NamedArg,
-    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
+    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
+    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
     TransactionConfigFailure, TransactionEntryPoint, TransactionHash, TransactionHeader,
     TransactionId, TransactionInvocationTarget, TransactionRuntime, TransactionScheduling,
     TransactionSessionKind, TransactionTarget, TransactionV1, TransactionV1Body,

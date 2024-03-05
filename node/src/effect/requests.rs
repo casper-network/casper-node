@@ -23,11 +23,18 @@ use casper_storage::data_access_layer::{
     QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
     TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
-use casper_types::{binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-    RecordId, SpeculativeExecutionResult, Uptime,
-}, execution::ExecutionResult, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, Approval};
-
+use casper_types::{
+    binary_port::{
+        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
+        RecordId, SpeculativeExecutionResult, Uptime,
+    },
+    execution::ExecutionResult,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId,
+    ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade, ProtocolVersion,
+    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer,
+};
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
@@ -45,10 +52,9 @@ use crate::{
     },
     contract_runtime::SpeculativeExecutionState,
     types::{
-        appendable_block::AppendableBlock,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, LegacyDeploy, MetaBlockState, NodeId,
-        StatusFeed,
+        appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
+        MetaBlockState, NodeId, StatusFeed,
     },
     utils::Source,
 };

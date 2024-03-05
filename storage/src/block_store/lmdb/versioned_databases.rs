@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use datasize::DataSize;
 use lmdb::{
     Cursor, Database, DatabaseFlags, Environment, RwCursor, RwTransaction,
@@ -7,9 +6,15 @@ use lmdb::{
 use serde::de::DeserializeOwned;
 #[cfg(test)]
 use serde::Serialize;
-use std::marker::PhantomData;
+use std::{collections::BTreeSet, marker::PhantomData};
 
-use casper_types::{binary_port::DbRawBytesSpec, bytesrepr::{FromBytes, ToBytes}, execution::ExecutionResult, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures, BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash, Approval};
+use casper_types::{
+    binary_port::DbRawBytesSpec,
+    bytesrepr::{FromBytes, ToBytes},
+    execution::ExecutionResult,
+    Approval, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash,
+};
 
 use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
 use crate::block_store::{

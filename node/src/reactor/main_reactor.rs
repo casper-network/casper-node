@@ -24,9 +24,11 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature, FinalitySignatureV2, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, U512};
-use casper_types::binary_port::{LastProgress, NetworkName, Uptime};
-
+use casper_types::{
+    binary_port::{LastProgress, NetworkName, Uptime},
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    FinalitySignatureV2, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, U512,
+};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -38,7 +40,6 @@ use crate::{
         block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
-        transaction_buffer::TransactionBuffer,
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, GossipItem, Gossiper},
@@ -49,16 +50,18 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         transaction_acceptor::{self, TransactionAcceptor},
+        transaction_buffer,
+        transaction_buffer::TransactionBuffer,
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, TransactionBufferAnnouncement, FetchedNewBlockAnnouncement,
+            ControlAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
-            UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
+            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorInfoRequest},
@@ -82,7 +85,6 @@ use crate::{
 pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
-use crate::components::transaction_buffer;
 
 /// Main node reactor.
 ///

@@ -50,7 +50,7 @@ use casper_storage::block_store::{
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -58,13 +58,20 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::collections::BTreeSet;
 
 #[cfg(test)]
 use casper_types::SignedBlock;
-use casper_types::{binary_port::DbRawBytesSpec, bytesrepr::{FromBytes, ToBytes}, execution::{
-    execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
-}, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash, EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, Approval, ApprovalsHash};
+use casper_types::{
+    binary_port::DbRawBytesSpec,
+    bytesrepr::{FromBytes, ToBytes},
+    execution::{
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
+    },
+    Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
+    BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
+    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, StoredValue,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+};
 use datasize::DataSize;
 use prometheus::Registry;
 use smallvec::SmallVec;
@@ -693,7 +700,7 @@ impl Storage {
                                 transaction
                             };
                             transaction
-                        },
+                        }
                         None => return Ok(responder.respond(None).ignore()),
                     }
                 } else {
@@ -1004,7 +1011,8 @@ impl Storage {
     fn get_transactions_with_finalized_approvals<'a>(
         &self,
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
-    ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError> {
+    ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
+    {
         let mut ro_txn = self.block_store.checkout_ro()?;
 
         transaction_hashes
@@ -1193,7 +1201,7 @@ impl Storage {
         &self,
         block_hash: BlockHash,
     ) -> Result<Option<(BlockV2, Vec<Transaction>)>, FatalStorageError> {
-        let mut txn = self.block_store.checkout_ro()?;
+        let txn = self.block_store.checkout_ro()?;
 
         let Some(block) = txn.read(block_hash)? else {
             debug!(
@@ -1213,11 +1221,11 @@ impl Storage {
             return Ok(None);
         };
 
-
         let mut transactions = vec![];
-        for (transaction, _) in (self.get_transactions_with_finalized_approvals(block.all_transactions())?)
-            .into_iter()
-            .flatten()
+        for (transaction, _) in (self
+            .get_transactions_with_finalized_approvals(block.all_transactions())?)
+        .into_iter()
+        .flatten()
         {
             transactions.push(transaction)
         }
@@ -1415,7 +1423,8 @@ impl Storage {
         })?;
 
         // Only store the finalized approvals if they are different from the original ones.
-        let maybe_existing_finalized_approvals: Option<BTreeSet<Approval>> = txn.read(*transaction_hash)?;
+        let maybe_existing_finalized_approvals: Option<BTreeSet<Approval>> =
+            txn.read(*transaction_hash)?;
         if maybe_existing_finalized_approvals.as_ref() == Some(finalized_approvals) {
             return Ok(false);
         }
@@ -1427,7 +1436,7 @@ impl Storage {
                 finalized_approvals: finalized_approvals.clone(),
             })?;
             txn.commit()?;
-            return Ok(true)
+            return Ok(true);
         }
 
         Ok(false)
@@ -1504,7 +1513,6 @@ impl Storage {
                         transaction
                     };
                     transaction
-
                 }
                 None => return Ok(None),
             };

@@ -6,14 +6,13 @@ use std::{
 };
 
 use datasize::DataSize;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use casper_types::Transaction;
 use casper_types::{
-BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey,
-Timestamp, TransactionCategory, TransactionHash,
+    BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, Timestamp, TransactionCategory,
+    TransactionHash,
 };
 #[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
@@ -146,7 +145,6 @@ impl FinalizedBlock {
         )
     }
 }
-
 
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {

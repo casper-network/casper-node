@@ -18,7 +18,7 @@ use crate::{
         block_validator, consensus, contract_runtime, diagnostics_port, event_stream_server,
         fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server,  shutdown_trigger, storage, sync_leaper, transaction_acceptor,
+        rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
         transaction_buffer, upgrade_watcher,
     },
     effect::{
@@ -40,8 +40,7 @@ use crate::{
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            ReactorInfoRequest, RestRequest,
-            SetNodeStopRequest, StorageRequest,
+            ReactorInfoRequest, RestRequest, SetNodeStopRequest, StorageRequest,
             SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
             UpgradeWatcherRequest,
         },

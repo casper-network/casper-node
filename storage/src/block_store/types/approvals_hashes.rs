@@ -8,7 +8,12 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{bytesrepr::{self, FromBytes, ToBytes}, global_state::TrieMerkleProof, Block, BlockHash, BlockV1, BlockV2, DeployId, Digest, Key, StoredValue, TransactionId, ApprovalsHash};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    global_state::TrieMerkleProof,
+    ApprovalsHash, Block, BlockHash, BlockV1, BlockV2, DeployId, Digest, Key, StoredValue,
+    TransactionId,
+};
 
 use crate::global_state::trie_store::operations::compute_state_hash;
 
@@ -33,7 +38,6 @@ pub struct ApprovalsHashes {
     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
 }
 
-
 impl ApprovalsHashes {
     pub fn new(
         block_hash: BlockHash,
@@ -46,7 +50,6 @@ impl ApprovalsHashes {
             merkle_proof_approvals,
         }
     }
-
 
     pub fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
@@ -63,7 +66,8 @@ impl ApprovalsHashes {
             });
         }
 
-        let value_in_proof = self.merkle_proof_approvals
+        let value_in_proof = self
+            .merkle_proof_approvals
             .value()
             .as_cl_value()
             .and_then(|cl_value| cl_value.clone().into_t().ok())
@@ -109,9 +113,9 @@ impl ApprovalsHashes {
         v2_block
             .all_transactions()
             .zip(self.approvals_hashes.clone())
-            .map(
-                |(txn_hash, txn_approvals_hash)| Ok(TransactionId::new(*txn_hash, txn_approvals_hash))
-            )
+            .map(|(txn_hash, txn_approvals_hash)| {
+                Ok(TransactionId::new(*txn_hash, txn_approvals_hash))
+            })
             .collect()
     }
 

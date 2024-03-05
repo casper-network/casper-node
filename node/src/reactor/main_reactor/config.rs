@@ -6,10 +6,9 @@ use casper_types::Chainspec;
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BinaryPortConfig, BlockAccumulatorConfig,
-    BlockSynchronizerConfig,BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig, DiagnosticsPortConfig,
-    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
-     StorageConfig, TransactionAcceptorConfig,
-    TransactionBufferConfig,
+    BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig,
+    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig,
+    RestServerConfig, StorageConfig, TransactionAcceptorConfig, TransactionBufferConfig,
     UpgradeWatcherConfig,
 };
 

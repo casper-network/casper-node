@@ -1,8 +1,7 @@
 use std::{
     borrow::Cow,
-    collections::{btree_map, hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
 };
-use std::collections::BTreeSet;
 
 use super::{lmdb_block_store::LmdbBlockStore, lmdb_ext::LmdbExtError, temp_map::TempMap};
 use datasize::DataSize;
@@ -21,7 +20,12 @@ use crate::block_store::{
     },
     BlockStoreError, BlockStoreProvider,
 };
-use casper_types::{binary_port::{DbRawBytesSpec, RecordId}, execution::ExecutionResult, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId, ProtocolVersion, Transaction, TransactionHash, Transfer, Approval};
+use casper_types::{
+    binary_port::{DbRawBytesSpec, RecordId},
+    execution::ExecutionResult,
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId,
+    ProtocolVersion, Transaction, TransactionHash, Transfer,
+};
 
 #[derive(DataSize, Debug)]
 pub struct IndexedLmdbBlockStore {

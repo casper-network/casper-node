@@ -83,8 +83,6 @@ impl FromBytes for RefundHandling {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

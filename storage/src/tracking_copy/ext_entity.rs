@@ -1,11 +1,19 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 use tracing::error;
 
-use casper_types::{account::AccountHash, addressable_entity::{
-    ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
-    NamedKeyValue, NamedKeys, Weight,
-}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, ContextAccessRights, PublicKey};
-use casper_types::system::{AUCTION, HANDLE_PAYMENT, MINT};
+use casper_types::{
+    account::AccountHash,
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
+    },
+    bytesrepr,
+    package::{EntityVersions, Groups, PackageStatus},
+    system::{AUCTION, HANDLE_PAYMENT, MINT},
+    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
+    ContextAccessRights, EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef,
+};
 
 use crate::{
     global_state::{error::Error as GlobalStateError, state::StateReader},

@@ -54,8 +54,7 @@ use tracing::warn;
 pub(crate) use components::{
     binary_port::Config as BinaryPortConfig, block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
-    block_validator::Config as BlockValidatorConfig,
-    consensus::Config as ConsensusConfig,
+    block_validator::Config as BlockValidatorConfig, consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,

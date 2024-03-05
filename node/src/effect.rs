@@ -98,14 +98,13 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
     sync::Arc,
     time::{Duration, Instant},
 };
-use std::collections::BTreeSet;
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
@@ -126,10 +125,19 @@ use casper_storage::data_access_layer::{
     ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
     RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
-use casper_types::{binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-    RecordId, SpeculativeExecutionResult, Uptime,
-}, execution::{Effects as ExecutionEffects, ExecutionResult}, package::Package, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512, Approval, SignedBlock};
+use casper_types::{
+    binary_port::{
+        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
+        RecordId, SpeculativeExecutionResult, Uptime,
+    },
+    execution::{Effects as ExecutionEffects, ExecutionResult},
+    package::Package,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion,
+    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer, U512,
+};
 
 use crate::{
     components::{
@@ -156,23 +164,22 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 
+use crate::effect::requests::TransactionBufferRequest;
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement, TransactionBufferAnnouncement,
+    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
-    TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
-use crate::effect::requests::TransactionBufferRequest;
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
 static UNOBTAINABLE: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(0));
@@ -1642,8 +1649,6 @@ impl<REv> EffectBuilder<REv> {
         )
         .await
     }
-
-
 
     /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(

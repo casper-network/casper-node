@@ -53,7 +53,7 @@ pub use approvals_hash::ApprovalsHash;
 pub use deploy::{
     Deploy, DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-   TransferTarget,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};

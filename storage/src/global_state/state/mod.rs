@@ -30,9 +30,8 @@ use casper_types::{
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AddressableEntity, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
-    PublicKey,
-    RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+    AddressableEntity, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase, PublicKey, RuntimeArgs,
+    StoredValue, TransactionHash, TransactionV1Hash, U512,
 };
 
 use crate::{

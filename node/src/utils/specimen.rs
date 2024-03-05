@@ -22,13 +22,13 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     AccessRights, Approval, ApprovalsHash, AsymmetricType, Block, BlockHash, BlockHeader,
-    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest,ChunkWithProof, Deploy, DeployHash,
-    DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport, ExecutableDeployItem,
-    FinalitySignature, FinalitySignatureId, FinalitySignatureV2,
-    PackageHash, ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey, SemVer,
-    SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction,
-    TransactionCategory, TransactionHash, TransactionId, TransactionV1,
-    TransactionV1Builder, TransactionV1Hash, URef, KEY_HASH_LENGTH, U512,
+    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesV2, BlockV2, ChainNameDigest,
+    ChunkWithProof, Deploy, DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport,
+    ExecutableDeployItem, FinalitySignature, FinalitySignatureId, FinalitySignatureV2, PackageHash,
+    ProtocolVersion, RewardedSignatures, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
+    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionCategory,
+    TransactionHash, TransactionId, TransactionV1, TransactionV1Builder, TransactionV1Hash, URef,
+    KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -38,8 +38,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock,
-        InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
+        BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock, InternalEraReport,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 use casper_storage::block_store::types::ApprovalsHashes;

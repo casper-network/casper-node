@@ -10,8 +10,9 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    global_state::TrieMerkleProof,
     ApprovalsHash, Block, BlockHash, BlockV1, BlockV2, DeployId, Digest, Key, StoredValue,
-    TransactionId,global_state::TrieMerkleProof
+    TransactionId,
 };
 
 use crate::{
@@ -38,17 +39,17 @@ pub(crate) struct ApprovalsHashes {
 }
 
 impl ApprovalsHashes {
-    pub(crate) fn new(
-        block_hash: BlockHash,
-        approvals_hashes: Vec<ApprovalsHash>,
-        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
-    ) -> Self {
-        Self {
-            block_hash,
-            approvals_hashes,
-            merkle_proof_approvals,
-        }
-    }
+    // pub(crate) fn new(
+    //     block_hash: BlockHash,
+    //     approvals_hashes: Vec<ApprovalsHash>,
+    //     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    // ) -> Self {
+    //     Self {
+    //         block_hash,
+    //         approvals_hashes,
+    //         merkle_proof_approvals,
+    //     }
+    // }
 
     fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         let merkle_proof_approvals = &self.merkle_proof_approvals;
@@ -115,9 +116,9 @@ impl ApprovalsHashes {
         &self.block_hash
     }
 
-    pub(crate) fn approvals_hashes(&self) -> Vec<ApprovalsHash> {
-        self.approvals_hashes.clone()
-    }
+    // pub(crate) fn approvals_hashes(&self) -> Vec<ApprovalsHash> {
+    //     self.approvals_hashes.clone()
+    // }
 }
 
 impl FetchItem for ApprovalsHashes {

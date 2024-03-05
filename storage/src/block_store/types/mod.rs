@@ -2,12 +2,16 @@ mod approvals_hashes;
 mod block_hash_height_and_era;
 mod deploy_metadata_v1;
 
-use std::{borrow::Cow, collections::HashMap};
-use std::collections::BTreeSet;
+use std::{
+    borrow::Cow,
+    collections::{BTreeSet, HashMap},
+};
 
 pub use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
 pub use block_hash_height_and_era::BlockHashHeightAndEra;
-use casper_types::{execution::ExecutionResult, Block, BlockHash, BlockHeader, TransactionHash, Transfer, Approval};
+use casper_types::{
+    execution::ExecutionResult, Approval, Block, BlockHash, BlockHeader, TransactionHash, Transfer,
+};
 
 pub(crate) use approvals_hashes::LegacyApprovalsHashes;
 pub(crate) use deploy_metadata_v1::DeployMetadataV1;

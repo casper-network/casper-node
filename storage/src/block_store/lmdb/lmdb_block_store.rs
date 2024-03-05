@@ -14,19 +14,22 @@ use lmdb::{
 };
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::collections::BTreeSet;
 
 use tracing::{debug, error};
 
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::types::ApprovalsHashes;
-use casper_types::{execution::{
-    execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
-}, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue, Transaction, TransactionHash, Transfer, Approval};
+use casper_types::{
+    execution::{
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
+    },
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue,
+    Transaction, TransactionHash, Transfer,
+};
 
 /// Filename for the LMDB database created by the Storage component.
 const STORAGE_DB_FILENAME: &str = "storage.lmdb";
