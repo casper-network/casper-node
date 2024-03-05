@@ -707,7 +707,7 @@ pub trait Auction:
     /// from one public key to another.
     /// This method can only be called by the account associated with the current `ValidatorBid`.
     ///
-    /// The arguments are the existing bids's 'validator_public_key' and the new public key.
+    /// The arguments are the existing bid's 'validator_public_key' and the new public key.
     fn change_bid_public_key(
         &mut self,
         public_key: PublicKey,
@@ -738,7 +738,7 @@ pub trait Auction:
             BidKind::Validator(validator_bid),
         )?;
 
-        debug!("pruning validator bid {}", validator_bid_addr);
+        debug!("pruning validator bid {validator_bid_addr}");
         self.prune_bid(validator_bid_addr);
 
         debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
@@ -757,7 +757,7 @@ pub trait Auction:
                 BidKind::Delegator(Box::from(delegator)),
             )?;
 
-            debug!("pruning delegator bid {}", delegator_bid_addr);
+            debug!("pruning delegator bid {delegator_bid_addr}");
             self.prune_bid(delegator_bid_addr);
         }
 
