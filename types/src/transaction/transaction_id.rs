@@ -25,7 +25,7 @@ pub struct TransactionId {
 }
 
 impl TransactionId {
-    /// Returns a new `TransactionId::Deploy`.
+    /// Returns a new `TransactionId`.
     pub fn new(transaction_hash: TransactionHash, approvals_hash: ApprovalsHash) -> Self {
         TransactionId {
             transaction_hash,

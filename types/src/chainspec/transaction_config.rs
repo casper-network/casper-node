@@ -73,8 +73,8 @@ impl TransactionConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         let max_transaction_size = rng.gen_range(100_000..1_000_000);
-        let block_max_transfer_count = rng.gen();
-        let block_max_staking_count = rng.gen();
+        let block_max_mint_count = rng.gen();
+        let block_max_auction_count = rng.gen();
         let block_max_install_upgrade_count = rng.gen();
         let block_max_standard_count = rng.gen();
         let block_max_approval_count = rng.gen();
@@ -90,8 +90,8 @@ impl TransactionConfig {
         TransactionConfig {
             max_ttl,
             max_transaction_size,
-            block_max_mint_count: block_max_transfer_count,
-            block_max_auction_count: block_max_staking_count,
+            block_max_mint_count,
+            block_max_auction_count,
             block_max_install_upgrade_count,
             block_max_standard_count,
             block_max_approval_count,
@@ -175,8 +175,8 @@ impl FromBytes for TransactionConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_ttl, remainder) = TimeDiff::from_bytes(bytes)?;
         let (max_transaction_size, remainder) = u32::from_bytes(remainder)?;
-        let (block_max_transfer_count, remainder) = u32::from_bytes(remainder)?;
-        let (block_max_staking_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_mint_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_auction_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_install_upgrade_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_standard_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_approval_count, remainder) = u32::from_bytes(remainder)?;
@@ -190,8 +190,8 @@ impl FromBytes for TransactionConfig {
         let config = TransactionConfig {
             max_ttl,
             max_transaction_size,
-            block_max_mint_count: block_max_transfer_count,
-            block_max_auction_count: block_max_staking_count,
+            block_max_mint_count,
+            block_max_auction_count,
             block_max_install_upgrade_count,
             block_max_standard_count,
             block_max_approval_count,

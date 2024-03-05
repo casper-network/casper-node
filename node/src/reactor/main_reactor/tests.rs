@@ -1267,8 +1267,7 @@ async fn should_store_finalized_approvals() {
             .map(|fa| fa.iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
-            .and_then(|dwa| dwa.1.clone())
-            .map(|dwa| dwa.iter().cloned().collect());
+            .map(|(transaction, _approvals)| transaction.approvals().iter().cloned().collect());
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(

@@ -19,7 +19,7 @@ use smallvec::smallvec;
 use casper_types::{execution::{
     execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
     ExecutionResult, ExecutionResultV2,
-}, generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512, Approval, ApprovalsHash};
+}, generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, URef, U512, ApprovalsHash};
 use tempfile::tempdir;
 
 use super::{
@@ -2663,7 +2663,7 @@ static STORAGE_INFO_FILE_NAME: &str = "storage_info.json";
 struct Node1_5_2BlockInfo {
     height: u64,
     era: EraId,
-    approvals_hashes: Option<Vec<BTreeSet<Approval>>>,
+    approvals_hashes: Option<Vec<ApprovalsHash>>,
     signatures: Option<BlockSignatures>,
     deploy_hashes: Vec<DeployHash>,
 }
@@ -2959,7 +2959,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
                 stored_approvals_hashes,
                 expected_approvals_hashes
                     .iter()
-                    .map(|approvals_hash| ApprovalsHash::compute(approvals_hash).unwrap())
+                    .map(|approvals_hash| *approvals_hash)
                     .collect::<Vec<_>>()
             );
         }

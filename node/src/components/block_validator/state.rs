@@ -593,7 +593,8 @@ mod tests {
                 let mut ret = vec![];
                 for _ in 0..transfer_count {
                     let txn = new_transfer(self.rng, timestamp, ttl);
-                    ret.push(txn.hash());
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
                 }
 
                 ret
@@ -603,7 +604,8 @@ mod tests {
                 let mut ret = vec![];
                 for _ in 0..staking_count {
                     let txn = new_v1_staking(self.rng, timestamp, ttl);
-                    ret.push(Transaction::V1(txn).hash());
+                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
+                    self.transactions.push(Transaction::V1(txn));
                 }
                 ret
             };
@@ -612,7 +614,8 @@ mod tests {
                 let mut ret = vec![];
                 for _ in 0..install_upgrade_count {
                     let txn = new_v1_install_upgrade(self.rng, timestamp, ttl);
-                    ret.push(Transaction::V1(txn).hash());
+                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
+                    self.transactions.push(Transaction::V1(txn));
                 }
                 ret
             };
@@ -621,7 +624,8 @@ mod tests {
                 let mut ret = vec![];
                 for _ in 0..standard_count {
                     let txn = new_standard(self.rng, timestamp, ttl);
-                    ret.push(txn.hash());
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
                 }
                 ret
             };
@@ -843,8 +847,8 @@ mod tests {
         let timestamp = Timestamp::from(1000);
         let transfers = vec![new_transfer(fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
-        let transfers_for_block: Vec<TransactionHash> =
-            transfers.iter().map(|transaction| transaction.hash()).collect();
+        let transfers_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> =
+            transfers.iter().map(|transaction| (transaction.hash(), transaction.approvals().clone())).collect();
 
         let proposed_block =
             new_proposed_block(timestamp, transfers_for_block, vec![], vec![], vec![]);
@@ -1141,6 +1145,7 @@ mod tests {
         // While there is still at least one missing transaction, `try_add_transaction_footprint`
         // should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
+        println!("{}", footprints.len());
         while footprints.len() > 1 {
             let (transaction_hash, footprint) = footprints.pop().unwrap();
             let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
@@ -1221,6 +1226,13 @@ mod tests {
         fixture.transactions.push(invalid_transaction.clone());
         let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
+        if let BlockValidationState::InProgress { ref mut missing_transactions, ..} = state {
+            let approvals = invalid_transaction.approvals().clone();
+            let approvals_hash = ApprovalsHash::compute(&approvals)
+                .expect("must get approvals hash");
+            let info = ApprovalInfo::new(approvals, approvals_hash);
+            missing_transactions.insert(invalid_transaction_hash, info);
+        };
 
         // Add some valid deploys, should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();

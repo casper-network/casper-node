@@ -675,11 +675,11 @@ impl LargestSpecimen for BlockV2 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         let transfer_hashes = vec![
             TransactionHash::largest_specimen(estimator, cache);
-            estimator.parameter::<usize>("max_transfers_per_block")
+            estimator.parameter::<usize>("max_mint_per_block")
         ];
         let staking_hashes = vec![
             TransactionHash::largest_specimen(estimator, cache);
-            estimator.parameter::<usize>("max_staking_transactions_per_block")
+            estimator.parameter::<usize>("max_auctions_per_block")
         ];
         let install_upgrade_hashes =
             vec![

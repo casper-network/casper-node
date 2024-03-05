@@ -205,7 +205,12 @@ fn register_transaction_and_check_size() {
         assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
         // Insert transaction without footprint
-        let bad_transaction = Transaction::from(Deploy::random_without_payment_amount(&mut rng));
+        let bad_transaction = {
+            let mut deploy = Deploy::random_valid_native_transfer(&mut rng);
+            deploy.invalidate();
+            Transaction::from(deploy)
+        };
+        assert!(bad_transaction.verify().is_err());
         transaction_buffer.register_transaction(bad_transaction);
         assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
     }
