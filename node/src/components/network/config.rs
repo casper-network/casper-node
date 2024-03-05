@@ -32,6 +32,9 @@ const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 /// Default timeout during which the handshake needs to be completed.
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
+/// Default value for timeout bubbling.
+const DEFAULT_BUBBLE_TIMEOUTS: bool = false;
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -54,6 +57,7 @@ impl Default for Config {
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
             conman: Default::default(),
+            bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
         }
     }
 }
@@ -123,6 +127,8 @@ pub struct Config {
     pub identity: Option<IdentityConfig>,
     /// Configuration for the connection manager.
     pub conman: ConmanConfig,
+    /// Used to control if a timed-out request should make the consecutive requests to fail.
+    pub bubble_timeouts: bool,
 }
 
 #[cfg(test)]

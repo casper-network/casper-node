@@ -242,6 +242,9 @@ tarpit_chance = 0.2
 # How long peers remain blocked after they get blocklisted.
 blocklist_retain_duration = '10 minutes'
 
+# Used to control if a timed-out request should make the consecutive reqeusts to fail.
+bubble_timeouts = false
+
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
@@ -264,7 +267,7 @@ tcp_connect_timeout = '10 seconds'
 setup_timeout = '10 seconds'
 
 # How often to reattempt a connection.
-tcp_connect_attempts = 0
+tcp_connect_attempts = 8
 
 # Base delay for the backoff, grows exponentially until `tcp_connect_attempts` maxes out.
 tcp_connect_base_backoff = '1 second'

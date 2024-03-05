@@ -35,6 +35,7 @@ pub(super) fn create_rpc_builder(
     juliet_config: PerChannel<JulietConfig>,
     buffer_size: PerChannel<Option<usize>>,
     ack_timeout: TimeDiff,
+    bubble_timeouts: bool,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
         juliet::protocol::ProtocolBuilder::new(),
@@ -58,7 +59,7 @@ pub(super) fn create_rpc_builder(
     juliet::rpc::RpcBuilder::new(io_core)
         // We currently disable bubble timeouts due to not having enough data on whether nodes can
         // process data fast enough in all cases. For now, we just warn.
-        .with_bubble_timeouts(false)
+        .with_bubble_timeouts(bubble_timeouts)
         .with_default_timeout(ack_timeout.into())
 }
 

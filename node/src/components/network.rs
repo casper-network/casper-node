@@ -279,6 +279,7 @@ where
             self.chain_info.networking_config.clone(),
             self.config.send_buffer_size,
             self.config.ack_timeout,
+            self.config.bubble_timeouts,
         );
 
         // Setup connection manager, then learn all known addresses.
