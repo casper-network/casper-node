@@ -19,7 +19,6 @@ use casper_execution_engine::{
 };
 use casper_storage::data_access_layer::GenesisRequest;
 
-use casper_types::system::auction::ARG_NEW_PUBLIC_KEY;
 use casper_types::{
     self,
     account::AccountHash,
@@ -30,8 +29,8 @@ use casper_types::{
         self,
         auction::{
             self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
-            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-            ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_PUBLIC_KEY,
+            ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
     EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
@@ -4564,23 +4563,32 @@ fn should_change_validator_bid_public_key() {
     )
     .build();
 
+    let era_id = builder.get_era();
+
     builder
         .exec(change_bid_public_key_request)
         .commit()
         .expect_success();
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 3);
-    let validator_bid = bids
+    assert_eq!(bids.len(), 4);
+    let new_validator_bid = bids
         .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
         .unwrap();
     assert_eq!(
-        builder.get_purse_balance(*validator_bid.bonding_purse()),
+        builder.get_purse_balance(*new_validator_bid.bonding_purse()),
         U512::from(ADD_BID_AMOUNT_1)
     );
-    assert!(bids
+
+    let old_validator_bid = bids
         .validator_bid(&NON_FOUNDER_VALIDATOR_1_PK.clone())
-        .is_none());
+        .unwrap();
+    let bridge_data = old_validator_bid.new_validator_bid_bridge().unwrap();
+    assert_eq!(
+        bridge_data.new_validator_public_key(),
+        &NON_FOUNDER_VALIDATOR_2_PK.clone()
+    );
+    assert_eq!(*bridge_data.key_change_era_id(), era_id);
 
     assert!(bids
         .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK)
