@@ -742,16 +742,19 @@ pub trait Auction:
             return Err(Error::ChangeBidPublicKey);
         }
 
-        debug!("transferring validator bid from {validator_bid_addr} to {new_validator_bid_addr}");
+        debug!("changing validator bid {validator_bid_addr} public key from {public_key} to {new_public_key}");
 
-        validator_bid.with_validator_public_key(new_public_key.clone());
+        // store new validator bid
+        let mut new_validator_bid = validator_bid.clone();
+        new_validator_bid.with_validator_public_key(new_public_key.clone());
         self.write_bid(
             new_validator_bid_addr.into(),
-            BidKind::Validator(validator_bid),
+            BidKind::Validator(new_validator_bid),
         )?;
 
-        debug!("pruning validator bid {validator_bid_addr}");
-        self.prune_bid(validator_bid_addr);
+        // update old validator bid
+        validator_bid.with_new_public_key(new_public_key.clone(), self.read_era_id()?);
+        self.write_bid(validator_bid_addr.into(), BidKind::Validator(validator_bid))?;
 
         debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
         let delegators = read_delegator_bids(self, &public_key)?;
