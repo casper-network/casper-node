@@ -59,7 +59,6 @@ pub mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
-mod reactor_state;
 mod semver;
 pub(crate) mod serde_helpers;
 mod stored_value;
@@ -171,7 +170,6 @@ pub use package::{
 pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-pub use reactor_state::ReactorState;
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{
     GlobalStateIdentifier, StoredValue, TypeMismatch as StoredValueTypeMismatch,
