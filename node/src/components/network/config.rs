@@ -33,7 +33,7 @@ const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
 /// Default value for timeout bubbling.
-const DEFAULT_BUBBLE_TIMEOUTS: bool = false;
+const DEFAULT_BUBBLE_TIMEOUTS: bool = true;
 
 /// Default value for error timeout.
 const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);

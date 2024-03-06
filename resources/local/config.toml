@@ -243,7 +243,8 @@ tarpit_chance = 0.2
 blocklist_retain_duration = '1 minute'
 
 # Used to control if a timed-out request should make the consecutive reqeusts to fail.
-bubble_timeouts = false
+# It is recommended to set this to `true` unless network connectivity issues are being troubleshot.
+bubble_timeouts = true
 
 # The maximum time a peer is allowed to take to receive an error.
 error_timeout = '10 seconds'
