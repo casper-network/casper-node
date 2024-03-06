@@ -304,6 +304,7 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
 /// Attempts to apply the delegator reward to the existing stake. If the reward recipient has
 /// completely unstaked, applies it to their unbond instead. In either case, returns
 /// the purse the amount should be applied to.
+/// If the `ValidatorBid` public key was changed, attemps to fetch the current `validator_public_key`.
 pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
@@ -313,6 +314,11 @@ pub fn distribute_delegator_rewards<P>(
 where
     P: RuntimeProvider + StorageProvider,
 {
+    // fetch current `ValidatorBid` if public key was changed
+    let validator_bid_addr = BidAddr::from(validator_public_key);
+    let validator_bid = read_current_validator_bid(provider, &validator_bid_addr.into())?;
+    let validator_public_key = validator_bid.validator_public_key().clone();
+
     let mut delegator_payouts = Vec::new();
     for (delegator_public_key, delegator_reward) in rewards {
         let bid_key =
@@ -575,6 +581,29 @@ where
         return Err(Error::InvalidKeyVariant);
     }
     if let Some(BidKind::Validator(validator_bid)) = provider.read_bid(bid_key)? {
+        Ok(validator_bid)
+    } else {
+        Err(Error::ValidatorNotFound)
+    }
+}
+
+/// Returns current `ValidatorBid` in case the public key was changed.
+pub fn read_current_validator_bid<P>(
+    provider: &mut P,
+    bid_key: &Key,
+) -> Result<Box<ValidatorBid>, Error>
+where
+    P: StorageProvider + ?Sized,
+{
+    if !bid_key.is_bid_addr_key() {
+        return Err(Error::InvalidKeyVariant);
+    }
+    if let Some(BidKind::Validator(mut validator_bid)) = provider.read_bid(bid_key)? {
+        while let Some(new_bid_bridge) = validator_bid.new_validator_bid_bridge() {
+            let validator_bid_addr =
+                BidAddr::from(new_bid_bridge.new_validator_public_key().clone());
+            validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+        }
         Ok(validator_bid)
     } else {
         Err(Error::ValidatorNotFound)

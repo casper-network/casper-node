@@ -4626,4 +4626,16 @@ fn should_change_validator_bid_public_key() {
     .build();
 
     builder.exec(distribute_request).commit().expect_success();
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 4);
+
+    let delegator = bids
+        .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_1_PK)
+        .expect("should have account1 delegation");
+    assert!(delegator.staked_amount() > U512::from(DELEGATE_AMOUNT_1));
+    let delegator = bids
+        .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_2_PK)
+        .expect("should have account2 delegation");
+    assert!(delegator.staked_amount() > U512::from(DELEGATE_AMOUNT_2));
 }
