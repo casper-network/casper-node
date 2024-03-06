@@ -1080,11 +1080,12 @@ mod tests {
             !package.is_entity_enabled(&ENTITY_HASH),
             "entity should be disabled"
         );
-        assert_eq!(
-            package.lookup_entity_hash(next_version),
-            None,
-            "should not return disabled entity version"
-        );
+        // This was once true, but look up vs disable checking have been decoupled in 2.0
+        // assert_eq!(
+        //     package.lookup_entity_hash(next_version),
+        //     None,
+        //     "should not return disabled entity version"
+        // );
         assert!(
             !package.is_version_enabled(next_version),
             "version should not be enabled"

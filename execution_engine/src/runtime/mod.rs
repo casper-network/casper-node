@@ -938,7 +938,6 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-                println!("A");
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,

@@ -195,13 +195,16 @@ pub fn execute_finalized_block(
                     continue;
                 }
                 TransferResult::Success {
-                    effects, transfers, ..
+                    effects: transfer_effects,
+                    transfers,
+                    ..
                 } => {
+                    effects.append(transfer_effects.clone());
                     let artifact = ExecutionArtifact::new(
                         transaction_hash,
                         transaction.header(),
                         ExecutionResult::V2(ExecutionResultV2::Success {
-                            effects,
+                            effects: transfer_effects,
                             cost: U512::zero(),
                             transfers,
                         }),

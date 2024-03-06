@@ -454,7 +454,6 @@ where
         max_delegators_per_validator,
         minimum_delegation_amount,
     );
-    println!("{:?}", redelegation);
     match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
         Err(ApiError::AuctionError(err)) if err == Error::BondTooSmall as u8 => {
@@ -514,6 +513,7 @@ where
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;
         if delegator_count >= max_delegators_per_validator as usize {
             warn!(
+                %delegator_count, %max_delegators_per_validator,
                 "delegator_count {}, max_delegators_per_validator {}",
                 delegator_count, max_delegators_per_validator
             );
