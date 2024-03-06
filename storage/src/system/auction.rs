@@ -753,7 +753,7 @@ pub trait Auction:
         )?;
 
         // update old validator bid
-        validator_bid.with_new_public_key(new_public_key.clone(), self.read_era_id()?);
+        validator_bid.with_new_validator_bid_bridge(new_public_key.clone(), self.read_era_id()?);
         self.write_bid(validator_bid_addr.into(), BidKind::Validator(validator_bid))?;
 
         debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");

@@ -36,10 +36,19 @@ pub struct ValidatorBid {
     vesting_schedule: Option<VestingSchedule>,
     /// `true` if validator has been "evicted"
     inactive: bool,
+    /// Bridge to new `ValidatorBid` if validator public key was changed.
+    new_validator_bid_bridge: Option<NewValidatorBidBridge>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct NewValidatorBidBridge {
     /// New public key if validator key was changed.
-    new_validator_public_key: Option<PublicKey>,
+    new_validator_public_key: PublicKey,
     /// Era when validator public key was changed.
-    key_change_era_id: Option<EraId>,
+    key_change_era_id: EraId,
 }
 
 impl ValidatorBid {
@@ -60,8 +69,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         }
     }
 
@@ -81,8 +89,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         }
     }
 
@@ -99,8 +106,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         }
     }
 
@@ -243,14 +249,33 @@ impl ValidatorBid {
     }
 
     /// Sets values pointing to new bid after changing the public key
-    pub fn with_new_public_key(
+    pub fn with_new_validator_bid_bridge(
         &mut self,
         new_validator_public_key: PublicKey,
-        era_id: EraId,
+        key_change_era_id: EraId,
     ) -> &mut Self {
-        self.new_validator_public_key = Some(new_validator_public_key);
-        self.key_change_era_id = Some(era_id);
+        self.new_validator_bid_bridge = Some(NewValidatorBidBridge {
+            new_validator_public_key,
+            key_change_era_id,
+        });
         self
+    }
+
+    /// Gets the bridge data to new bid if the public key has been changed.
+    pub fn new_validator_bid_bridge(&self) -> Option<&NewValidatorBidBridge> {
+        self.new_validator_bid_bridge.as_ref()
+    }
+}
+
+impl NewValidatorBidBridge {
+    /// Gets the new validator public key
+    pub fn new_validator_public_key(&self) -> &PublicKey {
+        &self.new_validator_public_key
+    }
+
+    /// Gets the era when key change happened
+    pub fn key_change_era_id(&self) -> &EraId {
+        &self.key_change_era_id
     }
 }
 
@@ -269,8 +294,7 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(&mut result)?;
         self.vesting_schedule.write_bytes(&mut result)?;
         self.inactive.write_bytes(&mut result)?;
-        self.new_validator_public_key.write_bytes(&mut result)?;
-        self.key_change_era_id.write_bytes(&mut result)?;
+        self.new_validator_bid_bridge.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -281,8 +305,7 @@ impl ToBytes for ValidatorBid {
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
             + self.inactive.serialized_length()
-            + self.new_validator_public_key.serialized_length()
-            + self.key_change_era_id.serialized_length()
+            + self.new_validator_bid_bridge.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -292,8 +315,7 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
-        self.new_validator_public_key.write_bytes(writer)?;
-        self.key_change_era_id.write_bytes(writer)?;
+        self.new_validator_bid_bridge.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -306,8 +328,7 @@ impl FromBytes for ValidatorBid {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
-        let (new_validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
-        let (key_change_era_id, bytes) = FromBytes::from_bytes(bytes)?;
+        let (new_validator_bid_bridge, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -316,6 +337,45 @@ impl FromBytes for ValidatorBid {
                 delegation_rate,
                 vesting_schedule,
                 inactive,
+                new_validator_bid_bridge,
+            },
+            bytes,
+        ))
+    }
+}
+
+impl CLTyped for NewValidatorBidBridge {
+    fn cl_type() -> CLType {
+        CLType::Any
+    }
+}
+
+impl ToBytes for NewValidatorBidBridge {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.new_validator_public_key.write_bytes(&mut result)?;
+        self.key_change_era_id.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.new_validator_public_key.serialized_length()
+            + self.key_change_era_id.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.new_validator_public_key.write_bytes(writer)?;
+        self.key_change_era_id.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for NewValidatorBidBridge {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (new_validator_public_key, bytes) = FromBytes::from_bytes(bytes)?;
+        let (key_change_era_id, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((
+            NewValidatorBidBridge {
                 new_validator_public_key,
                 key_change_era_id,
             },
@@ -333,8 +393,7 @@ impl From<Bid> for ValidatorBid {
             delegation_rate: *bid.delegation_rate(),
             vesting_schedule: bid.vesting_schedule().cloned(),
             inactive: bid.inactive(),
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         }
     }
 }
@@ -358,8 +417,7 @@ mod tests {
             delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -375,8 +433,7 @@ mod tests {
             delegation_rate: DelegationRate::max_value(),
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: true,
-            new_validator_public_key: None,
-            key_change_era_id: None,
+            new_validator_bid_bridge: None,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
