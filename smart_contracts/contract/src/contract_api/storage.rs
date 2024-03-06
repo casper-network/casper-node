@@ -324,7 +324,8 @@ pub fn add_contract_version(
 ///
 /// # Arguments
 ///
-/// * `contract_package_hash` - The hash of the contract package containing the version to be disabled.
+/// * `contract_package_hash` - The hash of the contract package containing the version to be
+/// disabled.
 /// * `contract_hash` - The hash of the specific contract version to be disabled.
 ///
 /// # Errors
