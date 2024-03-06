@@ -241,6 +241,17 @@ impl ValidatorBid {
         self.validator_public_key = validator_public_key;
         self
     }
+
+    /// Sets values pointing to new bid after changing the public key
+    pub fn with_new_public_key(
+        &mut self,
+        new_validator_public_key: PublicKey,
+        era_id: EraId,
+    ) -> &mut Self {
+        self.new_validator_public_key = Some(new_validator_public_key);
+        self.key_change_era_id = Some(era_id);
+        self
+    }
 }
 
 impl CLTyped for ValidatorBid {
