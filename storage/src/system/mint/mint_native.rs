@@ -56,7 +56,7 @@ where
         match self
             .tracking_copy()
             .borrow_mut()
-            .read_addressable_entity_by_account_hash(self.protocol_version(), account_hash)
+            .get_addressable_entity_by_account_hash(self.protocol_version(), account_hash)
         {
             Ok(entity) => Ok(Some(entity)),
             Err(tce) => {

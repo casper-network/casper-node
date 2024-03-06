@@ -3,7 +3,6 @@ use casper_engine_test_support::{
     DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -240,7 +239,6 @@ fn should_distribute_accumulated_fees_to_admins() {
 #[ignore]
 #[test]
 fn should_accumulate_fees_after_upgrade() {
-    // let mut builder = super::private_chain_setup();
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_5);
 
@@ -279,12 +277,15 @@ fn should_accumulate_fees_after_upgrade() {
             .build()
     };
 
-    let engine_config = EngineConfigBuilder::default()
-        .with_fee_handling(FeeHandling::Accumulate)
-        .build();
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_fee_handling(FeeHandling::Accumulate);
+
+    builder.with_chainspec(updated_chainspec);
 
     builder
-        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();

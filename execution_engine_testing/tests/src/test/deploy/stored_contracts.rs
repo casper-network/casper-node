@@ -18,7 +18,7 @@ const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
 const INITIAL_VERSION: EntityVersion = ENTITY_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
-const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
+const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
 const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
 const STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME: &str = "test_payment_package_hash";
@@ -387,92 +387,13 @@ fn should_exec_stored_code_by_named_hash() {
 
 #[ignore]
 #[test]
-fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
-    let payment_purse_amount = *DEFAULT_PAYMENT;
-
-    // first, store payment contract
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        STORED_PAYMENT_CONTRACT_NAME,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
-
-    builder.exec(exec_request).commit();
-
-    let default_account = builder
-        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must have contract");
-
-    assert!(
-        default_account
-            .named_keys()
-            .contains(STORED_PAYMENT_CONTRACT_HASH_NAME),
-        "standard_payment should be present"
-    );
-
-    //
-    // upgrade with new wasm costs with modified mint for given version to avoid missing wasm costs
-    // table that's queried early
-    //
-    let sem_ver = PROTOCOL_VERSION.value();
-    let new_protocol_version =
-        ProtocolVersion::from_parts(sem_ver.major + 1, sem_ver.minor, sem_ver.patch);
-
-    let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
-
-    builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
-        .expect_upgrade_success();
-
-    // next make another deploy that USES stored payment logic
-    let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
-            .with_stored_payment_named_key(
-                STORED_PAYMENT_CONTRACT_HASH_NAME,
-                PAY_ENTRYPOINT,
-                runtime_args! {
-                    ARG_AMOUNT => payment_purse_amount,
-                },
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
-
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
-    };
-
-    builder.exec(exec_request_stored_payment).commit();
-
-    assert!(
-        builder.is_error(),
-        "calling a payment module with increased major protocol version should be error"
-    );
-
-    let expected_error = Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
-        expected: 2,
-        actual: 1,
-    });
-
-    builder.assert_error(expected_error);
-}
-
-#[ignore]
-#[test]
 fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
+    let default_account_hash = *DEFAULT_ACCOUNT_ADDR;
     // first, store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
+        default_account_hash,
         STORED_PAYMENT_CONTRACT_NAME,
         RuntimeArgs::default(),
     )
@@ -481,15 +402,24 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    builder.exec(exec_request).commit();
+    builder.exec(exec_request).expect_success().commit();
 
     let default_account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
-    let stored_payment_contract_hash = default_account
+
+    let stored_payment_key = *default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
-        .expect("should have standard_payment named key")
+        .expect("should have stored payment key");
+
+    let stored_payment = builder
+        .query(None, stored_payment_key, &[])
+        .expect("should have stored payement");
+
+    println!("{:?}", stored_payment);
+
+    let stored_payment_contract_hash = stored_payment_key
         .into_entity_hash_addr()
         .expect("standard_payment should be an uref");
 
@@ -504,7 +434,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // next make another deploy that USES stored payment logic
@@ -535,8 +465,8 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     );
 
     let expected_error = Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
-        expected: 2,
-        actual: 1,
+        expected: 3,
+        actual: 2,
     });
 
     builder.assert_error(expected_error);
@@ -598,7 +528,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -636,8 +566,8 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     assert!(matches!(
         error,
         Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
-            expected: 2,
-            actual: 1
+            expected: 3,
+            actual: 2
         })
     ))
 }
@@ -680,7 +610,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -717,9 +647,9 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
         "calling a session module with increased major protocol version should be error",
     );
 
-    let entity_version_key = EntityVersionKey::new(2, 1);
+    let entity_version_key = EntityVersionKey::new(3, 1);
 
-    let expected_error = Error::Exec(ExecError::InvalidEntityVersion(entity_version_key));
+    let expected_error = Error::Exec(ExecError::MissingEntityVersion(entity_version_key));
 
     builder.assert_error(expected_error);
 }
@@ -764,7 +694,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // Call stored session code
@@ -814,8 +744,8 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         matches!(
             error,
             Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
-                expected: 2,
-                actual: 1
+                expected: 3,
+                actual: 2
             }),
         ),
         "Error does not match: {:?}",
@@ -841,7 +771,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     let mut upgrade_request = make_upgrade_request(new_protocol_version).build();
 
     builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     // first, store payment contract for v2.0.0

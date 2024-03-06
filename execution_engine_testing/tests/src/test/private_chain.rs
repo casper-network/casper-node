@@ -7,20 +7,19 @@ mod unrestricted_transfers;
 use std::collections::{BTreeMap, BTreeSet};
 
 use casper_engine_test_support::{
-    LmdbWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
+    ChainspecConfig, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, AdministratorAccount,
-    FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, GenesisValidator,
+    CoreConfig, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, GenesisValidator,
     HostFunction, HostFunctionCosts, MessageLimits, Motes, OpcodeCosts, PublicKey, RefundHandling,
     SecretKey, StorageCosts, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
@@ -170,7 +169,7 @@ fn custom_setup_genesis_only(
     fee_handling: FeeHandling,
     compute_rewards: bool,
 ) -> LmdbWasmTestBuilder {
-    let engine_config = make_engine_config(
+    let engine_config = make_private_chain_config(
         allow_auction_bids,
         allow_unrestricted_transfers,
         refund_handling,
@@ -211,23 +210,29 @@ fn make_wasm_config() -> WasmConfig {
     )
 }
 
-fn make_engine_config(
+fn make_private_chain_config(
     allow_auction_bids: bool,
     allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
     compute_rewards: bool,
-) -> EngineConfig {
-    let administrator_accounts = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
-    EngineConfigBuilder::default()
-        .with_administrative_accounts(administrator_accounts)
-        .with_allow_auction_bids(allow_auction_bids)
-        .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
-        .with_wasm_config(make_wasm_config())
-        .with_compute_rewards(compute_rewards)
-        .build()
+) -> ChainspecConfig {
+    let administrators = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
+    let core_config = CoreConfig {
+        administrators,
+        allow_auction_bids,
+        allow_unrestricted_transfers,
+        refund_handling,
+        fee_handling,
+        compute_rewards,
+        ..Default::default()
+    };
+    let wasm_config = make_wasm_config();
+    ChainspecConfig {
+        core_config,
+        wasm_config,
+        system_costs_config: Default::default(),
+    }
 }
 
 fn private_chain_setup() -> LmdbWasmTestBuilder {

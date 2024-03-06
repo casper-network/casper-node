@@ -1,4 +1,3 @@
-use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -9,7 +8,7 @@ use casper_engine_test_support::{
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AddressableEntityHash, EraId, Gas,
     HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey, WasmConfig,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -112,8 +111,6 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     assert_eq!(gas_cost_1, gas_cost_2);
 
-    let mut upgrade_request = make_upgrade_request();
-
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
     let default_host_function_costs = HostFunctionCosts::default();
@@ -129,10 +126,8 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(
-        new_host_function_costs,
-        *builder.get_engine_state().config().wasm_config(),
-    );
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -141,13 +136,16 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ..Default::default()
     };
 
-    let new_engine_config = make_engine_config(
-        new_mint_costs,
-        new_wasm_config,
-        *builder.get_engine_state().config().system_config(),
-    );
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    builder.with_chainspec(updated_chainspec);
+
+    let mut upgrade_request = make_upgrade_request();
+    builder.upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -238,11 +236,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     // Increase "transfer_to_account" host function call exactly by X, so we can assert that
     // transfer cost increased by exactly X without hidden fees.
-    let host_function_costs = builder
-        .get_engine_state()
-        .config()
-        .wasm_config()
-        .take_host_function_costs();
+    let host_function_costs = builder.chainspec().wasm_config.take_host_function_costs();
 
     let default_create_purse_cost = host_function_costs.create_purse.cost();
     let new_create_purse_cost = default_create_purse_cost
@@ -255,10 +249,8 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ..host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(
-        new_host_function_costs,
-        *builder.get_engine_state().config().wasm_config(),
-    );
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -267,14 +259,15 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ..Default::default()
     };
 
-    let new_engine_config = make_engine_config(
-        new_mint_costs,
-        new_wasm_config,
-        *builder.get_engine_state().config().system_config(),
-    );
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
     builder
-        .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request)
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let fund_request_3 = {
@@ -383,10 +376,8 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(
-        new_host_function_costs,
-        *builder.get_engine_state().config().wasm_config(),
-    );
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -394,13 +385,16 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         create: new_mint_create_cost,
         ..Default::default()
     };
-    let new_engine_config = make_engine_config(
-        new_mint_costs,
-        new_wasm_config,
-        *builder.get_engine_state().config().system_config(),
-    );
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
+
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -512,10 +506,8 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(
-        new_host_function_costs,
-        *builder.get_engine_state().config().wasm_config(),
-    );
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -524,13 +516,15 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         ..Default::default()
     };
 
-    let new_engine_config = make_engine_config(
-        new_mint_costs,
-        new_wasm_config,
-        *builder.get_engine_state().config().system_config(),
-    );
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -638,10 +632,8 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         ..default_host_function_costs
     };
 
-    let new_wasm_config = make_wasm_config(
-        new_host_function_costs,
-        *builder.get_engine_state().config().wasm_config(),
-    );
+    let new_wasm_config =
+        make_wasm_config(new_host_function_costs, builder.chainspec().wasm_config);
 
     // Inflate affected system contract entry point cost to the maximum
     let new_mint_create_cost = u32::MAX;
@@ -650,13 +642,15 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         ..Default::default()
     };
 
-    let new_engine_config = make_engine_config(
-        new_mint_costs,
-        new_wasm_config,
-        *builder.get_engine_state().config().system_config(),
-    );
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_wasm_config(new_wasm_config)
+        .with_mint_costs(new_mint_costs);
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    builder
+        .with_chainspec(updated_chainspec)
+        .upgrade(&mut upgrade_request);
 
     let fund_request_3 = {
         let deploy_hash: [u8; 32] = [77; 32];
@@ -728,24 +722,6 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
         .expect("should have key");
 
     (builder, TestContext { gh_2280_regression })
-}
-
-fn make_engine_config(
-    new_mint_costs: MintCosts,
-    new_wasm_config: WasmConfig,
-    old_system_config: SystemConfig,
-) -> EngineConfig {
-    let new_system_config = SystemConfig::new(
-        old_system_config.wasmless_transfer_cost(),
-        *old_system_config.auction_costs(),
-        new_mint_costs,
-        *old_system_config.handle_payment_costs(),
-        *old_system_config.standard_payment_costs(),
-    );
-    EngineConfigBuilder::default()
-        .with_wasm_config(new_wasm_config)
-        .with_system_config(new_system_config)
-        .build()
 }
 
 fn make_wasm_config(

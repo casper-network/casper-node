@@ -54,6 +54,13 @@ impl ProtocolVersion {
         patch: 0,
     });
 
+    /// Version 2.0.0.
+    pub const V2_0_0: ProtocolVersion = ProtocolVersion(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    });
+
     /// Constructs a new `ProtocolVersion` from `version`.
     pub const fn new(version: SemVer) -> ProtocolVersion {
         ProtocolVersion(version)

@@ -125,6 +125,9 @@ pub enum Error {
     /// Native transfer error.
     #[error("Transfer error: {0}")]
     Transfer(TransferError),
+    /// Deprecated functionality.
+    #[error("Deprecated: {0}")]
+    Deprecated(String),
 }
 
 impl Error {
