@@ -36,8 +36,6 @@ where
     )))
 }
 
-pub mod schema_helper;
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SchemaArgument {
     pub name: String,

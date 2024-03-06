@@ -18,6 +18,9 @@ pub use casper_sdk_sys as sys;
 use host::CallResult;
 use types::{Address, CallError};
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use ctor::ctor;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Selector(u32);
 

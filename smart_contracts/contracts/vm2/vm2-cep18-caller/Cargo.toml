@@ -1,5 +1,5 @@
 [package]
-name = "vm2-cep18"
+name = "vm2-cep18-caller"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,6 +10,7 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 casper-macros = { path = "../../../macros" }
 casper-sdk = { path = "../../../sdk" }
+vm2-cep18 = { path = "../vm2-cep18" }
 borsh = { version = "1.2.0", features = ["derive", "unstable__schema"] }
 vm-common = { path = "../../../../vm-common" }
 

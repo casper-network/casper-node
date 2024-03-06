@@ -20,12 +20,12 @@ pub fn call() {
 
 #[cfg(test)]
 mod tests {
-    use casper_sdk::host::native::{dispatch_with, Environment};
+    use casper_sdk::host::native::dispatch;
 
     #[test]
     fn call_should_work() {
-        let _ = dispatch_with(Environment::default(), || {
-            super::call(&[]);
+        let _ = dispatch(|| {
+            super::call();
         });
     }
 }

@@ -382,6 +382,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
 
+                    // TODO: Rename Ext with Ref, since Ref struct can be pub(crate)'d
                     impl #ref_struct_trait for #ref_struct {}
 
                         impl casper_sdk::schema::CasperSchema for #ref_struct {
@@ -532,7 +533,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(_) | None => None,
                                 };
 
-
                                 let call_data_return_lifetime = if method_attribute.constructor {
                                     quote! {
                                         #struct_name
@@ -593,8 +593,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                                 <#struct_name>::#name(#(#arg_names,)*)
                                             });
                                         }
-                                    }
-                                    else {
+                                    } else {
                                         quote! {
                                             let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                                 <#struct_name>::#name(#(#arg_names,)*)
@@ -908,73 +907,36 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     arg_types.push(ty.clone());
                 }
 
-                // let arg_tokens =
-                // let
-
-                // let inputs = &func.sig.inputs;
-                // Ident::
-                let mod_name = format_ident!("__casper__export_{func_name}");
                 let ctor_name = format_ident!("{func_name}_ctor");
-                // let export_name = format_ident!("NAME_{func_name}");
-                // let export_args = format_ident!("ARGS_{func_name}");
 
                 let token = quote! {
-                    pub(crate) mod #mod_name {
-                        use super::*;
-                        use borsh::BorshDeserialize;
-
-                        // #[cfg(not(target_arch = "wasm32")]
-                        // use ctor::ctor;
-
-                        #func
-
-                    }
+                    #func
 
                     #[cfg(target_arch = "wasm32")]
                     #[no_mangle]
                     pub extern "C" fn #func_name() {
-                        // Set panic hook (assumes std is enabled etc.)
-                        casper_sdk::set_panic_hook();
-
-                        // TODO: If signature has no args we don't need to deserialize anything
-                        use borsh::BorshDeserialize;
-
-                        // ("foo", 1234) -> input
-
-                        let input = casper_sdk::host::casper_copy_input();
-
-                        let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
-
-                        #mod_name::#func_name(#(#arg_names,)*);
+                        casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                            #func_name(#(#arg_names,)*)
+                        });
                     }
 
                     #[cfg(not(target_arch = "wasm32"))]
-                    fn #func_name(input: &[u8]) {
-                        use borsh::BorshDeserialize;
-                        let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(input).unwrap();
-                        #mod_name::#func_name(#(#arg_names,)*);
-                    }
-
-                    #[cfg(not(target_arch = "wasm32"))]
-                    #[ctor::ctor]
+                    #[casper_sdk::ctor]
                     fn #ctor_name() {
-                        let export = casper_sdk::schema::schema_helper::Export {
+                        let export = casper_sdk::host::native::Export {
                             name: stringify!(#func_name),
-                            fptr: #func_name,
+                            module_path: module_path!(),
+                            file: file!(),
+                            line: line!(),
+                            fptr: Box::new(|| {
+                                casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                    #func_name(#(#arg_names,)*)
+                                });
+                            })
                         };
 
-                        casper_sdk::schema::schema_helper::register_export(export);
+                        casper_sdk::host::native::register_export(export);
                     }
-                    // #[cfg(not(target_arch = "wasm32"))]
-                    // pub use #mod_name::{#func_name};
-
-                    // #[cfg(not(target_arch = "wasm32"))]
-
-                    // pub fn #func_name(input: Vec<u8>) {
-                    //     use borsh::BorshDeserialize;
-                    //     let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
-                    //     #mod_name::#func_name(#(arg_names,)*);
-                    // }
                 };
 
                 return token.into();

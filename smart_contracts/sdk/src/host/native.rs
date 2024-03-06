@@ -1,9 +1,10 @@
 use bytes::Bytes;
 use core::slice;
+use once_cell::sync::Lazy;
 use rand::Rng;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     convert::Infallible,
     ptr::{self, NonNull},
     sync::{Arc, RwLock},
@@ -11,6 +12,95 @@ use std::{
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::{types::Address, Selector};
+
+use borsh::BorshSerialize;
+
+pub struct Export {
+    pub name: &'static str,
+    pub module_path: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub fptr: Box<dyn Fn() -> ()>,
+}
+
+impl std::fmt::Debug for Export {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Export")
+            .field("name", &self.name)
+            .field("module_path", &self.module_path)
+            .field("file", &self.file)
+            .field("line", &self.line)
+            .finish()
+    }
+}
+
+const ARRAY_REPEAT_VALUE: Option<Export> = None;
+pub static mut LAZY_EXPORTS: [Option<Export>; 1024] = [ARRAY_REPEAT_VALUE; 1024];
+
+pub fn register_export(export: Export) {
+    for l in unsafe { LAZY_EXPORTS.iter_mut() } {
+        if l.is_none() {
+            *l = Some(export);
+            return;
+        }
+    }
+    assert!(false, "no more space");
+}
+
+thread_local! {
+    static EXPORTS: Lazy<HashMap<&'static str, Vec<&'static Export>>> = Lazy::new(|| {
+        let mut exports: HashMap<&'static str, Vec<&'static Export>> = HashMap::new();
+        for export in unsafe { LAZY_EXPORTS.iter() } {
+            if let Some(export) = export {
+                let entry = exports.entry(export.name).or_default();
+                entry.push(export);
+            }
+        }
+        exports
+    });
+}
+
+pub fn list_exports() -> Vec<&'static Export> {
+    EXPORTS.with(|exports| {
+        let mut all_exports = Vec::new();
+        for (_name, exports) in exports.iter() {
+            all_exports.extend(exports.iter());
+        }
+        all_exports
+    })
+}
+
+pub fn call_export(name: &str) {
+    EXPORTS.with(|exports| match exports.get(name) {
+        Some(exports) if exports.len() == 1 => {
+            let export = exports.first().expect("Exactly one");
+
+            (export.fptr)();
+        }
+        Some(exports) => {
+            panic!("Found multiple exports with the same name: {exports:?}");
+        }
+        None => {
+            panic!("No export found with the given name");
+        }
+    });
+}
+
+pub fn call_export_by_module(module_path: &str, name: &str) {
+    EXPORTS.with(|exports| match exports.get(name) {
+        Some(exports) => {
+            let export = exports
+                .iter()
+                .find(|export| export.module_path == module_path)
+                .expect("Exactly one");
+
+            (export.fptr)();
+        }
+        None => {
+            panic!("No export found with the given name");
+        }
+    });
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeTrap {
@@ -149,6 +239,16 @@ impl Environment {
     pub fn with_caller(&self, caller: Address) -> Self {
         let mut env = self.clone();
         env.caller = caller;
+        env
+    }
+
+    pub fn with_input_data<Args: BorshSerialize>(&self, input_data: Args) -> Self {
+        let mut env = self.clone();
+        env.input_data = Some(
+            borsh::to_vec(&input_data)
+                .map(Bytes::from)
+                .expect("Serialization"),
+        );
         env
     }
 }

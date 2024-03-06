@@ -264,8 +264,8 @@ mod tests {
 
     use casper_macros::selector;
     use casper_sdk::{
-        host::native::dispatch,
-        schema::{schema_helper, CasperSchema},
+        host::native::{self, dispatch},
+        schema::CasperSchema,
         Selector,
     };
     use vm_common::flags::EntryPointFlags;
@@ -275,15 +275,18 @@ mod tests {
     #[test]
     fn test() {
         dispatch(|| {
-            let args = ();
-            schema_helper::dispatch("call", args);
+            native::call_export("call");
         })
         .unwrap();
     }
 
     #[test]
     fn exports() {
-        dbg!(schema_helper::list_exports());
+        let exports = native::list_exports()
+            .into_iter()
+            .map(|e| e.name)
+            .collect::<Vec<_>>();
+        assert_eq!(exports, vec!["call"]);
     }
 
     #[test]
