@@ -457,14 +457,19 @@ where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
     let redelegation_target_public_key = match unbonding_purse.new_validator() {
-        Some(public_key) => public_key,
+        Some(public_key) => {
+            // get updated key if `ValidatorBid` public key was changed
+            let validator_bid_addr = BidAddr::from(public_key.clone());
+            let validator_bid = read_current_validator_bid(provider, &validator_bid_addr.into())?;
+            validator_bid.validator_public_key().clone()
+        }
         None => return Ok(UnbondRedelegationOutcome::Withdrawal),
     };
 
     let redelegation = handle_delegation(
         provider,
         unbonding_purse.unbonder_public_key().clone(),
-        redelegation_target_public_key.clone(),
+        redelegation_target_public_key,
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
