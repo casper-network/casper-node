@@ -78,7 +78,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         let burned_amount = source_balance - new_balance;
 
         self.write_balance(purse, new_balance)?;
-        detail::reduce_total_supply_unchecked(self, burned_amount)
+        detail::reduce_total_supply_unsafe(self, burned_amount)
     }
 
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
@@ -90,7 +90,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 
-        detail::reduce_total_supply_unchecked(self, amount)
+        detail::reduce_total_supply_unsafe(self, amount)
     }
 
     /// Read balance of given `purse`.

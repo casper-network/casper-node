@@ -6,7 +6,7 @@ use casper_types::{
 use crate::system::mint::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
 
 // Please do not expose this to the user!
-pub(crate) fn reduce_total_supply_unchecked<P>(
+pub(crate) fn reduce_total_supply_unsafe<P>(
     auction: &mut P,
     amount: U512,
 ) -> Result<(), mint::Error>
