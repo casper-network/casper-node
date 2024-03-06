@@ -694,12 +694,11 @@ impl Storage {
                         .get_transaction_with_finalized_approvals(&mut ro_txn, &transaction_hash)?
                     {
                         Some((transaction, maybe_approvals)) => {
-                            let transaction = if let Some(approvals) = maybe_approvals {
+                            if let Some(approvals) = maybe_approvals {
                                 transaction.with_approvals(approvals)
                             } else {
                                 transaction
-                            };
-                            transaction
+                            }
                         }
                         None => return Ok(responder.respond(None).ignore()),
                     }
@@ -1008,6 +1007,7 @@ impl Storage {
     }
 
     /// Retrieves a set of transactions, along with their potential finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a>(
         &self,
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
@@ -1507,12 +1507,11 @@ impl Storage {
         let transaction =
             match self.get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)? {
                 Some((transaction, maybe_approvals)) => {
-                    let transaction = if let Some(approvals) = maybe_approvals {
+                    if let Some(approvals) = maybe_approvals {
                         transaction.with_approvals(approvals)
                     } else {
                         transaction
-                    };
-                    transaction
+                    }
                 }
                 None => return Ok(None),
             };
@@ -1584,6 +1583,7 @@ impl Storage {
     }
 
     /// Retrieves a single transaction along with its finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transaction_with_finalized_approvals(
         &self,
         txn: &mut (impl DataReader<TransactionHash, Transaction>

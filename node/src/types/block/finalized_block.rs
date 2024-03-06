@@ -1,21 +1,21 @@
 use std::{
     cmp::{Ord, PartialOrd},
-    collections::{BTreeMap, BTreeSet},
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
+
+#[cfg(test)]
+use std::collections::{BTreeMap, BTreeSet};
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use casper_types::Transaction;
-use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, Timestamp, TransactionCategory,
-    TransactionHash,
-};
+use casper_types::{SecretKey, Transaction, TransactionCategory};
 #[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
+
+use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
 
 use super::BlockPayload;
 
