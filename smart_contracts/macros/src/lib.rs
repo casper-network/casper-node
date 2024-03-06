@@ -445,7 +445,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     let mut names = Vec::new();
 
-                    let mut manifest_entry_points_data = Vec::new();
                     let mut manifest_entry_points = Vec::new();
                     let mut manifest_entry_point_enum_variants = Vec::new();
                     let mut manifest_entry_point_enum_match_name = Vec::new();
@@ -535,7 +534,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Some(_) | None => None,
                                 };
 
-                                let _preamble = if method_attribute.constructor {
+                                let preamble = if method_attribute.constructor {
                                     match func.sig.inputs.first() {
                                         Some(syn::FnArg::Receiver(_receiver)) => {
                                             panic!("Constructor should not take a receiver")
@@ -553,14 +552,36 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                                 panic!("Constructors should have a return value")
                                             }
                                             ty2 => {
+                                                // TODO: This currently ensures constructors can return Self only. To support Result<Self, Error> we'd ideally need an casper_abort host function to stop the execution rather than emitting unreachable trap. The idea here would be to distinguish unreachable traps from aborts.
+
                                                 quote! {
-                                                    static_assertions::assert_type_eq_all(#struct_name, #ty2);
+                                                    const _: fn() = || {
+                                                        trait TypeEq {
+                                                            type This: ?Sized;
+                                                        }
+
+                                                        impl<T: ?Sized> TypeEq for T {
+                                                            type This = Self;
+                                                        }
+
+                                                        fn assert_type_eq_all<T, U>(_: &str)
+                                                        where
+                                                            T: ?Sized + TypeEq<This = U>,
+                                                            U: ?Sized,
+                                                        {}
+
+                                                        assert_type_eq_all::<#struct_name, #ty2>("This method is a constructor and requires a Self to be returned");
+                                                    };
                                                 }
                                             }
                                         },
                                     }
                                 } else {
-                                    quote! {}
+                                    quote! {
+                                        {
+                                            // Empty preamble
+                                        }
+                                    }
                                 };
 
                                 let call_data_return_lifetime = if method_attribute.constructor {
@@ -587,57 +608,39 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 assert_eq!(arg_names.len(), arg_types.len());
 
-                                let mut entrypoint_params = Vec::new();
-
-                                for (name, _ty) in &arg_names_and_types {
-                                    entrypoint_params.push(quote! {
-                                        {
-                                            casper_sdk::sys::Param {
-                                                name_ptr: stringify!(#name).as_ptr(),
-                                                name_len: stringify!(#name).len(),
-                                            }
-                                        }
-                                    });
-                                }
-
                                 let handle_err;
                                 let handle_call;
 
-                                if method_attribute.constructor {
-                                    manifest_entry_points_data.push(quote! {
-
-                                    #[allow(non_upper_case_globals)]
-                                    const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
-                                        extern "C" fn #name() {
-                                            let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                                <#struct_name>::#name(#(#arg_names,)*)
-                                            });
-                                        }
-                                        (stringify!(#name), [#(#entrypoint_params,)*], #name)
-                                    };
-
-                                });
-
-                                    // handle_call = quote! {};
-                                    handle_err = quote! {};
-                                } else {
-                                    handle_err = if method_attribute.revert_on_error {
-                                        if let syn::ReturnType::Default = func.sig.output {
-                                            panic!(
-                                            "Cannot revert on error if there is no return value"
-                                        );
-                                        }
-
-                                        quote! {
-                                            let _ret: &Result<_, _> = &_ret;
-                                            if _ret.is_err() {
-                                                flags |= vm_common::flags::ReturnFlags::REVERT;
+                                let handle_post_call = if method_attribute.constructor {
+                                    Some(quote! {
+                                        let _ret = match _ret {
+                                            Ok(_ret) => _ret,
+                                            Err(error) => {
+                                                panic!("{}", error);
                                             }
                                         }
-                                    } else {
-                                        quote! {}
-                                    };
-                                }
+                                    })
+                                } else {
+                                    None
+                                };
+
+                                handle_err = if method_attribute.revert_on_error {
+                                    if let syn::ReturnType::Default = func.sig.output {
+                                        panic!(
+                                            "Cannot revert on error if there is no return value"
+                                        );
+                                    }
+
+                                    quote! {
+                                        let _ret: &Result<_, _> = &_ret;
+                                        if _ret.is_err() {
+                                            flags |= vm_common::flags::ReturnFlags::REVERT;
+                                        }
+
+                                    }
+                                } else {
+                                    quote! {}
+                                };
 
                                 handle_call = if entry_point_requires_state {
                                     quote! {
@@ -669,6 +672,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                     #[allow(non_upper_case_globals)]
                                         extern "C" fn #name() {
+                                            #preamble;
+
                                             let mut flags = vm_common::flags::ReturnFlags::empty();
 
                                             #handle_call;

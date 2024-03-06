@@ -15,6 +15,7 @@ use crate::{types::Address, Selector};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeTrap {
     Return(ReturnFlags, Bytes),
+    // Abort(String),
 }
 
 // macro_rules! define_trait_methods {

@@ -7031,6 +7031,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-cep78"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-macros",
+ "casper-sdk",
+ "casper-sdk-codegen",
+ "ctor 0.2.5",
+ "serde_json",
+ "vm-common",
+]
+
+[[package]]
 name = "vm2-harness"
 version = "0.1.0"
 dependencies = [
