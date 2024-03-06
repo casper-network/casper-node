@@ -305,39 +305,6 @@ enum InvalidWasmlessTransfer {
     OtherPurseToSelfPurse,
 }
 
-// fn foo(invalid_wasmless_transfer: InvalidWasmlessTransfer) {
-//     let mut builder = LmdbWasmTestBuilder::default();
-//
-//     // let create_account_1_request = ExecuteRequestBuilder::standard(
-//     //     *DEFAULT_ACCOUNT_ADDR,
-//     //     CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-//     //     runtime_args! {
-//     //         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-//     //         mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
-//     //         mint::ARG_ID => id
-//     //     },
-//     // )
-//     //     .build();
-//     let config = NativeRuntimeConfig::default();
-//     let block_time = Instant::now();
-//     let protocol_version = ProtocolVersion::V2_0_0;
-//     //transaction_hash: TransactionHash,
-//     let address = *DEFAULT_ACCOUNT_ADDR;
-//     let authorization_keys = &[*DEFAULT_ACCOUNT_ADDR];
-//     let args = runtime_args! {
-//         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-//         mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
-//         mint::ARG_ID => None
-//     };
-//     // cost: U512,
-//     let transfer_request = TransferRequest::new();
-//     match builder.data_access_layer().transfer(transfer_request) {
-//         TransferResult::RootNotFound => {}
-//         TransferResult::Success { .. } => {}
-//         TransferResult::Failure(_) => {}
-//     }
-// }
-
 fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer) {
     let create_account_2: bool = true;
     let mut builder = init_wasmless_transform_builder(create_account_2);
@@ -991,24 +958,6 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let transfer_amount = U512::one();
 
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
-
-    // let new_auction_costs = AuctionCosts::default();
-    // let new_mint_costs = MintCosts::default();
-    // let new_handle_payment_costs = HandlePaymentCosts::default();
-    // let new_standard_payment_costs = StandardPaymentCosts::default();
-
-    // let new_system_config = SystemConfig::new(
-    //     new_wasmless_transfer_cost_value,
-    //     new_auction_costs,
-    //     new_mint_costs,
-    //     new_handle_payment_costs,
-    //     new_standard_payment_costs,
-    // );
-
-    // let new_engine_config = EngineConfigBuilder::default()
-    //     .with_max_associated_keys(new_max_associated_keys)
-    //     .with_system_config(new_system_config)
-    //     .build();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(

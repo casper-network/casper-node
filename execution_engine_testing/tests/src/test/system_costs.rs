@@ -427,32 +427,6 @@ fn delegate_and_undelegate_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_delegate_and_undelegate_have_expected_costs() {
-    // let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
-    // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
-    //
-    // let new_auction_costs = AuctionCosts {
-    //     delegate: NEW_DELEGATE_COST,
-    //     undelegate: NEW_UNDELEGATE_COST,
-    //     redelegate: NEW_REDELEGATE_COST,
-    //     ..Default::default()
-    // };
-    // let new_mint_costs = MintCosts::default();
-    // let new_standard_payment_costs = StandardPaymentCosts::default();
-    // let new_handle_payment_costs = HandlePaymentCosts::default();
-    //
-    // let new_system_config = SystemConfig::new(
-    //     new_wasmless_transfer_cost,
-    //     new_auction_costs,
-    //     new_mint_costs,
-    //     new_handle_payment_costs,
-    //     new_standard_payment_costs,
-    // );
-
-    // let new_engine_config = EngineConfigBuilder::default()
-    //     .with_max_associated_keys(new_max_associated_keys)
-    //     .with_system_config(new_system_config)
-    //     .build();
-
     let mut builder = LmdbWasmTestBuilder::default();
     let accounts = {
         let validator_1 = GenesisAccount::account(

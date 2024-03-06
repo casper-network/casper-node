@@ -39,12 +39,6 @@ pub enum Error {
     FailedToPrune(Vec<Key>),
 }
 
-// impl From<bytesrepr::Error> for Error {
-//     fn from(error: bytesrepr::Error) -> Self {
-//         Error::BytesRepr(error)
-//     }
-// }
-
 impl<T> From<sync::PoisonError<T>> for Error {
     fn from(_error: sync::PoisonError<T>) -> Self {
         Error::Poison
