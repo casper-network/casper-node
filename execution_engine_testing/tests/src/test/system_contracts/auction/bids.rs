@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, iter::FromIterator};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::FromIterator,
+};
 
 use assert_matches::assert_matches;
 use num_traits::{One, Zero};
@@ -29,8 +32,9 @@ use casper_types::{
         self,
         auction::{
             self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
-            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_PUBLIC_KEY,
-            ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_ENTRY_POINT,
+            ARG_NEW_PUBLIC_KEY, ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR,
+            ERA_ID_KEY, INITIAL_ERA_ID, METHOD_DISTRIBUTE,
         },
     },
     EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
@@ -4605,4 +4609,21 @@ fn should_change_validator_bid_public_key() {
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_2_PK)
         .expect("should have account2 delegation");
     assert_eq!(delegator.staked_amount(), U512::from(DELEGATE_AMOUNT_2));
+
+    // distribute rewards
+    let total_payout = builder.base_round_reward(None);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *SYSTEM_ADDR,
+        builder.get_auction_contract_hash(),
+        METHOD_DISTRIBUTE,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARDS_MAP => rewards
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request).commit().expect_success();
 }
