@@ -1,7 +1,6 @@
 use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
-    trie_store::operations::PruneResult,
 };
 use casper_types::{execution::Effects, Digest, EraId};
 
@@ -9,34 +8,52 @@ use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
 pub mod balance;
+pub mod bidding;
+pub mod bids;
+pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
+mod fee;
 mod flush;
 mod genesis;
-pub mod get_bids;
 mod protocol_upgrade;
+pub mod prune;
 pub mod query;
 mod round_seigniorage;
+pub mod step;
+mod system_entity_registry;
+pub mod tagged_values;
 mod total_supply;
 pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
-pub use balance::{BalanceRequest, BalanceResult};
+pub use balance::{BalanceIdentifier, BalanceRequest, BalanceResult};
+pub use bidding::{BiddingRequest, BiddingResult};
+pub use bids::{BidsRequest, BidsResult};
+pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+pub use fee::{FeeError, FeeRequest, FeeResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
-pub use get_bids::{BidsRequest, BidsResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
+pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
+pub use step::{EvictItem, RewardItem, SlashItem, StepError, StepRequest, StepResult};
+pub use system_entity_registry::{
+    SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+    SystemEntityRegistrySelector,
+};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
+
+pub use bidding::AuctionMethod;
 
 pub struct Block {
     _era_id: EraId,
@@ -71,6 +88,15 @@ pub struct DataAccessLayer<S> {
 impl<S> DataAccessLayer<S> {
     pub fn state(&self) -> &S {
         &self.state
+    }
+}
+
+impl<S> CommitProvider for DataAccessLayer<S>
+where
+    S: CommitProvider,
+{
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+        self.state.commit(state_hash, effects)
     }
 }
 
@@ -112,22 +138,5 @@ where
 
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {
         self.state.missing_children(trie_raw)
-    }
-
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_prune: &[casper_types::Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        self.state.prune_keys(root, keys_to_prune)
-    }
-}
-
-impl<S> CommitProvider for DataAccessLayer<S>
-where
-    S: CommitProvider,
-{
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
-        self.state.commit(state_hash, effects)
     }
 }

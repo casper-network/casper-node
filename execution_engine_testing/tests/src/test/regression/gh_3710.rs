@@ -4,8 +4,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{PruneConfig, PruneResult};
-use casper_storage::global_state::state::{CommitProvider, StateProvider};
+use casper_storage::{
+    data_access_layer::{PruneRequest, PruneResult},
+    global_state::state::{CommitProvider, StateProvider},
+};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
@@ -24,7 +26,7 @@ fn gh_3710_commit_prune_with_empty_keys_should_be_noop() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
-    let prune_config = PruneConfig::new(builder.get_post_state_hash(), Vec::new());
+    let prune_config = PruneRequest::new(builder.get_post_state_hash(), Vec::new());
 
     builder.commit_prune(prune_config).expect_prune_success();
 }
@@ -35,7 +37,7 @@ fn gh_3710_commit_prune_should_validate_state_root_hash() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
 
-    let prune_config = PruneConfig::new(Digest::hash("foobar"), Vec::new());
+    let prune_config = PruneRequest::new(Digest::hash("foobar"), Vec::new());
 
     builder.commit_prune(prune_config);
 
@@ -45,7 +47,7 @@ fn gh_3710_commit_prune_should_validate_state_root_hash() {
     assert!(builder.get_prune_result(1).is_none());
 
     assert!(
-        matches!(prune_result, Ok(PruneResult::RootNotFound)),
+        matches!(prune_result, PruneResult::RootNotFound),
         "{:?}",
         prune_result
     );
@@ -99,7 +101,7 @@ fn gh_3710_commit_prune_should_delete_values() {
     // Process prune of first batch
     let pre_state_hash = builder.get_post_state_hash();
 
-    let prune_config_1 = PruneConfig::new(pre_state_hash, batch_1);
+    let prune_config_1 = PruneRequest::new(pre_state_hash, batch_1);
 
     builder.commit_prune(prune_config_1).expect_prune_success();
     let post_state_hash_batch_1 = builder.get_post_state_hash();
@@ -114,7 +116,7 @@ fn gh_3710_commit_prune_should_delete_values() {
     // Process prune of second batch
     let pre_state_hash = builder.get_post_state_hash();
 
-    let prune_config_2 = PruneConfig::new(pre_state_hash, batch_2);
+    let prune_config_2 = PruneRequest::new(pre_state_hash, batch_2);
     builder.commit_prune(prune_config_2).expect_prune_success();
     let post_state_hash_batch_2 = builder.get_post_state_hash();
     assert_ne!(pre_state_hash, post_state_hash_batch_2);
@@ -163,7 +165,7 @@ where
             .with_next_era_id(era_counter)
             // no rewards as default validator is not a validator yet
             .build();
-        builder.step(step_request).unwrap();
+        builder.step(step_request);
     }
 }
 
@@ -175,15 +177,12 @@ fn distribute_rewards<S>(
 ) where
     S: StateProvider + CommitProvider,
 {
-    builder
-        .distribute(
-            None,
-            ProtocolVersion::V1_0_0,
-            &IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
-            block_height,
-            0,
-        )
-        .unwrap();
+    builder.distribute(
+        None,
+        ProtocolVersion::V1_0_0,
+        IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
+        block_height,
+    );
 }
 
 #[ignore]

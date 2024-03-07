@@ -2,19 +2,18 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
-    EngineConfigBuilder, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+    Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
 use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef,
+    AccessRights, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
@@ -947,7 +946,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
     let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
-    let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
+    // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
     let new_wasmless_transfer_cost = Motes::from_gas(
@@ -959,24 +958,6 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     let transfer_amount = U512::one();
 
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
-
-    let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts::default();
-    let new_handle_payment_costs = HandlePaymentCosts::default();
-    let new_standard_payment_costs = StandardPaymentCosts::default();
-
-    let new_system_config = SystemConfig::new(
-        new_wasmless_transfer_cost_value,
-        new_auction_costs,
-        new_mint_costs,
-        new_handle_payment_costs,
-        new_standard_payment_costs,
-    );
-
-    let new_engine_config = EngineConfigBuilder::default()
-        .with_max_associated_keys(new_max_associated_keys)
-        .with_system_config(new_system_config)
-        .build();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -1000,7 +981,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

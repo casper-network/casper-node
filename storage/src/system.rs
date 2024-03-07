@@ -4,5 +4,6 @@ pub mod genesis;
 pub mod handle_payment;
 pub mod mint;
 pub mod protocol_upgrade;
+pub mod runtime_native;
 pub mod standard_payment;
 pub mod transfer;

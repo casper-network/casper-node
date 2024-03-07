@@ -73,8 +73,8 @@ strict_argument_checking = false
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
 consensus_protocol = 'Highway'
-# The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
-max_delegators_per_validator = 0
+# The maximum amount of delegators per validator.
+max_delegators_per_validator = 1200
 # The split in finality signature rewards between block producer and participating signers.
 finders_fee = [1, 5]
 # The proportion of baseline rewards going to reward finality signatures specifically.

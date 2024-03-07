@@ -128,6 +128,12 @@ pub enum Error {
     /// Invalid entity version supplied.
     #[error("Invalid entity version: {}", _0)]
     InvalidEntityVersion(EntityVersionKey),
+    /// Invalid entity version supplied.
+    #[error("Disabled entity version: {}", _0)]
+    DisabledEntityVersion(EntityVersionKey),
+    /// Invalid entity version supplied.
+    #[error("Missing entity version: {}", _0)]
+    MissingEntityVersion(EntityVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),

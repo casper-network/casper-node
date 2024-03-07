@@ -25,13 +25,6 @@ mod wasm_test_builder;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
-#[doc(inline)]
-#[allow(deprecated)]
-pub use casper_execution_engine::engine_state::engine_config::{
-    DEFAULT_MAXIMUM_DELEGATION_AMOUNT, DEFAULT_MAX_ASSOCIATED_KEYS,
-    DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MAX_STORED_VALUE_SIZE,
-    DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
@@ -81,6 +74,18 @@ pub const ARG_AMOUNT: &str = "amount";
 /// Timestamp increment in milliseconds.
 pub const TIMESTAMP_MILLIS_INCREMENT: u64 = 30_000; // 30 seconds
 
+/// Default value for maximum associated keys configuration option.
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+
+/// Default value for a maximum query depth configuration option.
+pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
+/// Default value for maximum runtime call stack height configuration option.
+pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+/// Default value for minimum delegation amount in motes.
+pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
+/// Default value for maximum delegation amount in motes.
+pub const DEFAULT_MAXIMUM_DELEGATION_AMOUNT: u64 = 1_000_000_000 * 1_000_000_000;
+
 /// Default genesis config hash.
 pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
 /// Default account public key.
@@ -125,7 +130,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     ret
 });
 /// Default [`ProtocolVersion`].
-pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
+pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V2_0_0);
 /// Default payment.
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 /// Default [`WasmConfig`].

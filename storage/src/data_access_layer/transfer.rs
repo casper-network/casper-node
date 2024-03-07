@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
+use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, ProtocolVersion, PublicKey, RuntimeArgs,
-    TransferAddr, U512,
+    account::AccountHash, execution::Effects, Digest, ProtocolVersion, RuntimeArgs,
+    TransactionHash, TransferAddr, U512,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -14,85 +15,19 @@ pub enum TransferRequestArgs {
     Explicit(TransferArgs),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransferConfig {
-    Administered {
-        administrative_accounts: BTreeSet<AccountHash>,
-        allow_unrestricted_transfer: bool,
-    },
-    Unadministered,
-}
-
-impl TransferConfig {
-    /// Returns a new instance.
-    pub fn new(
-        administrative_accounts: BTreeSet<AccountHash>,
-        allow_unrestricted_transfer: bool,
-    ) -> Self {
-        if administrative_accounts.is_empty() && allow_unrestricted_transfer {
-            TransferConfig::Unadministered
-        } else {
-            TransferConfig::Administered {
-                administrative_accounts,
-                allow_unrestricted_transfer,
-            }
-        }
-    }
-
-    /// Does account hash belong to an administrative account?
-    pub fn is_administrator(&self, account_hash: &AccountHash) -> bool {
-        match self {
-            TransferConfig::Administered {
-                administrative_accounts,
-                ..
-            } => administrative_accounts.contains(account_hash),
-            TransferConfig::Unadministered => false,
-        }
-    }
-
-    /// Administrative accounts, if any.
-    pub fn administrative_accounts(&self) -> BTreeSet<AccountHash> {
-        match self {
-            TransferConfig::Administered {
-                administrative_accounts,
-                ..
-            } => administrative_accounts.clone(),
-            TransferConfig::Unadministered => BTreeSet::default(),
-        }
-    }
-
-    /// Allow unrestricted transfers.
-    pub fn allow_unrestricted_transfers(&self) -> bool {
-        match self {
-            TransferConfig::Administered {
-                allow_unrestricted_transfer,
-                ..
-            } => *allow_unrestricted_transfer,
-            TransferConfig::Unadministered => true,
-        }
-    }
-
-    /// Restricted transfer should be enforced.
-    pub fn enforce_transfer_restrictions(&self, account_hash: &AccountHash) -> bool {
-        !self.allow_unrestricted_transfers() && !self.is_administrator(account_hash)
-    }
-}
-
 /// Request for motes transfer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferRequest {
     /// Config.
-    config: TransferConfig,
+    config: NativeRuntimeConfig,
     /// State root hash.
     state_hash: Digest,
     /// Block time represented as a unix timestamp.
     block_time: u64,
     /// Protocol version.
     protocol_version: ProtocolVersion,
-    /// Public key of the proposer.
-    proposer: PublicKey,
     /// Transaction hash.
-    transaction_hash: Digest,
+    transaction_hash: TransactionHash,
     /// Base account.
     address: AccountHash,
     /// List of authorizing accounts.
@@ -107,12 +42,11 @@ impl TransferRequest {
     /// Creates new request object.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: TransferConfig,
+        config: NativeRuntimeConfig,
         state_hash: Digest,
         block_time: u64,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
-        transaction_hash: Digest,
+        transaction_hash: TransactionHash,
         address: AccountHash,
         authorization_keys: BTreeSet<AccountHash>,
         args: TransferArgs,
@@ -124,7 +58,6 @@ impl TransferRequest {
             state_hash,
             block_time,
             protocol_version,
-            proposer,
             transaction_hash,
             address,
             authorization_keys,
@@ -136,12 +69,11 @@ impl TransferRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn with_runtime_args(
-        config: TransferConfig,
+        config: NativeRuntimeConfig,
         state_hash: Digest,
         block_time: u64,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
-        transaction_hash: Digest, // <-- TODO: this should probably be TransactionHash
+        transaction_hash: TransactionHash,
         address: AccountHash,
         authorization_keys: BTreeSet<AccountHash>,
         args: RuntimeArgs,
@@ -153,7 +85,6 @@ impl TransferRequest {
             state_hash,
             block_time,
             protocol_version,
-            proposer,
             transaction_hash,
             address,
             authorization_keys,
@@ -162,8 +93,12 @@ impl TransferRequest {
         }
     }
 
-    pub fn config(&self) -> &TransferConfig {
+    pub fn config(&self) -> &NativeRuntimeConfig {
         &self.config
+    }
+
+    pub fn transfer_config(&self) -> &TransferConfig {
+        self.config.transfer_config()
     }
 
     /// Returns state root hash.
@@ -192,13 +127,8 @@ impl TransferRequest {
     }
 
     /// Returns transaction hash.
-    pub fn transaction_hash(&self) -> Digest {
+    pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
-    }
-
-    /// Returns proposer.
-    pub fn proposer(&self) -> &PublicKey {
-        &self.proposer
     }
 
     /// The cost.
@@ -225,8 +155,6 @@ pub enum TransferResult {
     Success {
         /// List of transfers that happened during execution.
         transfers: Vec<TransferAddr>,
-        /// State hash after transfer is committed to the global state.
-        post_state_hash: Digest,
         /// Effects of transfer.
         effects: Effects,
     },

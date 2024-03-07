@@ -10,7 +10,7 @@ source "$NCTL/sh/utils/main.sh"
 # Builds assets for staging.
 # Arguments:
 #   Stage ordinal identifier.
-#   Stage source (local | remote | node_commit-client_commit).
+#   Stage source (local | remote | node_commit-client_commit-sidecar_commit).
 #   Scenario protocol version.
 #######################################
 function _main()
@@ -47,6 +47,7 @@ function set_stage_binaries()
 {
     local PATH_TO_NODE_SOURCE=${1}
     local PATH_TO_CLIENT_SOURCE=${2}
+    local PATH_TO_SIDECAR_SOURCE=${3}
 
     pushd "$PATH_TO_NODE_SOURCE" || exit
 
@@ -78,6 +79,17 @@ function set_stage_binaries()
     fi
 
     popd || exit
+
+    # Set sidecar binary.
+    pushd "$PATH_TO_SIDECAR_SOURCE" || exit
+
+    if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
+        cargo build
+    else
+        cargo build --release
+    fi
+
+    popd || exit
 }
 
 #######################################
@@ -91,7 +103,8 @@ function set_stage_files_from_repo()
 {
     local PATH_TO_NODE_SOURCE=${1}
     local PATH_TO_CLIENT_SOURCE=${2}
-    local PATH_TO_STAGE=${3}
+    local PATH_TO_SIDECAR_SOURCE=${3}
+    local PATH_TO_STAGE=${4}
 
     # Stage binaries.
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
@@ -101,12 +114,16 @@ function set_stage_files_from_repo()
            "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
            "$PATH_TO_STAGE"
+        cp "$PATH_TO_SIDECAR_SOURCE/target/debug/casper-sidecar" \
+           "$PATH_TO_STAGE"
     else
         cp "$PATH_TO_CLIENT_SOURCE/target/release/casper-client" \
            "$PATH_TO_STAGE"
         cp "$PATH_TO_NODE_SOURCE/target/release/casper-node" \
            "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
+           "$PATH_TO_STAGE"
+        cp "$PATH_TO_SIDECAR_SOURCE/target/release/casper-sidecar" \
            "$PATH_TO_STAGE"
     fi
 
@@ -134,6 +151,10 @@ function set_stage_files_from_repo()
     # Stage node config.
     cp "$PATH_TO_NODE_SOURCE/resources/local/config.toml" \
        "$PATH_TO_STAGE"
+
+    # Stage sidecar config.
+    cp "$PATH_TO_SIDECAR_SOURCE/resources/example_configs/default_rpc_only_config.toml" \
+       "$PATH_TO_STAGE/sidecar.toml"
 }
 
 # ----------------------------------------------------------------

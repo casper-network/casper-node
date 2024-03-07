@@ -10,6 +10,7 @@ use tracing::{debug, error};
 
 use casper_types::{
     execution::{Effects, Transform, TransformInstruction, TransformKind},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
@@ -23,12 +24,11 @@ use crate::{
         state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie::{Trie, TrieRaw},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-                PruneResult, ReadResult,
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
             },
         },
     },
@@ -305,17 +305,8 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
-            cache: Arc::clone(&self.cache),
-            environment: Arc::clone(&self.environment),
-            trie_store: Arc::clone(&self.trie_store),
-            root_hash: state_hash,
-        });
-        txn.commit()?;
-        Ok(maybe_state)
+    fn empty_root(&self) -> Digest {
+        self.empty_root_hash
     }
 
     fn tracking_copy(
@@ -328,8 +319,17 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
+        let txn = self.environment.create_read_txn()?;
+        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
+        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+            cache: Arc::clone(&self.cache),
+            environment: Arc::clone(&self.environment),
+            trie_store: Arc::clone(&self.trie_store),
+            root_hash: state_hash,
+        });
+        txn.commit()?;
+        Ok(maybe_state)
     }
 
     fn trie(&self, request: TrieRequest) -> TrieResult {
@@ -418,30 +418,6 @@ impl StateProvider for ScratchGlobalState {
         >(&txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
-    }
-
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        for key in keys_to_delete {
-            let prune_result = prune::<Key, StoredValue, _, _, GlobalStateError>(
-                &mut txn,
-                self.trie_store.deref(),
-                &state_root_hash,
-                key,
-            );
-            match prune_result? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
-                }
-                other => return Ok(other),
-            }
-        }
-        txn.commit()?;
-        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 

@@ -13,7 +13,7 @@ use casper_wasm_utils::{
     stack_height,
 };
 
-use crate::execution;
+use crate::execution::ExecError;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
 /// Name of the internal gas function injected by [`casper_wasm_utils::inject_gas_counter`].
@@ -416,10 +416,10 @@ pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
 pub fn get_module_from_entry_points(
     entry_point_names: Vec<&str>,
     mut module: Module,
-) -> Result<Vec<u8>, execution::Error> {
-    let export_section = module.export_section().ok_or_else(|| {
-        execution::Error::FunctionNotFound(String::from("Missing Export Section"))
-    })?;
+) -> Result<Vec<u8>, ExecError> {
+    let export_section = module
+        .export_section()
+        .ok_or_else(|| ExecError::FunctionNotFound(String::from("Missing Export Section")))?;
 
     let maybe_missing_name: Option<String> = entry_point_names
         .iter()
@@ -432,10 +432,10 @@ pub fn get_module_from_entry_points(
         .map(|s| String::from(*s));
 
     match maybe_missing_name {
-        Some(missing_name) => Err(execution::Error::FunctionNotFound(missing_name)),
+        Some(missing_name) => Err(ExecError::FunctionNotFound(missing_name)),
         None => {
             casper_wasm_utils::optimize(&mut module, entry_point_names)?;
-            casper_wasm::serialize(module).map_err(execution::Error::ParityWasm)
+            casper_wasm::serialize(module).map_err(ExecError::ParityWasm)
         }
     }
 }

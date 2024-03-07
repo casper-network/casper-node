@@ -523,9 +523,9 @@ extern "C" {
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
     /// * `named_keys_ptr` - pointer to serialized [`casper_types::addressable_entity::NamedKeys`]
     /// * `named_keys_size` - size of serialized [`casper_types::addressable_entity::NamedKeys`]
-    /// * `message_topics_ptr` - pointer to serialized [`BTreeMap<String, MessageTopicOperation>`]
+    /// * `message_topics_ptr` - pointer to serialized BTreeMap<String, MessageTopicOperation>
     ///   containing message topic names and the operation to pe performed on each one.
-    /// * `message_topics_size` - size of serialized [`BTreeMap<String, MessageTopicOperation>`]
+    /// * `message_topics_size` - size of serialized BTreeMap<String, MessageTopicOperation>
     /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
     /// * `output_size` - expected width of output (currently 32)
     pub fn casper_add_package_version(

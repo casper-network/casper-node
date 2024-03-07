@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::engine_state::SlashItem;
+use casper_storage::data_access_layer::SlashItem;
 use casper_types::{
     system::{
         auction::{
@@ -75,10 +75,9 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
 #[test]
 fn should_step() {
     let mut builder = initialize_builder();
+    let step_request_builder = builder.step_request_builder();
 
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
+    let step_request = step_request_builder
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
         .with_next_era_id(EraId::from(1))
         .build();
@@ -100,7 +99,7 @@ fn should_step() {
         "bid amount should not be 0"
     );
 
-    builder.step(step_request).expect("should step");
+    assert!(builder.step(step_request).is_success(), "should step");
 
     let bids_after_slashing = builder.get_bids();
     assert!(bids_after_slashing.validator_bid(&ACCOUNT_1_PK).is_none());
@@ -159,7 +158,7 @@ fn should_adjust_total_supply() {
         .with_next_era_id(EraId::from(1))
         .build();
 
-    builder.step(step_request).expect("should step");
+    assert!(builder.step(step_request).is_success(), "should step");
 
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 

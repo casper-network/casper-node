@@ -50,9 +50,12 @@ pub enum TransferError {
     /// Invalid operation.
     #[error("Invalid operation")]
     InvalidOperation,
-    /// Failed to transfer tokens on a private chain.
-    #[error("Failed to transfer with unrestricted transfers disabled")]
-    DisabledUnrestrictedTransfers,
+    /// Disallowed transfer attempt (private chain).
+    #[error("Either the source or the target must be an admin (private chain).")]
+    RestrictedTransferAttempted,
+    /// Could not determine if target is an admin (private chain).
+    #[error("Unable to determine if the target of a transfer is an admin")]
+    UnableToVerifyTargetIsAdmin,
     /// Tracking copy error.
     #[error("{0}")]
     TrackingCopy(TrackingCopyError),
@@ -97,9 +100,31 @@ pub enum NewTransferTargetMode {
         main_purse: URef,
     },
     /// Native transfer arguments resolved into a transfer to a purse.
-    PurseExists(URef),
+    PurseExists {
+        /// Target account hash (if known).
+        target_account_hash: Option<AccountHash>,
+        /// Purse.
+        purse_uref: URef,
+    },
     /// Native transfer arguments resolved into a transfer to a new account.
     CreateAccount(AccountHash),
+}
+
+impl NewTransferTargetMode {
+    /// Target account hash, if any.
+    pub fn target_account_hash(&self) -> Option<AccountHash> {
+        match self {
+            NewTransferTargetMode::PurseExists {
+                target_account_hash,
+                ..
+            } => *target_account_hash,
+            NewTransferTargetMode::ExistingAccount {
+                target_account_hash,
+                ..
+            } => Some(*target_account_hash),
+            NewTransferTargetMode::CreateAccount(target_account_hash) => Some(*target_account_hash),
+        }
+    }
 }
 
 /// Mint's transfer arguments.
@@ -287,17 +312,31 @@ impl TransferRuntimeArgsBuilder {
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let imputed_runtime_args = &self.inner;
-        let arg_name = mint::ARG_TARGET;
+        let to_name = mint::ARG_TO;
 
-        let account_hash = match imputed_runtime_args.get(arg_name) {
+        let target_account_hash = match imputed_runtime_args.get(to_name) {
+            Some(cl_value)
+                if *cl_value.cl_type() == CLType::Option(Box::new(CLType::ByteArray(32))) =>
+            {
+                let to: Option<AccountHash> = self.map_cl_value(cl_value)?;
+                to
+            }
+            Some(_) | None => None,
+        };
+
+        let target_name = mint::ARG_TARGET;
+        let account_hash = match imputed_runtime_args.get(target_name) {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
-                let uref = self.map_cl_value(cl_value)?;
+                let purse_uref = self.map_cl_value(cl_value)?;
 
-                if !self.purse_exists(uref, tracking_copy) {
+                if !self.purse_exists(purse_uref, tracking_copy) {
                     return Err(TransferError::InvalidPurse);
                 }
 
-                return Ok(NewTransferTargetMode::PurseExists(uref));
+                return Ok(NewTransferTargetMode::PurseExists {
+                    purse_uref,
+                    target_account_hash,
+                });
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 self.map_cl_value(cl_value)?
@@ -378,20 +417,24 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let (to, target_uref) =
-            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
-                NewTransferTargetMode::ExistingAccount {
-                    main_purse: purse_uref,
-                    target_account_hash: target_account,
-                } => (Some(target_account), purse_uref),
-                NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
-                NewTransferTargetMode::CreateAccount(_) => {
-                    // Method "build()" is called after `resolve_transfer_target_mode` is first called
-                    // and handled by creating a new account. Calling `resolve_transfer_target_mode`
-                    // for the second time should never return `CreateAccount` variant.
-                    return Err(TransferError::InvalidOperation);
-                }
-            };
+        let (to, target_uref) = match self
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
+        {
+            NewTransferTargetMode::ExistingAccount {
+                main_purse: purse_uref,
+                target_account_hash: target_account,
+            } => (Some(target_account), purse_uref),
+            NewTransferTargetMode::PurseExists {
+                target_account_hash,
+                purse_uref,
+            } => (target_account_hash, purse_uref),
+            NewTransferTargetMode::CreateAccount(_) => {
+                // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                // for the second time should never return `CreateAccount` variant.
+                return Err(TransferError::InvalidOperation);
+            }
+        };
 
         let source_uref =
             self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;

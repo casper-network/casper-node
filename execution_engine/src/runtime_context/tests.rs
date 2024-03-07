@@ -24,7 +24,7 @@ use casper_types::{
 };
 use tempfile::TempDir;
 
-use super::{Error, RuntimeContext};
+use super::{ExecError, RuntimeContext};
 use crate::engine_state::EngineConfig;
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
@@ -168,17 +168,20 @@ fn new_runtime_context<'a>(
 }
 
 #[allow(clippy::assertions_on_constants)]
-fn assert_forged_reference<T>(result: Result<T, Error>) {
+fn assert_forged_reference<T>(result: Result<T, ExecError>) {
     match result {
-        Err(Error::ForgedReference(_)) => assert!(true),
+        Err(ExecError::ForgedReference(_)) => assert!(true),
         _ => panic!("Error. Test should have failed with ForgedReference error but didn't."),
     }
 }
 
 #[allow(clippy::assertions_on_constants)]
-fn assert_invalid_access<T: std::fmt::Debug>(result: Result<T, Error>, expecting: AccessRights) {
+fn assert_invalid_access<T: std::fmt::Debug>(
+    result: Result<T, ExecError>,
+    expecting: AccessRights,
+) {
     match result {
-        Err(Error::InvalidAccess { required }) if required == expecting => assert!(true),
+        Err(ExecError::InvalidAccess { required }) if required == expecting => assert!(true),
         other => panic!(
             "Error. Test should have failed with InvalidAccess error but didn't: {:?}.",
             other
@@ -189,9 +192,9 @@ fn assert_invalid_access<T: std::fmt::Debug>(result: Result<T, Error>, expecting
 fn build_runtime_context_and_execute<T, F>(
     mut named_keys: NamedKeys,
     functor: F,
-) -> Result<T, Error>
+) -> Result<T, ExecError>
 where
-    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, Error>,
+    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, ExecError>,
 {
     let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
         .expect("should create secret key");
@@ -767,7 +770,7 @@ fn should_verify_ownership_before_adding_key() {
             .expect_err("This operation should return error");
 
         match err {
-            Error::AddKeyFailure(AddKeyFailure::PermissionDenied) => {}
+            ExecError::AddKeyFailure(AddKeyFailure::PermissionDenied) => {}
             e => panic!("Invalid error variant: {:?}", e),
         }
 
@@ -791,7 +794,7 @@ fn should_verify_ownership_before_removing_a_key() {
             .expect_err("This operation should return error");
 
         match err {
-            Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied) => {}
+            ExecError::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
@@ -815,7 +818,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
             .expect_err("This operation should return error");
 
         match err {
-            Error::SetThresholdFailure(SetThresholdFailure::PermissionDeniedError) => {}
+            ExecError::SetThresholdFailure(SetThresholdFailure::PermissionDeniedError) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
@@ -1067,6 +1070,6 @@ fn associated_keys_add_full() {
 
     assert!(matches!(
         final_add_result.expect_err("should error out"),
-        Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit)
+        ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit)
     ));
 }

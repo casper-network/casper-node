@@ -10,12 +10,12 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
-    ProtocolVersion,
+    account::AccountHash, binary_port, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag,
+    PackageHash, ProtocolVersion,
 };
 
 use crate::{
-    execution,
+    execution::ExecError,
     runtime::{stack, PreprocessingError},
 };
 
@@ -40,7 +40,7 @@ pub enum Error {
     WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
-    Exec(execution::Error),
+    Exec(ExecError),
     /// Storage error.
     #[error("Storage error: {0}")]
     Storage(#[from] global_state::error::Error),
@@ -125,6 +125,9 @@ pub enum Error {
     /// Native transfer error.
     #[error("Transfer error: {0}")]
     Transfer(TransferError),
+    /// Deprecated functionality.
+    #[error("Deprecated: {0}")]
+    Deprecated(String),
 }
 
 impl Error {
@@ -134,7 +137,7 @@ impl Error {
     /// This method should be used only by native code that has to mimic logic of a WASM executed
     /// code.
     pub fn reverter(api_error: impl Into<ApiError>) -> Error {
-        Error::Exec(execution::Error::Revert(api_error.into()))
+        Error::Exec(ExecError::Revert(api_error.into()))
     }
 }
 
@@ -144,10 +147,10 @@ impl From<TransferError> for Error {
     }
 }
 
-impl From<execution::Error> for Error {
-    fn from(error: execution::Error) -> Self {
+impl From<ExecError> for Error {
+    fn from(error: ExecError) -> Self {
         match error {
-            execution::Error::WasmPreprocessing(preprocessing_error) => {
+            ExecError::WasmPreprocessing(preprocessing_error) => {
                 Error::WasmPreprocessing(preprocessing_error)
             }
             _ => Error::Exec(error),
@@ -182,6 +185,19 @@ impl From<stack::RuntimeStackOverflow> for Error {
 impl From<TrackingCopyError> for Error {
     fn from(e: TrackingCopyError) -> Self {
         Error::TrackingCopy(e)
+    }
+}
+
+impl From<Error> for binary_port::ErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
+            Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
+            Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
+            Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::UnsupportedProtocolVersion,
+            Error::Deploy => binary_port::ErrorCode::InvalidTransaction,
+            _ => binary_port::ErrorCode::InternalError,
+        }
     }
 }
 

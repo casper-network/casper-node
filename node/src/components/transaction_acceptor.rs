@@ -240,9 +240,12 @@ impl TransactionAcceptor {
                     let error = Error::parameter_failure(&block_header, parameter_failure);
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
-
-                let balance_request =
-                    BalanceRequest::new(*block_header.state_root_hash(), entity.main_purse());
+                let protocol_version = block_header.protocol_version();
+                let balance_request = BalanceRequest::from_purse(
+                    *block_header.state_root_hash(),
+                    protocol_version,
+                    entity.main_purse(),
+                );
                 effect_builder
                     .get_balance(balance_request)
                     .event(move |balance_result| Event::GetBalanceResult {
@@ -575,7 +578,8 @@ impl TransactionAcceptor {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => None,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => None,
             },
         };
 
@@ -619,7 +623,7 @@ impl TransactionAcceptor {
             }
         };
 
-        let contract_version = match maybe_contract_version {
+        let entity_version = match maybe_contract_version {
             Some(version) => version,
             None => {
                 // We continue to the next step in None case due to the subjective
@@ -631,9 +635,26 @@ impl TransactionAcceptor {
             }
         };
 
-        let contract_version_key =
-            EntityVersionKey::new(self.protocol_version.value().major, contract_version);
-        match package.lookup_entity_hash(contract_version_key) {
+        let entity_version_key =
+            EntityVersionKey::new(self.protocol_version.value().major, entity_version);
+
+        if package.is_version_missing(entity_version_key) {
+            let error = Error::parameter_failure(
+                &block_header,
+                ParameterFailure::MissingEntityAtVersion { entity_version },
+            );
+            return self.reject_transaction(effect_builder, *event_metadata, error);
+        }
+
+        if !package.is_version_enabled(entity_version_key) {
+            let error = Error::parameter_failure(
+                &block_header,
+                ParameterFailure::DisabledEntityAtVersion { entity_version },
+            );
+            return self.reject_transaction(effect_builder, *event_metadata, error);
+        }
+
+        match package.lookup_entity_hash(entity_version_key) {
             Some(&contract_hash) => {
                 let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
@@ -649,7 +670,7 @@ impl TransactionAcceptor {
             None => {
                 let error = Error::parameter_failure(
                     &block_header,
-                    ParameterFailure::InvalidContractAtVersion { contract_version },
+                    ParameterFailure::InvalidEntityAtVersion { entity_version },
                 );
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }

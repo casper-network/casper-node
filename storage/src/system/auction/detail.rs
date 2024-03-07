@@ -13,7 +13,7 @@ use casper_types::{
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
-use tracing::error;
+use tracing::{error, warn};
 
 use super::{
     Auction, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
@@ -167,7 +167,13 @@ pub fn get_validator_slots<P>(provider: &mut P) -> Result<usize, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let validator_slots: u32 = read_from(provider, VALIDATOR_SLOTS_KEY)?;
+    let validator_slots: u32 = match read_from(provider, VALIDATOR_SLOTS_KEY) {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to find VALIDATOR_SLOTS_KEY {}", err);
+            return Err(err);
+        }
+    };
     let validator_slots = validator_slots
         .try_into()
         .map_err(|_| Error::InvalidValidatorSlotsValue)?;
@@ -178,7 +184,13 @@ pub fn get_auction_delay<P>(provider: &mut P) -> Result<u64, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let auction_delay: u64 = read_from(provider, AUCTION_DELAY_KEY)?;
+    let auction_delay: u64 = match read_from(provider, AUCTION_DELAY_KEY) {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to find AUCTION_DELAY_KEY {}", err);
+            return Err(err);
+        }
+    };
     Ok(auction_delay)
 }
 
@@ -195,7 +207,7 @@ where
 /// This function can be called by the system only.
 pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller.into());
@@ -419,7 +431,7 @@ enum UnbondRedelegationOutcome {
 fn handle_redelegation<P>(
     provider: &mut P,
     unbonding_purse: &UnbondingPurse,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
 ) -> Result<UnbondRedelegationOutcome, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -429,14 +441,15 @@ where
         None => return Ok(UnbondRedelegationOutcome::Withdrawal),
     };
 
-    match handle_delegation(
+    let redelegation = handle_delegation(
         provider,
         unbonding_purse.unbonder_public_key().clone(),
         redelegation_target_public_key.clone(),
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
-    ) {
+    );
+    match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
         Err(ApiError::AuctionError(err)) if err == Error::BondTooSmall as u8 => {
             Ok(UnbondRedelegationOutcome::RedelegationTargetIsUnstaked)
@@ -466,7 +479,7 @@ pub fn handle_delegation<P>(
     validator_public_key: PublicKey,
     source: URef,
     amount: U512,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -497,10 +510,13 @@ where
     } else {
         // is this validator over the delegator limit?
         let delegator_count = provider.delegator_count(&validator_bid_addr)?;
-        if let Some(cap) = max_delegators_per_validator {
-            if delegator_count >= cap as usize {
-                return Err(Error::ExceededDelegatorSizeLimit.into());
-            }
+        if delegator_count >= max_delegators_per_validator as usize {
+            warn!(
+                %delegator_count, %max_delegators_per_validator,
+                "delegator_count {}, max_delegators_per_validator {}",
+                delegator_count, max_delegators_per_validator
+            );
+            return Err(Error::ExceededDelegatorSizeLimit.into());
         }
 
         let bonding_purse = provider.create_purse()?;

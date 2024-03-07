@@ -28,8 +28,12 @@ use core::{
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
+#[cfg(feature = "json-schema")]
+use crate::SecretKey;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
@@ -1378,6 +1382,38 @@ pub enum MessageTopicError {
     TopicNameSizeExceeded,
 }
 
+#[cfg(feature = "json-schema")]
+static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
+    let account_hash = PublicKey::from(&secret_key).to_account_hash();
+    let package_hash = PackageHash::new([0; 32]);
+    let byte_code_hash = ByteCodeHash::new([0; 32]);
+    let main_purse = URef::from_formatted_str(
+        "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+    )
+    .unwrap();
+    let weight = Weight::new(1);
+    let associated_keys = AssociatedKeys::new(account_hash, weight);
+    let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
+    let entry_points = EntryPoints::new_with_default_entry_point();
+    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+    let mut message_topics = MessageTopics::default();
+    message_topics
+        .add_topic("topic", TopicNameHash::new([0; 32]))
+        .unwrap();
+    AddressableEntity {
+        protocol_version,
+        entity_kind: EntityKind::Account(account_hash),
+        package_hash,
+        byte_code_hash,
+        entry_points,
+        main_purse,
+        associated_keys,
+        action_thresholds,
+        message_topics,
+    }
+});
+
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -1679,7 +1715,16 @@ impl AddressableEntity {
 
     /// Determines if `AddressableEntity` is compatible with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
-        self.protocol_version.value().major == protocol_version.value().major
+        let entity_protocol_version = self.protocol_version.value();
+        let context_protocol_version = protocol_version.value();
+        if entity_protocol_version.major == context_protocol_version.major {
+            return true;
+        }
+        if entity_protocol_version.major == 1 && context_protocol_version.major == 2 {
+            // the 1.x model has been deprecated but is still supported until 3.0.0
+            return true;
+        }
+        false
     }
 
     /// Returns the kind of Package.
@@ -1737,6 +1782,13 @@ impl AddressableEntity {
             message_topics: self.message_topics,
             entity_kind: self.entity_kind,
         }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &ADDRESSABLE_ENTITY
     }
 }
 

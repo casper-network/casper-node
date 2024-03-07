@@ -327,12 +327,18 @@ pub enum Error {
     /// assert_eq!(49, Error::TransferToAdministrator as u8);
     /// ```
     TransferToAdministrator = 49,
+    /// Failed to transfer desired amount into administrators account.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(50, Error::ForgedReference as u8);
+    /// ```
+    ForgedReference = 50,
     /// The delegated amount is above the maximum allowed.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(50, Error::DelegationAmountTooLarge as u8);
+    /// assert_eq!(52, Error::DelegationAmountTooLarge as u8);
     /// ```
-    DelegationAmountTooLarge = 50,
+    DelegationAmountTooLarge = 52,
 }
 
 impl Display for Error {
@@ -388,6 +394,7 @@ impl Display for Error {
             Error::AuctionBidsDisabled => formatter.write_str("Auction bids are disabled"),
             Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
+            Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::DelegationAmountTooLarge => formatter.write_str("The delegated amount is above the maximum allowed"),
         }
     }
@@ -470,6 +477,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::AuctionBidsDisabled as u8 => Ok(Error::AuctionBidsDisabled),
             d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
+            d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             d if d == Error::DelegationAmountTooLarge as u8 => Ok(Error::DelegationAmountTooLarge),
             _ => Err(TryFromU8ForError(())),
         }

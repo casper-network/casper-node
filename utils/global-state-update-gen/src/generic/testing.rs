@@ -312,10 +312,6 @@ impl StateReader for MockStateReader {
     fn get_unbonds(&mut self) -> UnbondingPurses {
         self.unbonds.clone()
     }
-
-    fn get_protocol_version(&mut self) -> ProtocolVersion {
-        self.protocol_version
-    }
 }
 
 impl ValidatorInfo {

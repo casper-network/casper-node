@@ -59,8 +59,7 @@ use casper_types::{
 };
 
 use crate::{
-    execution::{self, Error},
-    runtime::host_function_flag::HostFunctionFlag,
+    execution::ExecError, runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
@@ -161,7 +160,7 @@ where
         &self.context
     }
 
-    fn gas(&mut self, amount: Gas) -> Result<(), Error> {
+    fn gas(&mut self, amount: Gas) -> Result<(), ExecError> {
         self.context.charge_gas(amount)
     }
 
@@ -181,7 +180,7 @@ where
     /// contract or if we're currently within the scope of a host function call. This avoids
     /// misleading gas charges if one system contract calls other system contract (e.g. auction
     /// contract calls into mint to create new purses).
-    pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), Error>
+    pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), ExecError>
     where
         T: Into<Gas>,
     {
@@ -198,7 +197,7 @@ where
         offset: usize,
         size: usize,
         func: impl FnOnce(&[u8]) -> Ret,
-    ) -> Result<Ret, Error> {
+    ) -> Result<Ret, ExecError> {
         // This is mostly copied from a private function `MemoryInstance::checked_memory_region`
         // that calls a user defined function with a validated slice of memory. This allows
         // usage patterns that does not involve copying data onto heap first i.e. deserialize
@@ -230,13 +229,13 @@ where
 
     /// Returns bytes from the WASM memory instance.
     #[inline]
-    fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
+    fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, ExecError> {
         self.checked_memory_slice(ptr as usize, size, |data| data.to_vec())
     }
 
     /// Returns a deserialized type from the WASM memory instance.
     #[inline]
-    fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
+    fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, ExecError> {
         let result = self.checked_memory_slice(ptr as usize, size as usize, |data| {
             bytesrepr::deserialize_from_slice(data)
         })?;
@@ -245,7 +244,7 @@ where
 
     /// Reads key (defined as `key_ptr` and `key_size` tuple) from Wasm memory.
     #[inline]
-    fn key_from_mem(&mut self, key_ptr: u32, key_size: u32) -> Result<Key, Error> {
+    fn key_from_mem(&mut self, key_ptr: u32, key_size: u32) -> Result<Key, ExecError> {
         self.t_from_mem(key_ptr, key_size)
     }
 
@@ -255,7 +254,7 @@ where
         &mut self,
         cl_value_ptr: u32,
         cl_value_size: u32,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         self.t_from_mem(cl_value_ptr, cl_value_size)
     }
 
@@ -268,7 +267,7 @@ where
     fn get_module_from_entry_points(
         &mut self,
         entry_points: &EntryPoints,
-    ) -> Result<Vec<u8>, Error> {
+    ) -> Result<Vec<u8>, ExecError> {
         let module = self.try_get_module()?.clone();
         let entry_point_names: Vec<&str> = entry_points.keys().map(|s| s.as_str()).collect();
         let module_bytes = wasm_prep::get_module_from_entry_points(entry_point_names, module)?;
@@ -295,7 +294,9 @@ where
         // Get a key and serialize it
         let key = match self.context.named_keys_get(&name) {
             Some(key) => key,
-            None => return Ok(Err(ApiError::MissingKey)),
+            None => {
+                return Ok(Err(ApiError::MissingKey));
+            }
         };
 
         let key_bytes = match key.to_bytes() {
@@ -310,7 +311,7 @@ where
 
         // Set serialized Key bytes into the output buffer
         if let Err(error) = self.try_get_memory()?.set(output_ptr, &key_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         // SAFETY: For all practical purposes following conversion is assumed to be safe
@@ -320,7 +321,7 @@ where
             .expect("Keys should not serialize to many bytes");
         let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -356,10 +357,10 @@ where
     /// Writes runtime context's account main purse to dest_ptr in the Wasm memory.
     fn get_main_purse(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let purse = self.context.get_main_purse()?;
-        let purse_bytes = purse.into_bytes().map_err(Error::BytesRepr)?;
+        let purse_bytes = purse.into_bytes().map_err(ExecError::BytesRepr)?;
         self.try_get_memory()?
             .set(dest_ptr, &purse_bytes)
-            .map_err(|e| Error::Interpreter(e.into()).into())
+            .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
     /// Writes caller (deploy) account public key to dest_ptr in the Wasm
@@ -369,7 +370,7 @@ where
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
         }
-        let value = CLValue::from_t(self.context.get_caller()).map_err(Error::CLValue)?;
+        let value = CLValue::from_t(self.context.get_caller()).map_err(ExecError::CLValue)?;
         let value_size = value.inner_bytes().len();
 
         // Save serialized public key into host buffer
@@ -380,7 +381,7 @@ where
         // Write output
         let output_size_bytes = value_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(output_size, &output_size_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
         Ok(Ok(()))
     }
@@ -406,10 +407,10 @@ where
     /// Writes runtime context's phase to dest_ptr in the Wasm memory.
     fn get_phase(&mut self, dest_ptr: u32) -> Result<(), Trap> {
         let phase = self.context.phase();
-        let bytes = phase.into_bytes().map_err(Error::BytesRepr)?;
+        let bytes = phase.into_bytes().map_err(ExecError::BytesRepr)?;
         self.try_get_memory()?
             .set(dest_ptr, &bytes)
-            .map_err(|e| Error::Interpreter(e.into()).into())
+            .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
     /// Writes current blocktime to dest_ptr in Wasm memory.
@@ -418,10 +419,10 @@ where
             .context
             .get_blocktime()
             .into_bytes()
-            .map_err(Error::BytesRepr)?;
+            .map_err(ExecError::BytesRepr)?;
         self.try_get_memory()?
             .set(dest_ptr, &blocktime)
-            .map_err(|e| Error::Interpreter(e.into()).into())
+            .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
     /// Load the uref known by the given name into the Wasm memory
@@ -450,14 +451,14 @@ where
             .try_get_memory()?
             .set(call_stack_len_ptr, &call_stack_len_bytes)
         {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         if call_stack_len == 0 {
             return Ok(Ok(()));
         }
 
-        let call_stack_cl_value = CLValue::from_t(call_stack).map_err(Error::CLValue)?;
+        let call_stack_cl_value = CLValue::from_t(call_stack).map_err(ExecError::CLValue)?;
 
         let call_stack_cl_value_bytes_len: u32 =
             match call_stack_cl_value.inner_bytes().len().try_into() {
@@ -475,7 +476,7 @@ where
             .try_get_memory()?
             .set(result_size_ptr, &call_stack_cl_value_bytes_len_bytes)
         {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -506,7 +507,7 @@ where
                                 return Trap::from(error);
                             }
                         }
-                        Error::Ret(urefs).into()
+                        ExecError::Ret(urefs).into()
                     }
                     Err(e) => e.into(),
                 }
@@ -516,58 +517,58 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, entity_hash: AddressableEntityHash) -> Result<bool, Error> {
+    fn is_system_contract(&self, entity_hash: AddressableEntityHash) -> Result<bool, ExecError> {
         self.context.is_system_addressable_entity(&entity_hash)
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
-    ) -> Result<T, Error> {
-        let arg = args
+    ) -> Result<T, ExecError> {
+        let arg: CLValue = args
             .get(name)
             .cloned()
-            .ok_or(Error::Revert(ApiError::MissingArgument))?;
+            .ok_or(ExecError::Revert(ApiError::MissingArgument))?;
         arg.into_t()
-            .map_err(|_| Error::Revert(ApiError::InvalidArgument))
+            .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))
     }
 
     fn try_get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
-    ) -> Result<Option<T>, Error> {
+    ) -> Result<Option<T>, ExecError> {
         match args.get(name) {
             Some(arg) => {
                 let arg = arg
                     .clone()
                     .into_t()
-                    .map_err(|_| Error::Revert(ApiError::InvalidArgument))?;
+                    .map_err(|_| ExecError::Revert(ApiError::InvalidArgument))?;
                 Ok(Some(arg))
             }
             None => Ok(None),
         }
     }
 
-    fn reverter<T: Into<ApiError>>(error: T) -> Error {
+    fn reverter<T: Into<ApiError>>(error: T) -> ExecError {
         let api_error: ApiError = error.into();
         // NOTE: This is special casing needed to keep the native system contracts propagate
         // GasLimit properly to the user. Once support for wasm system contract will be dropped this
         // won't be necessary anymore.
         match api_error {
             ApiError::Mint(mint_error) if mint_error == mint::Error::GasLimit as u8 => {
-                Error::GasLimit
+                ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
                 if auction_error == auction::Error::GasLimit as u8 =>
             {
-                Error::GasLimit
+                ExecError::GasLimit
             }
             ApiError::HandlePayment(handle_payment_error)
                 if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
             {
-                Error::GasLimit
+                ExecError::GasLimit
             }
-            api_error => Error::Revert(api_error),
+            api_error => ExecError::Revert(api_error),
         }
     }
 
@@ -578,7 +579,7 @@ where
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
@@ -607,14 +608,14 @@ where
         let mint_costs = system_config.mint_costs();
 
         let result = match entry_point_name {
-            // Type: `fn mint(amount: U512) -> Result<URef, Error>`
+            // Type: `fn mint(amount: U512) -> Result<URef, ExecError>`
             mint::METHOD_MINT => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.mint)?;
 
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let result: Result<URef, mint::Error> = mint_runtime.mint(amount);
                 if let Err(mint::Error::GasLimit) = result {
-                    return Err(execution::Error::GasLimit);
+                    return Err(ExecError::GasLimit);
                 }
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -642,7 +643,7 @@ where
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
             })(),
             // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
-            // U512, id: Option<u64>) -> Result<(), Error>`
+            // U512, id: Option<u64>) -> Result<(), ExecError>`
             mint::METHOD_TRANSFER => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.transfer)?;
 
@@ -657,7 +658,7 @@ where
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
-            // Type: `fn read_base_round_reward() -> Result<U512, Error>`
+            // Type: `fn read_base_round_reward() -> Result<U512, ExecError>`
             mint::METHOD_READ_BASE_ROUND_REWARD => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.read_base_round_reward)?;
 
@@ -711,7 +712,7 @@ where
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
@@ -811,7 +812,7 @@ where
         runtime_args: &RuntimeArgs,
         access_rights: ContextAccessRights,
         stack: RuntimeStack,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
@@ -878,7 +879,7 @@ where
                     || maximum_delegation_amount > global_maximum_delegation_amount
                     || minimum_delegation_amount > maximum_delegation_amount
                 {
-                    return Err(Error::Revert(ApiError::InvalidDelegationAmountLimits));
+                    return Err(ExecError::Revert(ApiError::InvalidDelegationAmountLimits));
                 }
 
                 let result = runtime
@@ -963,7 +964,6 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
-
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
@@ -975,7 +975,7 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
+            // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), ExecError>`
             auction::METHOD_SLASH => (|| {
                 runtime.context.charge_gas(auction_costs.slash.into())?;
 
@@ -987,7 +987,8 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
+            // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(),
+            // ExecError>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime
                     .context
@@ -997,7 +998,7 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn read_era_id() -> Result<EraId, Error>`
+            // Type: `fn read_era_id() -> Result<EraId, ExecError>`
             auction::METHOD_READ_ERA_ID => (|| {
                 runtime
                     .context
@@ -1049,7 +1050,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         self.stack = Some(stack);
 
         self.call_contract(contract_hash, entry_point_name, args)
@@ -1059,7 +1060,7 @@ where
         &mut self,
         module_bytes: &Bytes,
         stack: RuntimeStack,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
@@ -1097,16 +1098,18 @@ where
             // If the "error" was in fact a trap caused by calling `ret` then
             // this is normal operation and we should return the value captured
             // in the Runtime result field.
-            let downcasted_error = host_error.downcast_ref::<Error>();
+            let downcasted_error = host_error.downcast_ref::<ExecError>();
             match downcasted_error {
-                Some(Error::Ret(ref _ret_urefs)) => {
-                    return self.take_host_buffer().ok_or(Error::ExpectedReturnValue);
+                Some(ExecError::Ret(ref _ret_urefs)) => {
+                    return self
+                        .take_host_buffer()
+                        .ok_or(ExecError::ExpectedReturnValue);
                 }
                 Some(error) => return Err(error.clone()),
-                None => return Err(Error::Interpreter(host_error.to_string())),
+                None => return Err(ExecError::Interpreter(host_error.to_string())),
             }
         }
-        Err(Error::Interpreter(error.into()))
+        Err(ExecError::Interpreter(error.into()))
     }
 
     /// Calls contract living under a `key`, with supplied `args`.
@@ -1115,7 +1118,7 @@ where
         contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args: RuntimeArgs,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let identifier = CallContractIdentifier::Contract { contract_hash };
 
         self.execute_contract(identifier, entry_point_name, args)
@@ -1130,7 +1133,7 @@ where
         contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args: RuntimeArgs,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let identifier = CallContractIdentifier::ContractPackage {
             contract_package_hash,
             version: contract_version,
@@ -1143,23 +1146,23 @@ where
         &self,
         entity_hash: AddressableEntityHash,
         entry_point: &EntryPoint,
-    ) -> Result<AddressableEntityHash, Error> {
+    ) -> Result<AddressableEntityHash, ExecError> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
             (EntryPointType::AddressableEntity, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
-                Err(Error::InvalidContext)
+                Err(ExecError::InvalidContext)
             }
             (EntryPointType::Factory, EntryPointType::Session) => {
                 // Session code can't be called from Installer code for security reasons.
-                Err(Error::InvalidContext)
+                Err(ExecError::InvalidContext)
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 match self.context.get_entity_key().into_entity_hash() {
                     Some(entity_hash) => Ok(entity_hash),
-                    None => Err(Error::InvalidEntity(entity_hash)),
+                    None => Err(ExecError::InvalidEntity(entity_hash)),
                 }
             }
             (EntryPointType::Session, EntryPointType::AddressableEntity)
@@ -1173,20 +1176,20 @@ where
         }
     }
 
-    fn try_get_memory(&self) -> Result<&MemoryRef, Error> {
-        self.memory.as_ref().ok_or(Error::WasmPreprocessing(
+    fn try_get_memory(&self) -> Result<&MemoryRef, ExecError> {
+        self.memory.as_ref().ok_or(ExecError::WasmPreprocessing(
             PreprocessingError::MissingMemorySection,
         ))
     }
 
-    fn try_get_module(&self) -> Result<&Module, Error> {
-        self.module
-            .as_ref()
-            .ok_or(Error::WasmPreprocessing(PreprocessingError::MissingModule))
+    fn try_get_module(&self) -> Result<&Module, ExecError> {
+        self.module.as_ref().ok_or(ExecError::WasmPreprocessing(
+            PreprocessingError::MissingModule,
+        ))
     }
 
-    fn try_get_stack(&self) -> Result<&RuntimeStack, Error> {
-        self.stack.as_ref().ok_or(Error::MissingRuntimeStack)
+    fn try_get_stack(&self) -> Result<&RuntimeStack, ExecError> {
+        self.stack.as_ref().ok_or(ExecError::MissingRuntimeStack)
     }
 
     fn execute_contract(
@@ -1194,7 +1197,7 @@ where
         identifier: CallContractIdentifier,
         entry_point_name: &str,
         args: RuntimeArgs,
-    ) -> Result<CLValue, Error> {
+    ) -> Result<CLValue, ExecError> {
         let (entity, entity_hash, package) = match identifier {
             CallContractIdentifier::Contract {
                 contract_hash: entity_hash,
@@ -1224,7 +1227,7 @@ where
                 let is_contract_enabled = package.is_entity_enabled(&entity_hash);
 
                 if !is_calling_system_contract && !is_contract_enabled {
-                    return Err(Error::DisabledEntity(entity_hash));
+                    return Err(ExecError::DisabledEntity(entity_hash));
                 }
 
                 (entity, entity_hash, package)
@@ -1235,7 +1238,7 @@ where
             } => {
                 let package = self.context.get_package(contract_package_hash)?;
 
-                let contract_version_key = match version {
+                let entity_version_key = match version {
                     Some(version) => EntityVersionKey::new(
                         self.context.protocol_version().value().major,
                         version,
@@ -1243,14 +1246,23 @@ where
                     None => match package.current_entity_version() {
                         Some(v) => v,
                         None => {
-                            return Err(Error::NoActiveEntityVersions(contract_package_hash));
+                            return Err(ExecError::NoActiveEntityVersions(contract_package_hash));
                         }
                     },
                 };
+
+                if package.is_version_missing(entity_version_key) {
+                    return Err(ExecError::MissingEntityVersion(entity_version_key));
+                }
+
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(ExecError::DisabledEntityVersion(entity_version_key));
+                }
+
                 let entity_hash = package
-                    .lookup_entity_hash(contract_version_key)
+                    .lookup_entity_hash(entity_version_key)
                     .copied()
-                    .ok_or(Error::InvalidEntityVersion(contract_version_key))?;
+                    .ok_or(ExecError::MissingEntityVersion(entity_version_key))?;
 
                 let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
                     Key::addressable_entity_key(EntityKindTag::System, entity_hash)
@@ -1271,28 +1283,28 @@ where
         };
 
         if let EntityKind::Account(_) = entity.entity_kind() {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         let protocol_version = self.context.protocol_version();
 
         // Check for major version compatibility before calling
         if !entity.is_compatible_protocol_version(protocol_version) {
-            return Err(Error::IncompatibleProtocolMajorVersion {
-                actual: entity.protocol_version().value().major,
+            return Err(ExecError::IncompatibleProtocolMajorVersion {
                 expected: protocol_version.value().major,
+                actual: entity.protocol_version().value().major,
             });
         }
 
         let entry_point = entity
             .entry_point(entry_point_name)
             .cloned()
-            .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
+            .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?;
 
         let entry_point_type = entry_point.entry_point_type();
 
         if entry_point_type.is_invalid_context() {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         // Get contract entry point hash
@@ -1317,13 +1329,13 @@ where
             for (param_name, param) in entry_point_args_lookup {
                 if let Some(named_arg) = args_lookup.get(param_name) {
                     if param.cl_type() != named_arg.cl_value().cl_type() {
-                        return Err(Error::type_mismatch(
+                        return Err(ExecError::type_mismatch(
                             param.cl_type().clone(),
                             named_arg.cl_value().cl_type().clone(),
                         ));
                     }
                 } else if !param.cl_type().is_option() {
-                    return Err(Error::MissingArgument {
+                    return Err(ExecError::MissingArgument {
                         name: param.name().to_string(),
                     });
                 }
@@ -1338,7 +1350,7 @@ where
             && !package.is_entity_enabled(&entity_hash)
             && !self.context.is_system_addressable_entity(&entity_hash)?
         {
-            return Err(Error::DisabledEntity(entity_hash));
+            return Err(ExecError::DisabledEntity(entity_hash));
         }
 
         // if session the caller's context
@@ -1460,8 +1472,8 @@ where
 
             let byte_code: ByteCode = match self.context.read_gs(&byte_code_key)? {
                 Some(StoredValue::ByteCode(byte_code)) => byte_code,
-                Some(_) => return Err(Error::InvalidByteCode(entity.byte_code_hash())),
-                None => return Err(Error::KeyNotFound(byte_code_key)),
+                Some(_) => return Err(ExecError::InvalidByteCode(entity.byte_code_hash())),
+                None => return Err(ExecError::KeyNotFound(byte_code_key)),
             };
 
             casper_wasm::deserialize_buffer(byte_code.bytes())?
@@ -1517,9 +1529,9 @@ where
                     // If the "error" was in fact a trap caused by calling `ret` then this is normal
                     // operation and we should return the value captured in the Runtime result
                     // field.
-                    let downcasted_error = host_error.downcast_ref::<Error>();
+                    let downcasted_error = host_error.downcast_ref::<ExecError>();
                     match downcasted_error {
-                        Some(Error::Ret(ref ret_urefs)) => {
+                        Some(ExecError::Ret(ref ret_urefs)) => {
                             // Insert extra urefs returned from call.
                             // Those returned URef's are guaranteed to be valid as they were already
                             // validated in the `ret` call inside context we ret from.
@@ -1527,13 +1539,15 @@ where
 
                             // Stored contracts are expected to always call a `ret` function,
                             // otherwise it's an error.
-                            return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
+                            return runtime
+                                .take_host_buffer()
+                                .ok_or(ExecError::ExpectedReturnValue);
                         }
                         Some(error) => return Err(error.clone()),
-                        None => return Err(Error::Interpreter(host_error.to_string())),
+                        None => return Err(ExecError::Interpreter(host_error.to_string())),
                     }
                 }
-                Err(Error::Interpreter(error.into()))
+                Err(ExecError::Interpreter(error.into()))
             }
         };
     }
@@ -1544,7 +1558,7 @@ where
         entry_point_name: &str,
         args_bytes: &[u8],
         result_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
@@ -1561,7 +1575,7 @@ where
         entry_point_name: String,
         args_bytes: &[u8],
         result_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
@@ -1588,7 +1602,7 @@ where
         &mut self,
         result_size_ptr: u32,
         result: CLValue,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let result_size: u32 = match result.inner_bytes().len().try_into() {
             Ok(value) => value,
             Err(_) => return Ok(Err(ApiError::OutOfMemory)),
@@ -1606,7 +1620,7 @@ where
             .try_get_memory()?
             .set(result_size_ptr, &result_size_bytes)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         Ok(Ok(()))
@@ -1632,7 +1646,7 @@ where
             .try_get_memory()?
             .set(total_keys_ptr, &total_keys_bytes)
         {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         if total_keys == 0 {
@@ -1641,7 +1655,7 @@ where
         }
 
         let named_keys =
-            CLValue::from_t(self.context.named_keys().clone()).map_err(Error::CLValue)?;
+            CLValue::from_t(self.context.named_keys().clone()).map_err(ExecError::CLValue)?;
 
         let length: u32 = match named_keys.inner_bytes().len().try_into() {
             Ok(value) => value,
@@ -1654,7 +1668,7 @@ where
 
         let length_bytes = length.to_le_bytes();
         if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -1663,7 +1677,7 @@ where
     fn create_contract_package(
         &mut self,
         is_locked: PackageStatus,
-    ) -> Result<(Package, URef), Error> {
+    ) -> Result<(Package, URef), ExecError> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             access_key,
@@ -1679,7 +1693,7 @@ where
     fn create_contract_package_at_hash(
         &mut self,
         lock_status: PackageStatus,
-    ) -> Result<([u8; 32], [u8; 32]), Error> {
+    ) -> Result<([u8; 32], [u8; 32]), ExecError> {
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) = self.create_contract_package(lock_status)?;
         self.context
@@ -1694,7 +1708,7 @@ where
         num_new_urefs: u32,
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let mut contract_package: Package =
             self.context.get_validated_package(contract_package_hash)?;
 
@@ -1748,7 +1762,7 @@ where
             .try_get_memory()?
             .set(output_size_ptr, &output_size_bytes)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         // Write updated package to the global state
@@ -1761,9 +1775,9 @@ where
     fn add_session_version(
         &mut self,
         entry_points: EntryPoints,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         if !self.context.entity().is_account_kind() {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         let package_hash = self.context.entity().package_hash();
@@ -1781,7 +1795,9 @@ where
             if let Some(entity_hash) = self.context.get_entity_key().into_entity_hash() {
                 entity_hash
             } else {
-                return Err(Error::UnexpectedKeyVariant(self.context.get_entity_key()));
+                return Err(ExecError::UnexpectedKeyVariant(
+                    self.context.get_entity_key(),
+                ));
             };
 
         let entity = self.context.entity().clone();
@@ -1797,7 +1813,7 @@ where
         let entity_kind = updated_session_entity.entity_kind();
 
         if entity_kind != EntityKind::SmartContract {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash.value());
@@ -1820,16 +1836,16 @@ where
         mut named_keys: NamedKeys,
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         if entry_points.contains_stored_session() {
-            return Err(Error::InvalidEntryPointType);
+            return Err(ExecError::InvalidEntryPointType);
         }
 
         let mut package = self.context.get_package(package_hash)?;
 
         // Return an error if the contract is locked and has some version associated with it.
         if package.is_locked() {
-            return Err(Error::LockedEntity(package_hash));
+            return Err(ExecError::LockedEntity(package_hash));
         }
 
         let (
@@ -1931,14 +1947,14 @@ where
 
             // Set serialized hash bytes into the output buffer
             if let Err(error) = self.try_get_memory()?.set(output_ptr, &hash_bytes) {
-                return Err(Error::Interpreter(error.into()));
+                return Err(ExecError::Interpreter(error.into()));
             }
 
             // Set version into VM shared memory
             let version_value: u32 = insert_contract_result.entity_version();
             let version_bytes = version_value.to_le_bytes();
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
-                return Err(Error::Interpreter(error.into()));
+                return Err(ExecError::Interpreter(error.into()));
             }
         }
 
@@ -1956,7 +1972,7 @@ where
             AssociatedKeys,
             MessageTopics,
         ),
-        Error,
+        ExecError,
     > {
         if let Some(previous_entity_hash) = package.current_entity_hash() {
             let previous_entity_key = Key::contract_entity_key(previous_entity_hash);
@@ -1979,7 +1995,7 @@ where
                         *action_thresholds.upgrade_management(),
                     )?;
                 } else {
-                    return Err(Error::UpgradeAuthorizationFailure);
+                    return Err(ExecError::UpgradeAuthorizationFailure);
                 }
             }
 
@@ -2017,7 +2033,7 @@ where
         &mut self,
         contract_package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
 
@@ -2025,7 +2041,7 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedEntity(contract_package_hash));
+            return Err(ExecError::LockedEntity(contract_package_hash));
         }
 
         if let Err(err) = contract_package.disable_entity_version(contract_hash) {
@@ -2042,7 +2058,7 @@ where
         &mut self,
         contract_package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
 
@@ -2050,7 +2066,7 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedEntity(contract_package_hash));
+            return Err(ExecError::LockedEntity(contract_package_hash));
         }
 
         if let Err(err) = contract_package.enable_version(contract_hash) {
@@ -2068,7 +2084,7 @@ where
     fn function_address(&mut self, hash_bytes: [u8; 32], dest_ptr: u32) -> Result<(), Trap> {
         self.try_get_memory()?
             .set(dest_ptr, &hash_bytes)
-            .map_err(|e| Error::Interpreter(e.into()).into())
+            .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
     /// Generates new unforgable reference and adds it to the context's
@@ -2077,8 +2093,8 @@ where
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
         let uref = self.context.new_uref(StoredValue::CLValue(cl_value))?;
         self.try_get_memory()?
-            .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
-            .map_err(|e| Error::Interpreter(e.into()).into())
+            .set(uref_ptr, &uref.into_bytes().map_err(ExecError::BytesRepr)?)
+            .map_err(|e| ExecError::Interpreter(e.into()).into())
     }
 
     /// Writes `value` under `key` in GlobalState.
@@ -2104,9 +2120,9 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         if self.context.phase() != Phase::Session {
@@ -2130,13 +2146,13 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), ExecError> {
         if self.context.get_caller() != PublicKey::System.to_account_hash() {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         if self.context.get_entity_key() != self.context.get_system_entity_key(AUCTION)? {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         }
 
         if self.context.phase() != Phase::Session {
@@ -2181,7 +2197,9 @@ where
 
         let key = self.key_from_mem(key_ptr, key_size)?;
         let cl_value = match self.context.read_gs(&key)? {
-            Some(stored_value) => CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?,
+            Some(stored_value) => {
+                CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?
+            }
             None => return Ok(Err(ApiError::ValueNotFound)),
         };
 
@@ -2196,7 +2214,7 @@ where
 
         let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -2204,7 +2222,7 @@ where
 
     /// Reverts contract execution with a status specified.
     fn revert(&mut self, status: u32) -> Trap {
-        Error::Revert(status.into()).into()
+        ExecError::Revert(status.into()).into()
     }
 
     /// Checks if a caller can manage its own associated keys and thresholds.
@@ -2248,8 +2266,8 @@ where
             // Account hash as serialized bytes
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
-            let source: AccountHash =
-                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
+            let source: AccountHash = bytesrepr::deserialize_from_slice(source_serialized)
+                .map_err(ExecError::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -2264,7 +2282,7 @@ where
             // i32 and first variant start with number `1`, so all other variants
             // are greater than the first one, so it's safe to assume `0` is success,
             // and any error is greater than 0.
-            Err(Error::AddKeyFailure(e)) => Ok(e as i32),
+            Err(ExecError::AddKeyFailure(e)) => Ok(e as i32),
             // Any other variant just pass as `Trap`
             Err(e) => Err(e.into()),
         }
@@ -2279,8 +2297,8 @@ where
             // Account hash as serialized bytes
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
-            let source: AccountHash =
-                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
+            let source: AccountHash = bytesrepr::deserialize_from_slice(source_serialized)
+                .map_err(ExecError::BytesRepr)?;
             source
         };
 
@@ -2290,7 +2308,7 @@ where
 
         match self.context.remove_associated_key(account_hash) {
             Ok(_) => Ok(0),
-            Err(Error::RemoveKeyFailure(e)) => Ok(e as i32),
+            Err(ExecError::RemoveKeyFailure(e)) => Ok(e as i32),
             Err(e) => Err(e.into()),
         }
     }
@@ -2305,8 +2323,8 @@ where
             // Account hash as serialized bytes
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
-            let source: AccountHash =
-                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
+            let source: AccountHash = bytesrepr::deserialize_from_slice(source_serialized)
+                .map_err(ExecError::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -2321,7 +2339,7 @@ where
             // i32 and first variant start with number `1`, so all other variants
             // are greater than the first one, so it's safe to assume `0` is success,
             // and any error is greater than 0.
-            Err(Error::UpdateKeyFailure(e)) => Ok(e as i32),
+            Err(ExecError::UpdateKeyFailure(e)) => Ok(e as i32),
             // Any other variant just pass as `Trap`
             Err(e) => Err(e.into()),
         }
@@ -2341,7 +2359,7 @@ where
                 let threshold = Weight::new(threshold_value);
                 match self.context.set_action_threshold(action_type, threshold) {
                     Ok(_) => Ok(0),
-                    Err(Error::SetThresholdFailure(e)) => Ok(e as i32),
+                    Err(ExecError::SetThresholdFailure(e)) => Ok(e as i32),
                     Err(error) => Err(error.into()),
                 }
             }
@@ -2352,28 +2370,28 @@ where
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract(&self) -> Result<AddressableEntityHash, Error> {
+    fn get_mint_contract(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_handle_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
+    fn get_handle_payment_contract(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
+    fn get_standard_payment_contract(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> Result<AddressableEntityHash, Error> {
+    fn get_auction_contract(&self) -> Result<AddressableEntityHash, ExecError> {
         self.context.get_system_contract(AUCTION)
     }
 
@@ -2382,7 +2400,7 @@ where
     fn mint_read_base_round_reward(
         &mut self,
         mint_contract_hash: AddressableEntityHash,
-    ) -> Result<U512, Error> {
+    ) -> Result<U512, ExecError> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
             mint_contract_hash,
@@ -2401,7 +2419,7 @@ where
         &mut self,
         mint_contract_hash: AddressableEntityHash,
         amount: U512,
-    ) -> Result<URef, Error> {
+    ) -> Result<URef, ExecError> {
         let gas_counter = self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
@@ -2421,7 +2439,7 @@ where
         &mut self,
         mint_contract_hash: AddressableEntityHash,
         amount: U512,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let gas_counter = self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
@@ -2441,14 +2459,17 @@ where
 
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
-    fn mint_create(&mut self, mint_contract_hash: AddressableEntityHash) -> Result<URef, Error> {
+    fn mint_create(
+        &mut self,
+        mint_contract_hash: AddressableEntityHash,
+    ) -> Result<URef, ExecError> {
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         let purse = result?.into_t()?;
         Ok(purse)
     }
 
-    fn create_purse(&mut self) -> Result<URef, Error> {
+    fn create_purse(&mut self) -> Result<URef, ExecError> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         self.mint_create(self.get_mint_contract()?)
     }
@@ -2463,7 +2484,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), mint::Error>, Error> {
+    ) -> Result<Result<(), mint::Error>, ExecError> {
         self.context.validate_uref(&source)?;
 
         let args_values = {
@@ -2492,10 +2513,13 @@ where
         target: AccountHash,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<TransferResult, Error> {
+    ) -> Result<TransferResult, ExecError> {
         let mint_contract_hash = self.get_mint_contract()?;
 
-        if !self.context.engine_config().allow_unrestricted_transfers()
+        let allow_unrestricted_transfers =
+            self.context.engine_config().allow_unrestricted_transfers();
+
+        if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
                 .context
@@ -2503,7 +2527,7 @@ where
                 .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
-            return Err(Error::DisabledUnrestrictedTransfers);
+            return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
         // A precondition check that verifies that the transfer can be done
@@ -2604,7 +2628,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<TransferResult, Error> {
+    ) -> Result<TransferResult, ExecError> {
         let mint_contract_key = self.get_mint_contract()?;
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
@@ -2620,7 +2644,7 @@ where
         target: AccountHash,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<TransferResult, Error> {
+    ) -> Result<TransferResult, ExecError> {
         let source = self.context.get_main_purse()?;
         self.transfer_from_purse_to_account_hash(source, target, amount, id)
     }
@@ -2633,7 +2657,7 @@ where
         target: AccountHash,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<TransferResult, Error> {
+    ) -> Result<TransferResult, ExecError> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         let target_key = Key::Account(target);
 
@@ -2659,9 +2683,9 @@ where
                     {
                         entity_hash
                     } else {
-                        return Err(Error::UnexpectedKeyVariant(entity_key));
+                        return Err(ExecError::UnexpectedKeyVariant(entity_key));
                     };
-                    return Err(Error::InvalidEntity(contract_hash));
+                    return Err(ExecError::InvalidEntity(contract_hash));
                 };
 
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
@@ -2697,7 +2721,7 @@ where
             }
             Some(_) => {
                 // If some other value exists, return an error
-                Err(Error::AccountNotFound(target_key))
+                Err(ExecError::AccountNotFound(target_key))
             }
         }
     }
@@ -2708,7 +2732,7 @@ where
         target_account: &Account,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<TransferResult, Error> {
+    ) -> Result<TransferResult, ExecError> {
         // Attenuate the target main purse
         let target_uref = target_account.main_purse_add_only();
 
@@ -2748,7 +2772,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-    ) -> Result<Result<(), mint::Error>, Error> {
+    ) -> Result<Result<(), mint::Error>, ExecError> {
         self.context.validate_uref(&source)?;
         let mint_contract_key = self.get_mint_contract()?;
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
@@ -2757,14 +2781,14 @@ where
         }
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
+    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, ExecError> {
         let maybe_value = self.context.read_gs_direct(&Key::Balance(purse.addr()))?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {
                 let value = CLValue::into_t(value)?;
                 Ok(Some(value))
             }
-            Some(_) => Err(Error::UnexpectedStoredValueVariant),
+            Some(_) => Err(ExecError::UnexpectedStoredValueVariant),
             None => Ok(None),
         }
     }
@@ -2774,7 +2798,7 @@ where
         purse_ptr: u32,
         purse_size: usize,
         output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         if !self.can_write_to_host_buffer() {
             // Exit early if the host buffer is already occupied
             return Ok(Err(ApiError::HostBufferFull));
@@ -2808,7 +2832,7 @@ where
             .try_get_memory()?
             .set(output_size_ptr, &balance_size_bytes)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         Ok(Ok(()))
@@ -2831,7 +2855,7 @@ where
 
         match self.try_get_memory()?.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
-            Err(error) => Err(Error::Interpreter(error.into()).into()),
+            Err(error) => Err(ExecError::Interpreter(error.into()).into()),
         }
     }
 
@@ -2861,7 +2885,7 @@ where
         dest_ptr: u32,
         dest_size: usize,
         bytes_written_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let (_cl_type, serialized_value) = match self.take_host_buffer() {
             None => return Ok(Err(ApiError::HostBufferEmpty)),
             Some(cl_value) => cl_value.destructure(),
@@ -2878,7 +2902,7 @@ where
         // as whole.
         let sliced_buf = &serialized_value[..cmp::min(dest_size, serialized_value.len())];
         if let Err(error) = self.try_get_memory()?.set(dest_ptr, sliced_buf) {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         // Never panics because we check that `serialized_value.len()` fits in `u32`.
@@ -2892,7 +2916,7 @@ where
             .try_get_memory()?
             .set(bytes_written_ptr, &bytes_written_data)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         Ok(Ok(()))
@@ -2931,7 +2955,7 @@ where
         let arg_size_bytes = arg_size.to_le_bytes(); // Wasm is little-endian
 
         if let Err(e) = self.try_get_memory()?.set(size_ptr, &arg_size_bytes) {
-            return Err(Error::Interpreter(e.into()).into());
+            return Err(ExecError::Interpreter(e.into()).into());
         }
 
         Ok(Ok(()))
@@ -2960,7 +2984,7 @@ where
             .try_get_memory()?
             .set(output_ptr, &arg.inner_bytes()[..output_size])
         {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -2972,14 +2996,14 @@ where
         package: &Package,
         name: &str,
         access: &EntryPointAccess,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         match access {
             EntryPointAccess::Public => Ok(()),
             EntryPointAccess::Groups(group_names) => {
                 if group_names.is_empty() {
                     // Exits early in a special case of empty list of groups regardless of the group
                     // checking logic below it.
-                    return Err(Error::InvalidContext);
+                    return Err(ExecError::InvalidContext);
                 }
 
                 let find_result = group_names.iter().find(|&group_name| {
@@ -2995,12 +3019,12 @@ where
                 });
 
                 if find_result.is_none() {
-                    return Err(Error::InvalidContext);
+                    return Err(ExecError::InvalidContext);
                 }
 
                 Ok(())
             }
-            EntryPointAccess::Template => Err(Error::TemplateMethod(name.to_string())),
+            EntryPointAccess::Template => Err(ExecError::TemplateMethod(name.to_string())),
         }
     }
 
@@ -3009,7 +3033,7 @@ where
         &mut self,
         package_key: PackageHash,
         label: Group,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let mut package: Package = self.context.get_validated_package(package_key)?;
 
         let group_to_remove = Group::new(label);
@@ -3060,7 +3084,7 @@ where
         label_ptr: u32,
         label_size: u32,
         output_size_ptr: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let contract_package_hash = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let mut contract_package = self.context.get_validated_package(contract_package_hash)?;
@@ -3106,7 +3130,7 @@ where
             .try_get_memory()?
             .set(output_size_ptr, &output_size_bytes)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         // Write updated package to the global state
@@ -3125,7 +3149,7 @@ where
         label_size: u32,
         urefs_ptr: u32,
         urefs_size: u32,
-    ) -> Result<Result<(), ApiError>, Error> {
+    ) -> Result<Result<(), ApiError>, ExecError> {
         let contract_package_hash: PackageHash = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
@@ -3171,7 +3195,7 @@ where
     }
 
     /// Creates a dictionary
-    fn new_dictionary(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, Error> {
+    fn new_dictionary(&mut self, output_size_ptr: u32) -> Result<Result<(), ApiError>, ExecError> {
         // check we can write to the host buffer
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
@@ -3193,7 +3217,7 @@ where
             .try_get_memory()?
             .set(output_size_ptr, &output_size_bytes)
         {
-            return Err(Error::Interpreter(error.into()));
+            return Err(ExecError::Interpreter(error.into()));
         }
 
         Ok(Ok(()))
@@ -3242,7 +3266,7 @@ where
 
         let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -3277,7 +3301,7 @@ where
 
         let value_bytes = value_size.to_le_bytes(); // Wasm is little-endian
         if let Err(error) = self.try_get_memory()?.set(output_size_ptr, &value_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -3322,7 +3346,7 @@ where
     ///
     /// For cases where call stack is only the session code, then this method returns `true` if the
     /// caller is system, or `false` otherwise.
-    fn is_system_immediate_caller(&self) -> Result<bool, Error> {
+    fn is_system_immediate_caller(&self) -> Result<bool, ExecError> {
         let immediate_caller = match self.get_immediate_caller() {
             Some(call_stack_element) => call_stack_element,
             None => {
@@ -3363,7 +3387,7 @@ where
         };
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self.try_get_memory()?.set(len_ptr, &total_keys_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         if total_keys == 0 {
@@ -3371,7 +3395,7 @@ where
             return Ok(Ok(()));
         }
 
-        let authorization_keys = CLValue::from_t(authorization_keys).map_err(Error::CLValue)?;
+        let authorization_keys = CLValue::from_t(authorization_keys).map_err(ExecError::CLValue)?;
 
         let length: u32 = match authorization_keys.inner_bytes().len().try_into() {
             Ok(value) => value,
@@ -3383,7 +3407,7 @@ where
 
         let length_bytes = length.to_le_bytes();
         if let Err(error) = self.try_get_memory()?.set(result_size_ptr, &length_bytes) {
-            return Err(Error::Interpreter(error.into()).into());
+            return Err(ExecError::Interpreter(error.into()).into());
         }
 
         Ok(Ok(()))
@@ -3396,7 +3420,7 @@ where
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
         contract_hash: AddressableEntityHash,
-    ) -> Result<AddressableEntity, Error> {
+    ) -> Result<AddressableEntity, ExecError> {
         let maybe_legacy_contract = self.context.read_gs(&Key::Hash(contract_hash.value()))?;
         match maybe_legacy_contract {
             Some(StoredValue::Contract(contract)) => {
@@ -3458,12 +3482,12 @@ where
                     .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
                 Ok(updated_entity)
             }
-            Some(_) => Err(Error::UnexpectedStoredValueVariant),
-            None => Err(Error::InvalidEntity(contract_hash)),
+            Some(_) => Err(ExecError::UnexpectedStoredValueVariant),
+            None => Err(ExecError::InvalidEntity(contract_hash)),
         }
     }
 
-    fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, Error> {
+    fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
         let topic_hash = crypto::blake2b(topic_name).into();
 
         self.context
@@ -3480,7 +3504,7 @@ where
             .context
             .get_entity_key()
             .into_entity_hash()
-            .ok_or(Error::InvalidContext)?;
+            .ok_or(ExecError::InvalidContext)?;
 
         let topic_name_hash = crypto::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
@@ -3510,7 +3534,7 @@ where
 
         let message_key = Key::message(entity_addr, topic_name_hash, message_index);
         let message_checksum = MessageChecksum(crypto::blake2b(
-            message.to_bytes().map_err(Error::BytesRepr)?,
+            message.to_bytes().map_err(ExecError::BytesRepr)?,
         ));
 
         self.context.metered_emit_message(

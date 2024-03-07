@@ -14,6 +14,7 @@ license = "Apache-2.0"
 base16 = { version = "0.2.1", default-features = false, features = ["alloc"] }
 base64 = { version = "0.13.0", default-features = false }
 bitflags = "1"
+bincode = { version = "1.3.1", optional = true }
 blake2 = { version = "0.9.0", default-features = false }
 datasize = { version = "0.2.15", optional = true }
 derp = { version = "0.0.14", optional = true }
@@ -36,7 +37,7 @@ proptest = { version = "1.0.0", optional = true }
 proptest-derive = { version = "0.3.0", optional = true }
 rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
 rand_pcg = { version = "0.3.0", optional = true }
-schemars = { version = "0.8.12", features = ["preserve_order"], optional = true }
+schemars = { version = "0.8.16", features = ["preserve_order"], optional = true }
 serde-map-to-array = "1.1.0"
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
@@ -74,7 +75,7 @@ untrusted = "0.7.1"
 [features]
 json-schema = ["once_cell", "schemars", "serde-map-to-array/json-schema"]
 std = ["base16/std", "derp", "getrandom/std", "humantime", "itertools/use_std", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
-testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum"]
+testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum", "bincode"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
 
