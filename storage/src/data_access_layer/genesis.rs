@@ -58,13 +58,14 @@ impl Distribution<GenesisRequest> for Standard {
         let input: [u8; 32] = rng.gen();
         let chainspec_hash = Digest::hash(input);
         let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
-        let config = rng.gen();
+        // let config = rng.gen();
+        todo!();
 
-        let chainspec_file_bytes: [u8; 10] = rng.gen();
-        let genesis_account_file_bytes: [u8; 15] = rng.gen();
-        let chainspec_registry =
-            ChainspecRegistry::new_with_genesis(&chainspec_file_bytes, &genesis_account_file_bytes);
-        GenesisRequest::new(chainspec_hash, protocol_version, config, chainspec_registry)
+        // let chainspec_file_bytes: [u8; 10] = rng.gen();
+        // let genesis_account_file_bytes: [u8; 15] = rng.gen();
+        // let chainspec_registry =
+        //     ChainspecRegistry::new_with_genesis(&chainspec_file_bytes, &genesis_account_file_bytes);
+        // GenesisRequest::new(chainspec_hash, protocol_version, config, chainspec_registry)
     }
 }
 

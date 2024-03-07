@@ -4,13 +4,18 @@ pub(crate) mod abi;
 use std::{cmp, mem, num::NonZeroU32};
 
 use bytes::Bytes;
+use casper_storage::global_state::{
+    self,
+    state::{StateProvider, StateReader},
+};
+use casper_types::{Key, StoredValue};
 use safe_transmute::SingleManyGuard;
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest},
-    storage::{self, Contract, Storage},
+    storage::{self, Contract},
     ConfigBuilder, VMError, VMResult, VM,
 };
 
@@ -39,7 +44,7 @@ pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
 }
 
 /// Write value under a key.
-pub(crate) fn casper_write<S: Storage>(
+pub(crate) fn casper_write<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
     caller: impl Caller<S>,
     key_space: u64,
     key_ptr: u32,
@@ -61,16 +66,17 @@ pub(crate) fn casper_write<S: Storage>(
     // node should crash and the deploy will be re-executed once the node administrator adds more
     // disk space. Otherwise, we may risk having non-deterministic outcome as one validator may
     // have healthy storage when others have not.
-    caller
-        .context()
-        .storage
-        .write(key_space, &prefixed, value_tag, &value)
-        .expect("Write to succeed");
+    // caller
+    //     .context()
+    //     .storage
+    //     .write(key_space, &prefixed, value_tag, &value)
+    //     .expect("Write to succeed");
+    todo!("casper_write");
 
     Ok(0)
 }
 
-pub(crate) fn casper_print<S: Storage>(
+pub(crate) fn casper_print<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
     caller: impl Caller<S>,
     message_ptr: u32,
     message_size: u32,
@@ -82,7 +88,7 @@ pub(crate) fn casper_print<S: Storage>(
 }
 
 /// Write value under a key.
-pub(crate) fn casper_read<S: Storage>(
+pub(crate) fn casper_read<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
     mut caller: impl Caller<S>,
     key_tag: u64,
     key_ptr: u32,
@@ -96,34 +102,37 @@ pub(crate) fn casper_read<S: Storage>(
     let mut prefixed = caller.context().address.to_vec();
     prefixed.extend(key);
 
-    match caller.context().storage.read(key_tag, &prefixed) {
-        Ok(Some(entry)) => {
-            let out_ptr: u32 = if cb_alloc != 0 {
-                caller.alloc(cb_alloc, entry.data.len(), alloc_ctx)?
-            } else {
-                // treats alloc_ctx as data
-                alloc_ctx
-            };
+    todo!("casper_read");
+    // match todo!("caller.context().storage.read(key_tag, &prefixed) {");
+    //     Ok(Some(entry)) => {
+    //         let out_ptr: u32 = if cb_alloc != 0 {
+    //             caller.alloc(cb_alloc, entry.data.len(), alloc_ctx)?
+    //         } else {
+    //             // treats alloc_ctx as data
+    //             alloc_ctx
+    //         };
 
-            let read_info = ReadInfo {
-                data: out_ptr,
-                data_size: entry.data.len().try_into().unwrap(),
-                tag: entry.tag,
-            };
+    //         let read_info = ReadInfo {
+    //             data: out_ptr,
+    //             data_size: entry.data.len().try_into().unwrap(),
+    //             tag: entry.tag,
+    //         };
 
-            let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
-            caller.memory_write(info_ptr, read_info_bytes)?;
-            if out_ptr != 0 {
-                caller.memory_write(out_ptr, &entry.data)?;
-            }
-            Ok(0)
-        }
-        Ok(None) => Ok(1),
-        Err(_) => Ok(i32::MAX), // TODO: error handling
-    }
+    //         let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
+    //         caller.memory_write(info_ptr, read_info_bytes)?;
+    //         if out_ptr != 0 {
+    //             caller.memory_write(out_ptr, &entry.data)?;
+    //         }
+    //         Ok(0)
+    //     }
+    //     Ok(None) => Ok(1),
+    //     Err(_) => Ok(i32::MAX), // TODO: error handling
+    // }
 }
 
-pub(crate) fn casper_copy_input<S: Storage>(
+pub(crate) fn casper_copy_input<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+>(
     mut caller: impl Caller<S>,
     cb_alloc: u32,
     alloc_ctx: u32,
@@ -146,7 +155,9 @@ pub(crate) fn casper_copy_input<S: Storage>(
 }
 
 /// Returns from the execution of a smart contract with an optional flags.
-pub(crate) fn casper_return<S: Storage>(
+pub(crate) fn casper_return<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+>(
     caller: impl Caller<S>,
     flags: u32,
     data_ptr: u32,
@@ -164,7 +175,9 @@ pub(crate) fn casper_return<S: Storage>(
     Err(VMError::Return { flags, data })
 }
 
-pub(crate) fn casper_create_contract<S: Storage + 'static>(
+pub(crate) fn casper_create_contract<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
+>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
@@ -233,159 +246,162 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         entrypoints: entrypoints.clone(),
     };
 
-    let storage::CreateResult {
-        package_address,
-        contract_address,
-    } = caller
-        .context()
-        .storage
-        .create_contract(code.clone(), manifest)
-        .unwrap();
+    todo!("casper_create_contract");
+    // let storage::CreateResult {
+    //     package_address,
+    //     contract_address,
+    // } = caller
+    //     .context()
+    //     .storage
+    //     .create_contract(code.clone(), manifest)
+    //     .unwrap();
 
-    let initial_state = if let Some(constructor_selector) = constructor_selector {
-        dbg!(&entrypoints);
+    // let initial_state = if let Some(constructor_selector) = constructor_selector {
+    //     dbg!(&entrypoints);
 
-        // Find all entrypoints with a flag set to CONSTRUCTOR
-        let mut constructors: Vec<_> = entrypoints
-            .iter()
-            .filter_map(|entrypoint| {
-                if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                    Some(entrypoint)
-                } else {
-                    None
-                }
-            })
-            .filter(|entry_point| entry_point.selector == constructor_selector.get())
-            .collect();
+    //     // Find all entrypoints with a flag set to CONSTRUCTOR
+    //     let mut constructors: Vec<_> = entrypoints
+    //         .iter()
+    //         .filter_map(|entrypoint| {
+    //             if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+    //                 Some(entrypoint)
+    //             } else {
+    //                 None
+    //             }
+    //         })
+    //         .filter(|entry_point| entry_point.selector == constructor_selector.get())
+    //         .collect();
 
-        // TODO: Should we validate amount of constructors or just rely on the fact that the proc
-        // macro will statically check it, and the document the behavior that only first
-        // constructor will be called
+    //     // TODO: Should we validate amount of constructors or just rely on the fact that the proc
+    //     // macro will statically check it, and the document the behavior that only first
+    //     // constructor will be called
 
-        match constructors.first() {
-            Some(first_constructor) => {
-                let mut vm = VM::new();
-                let storage = caller.context().storage.clone();
+    //     match constructors.first() {
+    //         Some(first_constructor) => {
+    //             let mut vm = VM::new();
+    //             let storage = todo!("caller.context().storage.clone();");
 
-                let current_config = caller.config().clone();
-                let gas_limit = caller
-                    .gas_consumed()
-                    .try_into_remaining()
-                    .expect("should be remaining");
+    //             let current_config = caller.config().clone();
+    //             let gas_limit = caller
+    //                 .gas_consumed()
+    //                 .try_into_remaining()
+    //                 .expect("should be remaining");
 
-                let new_context = Context {
-                    address: contract_address,
-                    storage,
-                };
+    //             let new_context = Context {
+    //                 address: contract_address,
+    //                 storage,
+    //             };
 
-                let new_config = ConfigBuilder::new()
-                    .with_gas_limit(gas_limit)
-                    .with_memory_limit(current_config.memory_limit)
-                    .with_input(input_data.unwrap_or(Bytes::new()))
-                    .build();
+    //             let new_config = ConfigBuilder::new()
+    //                 .with_gas_limit(gas_limit)
+    //                 .with_memory_limit(current_config.memory_limit)
+    //                 .with_input(input_data.unwrap_or(Bytes::new()))
+    //                 .build();
 
-                let mut new_instance = vm
-                    .prepare(code.clone(), new_context, new_config)
-                    .expect("should prepare instance");
+    //             let mut new_instance = vm
+    //                 .prepare(code.clone(), new_context, new_config)
+    //                 .expect("should prepare instance");
 
-                let (call_result, gas_usage) =
-                    new_instance.call_function(first_constructor.function_index);
+    //             let (call_result, gas_usage) =
+    //                 new_instance.call_function(first_constructor.function_index);
 
-                let (return_data, host_result) = match call_result {
-                    Ok(()) => {
-                        // Contract did not call `casper_return` - implies that it did not revert,
-                        // and did not pass any data.
-                        (None, Ok(()))
-                    }
-                    Err(VMError::Return { flags, data }) => {
-                        // If the contract called `casper_return` function with revert bit set, we
-                        // have to pass the reverted code to the caller.
-                        let host_result = if flags.contains(ReturnFlags::REVERT) {
-                            Err(HostError::CalleeReverted)
-                        } else {
-                            Ok(())
-                        };
-                        (data, host_result)
-                    }
-                    Err(VMError::OutOfGas) => {
-                        todo!()
-                    }
-                    Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
-                    Err(other_error) => todo!("{other_error:?}"),
-                };
+    //             let (return_data, host_result) = match call_result {
+    //                 Ok(()) => {
+    //                     // Contract did not call `casper_return` - implies that it did not revert,
+    //                     // and did not pass any data.
+    //                     (None, Ok(()))
+    //                 }
+    //                 Err(VMError::Return { flags, data }) => {
+    //                     // If the contract called `casper_return` function with revert bit set, we
+    //                     // have to pass the reverted code to the caller.
+    //                     let host_result = if flags.contains(ReturnFlags::REVERT) {
+    //                         Err(HostError::CalleeReverted)
+    //                     } else {
+    //                         Ok(())
+    //                     };
+    //                     (data, host_result)
+    //                 }
+    //                 Err(VMError::OutOfGas) => {
+    //                     todo!()
+    //                 }
+    //                 Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
+    //                 Err(other_error) => todo!("{other_error:?}"),
+    //             };
 
-                // Calculate how much gas was spent during execution of the called contract.
-                let gas_spent = gas_usage
-                    .gas_limit
-                    .checked_sub(gas_usage.remaining_points)
-                    .expect("remaining points always below or equal to the limit");
+    //             // Calculate how much gas was spent during execution of the called contract.
+    //             let gas_spent = gas_usage
+    //                 .gas_limit
+    //                 .checked_sub(gas_usage.remaining_points)
+    //                 .expect("remaining points always below or equal to the limit");
 
-                match caller.consume_gas(gas_spent) {
-                    MeteringPoints::Remaining(_) => {}
-                    MeteringPoints::Exhausted => {
-                        todo!("exhausted")
-                    }
-                }
+    //             match caller.consume_gas(gas_spent) {
+    //                 MeteringPoints::Remaining(_) => {}
+    //                 MeteringPoints::Exhausted => {
+    //                     todo!("exhausted")
+    //                 }
+    //             }
 
-                match host_result {
-                    Ok(()) => return_data,
-                    error @ Err(_) => {
-                        // If the constructor failed, we have to return the error to the caller.
-                        return Ok(error);
-                    }
-                }
-            }
-            None => {
-                todo!(
-                    "Constructor with selector {:?} not found; available constructors {:?}",
-                    constructor_selector,
-                    constructors
-                )
-            }
-        }
-    } else {
-        None
-    };
-    // dbg!(&initial_statE);
+    //             match host_result {
+    //                 Ok(()) => return_data,
+    //                 error @ Err(_) => {
+    //                     // If the constructor failed, we have to return the error to the caller.
+    //                     return Ok(error);
+    //                 }
+    //             }
+    //         }
+    //         None => {
+    //             todo!(
+    //                 "Constructor with selector {:?} not found; available constructors {:?}",
+    //                 constructor_selector,
+    //                 constructors
+    //             )
+    //         }
+    //     }
+    // } else {
+    //     None
+    // };
+    // // dbg!(&initial_statE);
 
-    if let Some(state) = initial_state {
-        eprintln!(
-            "Write initial state {}bytes under {contract_address:?}",
-            state.len()
-        );
-        caller
-            .context()
-            .storage
-            .write(
-                0, // KEYSPACE_STATE
-                &contract_address,
-                0,
-                &state,
-            )
-            .unwrap();
-    }
+    // if let Some(state) = initial_state {
+    //     eprintln!(
+    //         "Write initial state {}bytes under {contract_address:?}",
+    //         state.len()
+    //     );
+    //     caller
+    //         .context()
+    //         .storage
+    //         .write(
+    //             0, // KEYSPACE_STATE
+    //             &contract_address,
+    //             0,
+    //             &state,
+    //         )
+    //         .unwrap();
+    // }
 
-    let create_result = CreateResult {
-        package_address,
-        contract_address,
-        version: 1,
-    };
+    // let create_result = CreateResult {
+    //     package_address,
+    //     contract_address,
+    //     version: 1,
+    // };
 
-    let create_result_bytes = safe_transmute::transmute_one_to_bytes(&create_result);
+    // let create_result_bytes = safe_transmute::transmute_one_to_bytes(&create_result);
 
-    debug_assert_eq!(
-        safe_transmute::transmute_one(create_result_bytes),
-        Ok(create_result),
-        "Sanity check", // NOTE: Remove these guards with sufficient test coverage
-    );
+    // debug_assert_eq!(
+    //     safe_transmute::transmute_one(create_result_bytes),
+    //     Ok(create_result),
+    //     "Sanity check", // NOTE: Remove these guards with sufficient test coverage
+    // );
 
-    caller.memory_write(result_ptr, create_result_bytes)?;
+    // caller.memory_write(result_ptr, create_result_bytes)?;
 
-    Ok(Ok(()))
+    // Ok(Ok(()))
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn casper_call<S: Storage + 'static>(
+pub(crate) fn casper_call<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
+>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
     address_len: u32,
@@ -407,121 +423,124 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     // let vm = VM::new();
     // vm.
     let address = caller.memory_read(address_ptr, address_len as _)?;
-    let input_data = caller.memory_read(input_ptr, input_len as _)?.into();
+    let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
 
-    let contract = caller.context().storage.read_contract(&address).unwrap();
+    todo!("casper_call");
+    // let contract = todo!("caller.context().storage.read_contract(&address).unwrap();");
 
-    match contract {
-        Some(Contract {
-            code_hash,
-            manifest,
-        }) => {
-            let wasm_bytes = caller.context().storage.read_code(&code_hash).unwrap();
+    // match contract {
+    //     Some(Contract {
+    //         code_hash,
+    //         manifest,
+    //     }) => {
+    //         let wasm_bytes = todo!("caller.context().storage.read_code(&code_hash).unwrap();");
 
-            let mut vm = VM::new();
-            let storage = caller.context().storage.clone();
+    //         let mut vm = VM::new();
+    //         let storage = todo!("caller.context().storage.clone();");
 
-            let new_context = Context {
-                address: address.try_into().unwrap(),
-                storage,
-            };
+    //         let new_context = Context {
+    //             address: address.try_into().unwrap(),
+    //             storage,
+    //         };
 
-            // let config = ConfigBuilder:
-            // caller.self.config()
+    //         // let config = ConfigBuilder:
+    //         // caller.self.config()
 
-            let current_config = caller.config().clone();
+    //         let current_config = caller.config().clone();
 
-            // Take the gas spent so far and use it as a limit for the new VM.
-            let gas_limit = caller
-                .gas_consumed()
-                .try_into_remaining()
-                .expect("should be remaining");
+    //         // Take the gas spent so far and use it as a limit for the new VM.
+    //         let gas_limit = caller
+    //             .gas_consumed()
+    //             .try_into_remaining()
+    //             .expect("should be remaining");
 
-            let new_config = ConfigBuilder::new()
-                .with_gas_limit(gas_limit)
-                .with_memory_limit(current_config.memory_limit)
-                .with_input(input_data)
-                .build();
+    //         let new_config = ConfigBuilder::new()
+    //             .with_gas_limit(gas_limit)
+    //             .with_memory_limit(current_config.memory_limit)
+    //             .with_input(input_data)
+    //             .build();
 
-            let mut new_instance = vm
-                .prepare(wasm_bytes, new_context, new_config)
-                .expect("should prepare instance");
+    //         let mut new_instance = vm
+    //             .prepare(wasm_bytes, new_context, new_config)
+    //             .expect("should prepare instance");
 
-            // NOTE: We probably don't need to keep instances alive for repeated calls
+    //         // NOTE: We probably don't need to keep instances alive for repeated calls
 
-            let function_index = {
-                let entry_points = manifest.entrypoints;
-                let entry_point = entry_points
-                    .iter()
-                    .find_map(|entry_point| {
-                        if entry_point.selector == selector {
-                            Some(entry_point)
-                        } else {
-                            None
-                        }
-                    })
-                    .expect("should find entry point");
-                entry_point.function_index
-            };
+    //         let function_index = {
+    //             let entry_points = manifest.entrypoints;
+    //             let entry_point = entry_points
+    //                 .iter()
+    //                 .find_map(|entry_point| {
+    //                     if entry_point.selector == selector {
+    //                         Some(entry_point)
+    //                     } else {
+    //                         None
+    //                     }
+    //                 })
+    //                 .expect("should find entry point");
+    //             entry_point.function_index
+    //         };
 
-            // Call function by the index
-            let (call_result, gas_usage) = new_instance.call_function(function_index);
+    //         // Call function by the index
+    //         let (call_result, gas_usage) = new_instance.call_function(function_index);
 
-            let (return_data, host_result) = match call_result {
-                Ok(()) => {
-                    // Contract did not call `casper_return` - implies that it did not revert, and
-                    // did not pass any data.
-                    (None, Ok(()))
-                }
-                Err(VMError::Return { flags, data }) => {
-                    // If the contract called `casper_return` function with revert bit set, we have
-                    // to pass the reverted code to the caller.
-                    let host_result = if flags.contains(ReturnFlags::REVERT) {
-                        Err(HostError::CalleeReverted)
-                    } else {
-                        Ok(())
-                    };
-                    (data, host_result)
-                }
-                Err(VMError::OutOfGas) => {
-                    todo!()
-                }
-                Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
-                Err(other_error) => todo!("{other_error:?}"),
-            };
+    //         let (return_data, host_result) = match call_result {
+    //             Ok(()) => {
+    //                 // Contract did not call `casper_return` - implies that it did not revert, and
+    //                 // did not pass any data.
+    //                 (None, Ok(()))
+    //             }
+    //             Err(VMError::Return { flags, data }) => {
+    //                 // If the contract called `casper_return` function with revert bit set, we have
+    //                 // to pass the reverted code to the caller.
+    //                 let host_result = if flags.contains(ReturnFlags::REVERT) {
+    //                     Err(HostError::CalleeReverted)
+    //                 } else {
+    //                     Ok(())
+    //                 };
+    //                 (data, host_result)
+    //             }
+    //             Err(VMError::OutOfGas) => {
+    //                 todo!()
+    //             }
+    //             Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
+    //             Err(other_error) => todo!("{other_error:?}"),
+    //         };
 
-            // Calculate how much gas was spent during execution of the called contract.
-            let gas_spent = gas_usage
-                .gas_limit
-                .checked_sub(gas_usage.remaining_points)
-                .expect("remaining points always below or equal to the limit");
+    //         // Calculate how much gas was spent during execution of the called contract.
+    //         let gas_spent = gas_usage
+    //             .gas_limit
+    //             .checked_sub(gas_usage.remaining_points)
+    //             .expect("remaining points always below or equal to the limit");
 
-            match caller.consume_gas(gas_spent) {
-                MeteringPoints::Remaining(_) => {}
-                MeteringPoints::Exhausted => {
-                    todo!("exhausted")
-                }
-            }
+    //         match caller.consume_gas(gas_spent) {
+    //             MeteringPoints::Remaining(_) => {}
+    //             MeteringPoints::Exhausted => {
+    //                 todo!("exhausted")
+    //             }
+    //         }
 
-            match &host_result {
-                Ok(()) | Err(HostError::CalleeReverted) => {
-                    // Called contract did return data by calling `casper_return` function.
-                    if let Some(returned_data) = return_data {
-                        let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
-                        caller.memory_write(out_ptr, &returned_data)?;
-                    }
-                }
-                Err(_other_host_error) => {}
-            }
-            Ok(host_result)
-        }
-        None => todo!("not found"),
-    }
+    //         match &host_result {
+    //             Ok(()) | Err(HostError::CalleeReverted) => {
+    //                 // Called contract did return data by calling `casper_return` function.
+    //                 if let Some(returned_data) = return_data {
+    //                     let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
+    //                     caller.memory_write(out_ptr, &returned_data)?;
+    //                 }
+    //             }
+    //             Err(_other_host_error) => {}
+    //         }
+    //         Ok(host_result)
+    //     }
+    //     None => todo!("not found"),
+    // }
 }
 
 const CASPER_ENV_CALLER: u64 = 0;
 
-pub(crate) fn casper_env_read<S: Storage>(
+pub(crate) fn casper_env_read<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+>(
     mut caller: impl Caller<S>,
     env_path: u32,
     env_path_length: u32,
@@ -569,7 +588,9 @@ pub(crate) fn casper_env_read<S: Storage>(
     }
 }
 
-pub(crate) fn casper_env_caller<S: Storage>(
+pub(crate) fn casper_env_caller<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+>(
     mut caller: impl Caller<S>,
     dest_ptr: u32,
     dest_len: u32,

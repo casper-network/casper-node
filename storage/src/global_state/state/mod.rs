@@ -77,7 +77,7 @@ use crate::{
 };
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
-pub trait StateReader<K, V> {
+pub trait StateReader<K, V>: Send + Sync {
     /// An error which occurs when reading state
     type Error;
 
@@ -740,7 +740,7 @@ pub trait CommitProvider: StateProvider {
 }
 
 /// A trait expressing operations over the trie.
-pub trait StateProvider {
+pub trait StateProvider: Send + Sync {
     /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 

@@ -29,6 +29,7 @@ num-derive = "0.4.1"
 tracing = "0.1.40"
 
 vm-common = { path = "../vm-common"}
+casper-storage = { path = "../storage" }
 
 [[bench]]
 name = "vm_call"

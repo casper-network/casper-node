@@ -7104,6 +7104,7 @@ dependencies = [
  "borsh",
  "borsh-derive",
  "bytes",
+ "casper-storage",
  "casper-types",
  "criterion 0.5.1",
  "digest 0.10.7",

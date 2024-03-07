@@ -6,6 +6,8 @@ use std::{
 };
 
 use bytes::Bytes;
+use casper_storage::global_state::{self, state::StateReader};
+use casper_types::{Key, StoredValue};
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
     Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table,
@@ -15,7 +17,7 @@ use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::{metering, Metering};
 use wasmer_types::compilation::function;
 
-use crate::{host, storage::Storage, Config, ExportError, MemoryError, TrapCode, VMResult};
+use crate::{host, Config, ExportError, MemoryError, TrapCode, VMResult};
 
 use self::metering_middleware::make_wasmer_metering_middleware;
 
@@ -55,7 +57,7 @@ impl From<wasmer_types::TrapCode> for TrapCode {
 
 pub(crate) struct WasmerEngine {}
 
-struct WasmerEnv<S: Storage> {
+struct WasmerEnv<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
     config: Config,
     context: Context<S>,
     instance: Weak<Instance>,
@@ -63,11 +65,16 @@ struct WasmerEnv<S: Storage> {
     exported_runtime: Option<ExportedRuntime>,
 }
 
-pub(crate) struct WasmerCaller<'a, S: Storage> {
+pub(crate) struct WasmerCaller<
+    'a,
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+> {
     env: FunctionEnvMut<'a, WasmerEnv<S>>,
 }
 
-impl<'a, S: Storage + 'static> WasmerCaller<'a, S> {
+impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static>
+    WasmerCaller<'a, S>
+{
     fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
         let mem = &self.env.data().exported_runtime().memory;
         let binding = self.env.as_store_ref();
@@ -101,7 +108,9 @@ impl<'a, S: Storage + 'static> WasmerCaller<'a, S> {
     }
 }
 
-impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
+impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static> Caller<S>
+    for WasmerCaller<'a, S>
+{
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
         Ok(self
             .with_memory(|mem| mem.write(offset.into(), data))
@@ -169,9 +178,9 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     }
 }
 
-impl<S: Storage> WasmerEnv<S> {}
+impl<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> WasmerEnv<S> {}
 
-impl<S: Storage> WasmerEnv<S> {
+impl<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> WasmerEnv<S> {
     fn new(config: Config, context: Context<S>, code: Bytes) -> Self {
         Self {
             config,
@@ -199,7 +208,9 @@ pub(crate) struct ExportedRuntime {
     pub(crate) exports: Exports,
 }
 
-pub(crate) struct WasmerInstance<S: Storage> {
+pub(crate) struct WasmerInstance<
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
+> {
     instance: Arc<Instance>,
     env: FunctionEnv<WasmerEnv<S>>,
     store: Store,
@@ -223,7 +234,7 @@ fn handle_wasmer_result<T: Debug>(wasmer_result: Result<T, RuntimeError>) -> VMR
 
 impl<S> WasmerInstance<S>
 where
-    S: Storage + 'static,
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
 {
     fn wasmer_env(&self) -> &WasmerEnv<S> {
         self.env.as_ref(&self.store)
@@ -590,7 +601,7 @@ where
 
 impl<S> WasmInstance<S> for WasmerInstance<S>
 where
-    S: Storage + 'static,
+    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
 {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
         let vm_result = self.call_export(name);
@@ -642,7 +653,7 @@ where
         let Context { storage, address } = context;
 
         Context {
-            storage: storage.clone(),
+            storage: todo!(),
             address: *address,
         }
     }

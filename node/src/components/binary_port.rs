@@ -320,15 +320,22 @@ where
         } if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
             metrics.binary_port_get_record_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
-                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::BadRequest,
+                    protocol_version,
+                );
             };
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
-                .await else {
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             let Ok(serialized) = bincode::serialize(&transfers) else {
-                return BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version);
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::InternalError,
+                    protocol_version,
+                );
             };
             let bytes = DbRawBytesSpec::new_current(&serialized);
             BinaryResponse::from_db_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
@@ -352,10 +359,16 @@ where
         GetRequest::Information { info_type_tag, key } => {
             metrics.binary_port_get_info_count.inc();
             let Ok(tag) = InformationRequestTag::try_from(info_type_tag) else {
-                return BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest, protocol_version);
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::UnsupportedRequest,
+                    protocol_version,
+                );
             };
             let Ok(req) = InformationRequest::try_from((tag, &key[..])) else {
-                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::BadRequest,
+                    protocol_version,
+                );
             };
             handle_info_request(req, effect_builder, protocol_version).await
         }
@@ -375,8 +388,9 @@ async fn handle_get_all_items<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
-        return BinaryResponse::new_empty(protocol_version)
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
+    else {
+        return BinaryResponse::new_empty(protocol_version);
     };
     let request = TaggedValuesRequest::new(state_root_hash, TaggedValuesSelection::All(key_tag));
     match effect_builder.get_tagged_values(request).await {
@@ -465,8 +479,9 @@ async fn handle_get_item_request<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
-        return BinaryResponse::new_empty(protocol_version)
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
+    else {
+        return BinaryResponse::new_empty(protocol_version);
     };
 
     match effect_builder
@@ -525,7 +540,8 @@ where
             };
             let Some(block) = effect_builder
                 .get_block_at_height_with_metadata_from_storage(height, true)
-                .await else {
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             BinaryResponse::from_value(
@@ -537,10 +553,10 @@ where
             hash,
             with_finalized_approvals,
         } => {
-            let Some((transaction, execution_info)) =
-                effect_builder
-                    .get_transaction_and_exec_info_from_storage(hash, with_finalized_approvals)
-                    .await else {
+            let Some((transaction, execution_info)) = effect_builder
+                .get_transaction_and_exec_info_from_storage(hash, with_finalized_approvals)
+                .await
+            else {
                 return BinaryResponse::new_empty(protocol_version);
             };
             BinaryResponse::from_value(
@@ -631,7 +647,7 @@ where
                 return BinaryResponse::new_error(
                     binary_port::ErrorCode::InternalError,
                     protocol_version,
-                )
+                );
             };
 
             let status = NodeStatus {
@@ -758,7 +774,10 @@ where
 
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
-        return BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest, protocol_version);
+        return BinaryResponse::new_error(
+            binary_port::ErrorCode::UnsupportedRequest,
+            protocol_version,
+        );
     };
 
     let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {

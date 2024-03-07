@@ -5,7 +5,11 @@ pub mod storage;
 use bytes::Bytes;
 
 use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
-use storage::Storage;
+use casper_storage::global_state::{
+    self,
+    state::{StateProvider, StateReader},
+};
+use casper_types::{Key, StoredValue};
 use thiserror::Error;
 use vm_common::flags::ReturnFlags;
 
@@ -154,7 +158,10 @@ impl ConfigBuilder {
 }
 
 impl VM {
-    pub fn prepare<S: Storage + 'static, C: Into<Bytes>>(
+    pub fn prepare<
+        S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
+        C: Into<Bytes>,
+    >(
         &mut self,
         wasm_bytes: C,
         context: Context<S>,
