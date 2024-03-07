@@ -28,7 +28,7 @@ use super::{
     Channel, Config, Event, FromIncoming, Identity, Payload, PerChannel, Transport,
 };
 
-/// Creates a new RPC builder with the currently fixed Juliet configuration.
+/// Creates a new RPC builder with Juliet configuration as specified in the config and chainspec.
 ///
 /// The resulting `RpcBuilder` can be reused for multiple connections.
 pub(super) fn create_rpc_builder(

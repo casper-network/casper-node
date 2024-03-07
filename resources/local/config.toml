@@ -242,11 +242,11 @@ tarpit_chance = 0.2
 # How long peers remain blocked after they get blocklisted.
 blocklist_retain_duration = '1 minute'
 
-# Used to control if a timed-out request should make the consecutive reqeusts to fail.
+# Whether or not to consider a connection stuck after a single request times out, causing a termination and reconnection.
 # It is recommended to set this to `true` unless network connectivity issues are being troubleshot.
 bubble_timeouts = true
 
-# The maximum time a peer is allowed to take to receive an error.
+# The maximum time a peer is allowed to take to receive a fatal error.
 error_timeout = '10 seconds'
 
 # The maximum frame size.
@@ -262,12 +262,12 @@ max_frame_size = 4096
 # ca_certificate = "ca_cert.pem"
 
 
-# ============================================
-# Configuration options for Connection Manager
-# ============================================
+# ================================================
+# Configuration options for the connection manager
+# ================================================
 [network.conman]
 
-# The timeout for one TCP to be connection to be established, from a single `connect` call.
+# The timeout for a single underlying TCP connection to be established.
 tcp_connect_timeout = '10 seconds'
 
 # Maximum time allowed for TLS setup and handshaking to proceed.

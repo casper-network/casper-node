@@ -131,9 +131,10 @@ pub struct Config {
     pub identity: Option<IdentityConfig>,
     /// Configuration for the connection manager.
     pub conman: ConmanConfig,
-    /// Used to control if a timed-out request should make the consecutive requests to fail.
+    /// Whether or not to consider a connection stuck after a single request times out, causing a
+    /// termination and reconnection.
     pub bubble_timeouts: bool,
-    /// The maximum time a peer is allowed to take to receive an error.
+    /// The maximum time a peer is allowed to take to receive a fatal error.
     pub error_timeout: TimeDiff,
 }
 

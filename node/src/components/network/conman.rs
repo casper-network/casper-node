@@ -75,7 +75,7 @@ pub(crate) struct ConMan {
 #[derive(DataSize, Debug, Copy, Clone, Deserialize, Serialize)]
 /// Configuration settings for the connection manager.
 pub struct Config {
-    /// The timeout for one TCP to be connection to be established, from a single `connect` call.
+    /// The timeout for a single underlying TCP connection to be established.
     tcp_connect_timeout: TimeDiff,
     /// Maximum time allowed for TLS setup and handshaking to proceed.
     setup_timeout: TimeDiff,
