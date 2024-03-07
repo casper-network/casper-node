@@ -5,14 +5,14 @@ use casper_types::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
         ConsensusStatus, ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult,
         GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-        LastProgress, NetworkName, NodeStatus, PayloadType, RecordId, Uptime,
+        LastProgress, NetworkName, NodeStatus, PayloadType, ReactorStateName, RecordId, Uptime,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
     ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers,
-    ProtocolVersion, ReactorState, SecretKey, SignedBlock, StoredValue, Transaction,
-    TransactionV1Builder, Transfer,
+    ProtocolVersion, SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder,
+    Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -373,10 +373,10 @@ fn reactor_state() -> TestCase {
             key: vec![],
         }),
         asserter: Box::new(|response| {
-            assert_response::<ReactorState, _>(
+            assert_response::<ReactorStateName, _>(
                 response,
                 Some(PayloadType::ReactorState),
-                |reactor_state| matches!(reactor_state, ReactorState::Validate),
+                |reactor_state| matches!(reactor_state.into_inner().as_str(), "Validate"),
             )
         }),
     }
@@ -513,7 +513,7 @@ fn node_status() -> TestCase {
                         && node_status.our_public_signing_key.is_some()
                         && node_status.block_sync.historical().is_none()
                         && node_status.block_sync.forward().is_none()
-                        && matches!(node_status.reactor_state, ReactorState::Validate)
+                        && matches!(node_status.reactor_state.into_inner().as_str(), "Validate")
                 },
             )
         }),

@@ -1,6 +1,7 @@
 //! Outcome of an `ExecutionRequest`.
 
 use std::collections::VecDeque;
+use tracing::{debug, trace};
 
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
@@ -41,19 +42,6 @@ pub enum ExecutionResult {
         /// Messages emitted during execution.
         messages: Messages,
     },
-}
-
-/// A type alias that represents multiple execution results.
-pub type ExecutionResults = VecDeque<ExecutionResult>;
-
-/// Indicates the outcome of a transfer payment check.
-pub enum ForcedTransferResult {
-    /// Payment code ran out of gas during execution
-    InsufficientPayment,
-    /// Gas conversion overflow
-    GasConversionOverflow,
-    /// Payment code execution resulted in an error
-    PaymentFailure,
 }
 
 impl ExecutionResult {
@@ -361,6 +349,79 @@ impl ExecutionResult {
             }
         }
     }
+
+    /// Should charge for wasm errors?
+    pub(crate) fn should_charge_for_errors_in_wasm(&self) -> bool {
+        match self {
+            ExecutionResult::Failure {
+                error,
+                transfers: _,
+                cost: _,
+                effects: _,
+                messages: _,
+            } => match error {
+                Error::Exec(err) => matches!(
+                    err,
+                    ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart
+                ),
+                Error::WasmPreprocessing(_) | Error::WasmSerialization(_) => true,
+                _ => false,
+            },
+            ExecutionResult::Success { .. } => false,
+        }
+    }
+
+    /// Logs execution results.
+    pub fn log_execution_result(&self, preamble: &'static str) {
+        trace!("{}: {:?}", preamble, self);
+        match self {
+            ExecutionResult::Success {
+                transfers,
+                cost,
+                effects,
+                messages,
+            } => {
+                debug!(
+                    %cost,
+                    transfer_count = %transfers.len(),
+                    transforms_count = %effects.len(),
+                    messages_count = %messages.len(),
+                    "{}: execution success",
+                    preamble
+                );
+            }
+            ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                effects,
+                messages,
+            } => {
+                debug!(
+                    %error,
+                    %cost,
+                    transfer_count = %transfers.len(),
+                    transforms_count = %effects.len(),
+                    messages_count = %messages.len(),
+                    "{}: execution failure",
+                    preamble
+                );
+            }
+        }
+    }
+}
+
+/// A type alias that represents multiple execution results.
+pub type ExecutionResults = VecDeque<ExecutionResult>;
+
+/// Indicates the outcome of a transfer payment check.
+pub enum ForcedTransferResult {
+    /// Payment code ran out of gas during execution
+    InsufficientPayment,
+    /// Gas conversion overflow
+    GasConversionOverflow,
+    /// Payment code execution resulted in an error
+    PaymentFailure,
 }
 
 /// A versioned execution result and the messages produced by that execution.

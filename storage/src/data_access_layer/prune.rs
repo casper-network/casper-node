@@ -1,5 +1,7 @@
 //! Support for pruning leaf nodes from the merkle trie.
-use crate::tracking_copy::TrackingCopyError;
+use crate::{
+    global_state::trie_store::operations::TriePruneResult, tracking_copy::TrackingCopyError,
+};
 use casper_types::{execution::Effects, Digest, Key};
 
 /// Represents the configuration of a prune operation.
@@ -45,4 +47,18 @@ pub enum PruneResult {
         /// Effects of executing a step request.
         effects: Effects,
     },
+}
+
+impl From<TriePruneResult> for PruneResult {
+    fn from(value: TriePruneResult) -> Self {
+        match value {
+            TriePruneResult::Pruned(post_state_hash) => PruneResult::Success {
+                post_state_hash,
+                effects: Effects::default(),
+            },
+            TriePruneResult::MissingKey => PruneResult::MissingKey,
+            TriePruneResult::RootNotFound => PruneResult::RootNotFound,
+            TriePruneResult::Failure(gse) => PruneResult::Failure(TrackingCopyError::Storage(gse)),
+        }
+    }
 }

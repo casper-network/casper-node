@@ -2,13 +2,14 @@ use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
 use casper_storage::data_access_layer::{GenesisResult, ProtocolUpgradeResult};
-use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, ReactorState, Timestamp};
+use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        binary_port, block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
-        contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
-        rest_server, upgrade_watcher,
+        binary_port,
+        block_synchronizer::{self, BlockSynchronizerProgress},
+        contract_runtime::ExecutionPreState,
+        diagnostics_port, event_stream_server, network, rest_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -16,7 +17,7 @@ use crate::{
         catch_up::CatchUpInstruction, genesis_instruction::GenesisInstruction,
         keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction,
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
-        MainEvent, MainReactor,
+        MainEvent, MainReactor, ReactorState,
     },
     types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     NodeRng,

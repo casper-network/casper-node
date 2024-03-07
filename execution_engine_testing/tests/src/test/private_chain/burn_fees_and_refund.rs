@@ -150,7 +150,7 @@ fn test_burning_fees(
     let total_supply_after = builder.total_supply(None);
 
     match fee_handling {
-        FeeHandling::PayToProposer | FeeHandling::Accumulate => {
+        FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::None => {
             assert_eq!(total_supply_before, total_supply_after);
         }
         FeeHandling::Burn => {

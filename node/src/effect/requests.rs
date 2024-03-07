@@ -17,7 +17,7 @@ use static_assertions::const_assert;
 
 use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
-    get_all_values::{AllValuesRequest, AllValuesResult},
+    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
     AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
     EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
     QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
@@ -32,8 +32,8 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
     BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, TransactionWithFinalizedApprovals, Transfer,
+    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    TransactionWithFinalizedApprovals, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -51,6 +51,7 @@ use crate::{
         transaction_acceptor,
     },
     contract_runtime::SpeculativeExecutionState,
+    reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
@@ -774,12 +775,12 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<EraValidatorsResult>,
     },
     /// Return all values at a given state root hash and given key tag.
-    GetAllValues {
-        /// Get all values request.
+    GetTaggedValues {
+        /// Get tagged values request.
         #[serde(skip_serializing)]
-        all_values_request: AllValuesRequest,
+        request: TaggedValuesRequest,
         /// Responder to call with the result.
-        responder: Responder<AllValuesResult>,
+        responder: Responder<TaggedValuesResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
@@ -860,8 +861,8 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
-            ContractRuntimeRequest::GetAllValues {
-                all_values_request: get_all_values_request,
+            ContractRuntimeRequest::GetTaggedValues {
+                request: get_all_values_request,
                 ..
             } => {
                 write!(

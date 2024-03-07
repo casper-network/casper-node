@@ -116,7 +116,7 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
-    get_all_values::{AllValuesRequest, AllValuesResult},
+    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
     BalanceRequest, BalanceResult, QueryRequest, QueryResult,
 };
 
@@ -135,8 +135,8 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
     BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
     FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade,
-    ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
+    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
 use crate::{
@@ -154,7 +154,7 @@ use crate::{
     },
     contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
@@ -2037,18 +2037,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_all_values(
-        self,
-        all_values_request: AllValuesRequest,
-    ) -> AllValuesResult
+    pub(crate) async fn get_tagged_values(self, request: TaggedValuesRequest) -> TaggedValuesResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetAllValues {
-                all_values_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetTaggedValues { request, responder },
             QueueKind::ContractRuntime,
         )
         .await

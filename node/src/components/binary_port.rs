@@ -11,7 +11,7 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_storage::{
     data_access_layer::{
-        get_all_values::{AllValuesRequest, AllValuesResult},
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
@@ -21,7 +21,7 @@ use casper_types::{
         self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
         BinaryResponseAndRequest, DbRawBytesSpec, GetRequest, GetTrieFullResult,
         GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-        NodeStatus, RecordId, TransactionWithExecutionInfo,
+        NodeStatus, ReactorStateName, RecordId, TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHeader, BlockIdentifier, Digest, GlobalStateIdentifier, Peers, ProtocolVersion,
@@ -378,14 +378,16 @@ where
     let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
         return BinaryResponse::new_empty(protocol_version)
     };
-    let get_all_values_request = AllValuesRequest::new(state_root_hash, key_tag);
-    match effect_builder.get_all_values(get_all_values_request).await {
-        AllValuesResult::Success { values } => BinaryResponse::from_value(values, protocol_version),
-        AllValuesResult::RootNotFound => {
+    let request = TaggedValuesRequest::new(state_root_hash, TaggedValuesSelection::All(key_tag));
+    match effect_builder.get_tagged_values(request).await {
+        TaggedValuesResult::Success { values, .. } => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
+        TaggedValuesResult::RootNotFound => {
             let error_code = binary_port::ErrorCode::RootNotFound;
             BinaryResponse::new_error(error_code, protocol_version)
         }
-        AllValuesResult::Failure(_err) => {
+        TaggedValuesResult::Failure(_err) => {
             BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
         }
     }
@@ -557,7 +559,8 @@ where
             BinaryResponse::from_value(effect_builder.get_last_progress().await, protocol_version)
         }
         InformationRequest::ReactorState => {
-            BinaryResponse::from_value(effect_builder.get_reactor_state().await, protocol_version)
+            let state = effect_builder.get_reactor_state().await;
+            BinaryResponse::from_value(ReactorStateName::new(state), protocol_version)
         }
         InformationRequest::NetworkName => {
             BinaryResponse::from_value(effect_builder.get_network_name().await, protocol_version)
@@ -622,6 +625,7 @@ where
                         consensus_status.round_length(),
                     )
                 });
+            let reactor_state = ReactorStateName::new(reactor_state);
 
             let Ok(uptime) = TimeDiff::try_from(node_uptime) else {
                 return BinaryResponse::new_error(

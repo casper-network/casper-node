@@ -862,10 +862,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, Acc
         .build();
 
     builder
-        .upgrade_using_scratch(
-            builder.get_engine_state().config().clone(),
-            &mut upgrade_request,
-        )
+        .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = ExecuteRequestBuilder::transfer(

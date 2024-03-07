@@ -155,8 +155,6 @@ pub enum TransferResult {
     Success {
         /// List of transfers that happened during execution.
         transfers: Vec<TransferAddr>,
-        /// State hash after transfer is committed to the global state.
-        post_state_hash: Digest,
         /// Effects of transfer.
         effects: Effects,
     },

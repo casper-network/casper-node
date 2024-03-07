@@ -581,7 +581,7 @@ impl TestFixture {
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .data_provider()
+            .data_access_layer()
             .bids(bids_request);
 
         if let BidsResult::Success { bids } = bids_result {
@@ -631,7 +631,7 @@ impl TestFixture {
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
-            .data_provider()
+            .data_access_layer()
             .checkout(*highest_block.state_root_hash())
             .expect("should checkout")
             .expect("should have view")
@@ -805,7 +805,7 @@ impl SwitchBlocks {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = BidsRequest::new(state_root_hash);
-            let data_provider = runner.main_reactor().contract_runtime().data_provider();
+            let data_provider = runner.main_reactor().contract_runtime().data_access_layer();
             if let BidsResult::Success { bids } = data_provider.bids(request) {
                 return bids;
             }
@@ -1893,7 +1893,7 @@ async fn run_rewards_network_scenario(
                 .state_root_hash();
             let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
             let result = representative_runtime
-                .data_provider()
+                .data_access_layer()
                 .total_supply(total_supply_req);
 
             if let TotalSupplyResult::Success { total_supply } = result {

@@ -206,7 +206,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
@@ -459,7 +459,7 @@ pub trait Auction:
         &mut self,
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {

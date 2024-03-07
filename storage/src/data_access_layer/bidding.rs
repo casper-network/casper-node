@@ -30,7 +30,7 @@ pub enum AuctionMethod {
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     },
     Undelegate {
@@ -121,7 +121,7 @@ impl AuctionMethod {
         let validator_public_key = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
-        let max_delegators_per_validator = Some(chainspec.core_config.max_delegators_per_validator);
+        let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
 
         Ok(Self::Delegate {

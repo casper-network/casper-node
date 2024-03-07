@@ -18,7 +18,7 @@ pub struct Config {
     vesting_schedule_period_millis: u64,
     allow_auction_bids: bool,
     compute_rewards: bool,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
 }
 
@@ -31,7 +31,7 @@ impl Config {
         vesting_schedule_period_millis: u64,
         allow_auction_bids: bool,
         compute_rewards: bool,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     ) -> Self {
         Config {
@@ -53,9 +53,7 @@ impl Config {
         let vesting_schedule_period_millis = chainspec.core_config.vesting_schedule_period.millis();
         let allow_auction_bids = chainspec.core_config.allow_auction_bids;
         let compute_rewards = chainspec.core_config.compute_rewards;
-        let max_delegators_per_validator = (chainspec.core_config.max_delegators_per_validator
-            != 0)
-            .then_some(chainspec.core_config.max_delegators_per_validator);
+        let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
         Config::new(
             transfer_config,
@@ -93,7 +91,7 @@ impl Config {
         self.compute_rewards
     }
 
-    pub fn max_delegators_per_validator(&self) -> Option<u32> {
+    pub fn max_delegators_per_validator(&self) -> u32 {
         self.max_delegators_per_validator
     }
 
