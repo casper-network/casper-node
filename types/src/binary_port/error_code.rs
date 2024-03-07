@@ -63,6 +63,7 @@ impl TryFrom<u8> for ErrorCode {
             9 => Ok(ErrorCode::QueryFailedToExecute),
             10 => Ok(ErrorCode::BadRequest),
             11 => Ok(ErrorCode::UnsupportedRequest),
+            12 => Ok(ErrorCode::DictionaryURefNotFound),
             _ => Err(UnknownErrorCode),
         }
     }
