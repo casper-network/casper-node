@@ -910,15 +910,17 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let ctor_name = format_ident!("{func_name}_ctor");
 
                 let token = quote! {
-                    #func
-
                     #[cfg(target_arch = "wasm32")]
                     #[no_mangle]
                     pub extern "C" fn #func_name() {
+                        #func
                         casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                             #func_name(#(#arg_names,)*)
                         });
                     }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    #func
 
                     #[cfg(not(target_arch = "wasm32"))]
                     #[casper_sdk::ctor]

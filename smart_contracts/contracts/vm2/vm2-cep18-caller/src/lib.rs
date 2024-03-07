@@ -1,18 +1,20 @@
-use casper_macros::casper;
-use casper_sdk::{log, types::Address, Contract, ContractHandle};
-
-use vm2_cep18::contract::TokenContractRef;
-use vm2_cep18::traits::CEP18Ext;
-
 const MODULE_PATH: &str = module_path!();
 
-#[casper(export)]
-pub fn call(address: Address) {
-    log!("Hello {address:?}");
-    let handle = ContractHandle::<TokenContractRef>::from_address(address);
-    let _name: String = handle
-        .call(|contract| contract.name())
-        .expect("Should call");
+pub mod exports {
+    use casper_macros::casper;
+    use casper_sdk::{log, types::Address, Contract, ContractHandle};
+
+    use vm2_cep18::contract::TokenContractRef;
+    use vm2_cep18::traits::CEP18Ext;
+
+    #[casper(export)]
+    pub fn call(address: Address) -> String {
+        log!("Hello {address:?}");
+        let handle = ContractHandle::<TokenContractRef>::from_address(address);
+        handle
+            .call(|contract| contract.name())
+            .expect("Should call")
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -21,7 +23,7 @@ mod tests {
 
     #[test]
     fn unit() {
-        super::call([42; 32]);
+        super::exports::call([42; 32]);
     }
 
     #[test]
