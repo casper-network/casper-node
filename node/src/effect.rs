@@ -135,8 +135,8 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
     FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer, U512,
+    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    U512,
 };
 
 use crate::{
@@ -154,7 +154,7 @@ use crate::{
     },
     contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,

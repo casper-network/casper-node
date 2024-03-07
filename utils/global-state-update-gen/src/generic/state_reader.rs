@@ -6,7 +6,7 @@ use casper_types::{
         auction::{BidKind, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
     },
-    AddressableEntity, Key, ProtocolVersion, StoredValue,
+    AddressableEntity, Key, StoredValue,
 };
 
 pub trait StateReader {
@@ -23,8 +23,6 @@ pub trait StateReader {
     fn get_withdraws(&mut self) -> WithdrawPurses;
 
     fn get_unbonds(&mut self) -> UnbondingPurses;
-
-    fn get_protocol_version(&mut self) -> ProtocolVersion;
 }
 
 impl<'a, T> StateReader for &'a mut T
@@ -57,10 +55,6 @@ where
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         T::get_unbonds(self)
-    }
-
-    fn get_protocol_version(&mut self) -> ProtocolVersion {
-        T::get_protocol_version(self)
     }
 }
 
@@ -129,19 +123,5 @@ impl StateReader for LmdbWasmTestBuilder {
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         LmdbWasmTestBuilder::get_unbonds(self)
-    }
-
-    fn get_protocol_version(&mut self) -> ProtocolVersion {
-        let mint_contract_hash = self.get_system_mint_hash();
-
-        let mint_legacy_contract_hash: ContractHash = ContractHash::new(mint_contract_hash.value());
-
-        if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
-            entity.protocol_version()
-        } else {
-            self.get_legacy_contract(mint_legacy_contract_hash)
-                .expect("mint should exist")
-                .protocol_version()
-        }
     }
 }

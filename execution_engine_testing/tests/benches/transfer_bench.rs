@@ -8,10 +8,11 @@ use criterion::{
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{EngineConfig, ExecuteRequest};
+use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{account::AccountHash, runtime_args, Key, URef, U512};
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
@@ -49,9 +50,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
     )
     .build();
 
-    let engine_config = EngineConfig::default();
-
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, ChainspecConfig::default());
 
     builder
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())

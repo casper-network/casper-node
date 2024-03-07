@@ -1715,7 +1715,16 @@ impl AddressableEntity {
 
     /// Determines if `AddressableEntity` is compatible with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
-        self.protocol_version.value().major == protocol_version.value().major
+        let entity_protocol_version = self.protocol_version.value();
+        let context_protocol_version = protocol_version.value();
+        if entity_protocol_version.major == context_protocol_version.major {
+            return true;
+        }
+        if entity_protocol_version.major == 1 && context_protocol_version.major == 2 {
+            // the 1.x model has been deprecated but is still supported until 3.0.0
+            return true;
+        }
+        false
     }
 
     /// Returns the kind of Package.

@@ -1,6 +1,6 @@
 use std::{path::Path, time::Duration};
 
-use casper_execution_engine::engine_state::{EngineConfig, ExecuteRequest};
+use casper_execution_engine::engine_state::ExecuteRequest;
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion, Throughput,
 };
@@ -8,13 +8,14 @@ use rand::Rng;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    StepRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
@@ -43,8 +44,7 @@ fn run_genesis_and_create_initial_accounts(
     validator_keys: &[PublicKey],
     delegator_accounts: Vec<AccountHash>,
 ) -> LmdbWasmTestBuilder {
-    let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, ChainspecConfig::default());
 
     let mut genesis_accounts = vec![
         GenesisAccount::account(
@@ -130,6 +130,7 @@ fn setup_bench_run_auction(
     group: &mut BenchmarkGroup<WallTime>,
     validator_count: usize,
     delegator_count: usize,
+    protocol_version: ProtocolVersion,
 ) {
     // Setup delegator public keys
     let delegator_keys = generate_public_keys(delegator_count);
@@ -149,7 +150,7 @@ fn setup_bench_run_auction(
     let mut next_validator_iter = validator_keys.iter().cycle();
     for delegator_public_key in delegator_keys {
         let balance = builder
-            .get_public_key_balance_result(delegator_public_key.clone())
+            .get_public_key_balance_result(protocol_version, delegator_public_key.clone())
             .motes()
             .cloned()
             .unwrap();
@@ -241,7 +242,7 @@ fn step_and_run_auction(builder: &mut LmdbWasmTestBuilder) {
 
 pub fn auction_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("auction_bench_group");
-
+    let protocol_version = ProtocolVersion::V2_0_0;
     /// Total number of validators, total number of delegators. Delegators will be spread
     /// round-robin over the validators.
     const VALIDATOR_DELEGATOR_COUNTS: [(usize, usize); 4] =
@@ -254,7 +255,12 @@ pub fn auction_bench(c: &mut Criterion) {
             "Starting bench of {} validators and {} delegators",
             validator_count, delegator_count
         );
-        setup_bench_run_auction(&mut group, validator_count, delegator_count);
+        setup_bench_run_auction(
+            &mut group,
+            validator_count,
+            delegator_count,
+            protocol_version,
+        );
         println!("Ended bench");
     }
     group.finish();

@@ -75,10 +75,9 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
 #[test]
 fn should_step() {
     let mut builder = initialize_builder();
+    let step_request_builder = builder.step_request_builder();
 
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(ProtocolVersion::V1_0_0)
+    let step_request = step_request_builder
         .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
         .with_next_era_id(EraId::from(1))
         .build();

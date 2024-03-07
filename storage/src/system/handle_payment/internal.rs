@@ -1,5 +1,6 @@
 use num::{CheckedMul, One};
 use num_rational::Ratio;
+use num_traits::Zero;
 use tracing::error;
 
 use casper_types::{
@@ -67,6 +68,7 @@ fn calculate_refund_and_fee(
             let (numer, denom) = (*refund_ratio).into();
             Ratio::new_raw(U512::from(numer), U512::from(denom))
         }
+        RefundHandling::None => Ratio::zero(),
     };
 
     let refund = Ratio::from(unspent)
@@ -167,6 +169,10 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
         RefundHandling::Burn { .. } => {
             // No refund to burn
         }
+
+        RefundHandling::None => {
+            // noop
+        }
     }
 
     // Pay or burn the fee.
@@ -192,6 +198,9 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
             // empty, and reduce the total supply (i.e. burn the fee).
             provider.write_balance(payment_purse, U512::zero())?;
             provider.reduce_total_supply(fee)?;
+        }
+        FeeHandling::None => {
+            // noop
         }
     }
     Ok(())
@@ -232,7 +241,7 @@ where
 
     // Distribute accumulation purse balance into all administrators
     match provider.fee_handling() {
-        FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+        FeeHandling::PayToProposer | FeeHandling::Burn | FeeHandling::None => return Ok(()),
         FeeHandling::Accumulate => {}
     }
 

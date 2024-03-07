@@ -16,6 +16,7 @@ use casper_types::{
 };
 
 use crate::global_state::{
+    error::Error as GlobalStateError,
     transaction_source::{Readable, Writable},
     trie::{self, Parents, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8},
     trie_store::TrieStore,
@@ -432,10 +433,11 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum PruneResult {
+pub enum TriePruneResult {
     Pruned(Digest),
     MissingKey,
     RootNotFound,
+    Failure(GlobalStateError),
 }
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
@@ -444,7 +446,7 @@ pub(crate) fn prune<K, V, T, S, E>(
     store: &S,
     root: &Digest,
     keys_to_prune: &K,
-) -> Result<PruneResult, E>
+) -> Result<TriePruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
@@ -454,7 +456,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_trie_bytes = match store.get_raw(txn, root)? {
-        None => return Ok(PruneResult::RootNotFound),
+        None => return Ok(TriePruneResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
@@ -479,7 +481,7 @@ where
                 );
                 key == *keys_to_prune
             } => {}
-        _ => return Ok(PruneResult::MissingKey),
+        _ => return Ok(TriePruneResult::MissingKey),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
@@ -661,7 +663,7 @@ where
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
 
-    Ok(PruneResult::Pruned(new_root))
+    Ok(TriePruneResult::Pruned(new_root))
 }
 
 #[allow(clippy::type_complexity)]

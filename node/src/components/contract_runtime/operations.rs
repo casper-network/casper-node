@@ -6,7 +6,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::engine_state::{
     self,
     execution_result::{ExecutionResultAndMessages, ExecutionResults},
-    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+    DeployItem, ExecuteRequest, ExecutionEngineV1, ExecutionResult as EngineExecutionResult,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -19,8 +19,8 @@ use casper_storage::{
     global_state::{
         error::Error as GlobalStateError,
         state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
+            StateProvider, StateReader,
         },
     },
     system::runtime_native::Config as NativeRuntimeConfig,
@@ -52,8 +52,8 @@ use super::ExecutionArtifact;
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    execution_engine_v1: &ExecutionEngineV1,
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
@@ -91,7 +91,7 @@ pub fn execute_finalized_block(
     let approvals_hashes: Vec<ApprovalsHash> =
         txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
-    let scratch_state = data_access_layer.get_scratch_engine_state();
+    let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
     // Pay out fees, if relevant.
@@ -102,7 +102,7 @@ pub fn execute_finalized_block(
             protocol_version,
             block_time,
         );
-        match data_access_layer.distribute_fees(fee_req) {
+        match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash))
             }
@@ -135,7 +135,7 @@ pub fn execute_finalized_block(
             block_time,
             rewards.clone(),
         );
-        match data_access_layer.distribute_block_rewards(rewards_req) {
+        match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash))
             }
@@ -167,7 +167,7 @@ pub fn execute_finalized_block(
                 U512::zero(), /* <-- this should be from chainspec cost table */
             );
             //NOTE: native mint interactions auto-commit
-            let transfer_result = data_access_layer.transfer(transfer_req);
+            let transfer_result = scratch_state.transfer(transfer_req);
             trace!(
                 ?transaction_hash,
                 ?transfer_result,
@@ -195,21 +195,16 @@ pub fn execute_finalized_block(
                     continue;
                 }
                 TransferResult::Success {
-                    post_state_hash,
+                    effects: transfer_effects,
                     transfers,
                     ..
                 } => {
-                    // ideally we should be doing something with the transfer records and effects,
-                    // but currently this is auto-commit and if we include the effects in the
-                    // collection they will get double-committed. there's also
-                    // the problem that the execution results type needs to be
-                    // made more expressive / flexible. effects? transfers?
-                    state_root_hash = post_state_hash;
+                    effects.append(transfer_effects.clone());
                     let artifact = ExecutionArtifact::new(
                         transaction_hash,
                         transaction.header(),
                         ExecutionResult::V2(ExecutionResultV2::Success {
-                            effects: Effects::new(), // auto commit
+                            effects: transfer_effects,
                             cost: U512::zero(),
                             transfers,
                         }),
@@ -243,7 +238,7 @@ pub fn execute_finalized_block(
             );
 
             //NOTE: native mint interactions auto-commit
-            let bidding_result = data_access_layer.bidding(bidding_req);
+            let bidding_result = scratch_state.bidding(bidding_req);
             trace!(?transaction_hash, ?bidding_result, "native auction result");
             match bidding_result {
                 BiddingResult::RootNotFound => {
@@ -280,8 +275,8 @@ pub fn execute_finalized_block(
         );
 
         let exec_result = execute(
-            engine_state,
-            data_access_layer,
+            &scratch_state,
+            execution_engine_v1,
             metrics.clone(),
             execute_request,
         )?;
@@ -555,7 +550,6 @@ pub fn execute_finalized_block(
 
 /// Commits the execution results.
 fn commit_execution_results(
-    //data_access_layer: &DataAccessLayer<S>,
     scratch_state: &ScratchGlobalState,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
@@ -597,7 +591,6 @@ fn commit_execution_results(
 }
 
 fn commit_transforms(
-    // data_access_layer: &DataAccessLayer<S>,
     scratch_state: &ScratchGlobalState,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
@@ -618,13 +611,13 @@ fn commit_transforms(
 ///
 /// Returns effects of the execution.
 pub fn speculatively_execute<S>(
-    engine_state: &EngineState<S>,
-    data_access_layer: &S,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
 ) -> Result<SpeculativeExecutionResult, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     let SpeculativeExecutionState {
         state_root_hash,
@@ -639,7 +632,7 @@ where
         protocol_version,
         PublicKey::System,
     );
-    let results = execute(engine_state, data_access_layer, None, execute_request);
+    let results = execute(state_provider, execution_engine_v1, None, execute_request);
     results.map(|mut execution_results| {
         let len = execution_results.len();
         if len != 1 {
@@ -666,17 +659,17 @@ where
 }
 
 fn execute<S>(
-    engine_state: &EngineState<S>,
-    _data_access_layer: &S,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<ExecutionResults, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
-    let result = engine_state.run_execute(execute_request);
+    let result = execution_engine_v1.exec(state_provider, execute_request);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());
     }

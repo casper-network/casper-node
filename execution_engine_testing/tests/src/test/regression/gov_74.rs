@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error},
+    engine_state::Error,
     execution::ExecError,
     runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
@@ -103,10 +103,12 @@ fn should_observe_stack_height_limit() {
     builder.exec(exec_request_1).expect_success().commit();
 
     {
-        // We need to perform an upgrade to be able to observe new max wasm stack height.
-        let new_engine_config = EngineConfigBuilder::default()
-            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT)
-            .build();
+        let updated_chainspec = builder
+            .chainspec()
+            .clone()
+            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT);
+
+        builder.with_chainspec(updated_chainspec);
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
@@ -114,8 +116,7 @@ fn should_observe_stack_height_limit() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder
-            .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
+        builder.upgrade(&mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.

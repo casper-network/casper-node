@@ -32,8 +32,7 @@ use casper_types::{
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId,
     ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Transfer,
+    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -51,6 +50,7 @@ use crate::{
         transaction_acceptor,
     },
     contract_runtime::SpeculativeExecutionState,
+    reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,

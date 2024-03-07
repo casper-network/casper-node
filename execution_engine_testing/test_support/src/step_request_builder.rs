@@ -7,7 +7,7 @@ use casper_types::{Digest, EraId, ProtocolVersion};
 /// Builder for creating a [`StepRequest`].
 #[derive(Debug, Clone)]
 pub struct StepRequestBuilder {
-    config: Config,
+    runtime_config: Config,
     parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
@@ -25,14 +25,14 @@ impl StepRequestBuilder {
     }
 
     /// Sets config.
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = config;
+    pub fn with_runtime_config(mut self, runtime_config: Config) -> Self {
+        self.runtime_config = runtime_config;
         self
     }
 
     /// Sets `transfer_config` to the imputed value.
     pub fn with_transfer_config(mut self, transfer_config: TransferConfig) -> Self {
-        self.config = self.config.set_transfer_config(transfer_config);
+        self.runtime_config = self.runtime_config.set_transfer_config(transfer_config);
         self
     }
 
@@ -93,7 +93,7 @@ impl StepRequestBuilder {
     /// Consumes the [`StepRequestBuilder`] and returns a [`StepRequest`].
     pub fn build(self) -> StepRequest {
         StepRequest::new(
-            self.config,
+            self.runtime_config,
             self.parent_state_hash,
             self.protocol_version,
             self.slash_items,
@@ -107,7 +107,7 @@ impl StepRequestBuilder {
 impl Default for StepRequestBuilder {
     fn default() -> Self {
         StepRequestBuilder {
-            config: Default::default(),
+            runtime_config: Default::default(),
             parent_state_hash: Default::default(),
             protocol_version: Default::default(),
             slash_items: Default::default(),

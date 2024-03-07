@@ -85,6 +85,12 @@ impl SystemConfig {
         &self.mint_costs
     }
 
+    /// Sets mint costs.
+    pub fn with_mint_costs(mut self, mint_costs: MintCosts) -> Self {
+        self.mint_costs = mint_costs;
+        self
+    }
+
     /// Returns the costs of executing `handle_payment` entry points.
     pub fn handle_payment_costs(&self) -> &HandlePaymentCosts {
         &self.handle_payment_costs

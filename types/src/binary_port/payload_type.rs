@@ -18,8 +18,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, Peers, ReactorState, SignedBlock,
-    StoredValue, Transaction, Transfer,
+    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, Peers, SignedBlock, StoredValue,
+    Transaction, Transfer,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -29,7 +29,7 @@ use super::{
     record_id::RecordId,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        SpeculativeExecutionResult,
+        ReactorStateName, SpeculativeExecutionResult,
     },
     TransactionWithExecutionInfo, Uptime,
 };
@@ -486,7 +486,7 @@ impl PayloadEntity for LastProgress {
     const PAYLOAD_TYPE: PayloadType = PayloadType::LastProgress;
 }
 
-impl PayloadEntity for ReactorState {
+impl PayloadEntity for ReactorStateName {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ReactorState;
 }
 

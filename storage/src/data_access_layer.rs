@@ -21,13 +21,14 @@ pub mod prune;
 pub mod query;
 mod round_seigniorage;
 pub mod step;
+mod system_entity_registry;
 pub mod tagged_values;
 mod total_supply;
 pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
-pub use balance::{BalanceRequest, BalanceResult};
+pub use balance::{BalanceIdentifier, BalanceRequest, BalanceResult};
 pub use bidding::{BiddingRequest, BiddingResult};
 pub use bids::{BidsRequest, BidsResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
@@ -44,6 +45,10 @@ pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use step::{EvictItem, RewardItem, SlashItem, StepError, StepRequest, StepResult};
+pub use system_entity_registry::{
+    SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+    SystemEntityRegistrySelector,
+};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};

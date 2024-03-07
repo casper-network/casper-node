@@ -32,7 +32,7 @@ pub use record_id::RecordId;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
     ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-    SpeculativeExecutionResult, TransactionWithExecutionInfo, Uptime,
+    ReactorStateName, SpeculativeExecutionResult, TransactionWithExecutionInfo, Uptime,
 };
 
 use alloc::vec::Vec;

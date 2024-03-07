@@ -1,12 +1,12 @@
 use super::*;
-use crate::global_state::{transaction_source::Writable, trie_store::operations::PruneResult};
+use crate::global_state::{transaction_source::Writable, trie_store::operations::TriePruneResult};
 
 fn checked_prune<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     root: &Digest,
     key_to_prune: &K,
-) -> Result<PruneResult, E>
+) -> Result<TriePruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
     V: ToBytes + FromBytes + Clone + std::fmt::Debug,
@@ -20,7 +20,7 @@ where
     let counter = TestValue::after_operation(TestOperation::Prune);
     assert_eq!(counter, 0, "Delete should never deserialize a value");
     let prune_result = prune_result?;
-    if let PruneResult::Pruned(new_root) = prune_result {
+    if let TriePruneResult::Pruned(new_root) = prune_result {
         operations::check_integrity::<K, V, T, S, E>(txn, store, vec![new_root])?;
     }
     Ok(prune_result)
@@ -28,7 +28,7 @@ where
 
 mod partial_tries {
     use super::*;
-    use crate::global_state::trie_store::operations::PruneResult;
+    use crate::global_state::trie_store::operations::TriePruneResult;
 
     fn prune_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
         environment: &'a R,
@@ -51,9 +51,10 @@ mod partial_tries {
         assert_eq!(store.get(&txn, expected_root_after_prune)?, None);
         let root_after_prune =
             match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
-                PruneResult::Pruned(root_after_prune) => root_after_prune,
-                PruneResult::MissingKey => panic!("key did not exist"),
-                PruneResult::RootNotFound => panic!("root should be found"),
+                TriePruneResult::Pruned(root_after_prune) => root_after_prune,
+                TriePruneResult::MissingKey => panic!("key did not exist"),
+                TriePruneResult::RootNotFound => panic!("root should be found"),
+                TriePruneResult::Failure(err) => panic!("{:?}", err),
             };
         assert_eq!(root_after_prune, *expected_root_after_prune);
         for HashedTrie { hash, trie } in expected_tries_after_prune {
@@ -98,9 +99,10 @@ mod partial_tries {
     {
         let mut txn = environment.create_read_write_txn()?;
         match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
-            PruneResult::Pruned(_) => panic!("should not prune"),
-            PruneResult::MissingKey => Ok(()),
-            PruneResult::RootNotFound => panic!("root should be found"),
+            TriePruneResult::Pruned(_) => panic!("should not prune"),
+            TriePruneResult::MissingKey => Ok(()),
+            TriePruneResult::RootNotFound => panic!("root should be found"),
+            TriePruneResult::Failure(err) => panic!("{:?}", err),
         }
     }
 
@@ -146,7 +148,7 @@ mod full_tries {
             operations::{
                 prune,
                 tests::{LmdbTestContext, TestKey, TestOperation, TestValue, TEST_TRIE_GENERATORS},
-                write, PruneResult, WriteResult,
+                write, TriePruneResult, WriteResult,
             },
             TrieStore,
         },
@@ -185,7 +187,7 @@ mod full_tries {
             let prune_result = prune::<K, V, _, _, E>(&mut txn, store, &current_root, key);
             let counter = TestValue::after_operation(TestOperation::Prune);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
-            if let PruneResult::Pruned(new_root) = prune_result? {
+            if let TriePruneResult::Pruned(new_root) = prune_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
             } else {
@@ -255,11 +257,12 @@ mod full_tries {
             let counter = TestValue::after_operation(TestOperation::Prune);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             match prune_result? {
-                PruneResult::Pruned(new_root) => {
+                TriePruneResult::Pruned(new_root) => {
                     expected_root = new_root;
                 }
-                PruneResult::MissingKey => {}
-                PruneResult::RootNotFound => panic!("should find root"),
+                TriePruneResult::MissingKey => {}
+                TriePruneResult::RootNotFound => panic!("should find root"),
+                TriePruneResult::Failure(err) => panic!("{:?}", err),
             }
         }
 

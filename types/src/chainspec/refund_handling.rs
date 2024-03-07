@@ -7,6 +7,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 const REFUND_HANDLING_REFUND_TAG: u8 = 0;
 const REFUND_HANDLING_BURN_TAG: u8 = 1;
+const REFUND_HANDLING_NONE_TAG: u8 = 2;
 
 /// Defines how refunds are calculated.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +31,8 @@ pub enum RefundHandling {
         /// paid amount.
         refund_ratio: Ratio<u64>,
     },
+    /// No refunds.
+    None,
 }
 
 impl Default for RefundHandling {
@@ -53,6 +56,9 @@ impl ToBytes for RefundHandling {
                 buffer.push(REFUND_HANDLING_BURN_TAG);
                 buffer.extend(refund_ratio.to_bytes()?);
             }
+            RefundHandling::None => {
+                buffer.push(REFUND_HANDLING_NONE_TAG);
+            }
         }
 
         Ok(buffer)
@@ -62,6 +68,7 @@ impl ToBytes for RefundHandling {
         1 + match self {
             RefundHandling::Refund { refund_ratio } => refund_ratio.serialized_length(),
             RefundHandling::Burn { refund_ratio } => refund_ratio.serialized_length(),
+            RefundHandling::None => 0,
         }
     }
 }
@@ -78,7 +85,20 @@ impl FromBytes for RefundHandling {
                 let (refund_ratio, rem) = FromBytes::from_bytes(rem)?;
                 Ok((RefundHandling::Burn { refund_ratio }, rem))
             }
+            REFUND_HANDLING_NONE_TAG => Ok((RefundHandling::None, rem)),
             _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl Default for RefundHandling {
+    fn default() -> Self {
+        // in 2.0 the default payment mode is Fixed with Fee Elimination on,
+        // thus there is nothing to refund.
+        // RefundHandling::None
+        // in 1.x the default was Refund
+        RefundHandling::Refund {
+            refund_ratio: Ratio::new(99, 100),
         }
     }
 }

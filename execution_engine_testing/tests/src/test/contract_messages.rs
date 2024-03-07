@@ -2,16 +2,15 @@ use num_traits::Zero;
 use std::cell::RefCell;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_BLOCK_TIME, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, Digest,
+    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CoreConfig, Digest,
     HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
-    StoredValue, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -468,24 +467,25 @@ fn should_not_add_duplicate_topics() {
 #[test]
 fn should_not_exceed_configured_limits() {
     let default_wasm_config = WasmConfig::default();
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(WasmConfig::new(
-            default_wasm_config.max_memory,
-            default_wasm_config.max_stack_height,
-            default_wasm_config.opcode_costs(),
-            default_wasm_config.storage_costs(),
-            default_wasm_config.take_host_function_costs(),
-            MessageLimits {
-                max_topic_name_size: 32,
-                max_message_size: 100,
-                max_topics_per_contract: 2,
-            },
-        ))
-        .build();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 32,
+            max_message_size: 100,
+            max_topics_per_contract: 2,
+        },
+    );
+    let chainspec = ChainspecConfig {
+        system_costs_config: SystemConfig::default(),
+        core_config: CoreConfig::default(),
+        wasm_config,
+    };
 
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
@@ -642,13 +642,12 @@ fn should_charge_expected_gas_for_storage() {
         HostFunctionCosts::zero(),
         MessageLimits::default(),
     );
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(wasm_config)
-        .build();
-
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
@@ -745,14 +744,13 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
         },
         MessageLimits::default(),
     );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
 
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(wasm_config)
-        .build();
-
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
@@ -851,24 +849,25 @@ fn should_register_topic_on_contract_creation() {
 #[test]
 fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() {
     let default_wasm_config = WasmConfig::default();
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(WasmConfig::new(
-            default_wasm_config.max_memory,
-            default_wasm_config.max_stack_height,
-            default_wasm_config.opcode_costs(),
-            default_wasm_config.storage_costs(),
-            default_wasm_config.take_host_function_costs(),
-            MessageLimits {
-                max_topic_name_size: 16, //length of MESSAGE_EMITTER_GENERIC_TOPIC
-                max_message_size: 100,
-                max_topics_per_contract: 3,
-            },
-        ))
-        .build();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 16, //length of MESSAGE_EMITTER_GENERIC_TOPIC
+            max_message_size: 100,
+            max_topics_per_contract: 3,
+        },
+    );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
 
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
@@ -881,25 +880,26 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
 #[test]
 fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
     let default_wasm_config = WasmConfig::default();
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(WasmConfig::new(
-            default_wasm_config.max_memory,
-            default_wasm_config.max_stack_height,
-            default_wasm_config.opcode_costs(),
-            default_wasm_config.storage_costs(),
-            default_wasm_config.take_host_function_costs(),
-            MessageLimits {
-                max_topic_name_size: 32,
-                max_message_size: 100,
-                max_topics_per_contract: 1, /* only allow 1 topic. Since on upgrade previous
-                                             * topics carry over, the upgrade should fail. */
-            },
-        ))
-        .build();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 32,
+            max_message_size: 100,
+            max_topics_per_contract: 1, /* only allow 1 topic. Since on upgrade previous
+                                         * topics carry over, the upgrade should fail. */
+        },
+    );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        system_costs_config: SystemConfig::default(),
+        core_config: CoreConfig::default(),
+    };
 
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());

@@ -1,14 +1,14 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
+    engine_state::{Error, ExecuteRequest},
     execution::ExecError,
 };
 use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
@@ -21,8 +21,8 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, GenesisConfigBuilder, Key,
-    Package, PackageHash, RuntimeArgs, U512,
+    AddressableEntityHash, ApiError, CLType, CLValue, CoreConfig, GenesisAccount,
+    GenesisConfigBuilder, Key, Package, PackageHash, RuntimeArgs, U512,
 };
 use tempfile::TempDir;
 
@@ -70,14 +70,18 @@ const PAY_ENTRYPOINT: &str = "pay";
 #[ignore]
 #[test]
 fn should_not_run_genesis_with_duplicated_administrator_accounts() {
-    let engine_config = EngineConfigBuilder::default()
-        // This change below makes genesis config validation to fail as administrator accounts are
-        // only valid for private chains.
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone())
-        .build();
+    let core_config = CoreConfig {
+        administrators: PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone(),
+        ..Default::default()
+    };
+    let chainspec = ChainspecConfig {
+        core_config,
+        wasm_config: Default::default(),
+        system_costs_config: Default::default(),
+    };
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), chainspec);
 
     let duplicated_administrator_accounts = {
         let mut accounts = PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone();

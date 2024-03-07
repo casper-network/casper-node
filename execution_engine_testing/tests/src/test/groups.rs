@@ -2,13 +2,12 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
-use casper_types::{
-    account::AccountHash, package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, Key, ProtocolVersion, RuntimeArgs, U512};
 
 use crate::{lmdb_fixture, wasm_utils};
 
@@ -63,7 +62,7 @@ fn should_call_group_restricted_session() {
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_HASH_KEY,
-        Some(ENTITY_INITIAL_VERSION),
+        None,
         RESTRICTED_SESSION,
         runtime_args! {},
     )
@@ -98,7 +97,7 @@ fn should_call_group_restricted_session_caller() {
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_HASH_KEY,
-        Some(ENTITY_INITIAL_VERSION),
+        None,
         RESTRICTED_SESSION,
         runtime_args! {
             PACKAGE_HASH_ARG => package_hash.into_package_hash()
@@ -143,7 +142,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
                 package_hash.into_package_addr().expect("should be hash"),
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 RESTRICTED_SESSION,
                 args,
             )
@@ -208,7 +207,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
                 package_hash.into_package_addr().expect("should be hash"),
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 RESTRICTED_SESSION_CALLER,
                 args,
             )
@@ -243,6 +242,14 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
 fn should_call_group_restricted_contract() {
     let mut builder = setup_from_lmdb_fixture();
 
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_new_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .build()
+    };
+
+    builder.upgrade(&mut upgrade_request);
+
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
@@ -267,7 +274,7 @@ fn should_call_group_restricted_contract() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -326,7 +333,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
                 package_hash.into_package_addr().expect("should be hash"),
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -375,7 +382,7 @@ fn should_call_group_unrestricted_contract_caller() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 UNRESTRICTED_CONTRACT_CALLER,
                 args,
             )
@@ -384,7 +391,10 @@ fn should_call_group_unrestricted_contract_caller() {
             .with_deploy_hash([3; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::new()
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .push_deploy(deploy)
+            .build()
     };
     builder.exec(exec_request_2).expect_success().commit();
 
@@ -399,15 +409,16 @@ fn should_call_group_unrestricted_contract_caller() {
 #[ignore]
 #[test]
 fn should_call_unrestricted_contract_caller_from_different_account() {
-    let exec_request_2 = ExecuteRequestBuilder::standard(
+    let mut builder = setup_from_lmdb_fixture();
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
+    .with_protocol_version(ProtocolVersion::V1_0_0)
     .build();
-
-    let mut builder = setup_from_lmdb_fixture();
-    builder.exec(exec_request_2).expect_success().commit();
+    builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -422,23 +433,21 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    // This inserts package as an argument because this test
-    // can work from different accounts which might not have the same keys in their session
-    // code.
-    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         package_hash
             .into_package_hash()
             .expect("must have package hash"),
-        Some(ENTITY_INITIAL_VERSION),
+        None,
         UNRESTRICTED_CONTRACT_CALLER,
         runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
         },
     )
+    .with_protocol_version(ProtocolVersion::V1_0_0)
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.exec(exec_request_2).expect_success().commit();
 }
 
 #[ignore]
@@ -475,7 +484,7 @@ fn should_call_group_restricted_contract_as_session() {
         package_hash
             .into_package_hash()
             .expect("must convert to package hash"),
-        Some(ENTITY_INITIAL_VERSION),
+        None,
         RESTRICTED_CONTRACT_CALLER_AS_SESSION,
         runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
@@ -522,7 +531,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         package_hash
             .into_package_hash()
             .expect("must convert to package hash"),
-        Some(ENTITY_INITIAL_VERSION),
+        None,
         RESTRICTED_CONTRACT_CALLER_AS_SESSION,
         runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
@@ -570,7 +579,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 UNCALLABLE_SESSION,
                 args,
             )
@@ -599,7 +608,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -645,7 +654,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 UNCALLABLE_CONTRACT,
                 args,
             )
@@ -674,7 +683,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -730,7 +739,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
                 package_hash
                     .into_package_addr()
                     .expect("must have created package hash"),
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 "restricted_standard_payment",
                 args,
             )
@@ -801,7 +810,7 @@ fn should_call_group_restricted_stored_payment_code() {
                 package_hash
                     .into_package_addr()
                     .expect("must have created package hash"),
-                Some(ENTITY_INITIAL_VERSION),
+                None,
                 "restricted_standard_payment",
                 args,
             )

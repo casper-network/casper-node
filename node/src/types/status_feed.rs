@@ -11,11 +11,12 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     binary_port::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block, BlockHash,
     BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey,
-    ReactorState, TimeDiff, Timestamp,
+    TimeDiff, Timestamp,
 };
 
 use crate::{
     components::rest_server::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    reactor::main_reactor::ReactorState,
     types::NodeId,
 };
 

@@ -1,7 +1,7 @@
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    AvailableBlockRange, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey,
-    ReactorState, TimeDiff, Timestamp,
+    AvailableBlockRange, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey, TimeDiff,
+    Timestamp,
 };
 use alloc::{string::String, vec::Vec};
 
@@ -11,7 +11,7 @@ use rand::Rng;
 #[cfg(test)]
 use crate::testing::TestRng;
 
-use super::MinimalBlockInfo;
+use super::{type_wrappers::ReactorStateName, MinimalBlockInfo};
 
 /// Status information about the node.
 #[derive(Debug, PartialEq)]
@@ -35,7 +35,7 @@ pub struct NodeStatus {
     /// Time that passed since the node has started.
     pub uptime: TimeDiff,
     /// The current state of node reactor.
-    pub reactor_state: ReactorState,
+    pub reactor_state: ReactorStateName,
     /// Timestamp of the last recorded progress in the reactor.
     pub last_progress: Timestamp,
     /// The available block range in storage.
@@ -59,7 +59,7 @@ impl NodeStatus {
                 .then_some(TimeDiff::from_millis(rng.gen())),
             next_upgrade: rng.gen::<bool>().then_some(NextUpgrade::random(rng)),
             uptime: TimeDiff::from_millis(rng.gen()),
-            reactor_state: ReactorState::random(rng),
+            reactor_state: ReactorStateName::new(rng.random_string(5..10)),
             last_progress: Timestamp::random(rng),
             available_block_range: AvailableBlockRange::random(rng),
             block_sync: BlockSynchronizerStatus::random(rng),
@@ -78,7 +78,7 @@ impl FromBytes for NodeStatus {
         let (round_length, remainder) = Option::<TimeDiff>::from_bytes(remainder)?;
         let (next_upgrade, remainder) = Option::<NextUpgrade>::from_bytes(remainder)?;
         let (uptime, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (reactor_state, remainder) = ReactorState::from_bytes(remainder)?;
+        let (reactor_state, remainder) = ReactorStateName::from_bytes(remainder)?;
         let (last_progress, remainder) = Timestamp::from_bytes(remainder)?;
         let (available_block_range, remainder) = AvailableBlockRange::from_bytes(remainder)?;
         let (block_sync, remainder) = BlockSynchronizerStatus::from_bytes(remainder)?;
