@@ -1,23 +1,26 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
+    utils, ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    StepRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::{
-    engine_state::{self, genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest},
-    execution,
+    engine_state::{self},
+    execution::ExecError,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
     system::{
         auction::{self, BidAddr, DelegationRate},
         standard_payment,
     },
-    ApiError, GenesisAccount, GenesisValidator, Key, Motes, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, StoredValue,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -98,7 +101,7 @@ fn should_initialize_default_vesting_schedule() {
         utils::create_run_genesis_request(ACCOUNTS_WITH_GENESIS_VALIDATORS.clone());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request);
 
     let bid_addr = BidAddr::from(*DEFAULT_PROPOSER_ADDR);
     let stored_value_before = builder
@@ -124,15 +127,18 @@ fn should_initialize_default_vesting_schedule() {
 
     era_end_timestamp_millis += DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     let stored_value_after = builder
         .query(None, bid_addr.into(), &[])
@@ -161,22 +167,21 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        ExecConfigBuilder::new().with_accounts(accounts).build()
+        GenesisConfigBuilder::new().with_accounts(accounts).build()
     };
 
-    let genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfigBuilder::new()
-        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
-        .build();
+    let engine_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis);
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -241,35 +246,41 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
+        matches!(error, engine_state::Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
         "vesting schedule is not yet initialized"
     );
 
     let mut era_end_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     era_end_timestamp_millis += DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     builder
         .exec(withdraw_bid_request_2)
@@ -285,25 +296,24 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        ExecConfigBuilder::new()
+        GenesisConfigBuilder::new()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(locked_funds_period_millis)
             .build()
     };
 
-    let genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfigBuilder::new()
-        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
-        .build();
+    let chainspec = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-    builder.run_genesis(&genesis_request);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
+    builder.run_genesis(genesis_request);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -321,16 +331,19 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 
     let era_end_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     let withdraw_bid_request_1 = {
         let sender = *DEFAULT_PROPOSER_ADDR;
@@ -382,15 +395,13 @@ mod fixture {
 
             // Move forward the clock and initialize vesting schedule with 13 weeks after initial 90
             // days lock up.
-            builder
-                .step(
-                    StepRequestBuilder::default()
-                        .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                        .with_parent_state_hash(builder.get_post_state_hash())
-                        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                        .build(),
-                )
-                .unwrap();
+            builder.step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .build(),
+            );
         })
         .unwrap();
     }

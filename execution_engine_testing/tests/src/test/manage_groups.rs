@@ -51,7 +51,7 @@ fn should_create_and_remove_group() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -150,7 +150,7 @@ fn should_create_and_extend_user_group() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -254,7 +254,7 @@ fn should_create_and_remove_urefs_from_group() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -356,7 +356,7 @@ fn should_limit_max_urefs_while_extending() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -475,7 +475,7 @@ fn should_limit_max_urefs_while_extending() {
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
-    let error = assert_matches!(error, Error::Exec(execution::Error::Revert(e)) => e);
+    let error = assert_matches!(error, Error::Exec(ExecError::Revert(e)) => e);
     assert_eq!(
         error,
         &addressable_entity::Error::MaxTotalURefsExceeded.into()

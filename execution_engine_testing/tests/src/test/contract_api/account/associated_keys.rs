@@ -35,7 +35,7 @@ fn should_manage_associated_key() {
     .build();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .commit();
 
     builder.exec(exec_request_1).expect_success().commit();

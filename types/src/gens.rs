@@ -11,7 +11,7 @@ use alloc::{
 
 use proptest::{
     array, bits, bool,
-    collection::{self, SizeRange},
+    collection::{self, vec, SizeRange},
     option,
     prelude::*,
     result,
@@ -22,6 +22,7 @@ use crate::{
     addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     crypto::{self, gens::public_key_arb_no_system},
+    global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
@@ -29,14 +30,16 @@ use crate::{
     },
     transfer::TransferAddr,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
-    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
+    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
+    U256, U512,
 };
 
 use crate::{
     account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+        NamedKeyValue,
     },
     byte_code::ByteCodeKind,
     contracts::{
@@ -44,7 +47,6 @@ use crate::{
         ContractVersions,
     },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    package::PackageKind,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
@@ -435,7 +437,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         entry_points_arb(),
         u8_slice_32(),
         u8_slice_32(),
-        named_keys_arb(20),
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
@@ -447,7 +448,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 entry_points,
                 contract_package_hash_arb,
                 contract_wasm_hash,
-                named_keys,
                 main_purse,
                 associated_keys,
                 action_thresholds,
@@ -456,13 +456,13 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
-                    named_keys,
                     entry_points,
                     protocol_version,
                     main_purse,
                     associated_keys,
                     action_thresholds,
                     message_topics,
+                    EntityKind::SmartContract,
                 )
             },
         )
@@ -527,7 +527,6 @@ pub fn package_arb() -> impl Strategy<Value = Package> {
                 disabled_versions,
                 groups,
                 PackageStatus::default(),
-                PackageKind::SmartContract,
             )
         })
 }
@@ -694,6 +693,14 @@ fn message_summary_arb() -> impl Strategy<Value = MessageChecksum> {
     u8_slice_32().prop_map(MessageChecksum)
 }
 
+pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
+    (key_arb(), "test").prop_map(|(key, string)| {
+        let cl_key = CLValue::from_t(key).unwrap();
+        let cl_string = CLValue::from_t(string).unwrap();
+        NamedKeyValue::new(cl_key, cl_string)
+    })
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -712,6 +719,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
+        named_key_value_arb().prop_map(StoredValue::NamedKey)
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -734,5 +742,51 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::ByteCode(_) => stored_value,
             StoredValue::MessageTopic(_) => stored_value,
             StoredValue::Message(_) => stored_value,
+            StoredValue::NamedKey(_) => stored_value,
         })
+}
+
+pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+    vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
+}
+
+pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
+    prop_oneof![
+        blake2b_hash_arb().prop_map(Pointer::LeafPointer),
+        blake2b_hash_arb().prop_map(Pointer::NodePointer)
+    ]
+}
+
+pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep> {
+    const POINTERS_SIZE: usize = 32;
+    const AFFIX_SIZE: usize = 6;
+
+    prop_oneof![
+        (
+            <u8>::arbitrary(),
+            vec((<u8>::arbitrary(), trie_pointer_arb()), POINTERS_SIZE)
+        )
+            .prop_map(|(hole_index, indexed_pointers_with_hole)| {
+                TrieMerkleProofStep::Node {
+                    hole_index,
+                    indexed_pointers_with_hole,
+                }
+            }),
+        vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
+            TrieMerkleProofStep::Extension {
+                affix: affix.into(),
+            }
+        })
+    ]
+}
+
+pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
+    const STEPS_SIZE: usize = 6;
+
+    (
+        key_arb(),
+        stored_value_arb(),
+        vec(trie_merkle_proof_step_arb(), STEPS_SIZE),
+    )
+        .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
 }

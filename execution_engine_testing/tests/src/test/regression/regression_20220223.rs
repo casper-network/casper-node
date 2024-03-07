@@ -6,7 +6,8 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state, engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, execution,
+    engine_state, engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+    execution::ExecError,
 };
 use casper_types::{
     self,
@@ -68,7 +69,7 @@ fn should_fail_to_add_new_bid_over_the_approved_amount() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
@@ -113,7 +114,7 @@ fn should_fail_to_add_into_existing_bid_over_the_approved_amount() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
@@ -162,7 +163,7 @@ fn should_fail_to_add_new_delegator_over_the_approved_amount() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
@@ -227,7 +228,7 @@ fn should_fail_to_update_existing_delegator_over_the_approved_amount() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
@@ -241,7 +242,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let test_purse_2 = default_account
@@ -267,7 +268,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",
@@ -277,7 +278,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,

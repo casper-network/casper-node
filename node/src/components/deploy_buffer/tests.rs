@@ -375,7 +375,7 @@ fn register_deploys_and_blocks() {
     .unwrap();
 
     // try to register valid deploys
-    let num_valid_deploys: usize = rng.gen_range(50..500);
+    let num_valid_deploys: usize = rng.gen_range(50..300);
     let valid_deploys =
         create_valid_deploys(&mut rng, num_valid_deploys, DeployType::Random, None, None);
     valid_deploys

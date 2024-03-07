@@ -2,6 +2,12 @@
 
 use std::{collections::BTreeMap, convert::TryFrom};
 
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -123,6 +129,17 @@ impl FromBytes for ChainspecRegistry {
 impl CLTyped for ChainspecRegistry {
     fn cl_type() -> CLType {
         BytesreprChainspecRegistry::cl_type()
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<ChainspecRegistry> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainspecRegistry {
+        ChainspecRegistry {
+            chainspec_raw_hash: rng.gen(),
+            genesis_accounts_raw_hash: rng.gen(),
+            global_state_raw_hash: rng.gen(),
+        }
     }
 }
 

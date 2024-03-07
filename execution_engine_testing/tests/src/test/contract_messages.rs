@@ -2,16 +2,15 @@ use num_traits::Zero;
 use std::cell::RefCell;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_BLOCK_TIME, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, Digest,
+    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CoreConfig, Digest,
     HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
-    StoredValue, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -27,6 +26,7 @@ const ARG_NUM_MESSAGES_TO_EMIT: &str = "num_messages_to_emit";
 const ARG_TOPIC_NAME: &str = "topic_name";
 const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
+const ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT: &str = "register_default_topic_with_init";
 
 const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 
@@ -35,12 +35,15 @@ const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
 
 fn install_messages_emitter_contract(
     builder: &RefCell<LmdbWasmTestBuilder>,
+    use_initializer: bool,
 ) -> AddressableEntityHash {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         MESSAGE_EMITTER_INSTALLER_WASM,
-        RuntimeArgs::default(),
+        runtime_args! {
+            ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT => use_initializer,
+        },
     )
     .build();
 
@@ -78,21 +81,33 @@ fn install_messages_emitter_contract(
 
 fn upgrade_messages_emitter_contract(
     builder: &RefCell<LmdbWasmTestBuilder>,
+    use_initializer: bool,
+    expect_failure: bool,
 ) -> AddressableEntityHash {
     let upgrade_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         MESSAGE_EMITTER_UPGRADER_WASM,
-        RuntimeArgs::default(),
+        runtime_args! {
+            ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT => use_initializer,
+        },
     )
     .build();
 
     // Execute the request to upgrade the message emitting contract.
     // This will also register a new topic for the contract to emit messages on.
-    builder
-        .borrow_mut()
-        .exec(upgrade_request)
-        .expect_success()
-        .commit();
+    if expect_failure {
+        builder
+            .borrow_mut()
+            .exec(upgrade_request)
+            .expect_failure()
+            .commit();
+    } else {
+        builder
+            .borrow_mut()
+            .exec(upgrade_request)
+            .expect_success()
+            .commit();
+    }
 
     // Get the contract package for the upgraded messages emitter contract.
     let query_result = builder
@@ -224,9 +239,9 @@ fn should_emit_messages() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
     let entity = query_view.entity();
 
@@ -316,9 +331,9 @@ fn should_emit_message_on_empty_topic_in_new_block() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
     let entity = query_view.entity();
 
@@ -355,8 +370,8 @@ fn should_add_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-    let contract_hash = install_messages_emitter_contract(&builder);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -419,9 +434,9 @@ fn should_not_add_duplicate_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let entity = query_view.entity();
@@ -452,29 +467,30 @@ fn should_not_add_duplicate_topics() {
 #[test]
 fn should_not_exceed_configured_limits() {
     let default_wasm_config = WasmConfig::default();
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(WasmConfig::new(
-            default_wasm_config.max_memory,
-            default_wasm_config.max_stack_height,
-            default_wasm_config.opcode_costs(),
-            default_wasm_config.storage_costs(),
-            default_wasm_config.take_host_function_costs(),
-            MessageLimits {
-                max_topic_name_size: 32,
-                max_message_size: 100,
-                max_topics_per_contract: 2,
-            },
-        ))
-        .build();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 32,
+            max_message_size: 100,
+            max_topics_per_contract: 2,
+        },
+    );
+    let chainspec = ChainspecConfig {
+        system_costs_config: SystemConfig::default(),
+        core_config: CoreConfig::default(),
+        wasm_config,
+    };
 
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
 
     // if the topic larger than the limit, registering should fail.
     // string is 33 bytes > limit established above
@@ -552,16 +568,14 @@ fn should_not_exceed_configured_limits() {
         .commit();
 }
 
-#[ignore]
-#[test]
-fn should_carry_message_topics_on_upgraded_contract() {
+fn should_carry_message_topics_on_upgraded_contract(use_initializer: bool) {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let _ = install_messages_emitter_contract(&builder);
-    let contract_hash = upgrade_messages_emitter_contract(&builder);
+    let _ = install_messages_emitter_contract(&builder, true);
+    let contract_hash = upgrade_messages_emitter_contract(&builder, use_initializer, false);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     let entity = query_view.entity();
@@ -581,11 +595,23 @@ fn should_carry_message_topics_on_upgraded_contract() {
 
 #[ignore]
 #[test]
+fn should_carry_message_topics_on_upgraded_contract_with_initializer() {
+    should_carry_message_topics_on_upgraded_contract(true);
+}
+
+#[ignore]
+#[test]
+fn should_carry_message_topics_on_upgraded_contract_without_initializer() {
+    should_carry_message_topics_on_upgraded_contract(false);
+}
+
+#[ignore]
+#[test]
 fn should_not_emit_messages_from_account() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // Request to run a deploy that tries to register a message topic without a stored contract.
     let install_request = ExecuteRequestBuilder::standard(
@@ -616,18 +642,17 @@ fn should_charge_expected_gas_for_storage() {
         HostFunctionCosts::zero(),
         MessageLimits::default(),
     );
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(wasm_config)
-        .build();
-
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
     // check the cost of adding a new topic
@@ -719,19 +744,18 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
         },
         MessageLimits::default(),
     );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
 
-    let custom_engine_config = EngineConfigBuilder::default()
-        .with_wasm_config(wasm_config)
-        .build();
-
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
-        custom_engine_config,
-    ));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
-    let contract_hash = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder, true);
 
     // Emit one message in this execution. Cost should be `FIRST_MESSAGE_EMIT_COST`.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
@@ -767,7 +791,7 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     assert_eq!(emit_message_gas_cost, FIRST_MESSAGE_EMIT_COST.into());
 
     // Check gas cost when multiple messages are emitted from different contracts.
-    let contract_hash = upgrade_messages_emitter_contract(&builder);
+    let contract_hash = upgrade_messages_emitter_contract(&builder, true, false);
     let emit_message_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
@@ -791,4 +815,95 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
         emit_message_gas_cost,
         U512::from(EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS)
     );
+}
+
+#[ignore]
+#[test]
+fn should_register_topic_on_contract_creation() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+
+    let contract_hash = install_messages_emitter_contract(&builder, false);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+    let entity = query_view.entity();
+
+    let (topic_name, message_topic_hash) = entity
+        .message_topics()
+        .iter()
+        .next()
+        .expect("should have at least one topic");
+
+    assert_eq!(topic_name, &MESSAGE_EMITTER_GENERIC_TOPIC.to_string());
+    // Check that the topic exists for the installed contract.
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        0
+    );
+}
+
+#[ignore]
+#[test]
+fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() {
+    let default_wasm_config = WasmConfig::default();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 16, //length of MESSAGE_EMITTER_GENERIC_TOPIC
+            max_message_size: 100,
+            max_topics_per_contract: 3,
+        },
+    );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        core_config: CoreConfig::default(),
+        system_costs_config: SystemConfig::default(),
+    };
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
+    builder
+        .borrow_mut()
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+
+    let _ = install_messages_emitter_contract(&builder, false);
+    let _ = upgrade_messages_emitter_contract(&builder, false, true);
+}
+
+#[ignore]
+#[test]
+fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
+    let default_wasm_config = WasmConfig::default();
+    let wasm_config = WasmConfig::new(
+        default_wasm_config.max_memory,
+        default_wasm_config.max_stack_height,
+        default_wasm_config.opcode_costs(),
+        default_wasm_config.storage_costs(),
+        default_wasm_config.take_host_function_costs(),
+        MessageLimits {
+            max_topic_name_size: 32,
+            max_message_size: 100,
+            max_topics_per_contract: 1, /* only allow 1 topic. Since on upgrade previous
+                                         * topics carry over, the upgrade should fail. */
+        },
+    );
+    let chainspec = ChainspecConfig {
+        wasm_config,
+        system_costs_config: SystemConfig::default(),
+        core_config: CoreConfig::default(),
+    };
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
+    builder
+        .borrow_mut()
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+
+    let _ = install_messages_emitter_contract(&builder, false);
+    let _ = upgrade_messages_emitter_contract(&builder, false, true);
 }

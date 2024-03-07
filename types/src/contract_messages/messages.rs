@@ -1,5 +1,5 @@
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex, AddressableEntityHash, Key,
 };
 
@@ -114,6 +114,8 @@ const MESSAGE_PAYLOAD_TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 /// Tag for a message payload that contains a human readable string.
 pub const MESSAGE_PAYLOAD_STRING_TAG: u8 = 0;
+/// Tag for a message payload that contains raw bytes.
+pub const MESSAGE_PAYLOAD_BYTES_TAG: u8 = 1;
 
 /// The payload of the message emitted by an addressable entity during execution.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
@@ -122,6 +124,8 @@ pub const MESSAGE_PAYLOAD_STRING_TAG: u8 = 0;
 pub enum MessagePayload {
     /// Human readable string message.
     String(String),
+    /// Message represented as raw bytes.
+    Bytes(Bytes),
 }
 
 impl<T> From<T> for MessagePayload
@@ -133,6 +137,12 @@ where
     }
 }
 
+impl From<Bytes> for MessagePayload {
+    fn from(bytes: Bytes) -> Self {
+        Self::Bytes(bytes)
+    }
+}
+
 impl ToBytes for MessagePayload {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -140,6 +150,10 @@ impl ToBytes for MessagePayload {
             MessagePayload::String(message_string) => {
                 buffer.insert(0, MESSAGE_PAYLOAD_STRING_TAG);
                 buffer.extend(message_string.to_bytes()?);
+            }
+            MessagePayload::Bytes(message_bytes) => {
+                buffer.insert(0, MESSAGE_PAYLOAD_BYTES_TAG);
+                buffer.extend(message_bytes.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -149,6 +163,7 @@ impl ToBytes for MessagePayload {
         MESSAGE_PAYLOAD_TAG_LENGTH
             + match self {
                 MessagePayload::String(message_string) => message_string.serialized_length(),
+                MessagePayload::Bytes(message_bytes) => message_bytes.serialized_length(),
             }
     }
 }
@@ -160,6 +175,10 @@ impl FromBytes for MessagePayload {
             MESSAGE_PAYLOAD_STRING_TAG => {
                 let (message, remainder): (String, _) = FromBytes::from_bytes(remainder)?;
                 Ok((Self::String(message), remainder))
+            }
+            MESSAGE_PAYLOAD_BYTES_TAG => {
+                let (message_bytes, remainder): (Bytes, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::Bytes(message_bytes), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -308,7 +327,10 @@ mod tests {
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload = "message payload".into();
+        let message_payload: MessagePayload = "message payload".into();
+        bytesrepr::test_serialization_roundtrip(&message_payload);
+
+        let message_payload = MessagePayload::Bytes(vec![5u8; 128].into());
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(
@@ -319,5 +341,18 @@ mod tests {
             10,
         );
         bytesrepr::test_serialization_roundtrip(&message);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let message_payload: MessagePayload = "message payload".into();
+        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
+        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, message_payload);
+
+        let message_payload = MessagePayload::Bytes(vec![255u8; 32].into());
+        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
+        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, message_payload);
     }
 }

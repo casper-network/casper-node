@@ -1,5 +1,7 @@
 mod addressable_entity_identifier;
 mod deploy;
+mod execution_info;
+mod finalized_approvals;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
 mod initiator_addr_and_secret_key;
@@ -17,6 +19,7 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transaction_with_finalized_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
@@ -42,14 +45,17 @@ use crate::{
 };
 #[cfg(feature = "json-schema")]
 use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
+
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedDeployApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use execution_info::ExecutionInfo;
+pub use finalized_approvals::FinalizedApprovals;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
 use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
@@ -67,12 +73,14 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    FinalizedTransactionV1Approvals, TransactionV1, TransactionV1Approval,
+    TransactionV1ApprovalsHash, TransactionV1Body, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_with_finalized_approvals::TransactionWithFinalizedApprovals;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -125,6 +133,14 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+        }
+    }
+
+    /// Returns the header.
+    pub fn header(&self) -> TransactionHeader {
+        match self {
+            Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
+            Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
         }
     }
 
@@ -199,6 +215,70 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+        }
+    }
+
+    /// Is this a native mint transaction.
+    pub fn is_native_mint(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => {
+                    &TransactionEntryPoint::Transfer == transaction_v1.entry_point()
+                }
+            },
+        }
+    }
+
+    /// Is this a native auction transaction.
+    pub fn is_native_auction(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => false,
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => match transaction_v1.entry_point() {
+                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+                    TransactionEntryPoint::AddBid
+                    | TransactionEntryPoint::WithdrawBid
+                    | TransactionEntryPoint::Delegate
+                    | TransactionEntryPoint::Undelegate
+                    | TransactionEntryPoint::Redelegate
+                    | TransactionEntryPoint::ActivateBid => true,
+                },
+            },
+        }
+    }
+
+    /// Authorization keys.
+    pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(transaction_v1) => transaction_v1
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+        }
+    }
+
+    /// The session args.
+    pub fn session_args(&self) -> &RuntimeArgs {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().args(),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+        }
+    }
+
+    /// The entry point.
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().into(),
+            Transaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
         }
     }
 

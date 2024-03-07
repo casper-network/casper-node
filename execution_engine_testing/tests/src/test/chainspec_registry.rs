@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{EngineConfig, RunGenesisRequest};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion};
 
 use crate::lmdb_fixture;
@@ -34,7 +34,7 @@ fn should_commit_chainspec_registry_during_genesis() {
     let chainspec_registry =
         ChainspecRegistry::new_with_genesis(&chainspec_bytes, &genesis_account);
 
-    let run_genesis_request = RunGenesisRequest::new(
+    let run_genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
@@ -42,7 +42,7 @@ fn should_commit_chainspec_registry_during_genesis() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let queried_registry = builder
         .query(None, Key::ChainspecRegistry, &[])
@@ -72,7 +72,7 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
     let incomplete_chainspec_registry =
         ChainspecRegistry::new_with_optional_global_state(&chainspec_bytes, None);
 
-    let run_genesis_request = RunGenesisRequest::new(
+    let run_genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
@@ -80,7 +80,7 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -99,7 +99,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
         builder
     } else {
         let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
-        builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
         builder
     };
 
@@ -123,10 +123,8 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
             .build()
     };
 
-    let engine_config = EngineConfig::default();
-
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
     let queried_registry = builder

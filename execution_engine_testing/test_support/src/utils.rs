@@ -8,21 +8,18 @@ use std::{
 
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::engine_state::{
-    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    execution_result::ExecutionResult,
-    genesis::{ExecConfig, ExecConfigBuilder, GenesisConfig},
-    run_genesis_request::RunGenesisRequest,
-    Error,
+use casper_execution_engine::engine_state::{execution_result::ExecutionResult, Error};
+use casper_storage::data_access_layer::GenesisRequest;
+use casper_types::{
+    Gas, GenesisAccount, GenesisConfig, GenesisConfigBuilder, DEFAULT_FEE_HANDLING,
+    DEFAULT_REFUND_HANDLING,
 };
-use casper_types::{Gas, GenesisAccount};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_CHAIN_NAME,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
-    DEFAULT_WASM_CONFIG,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -130,8 +127,8 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
     panic!("{}\n", error_msg);
 }
 
-/// Returns an [`ExecConfig`].
-pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
+/// Returns an [`GenesisConfig`].
+pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
@@ -143,7 +140,7 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let refund_handling = DEFAULT_REFUND_HANDLING;
     let fee_handling = DEFAULT_FEE_HANDLING;
 
-    ExecConfigBuilder::default()
+    GenesisConfigBuilder::default()
         .with_accounts(accounts)
         .with_wasm_config(wasm_config)
         .with_system_config(system_config)
@@ -158,23 +155,13 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
         .build()
 }
 
-/// Returns a [`GenesisConfig`].
-pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
-    let name = DEFAULT_CHAIN_NAME.to_string();
-    let timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let protocol_version = *DEFAULT_PROTOCOL_VERSION;
-    let exec_config = create_exec_config(accounts);
-
-    GenesisConfig::new(name, timestamp, protocol_version, exec_config)
-}
-
-/// Returns a [`RunGenesisRequest`].
-pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> RunGenesisRequest {
-    let exec_config = create_exec_config(accounts);
-    RunGenesisRequest::new(
+/// Returns a [`GenesisRequest`].
+pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> GenesisRequest {
+    let config = create_genesis_config(accounts);
+    GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
-        exec_config,
+        config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 }

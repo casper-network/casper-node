@@ -1,34 +1,36 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
-
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::transfer::TransferArgs,
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
+    AddressGenerator,
+};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{EntityKind, NamedKeys},
     bytesrepr::FromBytes,
-    package::PackageKind,
-    system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
+    system::{handle_payment, mint, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
-    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    URef, U512,
+    DeployHash, EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs,
+    StoredValue, Tagged, URef, U512,
 };
-
-use crate::engine_state::TransferArgs;
 
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
     },
-    execution::{address_generator::AddressGenerator, Error},
+    execution::ExecError,
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const ARG_AMOUNT: &str = "amount";
 
-fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, Error> {
-    runtime_args.try_get_number(ARG_AMOUNT).map_err(Error::from)
+fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
+    runtime_args
+        .try_get_number(ARG_AMOUNT)
+        .map_err(ExecError::from)
 }
 
 /// Executor object deals with execution of WASM modules.
@@ -53,7 +55,7 @@ impl Executor {
         args: RuntimeArgs,
         entity_hash: AddressableEntityHash,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -67,8 +69,7 @@ impl Executor {
         stack: RuntimeStack,
     ) -> ExecutionResult
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
@@ -82,7 +83,7 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+        let entity_key = Key::addressable_entity_key(entity_kind.tag(), entity_hash);
 
         let context = self.create_runtime_context(
             named_keys,
@@ -90,7 +91,7 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -146,7 +147,7 @@ impl Executor {
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -159,8 +160,7 @@ impl Executor {
         remaining_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         T: FromBytes + CLTyped,
     {
         let address_generator = {
@@ -173,7 +173,7 @@ impl Executor {
         // should cause the EE to panic. Do not remove the panics.
         let system_contract_registry = tracking_copy
             .borrow_mut()
-            .get_system_contracts()
+            .get_system_entity_registry()
             .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
 
         // Snapshot of effects before execution, so in case of error only nonce update
@@ -184,23 +184,14 @@ impl Executor {
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
         let entity_hash = match direct_system_contract_call {
-            DirectSystemContractCall::Slash
-            | DirectSystemContractCall::RunAuction
-            | DirectSystemContractCall::DistributeRewards => {
-                let auction_hash = system_contract_registry
-                    .get(AUCTION)
-                    .expect("should have auction hash");
-                *auction_hash
-            }
-            DirectSystemContractCall::CreatePurse | DirectSystemContractCall::Transfer => {
+            DirectSystemContractCall::Transfer => {
                 let mint_hash = system_contract_registry
                     .get(MINT)
                     .expect("should have mint hash");
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse
-            | DirectSystemContractCall::DistributeAccumulatedFees => {
+            | DirectSystemContractCall::GetPaymentPurse => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -208,22 +199,30 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy.borrow_mut().get_contract(entity_hash) {
+        let contract = match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_hash(entity_hash)
+        {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
-        let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(entity_hash);
-        let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
 
+        let mut named_keys = match tracking_copy.borrow_mut().get_named_keys(entity_addr) {
+            Ok(named_key) => named_key,
+            Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
+        };
+
+        let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
+        let entity_key = entity_addr.into();
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -258,7 +257,7 @@ impl Executor {
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
                     effects,
-                    error: Error::CLValue(error).into(),
+                    error: ExecError::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                     messages,
@@ -285,7 +284,7 @@ impl Executor {
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -299,8 +298,7 @@ impl Executor {
         entry_point_type: EntryPointType,
     ) -> RuntimeContext<'a, R>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let gas_counter = Gas::default();
         let transfers = Vec::default();
@@ -311,7 +309,7 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -335,7 +333,7 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -346,8 +344,8 @@ impl Executor {
         max_stack_height: usize,
     ) -> Result<ExecutionResult, EngineStateError>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+        R::Error: Into<ExecError>,
     {
         let payment_amount: U512 = match try_get_amount(&payment_args) {
             Ok(payment_amount) => payment_amount,
@@ -360,7 +358,7 @@ impl Executor {
 
         let (maybe_purse, get_payment_result) = self.get_payment_purse(
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys.clone(),
             account_hash,
             blocktime,
@@ -393,7 +391,7 @@ impl Executor {
                 Ok(runtime_args) => runtime_args,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(
-                        Error::CLValue(error).into(),
+                        ExecError::CLValue(error).into(),
                     ))
                 }
             }
@@ -404,7 +402,7 @@ impl Executor {
         let (transfer_result, payment_result) = self.invoke_mint_to_transfer(
             runtime_args,
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -438,7 +436,7 @@ impl Executor {
     pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -449,14 +447,14 @@ impl Executor {
         stack: RuntimeStack,
     ) -> (Option<URef>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+        R::Error: Into<ExecError>,
     {
         self.call_system_contract(
             DirectSystemContractCall::GetPaymentPurse,
             RuntimeArgs::new(),
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -475,7 +473,7 @@ impl Executor {
         &self,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -487,14 +485,14 @@ impl Executor {
         spending_limit: U512,
     ) -> (Option<Result<(), u8>>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+        R::Error: Into<ExecError>,
     {
         self.call_system_contract(
             DirectSystemContractCall::Transfer,
             runtime_args,
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -511,37 +509,20 @@ impl Executor {
 
 /// Represents a variant of a system contract call.
 pub(crate) enum DirectSystemContractCall {
-    /// Calls auction's `slash` entry point.
-    Slash,
-    /// Calls auction's `run_auction` entry point.
-    RunAuction,
-    /// Calls auction's `distribute` entry point.
-    DistributeRewards,
     /// Calls handle payment's `finalize` entry point.
     FinalizePayment,
-    /// Calls mint's `create` entry point.
-    CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
     /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
-    /// Calls handle payment's `distribute_accumulated_fees` entry point.
-    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
     fn entry_point_name(&self) -> &str {
         match self {
-            DirectSystemContractCall::Slash => auction::METHOD_SLASH,
-            DirectSystemContractCall::RunAuction => auction::METHOD_RUN_AUCTION,
-            DirectSystemContractCall::DistributeRewards => auction::METHOD_DISTRIBUTE,
             DirectSystemContractCall::FinalizePayment => handle_payment::METHOD_FINALIZE_PAYMENT,
-            DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
-            DirectSystemContractCall::DistributeAccumulatedFees => {
-                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
-            }
         }
     }
 }

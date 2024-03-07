@@ -1,15 +1,18 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::BTreeMap, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, ops::Range};
 
-use casper_execution_engine::engine_state::{self, GetEraValidatorsError};
+use casper_storage::data_access_layer::{
+    EraValidatorsRequest, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+    TotalSupplyRequest, TotalSupplyResult,
+};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul};
 
 use crate::{
-    contract_runtime::EraValidatorsRequest,
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder,
@@ -30,6 +33,7 @@ impl<T> ReactorEventT for T where T: Send + From<StorageRequest> + From<Contract
 
 #[derive(Debug)]
 pub(crate) struct CitedBlock {
+    protocol_version: ProtocolVersion,
     height: u64,
     era_id: EraId,
     proposer: PublicKey,
@@ -37,6 +41,21 @@ pub(crate) struct CitedBlock {
     state_root_hash: Digest,
     is_switch_block: bool,
     is_genesis: bool,
+}
+
+impl CitedBlock {
+    fn from_executable_block(block: ExecutableBlock, protocol_version: ProtocolVersion) -> Self {
+        Self {
+            protocol_version,
+            era_id: block.era_id,
+            height: block.height,
+            proposer: *block.proposer,
+            rewarded_signatures: block.rewarded_signatures,
+            state_root_hash: Digest::default(),
+            is_switch_block: block.era_report.is_some(),
+            is_genesis: block.era_id.is_genesis(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -67,16 +86,16 @@ pub enum RewardsError {
     ArithmeticOverflow,
 
     FailedToFetchBlockWithHeight(u64),
-    FailedToFetchEra(GetEraValidatorsError),
+    FailedToFetchEra(String),
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
     FailedToFetchEraValidators(Digest),
-    FailedToFetchTotalSupply(engine_state::Error),
-    FailedToFetchSeigniorageRate(engine_state::Error),
+    FailedToFetchTotalSupply,
+    FailedToFetchSeigniorageRate,
 }
 
 impl RewardsInfo {
-    pub async fn new_from_storage<REv: ReactorEventT>(
+    pub async fn new<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         signature_rewards_max_delay: u64,
@@ -112,15 +131,13 @@ impl RewardsInfo {
             "blocks fetched",
         );
 
-        let eras_info = Self::create_eras_info(
-            effect_builder,
-            current_era_id,
-            protocol_version,
-            cited_blocks.iter(),
-        )
-        .await?;
+        let eras_info =
+            Self::create_eras_info(effect_builder, current_era_id, cited_blocks.iter()).await?;
 
-        cited_blocks.push(executable_block.into());
+        cited_blocks.push(CitedBlock::from_executable_block(
+            executable_block,
+            protocol_version,
+        ));
 
         Ok(RewardsInfo {
             eras_info,
@@ -141,7 +158,6 @@ impl RewardsInfo {
     async fn create_eras_info<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         current_era_id: EraId,
-        protocol_version: ProtocolVersion,
         mut cited_blocks: impl Iterator<Item = &CitedBlock>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
         let oldest_block = cited_blocks.next();
@@ -163,13 +179,14 @@ impl RewardsInfo {
             .chain(cited_blocks.filter(|&block| block.is_switch_block))
             .map(|block| {
                 let state_root_hash = block.state_root_hash;
+                let protocol_version = block.protocol_version;
                 let era = if block.is_switch_block {
                     block.era_id.successor()
                 } else {
                     block.era_id
                 };
 
-                (era, state_root_hash)
+                (era, protocol_version, state_root_hash)
             })
             .collect();
 
@@ -177,27 +194,52 @@ impl RewardsInfo {
             eras_and_state_root_hashes.len() + usize::from(oldest_block_is_genesis);
 
         let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
-            .then(|(era_id, state_root_hash)| async move {
-                let weights = effect_builder
+            .then(|(era_id, protocol_version, state_root_hash)| async move {
+                let era_validators_result = effect_builder
                     .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
                         state_root_hash,
                         protocol_version,
                     ))
-                    .await
+                    .await;
+                let msg = format!("{}", era_validators_result);
+                let weights = era_validators_result
+                    .take_era_validators()
+                    .ok_or(msg)
                     .map_err(RewardsError::FailedToFetchEra)?
                     // We consume the map to not clone the value:
                     .into_iter()
                     .find(|(key, _)| key == &era_id)
                     .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
                     .1;
-                let total_supply = effect_builder
-                    .get_total_supply(state_root_hash)
+
+                let total_supply_request =
+                    TotalSupplyRequest::new(state_root_hash, protocol_version);
+                let total_supply = match effect_builder.get_total_supply(total_supply_request).await
+                {
+                    TotalSupplyResult::RootNotFound
+                    | TotalSupplyResult::MintNotFound
+                    | TotalSupplyResult::ValueNotFound(_)
+                    | TotalSupplyResult::Failure(_) => {
+                        return Err(RewardsError::FailedToFetchTotalSupply)
+                    }
+                    TotalSupplyResult::Success { total_supply } => total_supply,
+                };
+
+                let seignorate_rate_request =
+                    RoundSeigniorageRateRequest::new(state_root_hash, protocol_version);
+                let seignorate_rate = match effect_builder
+                    .get_round_seigniorage_rate(seignorate_rate_request)
                     .await
-                    .map_err(RewardsError::FailedToFetchTotalSupply)?;
-                let seignorate_rate = effect_builder
-                    .get_round_seigniorage_rate(state_root_hash)
-                    .await
-                    .map_err(RewardsError::FailedToFetchSeigniorageRate)?;
+                {
+                    RoundSeigniorageRateResult::RootNotFound
+                    | RoundSeigniorageRateResult::MintNotFound
+                    | RoundSeigniorageRateResult::ValueNotFound(_)
+                    | RoundSeigniorageRateResult::Failure(_) => {
+                        return Err(RewardsError::FailedToFetchSeigniorageRate);
+                    }
+                    RoundSeigniorageRateResult::Success { rate } => rate,
+                };
+
                 let reward_per_round = seignorate_rate * total_supply;
                 let total_weights = weights.values().copied().sum();
 
@@ -310,7 +352,7 @@ impl EraInfo {
 /// It is done in 2 steps so that it is easier to unit test the rewards calculation.
 pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
-    chainspec: Arc<Chainspec>,
+    chainspec: &Chainspec,
     executable_block: ExecutableBlock,
 ) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
     let current_era_id = executable_block.era_id;
@@ -319,9 +361,11 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
         "starting the rewards calculation"
     );
 
-    if current_era_id.is_genesis() {
-        // Special case: genesis block does not yield any reward, because there is no block
-        // producer, and no previous blocks whose signatures are to be rewarded:
+    if current_era_id.is_genesis()
+        || current_era_id == chainspec.protocol_config.activation_point.era_id()
+    {
+        // Special case: genesis block and immediate switch blocks do not yield any reward, because
+        // there is no block producer, and no signatures from previous blocks to be rewarded:
         Ok(chainspec
             .network_config
             .accounts_config
@@ -329,7 +373,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
             .map(|account| (account.public_key.clone(), U512::zero()))
             .collect())
     } else {
-        let rewards_info = RewardsInfo::new_from_storage(
+        let rewards_info = RewardsInfo::new(
             effect_builder,
             chainspec.protocol_version(),
             chainspec.core_config.signature_rewards_max_delay,
@@ -476,6 +520,7 @@ async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
 impl From<Block> for CitedBlock {
     fn from(block: Block) -> Self {
         Self {
+            protocol_version: block.protocol_version(),
             era_id: block.era_id(),
             height: block.height(),
             proposer: block.proposer().clone(),
@@ -483,20 +528,6 @@ impl From<Block> for CitedBlock {
             state_root_hash: *block.state_root_hash(),
             is_switch_block: block.is_switch_block(),
             is_genesis: block.is_genesis(),
-        }
-    }
-}
-
-impl From<ExecutableBlock> for CitedBlock {
-    fn from(block: ExecutableBlock) -> Self {
-        Self {
-            era_id: block.era_id,
-            height: block.height,
-            proposer: *block.proposer,
-            rewarded_signatures: block.rewarded_signatures,
-            state_root_hash: Digest::default(),
-            is_switch_block: block.era_report.is_some(),
-            is_genesis: block.era_id.is_genesis(),
         }
     }
 }

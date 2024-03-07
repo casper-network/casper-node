@@ -3,7 +3,11 @@
 
 #[macro_use]
 extern crate alloc;
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -24,6 +28,7 @@ const ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION: &str = "emit_message_from_each
 const UPGRADED_MESSAGE_EMITTER_INITIALIZED: &str = "upgraded_message_emitter_initialized";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 const PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
+const ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT: &str = "register_default_topic_with_init";
 
 pub const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "new_topic_after_upgrade";
 pub const MESSAGE_PREFIX: &str = "generic message: ";
@@ -91,6 +96,9 @@ pub extern "C" fn init() {
 
 #[no_mangle]
 pub extern "C" fn call() {
+    let register_topic_with_init: bool =
+        runtime::get_named_arg(ARG_REGISTER_DEFAULT_TOPIC_WITH_INIT);
+
     let mut emitter_entry_points = EntryPoints::new();
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_INIT,
@@ -125,12 +133,27 @@ pub extern "C" fn call() {
         PACKAGE_HASH_KEY_NAME.into(),
         message_emitter_package_hash.into(),
     );
-    let (contract_hash, _contract_version) = storage::add_contract_version(
-        message_emitter_package_hash,
-        emitter_entry_points,
-        named_keys,
-    );
 
-    // Call contract to initialize it
-    runtime::call_contract::<()>(contract_hash, ENTRY_POINT_INIT, RuntimeArgs::default());
+    if register_topic_with_init {
+        let (contract_hash, _contract_version) = storage::add_contract_version(
+            message_emitter_package_hash,
+            emitter_entry_points,
+            named_keys,
+            BTreeMap::new(),
+        );
+
+        // Call contract to initialize it
+        runtime::call_contract::<()>(contract_hash, ENTRY_POINT_INIT, RuntimeArgs::default());
+    } else {
+        let new_topics = BTreeMap::from([(
+            MESSAGE_EMITTER_GENERIC_TOPIC.to_string(),
+            MessageTopicOperation::Add,
+        )]);
+        let (_contract_hash, _contract_version) = storage::add_contract_version(
+            message_emitter_package_hash,
+            emitter_entry_points,
+            named_keys,
+            new_topics,
+        );
+    }
 }

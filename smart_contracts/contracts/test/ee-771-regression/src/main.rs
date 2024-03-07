@@ -22,7 +22,7 @@ pub extern "C" fn contract_ext() {
             // Calls a stored contract if exists.
             runtime::call_contract(
                 contract_key
-                    .into_entity_addr()
+                    .into_entity_hash_addr()
                     .expect("should be a hash")
                     .into(),
                 "contract_ext",
@@ -46,7 +46,7 @@ pub extern "C" fn contract_ext() {
 
                 entry_points
             };
-            storage::new_contract(entry_points, None, None, None);
+            storage::new_contract(entry_points, None, None, None, None);
         }
     }
 }
@@ -68,7 +68,7 @@ fn store(named_keys: NamedKeys) -> (AddressableEntityHash, EntityVersion) {
 
         entry_points
     };
-    storage::new_contract(entry_points, Some(named_keys), None, None)
+    storage::new_contract(entry_points, Some(named_keys), None, None, None)
 }
 
 fn install() -> AddressableEntityHash {

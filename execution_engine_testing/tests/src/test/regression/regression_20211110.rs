@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error as CoreError, execution::Error as ExecError};
+use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -25,7 +25,7 @@ fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -59,12 +59,13 @@ fn regression_20211110() {
     funds = funds.checked_sub(INSTALL_COST).unwrap();
 
     let contract_hash = match builder
-        .get_expected_addressable_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
+        .unwrap()
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .unwrap()
     {
-        Key::AddressableEntity(_, addr) => AddressableEntityHash::new(*addr),
+        Key::AddressableEntity(entity_addr) => AddressableEntityHash::new(entity_addr.value()),
         _ => panic!("Couldn't find regression contract."),
     };
 

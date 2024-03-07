@@ -1,8 +1,13 @@
-use casper_storage::global_state::state::StateReader;
+use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
 use casper_types::{
     account::Account,
     system::{handle_payment, mint},
     ApiError, Key, RuntimeArgs, StoredValue, TransferredTo, URef, U512,
+};
+
+use casper_storage::system::standard_payment::{
+    account_provider::AccountProvider, handle_payment_provider::HandlePaymentProvider,
+    mint_provider::MintProvider, StandardPayment,
 };
 
 use crate::{execution, runtime::Runtime};
@@ -24,8 +29,7 @@ impl From<execution::Error> for Option<ApiError> {
 
 impl<'a, R> AccountProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_main_purse(&mut self) -> Result<URef, ApiError> {
         self.context.get_main_purse().map_err(|exec_error| {
@@ -36,8 +40,7 @@ where
 
 impl<'a, R> MintProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn transfer_purse_to_account(
         &mut self,
@@ -56,8 +59,7 @@ where
 
 impl<'a, R> HandlePaymentProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_payment_purse(&mut self) -> Result<URef, ApiError> {
         let handle_payment_contract_hash = self
@@ -81,9 +83,7 @@ where
     }
 }
 
-impl<'a, R> StandardPayment for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+impl<'a, R> StandardPayment for Runtime<'a, R> where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>
 {
 }

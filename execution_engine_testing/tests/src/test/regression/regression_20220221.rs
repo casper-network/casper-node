@@ -61,7 +61,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
     .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::default()
         .with_new_validator_slots(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT + 1)
@@ -71,7 +71,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     builder.exec(fund_request).expect_success().commit();
 
@@ -145,7 +145,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     let step_request = step_request.build();
 
-    builder.step(step_request).expect("should run step");
+    assert!(builder.step(step_request).is_success(), "should run step");
 
     builder.run_auction(timestamp_millis, Vec::new());
 }

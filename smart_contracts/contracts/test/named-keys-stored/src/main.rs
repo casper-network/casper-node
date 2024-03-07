@@ -3,7 +3,7 @@
 
 extern crate alloc;
 
-use alloc::string::ToString;
+use alloc::{collections::BTreeMap, string::ToString};
 
 use casper_contract::{
     self,
@@ -12,7 +12,6 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    package::PackageKindTag,
     ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash,
     RuntimeArgs,
 };
@@ -189,13 +188,14 @@ pub extern "C" fn call() {
         named_keys
     };
 
-    let (contract_hash, contract_version) =
-        storage::add_contract_version(contract_package_hash, entry_points, named_keys);
+    let (contract_hash, contract_version) = storage::add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        BTreeMap::new(),
+    );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_PACKAGE_HASH_NAME, contract_package_hash.into());
-    runtime::put_key(
-        CONTRACT_HASH_NAME,
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
-    );
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }

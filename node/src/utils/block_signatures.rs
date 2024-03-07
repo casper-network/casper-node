@@ -144,7 +144,10 @@ pub(crate) enum BlockSignatureError {
 mod tests {
     use rand::Rng;
 
-    use casper_types::{crypto, testing::TestRng, BlockHash, EraId, FinalitySignature, SecretKey};
+    use casper_types::{
+        crypto, testing::TestRng, BlockHash, BlockSignaturesV2, ChainNameDigest, EraId,
+        FinalitySignature, SecretKey,
+    };
 
     use super::*;
 
@@ -169,17 +172,18 @@ mod tests {
         rng: &mut TestRng,
         validators: &BTreeMap<PublicKey, SecretKey>,
         n_sigs: usize,
-    ) -> BlockSignatures {
+    ) -> BlockSignaturesV2 {
         let era_id = EraId::new(rng.gen_range(10..100));
 
         let block_hash = BlockHash::random(rng);
+        let block_height = rng.gen();
+        let chain_name_hash = ChainNameDigest::random(rng);
 
-        let mut sigs = BlockSignatures::new(block_hash, era_id);
+        let mut sigs = BlockSignaturesV2::new(block_hash, block_height, era_id, chain_name_hash);
 
         for (pub_key, secret_key) in validators.iter().take(n_sigs) {
             let sig = crypto::sign(block_hash, secret_key, pub_key);
-            let finality_sig = FinalitySignature::new(block_hash, era_id, sig, pub_key.clone());
-            sigs.insert_signature(finality_sig);
+            sigs.insert_signature(pub_key.clone(), sig);
         }
 
         sigs
@@ -214,7 +218,7 @@ mod tests {
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&insufficient),
+            Some(&BlockSignatures::from(insufficient)),
         );
         assert!(matches!(
             result,
@@ -230,7 +234,7 @@ mod tests {
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&just_enough_weight),
+            Some(&BlockSignatures::from(just_enough_weight)),
         );
         assert!(result.is_ok());
     }
@@ -268,7 +272,7 @@ mod tests {
         let result = check_sufficient_block_signatures_with_quorum_formula(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&insufficient),
+            Some(&BlockSignatures::from(insufficient)),
             custom_quorum_formula,
         );
         assert!(matches!(
@@ -285,7 +289,7 @@ mod tests {
         let result = check_sufficient_block_signatures_with_quorum_formula(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&just_enough_weight),
+            Some(&BlockSignatures::from(just_enough_weight)),
             custom_quorum_formula,
         );
         assert!(result.is_ok());
@@ -332,21 +336,41 @@ mod tests {
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&signatures),
+            Some(&BlockSignatures::from(signatures.clone())),
         );
         assert!(result.is_ok());
 
         // Smuggle bogus proofs in.
         let block_hash = *signatures.block_hash();
+        let block_height = signatures.block_height();
         let era_id = signatures.era_id();
-        let finality_sig_1 = FinalitySignature::random_for_block(block_hash, era_id, &mut rng);
-        signatures.insert_signature(finality_sig_1.clone());
-        let finality_sig_2 = FinalitySignature::random_for_block(block_hash, era_id, &mut rng);
-        signatures.insert_signature(finality_sig_2.clone());
+        let chain_name_hash = signatures.chain_name_hash();
+        let finality_sig_1 = FinalitySignature::random_for_block(
+            block_hash,
+            block_height,
+            era_id,
+            chain_name_hash,
+            &mut rng,
+        );
+        signatures.insert_signature(
+            finality_sig_1.public_key().clone(),
+            *finality_sig_1.signature(),
+        );
+        let finality_sig_2 = FinalitySignature::random_for_block(
+            block_hash,
+            block_height,
+            era_id,
+            chain_name_hash,
+            &mut rng,
+        );
+        signatures.insert_signature(
+            finality_sig_2.public_key().clone(),
+            *finality_sig_2.signature(),
+        );
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
-            Some(&signatures),
+            Some(&BlockSignatures::from(signatures)),
         );
         let error = result.unwrap_err();
         if let BlockSignatureError::BogusValidators {

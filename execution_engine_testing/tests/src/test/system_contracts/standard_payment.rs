@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{Error, MAX_PAYMENT},
-    execution,
+    execution::ExecError,
 };
 use casper_types::{
     account::AccountHash, execution::TransformKind, runtime_args, system::handle_payment, ApiError,
@@ -39,7 +39,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit()
@@ -97,7 +97,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -137,10 +137,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
-    assert_matches!(
-        error,
-        Error::Exec(execution::Error::Revert(ApiError::User(100)))
-    );
+    assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::User(100))));
 }
 
 #[ignore]
@@ -151,7 +148,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()
@@ -206,7 +203,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
@@ -241,7 +238,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
@@ -251,7 +248,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 
     let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
@@ -281,7 +278,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
@@ -313,7 +310,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 
     let execution_result = utils::get_success_result(&response);
     let error = execution_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
@@ -347,7 +344,7 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -397,7 +394,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
@@ -454,7 +451,7 @@ fn should_finalize_to_rewards_purse() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -494,7 +491,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     // create another account via transfer
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(setup_exec_request)
         .expect_success()
         .commit();

@@ -1,18 +1,21 @@
 //! Errors that the contract runtime component may raise.
+use derive_more::From;
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{
-    Error as EngineStateError, GetEraValidatorsError, StepError,
+use casper_execution_engine::engine_state::Error as EngineStateError;
+use casper_storage::{
+    data_access_layer::{BlockRewardsError, FeeError, StepError},
+    global_state::error::Error as GlobalStateError,
+    tracking_copy::TrackingCopyError,
 };
-use casper_storage::global_state::error::Error as StorageLmdbError;
-use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
-    types::{ExecutableBlock, InternalEraReport},
+    types::{ChunkingError, ExecutableBlock, InternalEraReport},
 };
 
 /// An error returned from mis-configuring the contract runtime component.
@@ -20,10 +23,24 @@ use crate::{
 pub(crate) enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
-    Lmdb(#[from] StorageLmdbError),
+    GlobalState(#[from] GlobalStateError),
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
+}
+
+/// An enum that represents all possible error conditions of a `contract_runtime` component.
+#[derive(Debug, Error, From)]
+pub(crate) enum ContractRuntimeError {
+    /// The provided serialized id cannot be deserialized properly.
+    #[error("error deserializing id: {0}")]
+    InvalidSerializedId(#[source] bincode::Error),
+    // It was not possible to get trie with the specified id
+    #[error("error retrieving trie by id: {0}")]
+    FailedToRetrieveTrieById(#[source] GlobalStateError),
+    /// Chunking error.
+    #[error("failed to chunk the data {0}")]
+    ChunkingError(#[source] ChunkingError),
 }
 
 /// An error during block execution.
@@ -60,6 +77,18 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         StepError,
     ),
+    #[error(transparent)]
+    DistributeFees(
+        #[from]
+        #[serde(skip_serializing)]
+        FeeError,
+    ),
+    #[error(transparent)]
+    DistributeBlockRewards(
+        #[from]
+        #[serde(skip_serializing)]
+        BlockRewardsError,
+    ),
     /// Failed to compute the approvals checksum.
     #[error("failed to compute approvals checksum: {0}")]
     FailedToComputeApprovalsChecksum(bytesrepr::Error),
@@ -88,13 +117,19 @@ pub enum BlockExecutionError {
     Lmdb(
         #[from]
         #[serde(skip_serializing)]
-        StorageLmdbError,
+        GlobalStateError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]
     GetEraValidators(
         #[from]
         #[serde(skip_serializing)]
-        GetEraValidatorsError,
+        TrackingCopyError,
     ),
+    /// A root state hash was not found.
+    #[error("Root state hash not found in global state.")]
+    RootNotFound(Digest),
+    /// Missing checksum registry.
+    #[error("Missing checksum registry")]
+    MissingChecksumRegistry,
 }

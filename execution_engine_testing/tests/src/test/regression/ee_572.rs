@@ -48,7 +48,7 @@ fn should_run_ee_572_regression() {
 
     // Create Accounts
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();
@@ -60,7 +60,7 @@ fn should_run_ee_572_regression() {
 
     let contract: Key = {
         let account = builder
-            .get_entity_by_account_hash(ACCOUNT_1_ADDR)
+            .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
             .expect("must have default contract package");
         *account
             .named_keys()
@@ -72,7 +72,7 @@ fn should_run_ee_572_regression() {
         ACCOUNT_2_ADDR,
         CONTRACT_ESCALATE,
         runtime_args! {
-            "contract_hash" => contract.into_entity_addr().expect("should be hash"),
+            "contract_hash" => contract.into_entity_hash_addr().expect("should be hash"),
         },
     )
     .build();

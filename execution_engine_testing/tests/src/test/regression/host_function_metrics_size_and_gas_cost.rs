@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{self, ExecuteRequest},
-    execution,
+    execution::ExecError,
 };
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
@@ -114,7 +114,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::User(user_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::User(user_error)))
             if user_error == EXPECTED_REVERT_VALUE
         ),
         "Expected revert but actual error is {:?}",
@@ -133,7 +133,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(create_account_exec_request(ACCOUNT0_ADDR))
         .expect_success()
         .commit()

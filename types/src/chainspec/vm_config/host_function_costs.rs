@@ -85,6 +85,7 @@ const DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT: u32 = 520;
 pub const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 
 /// Host function cost unit for a new dictionary.
+#[allow(unused)]
 pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
@@ -302,7 +303,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
     /// Cost of calling the `add_contract_version` host function.
-    pub add_contract_version: HostFunction<[Cost; 9]>,
+    pub add_contract_version: HostFunction<[Cost; 11]>,
     /// Cost of calling the `disable_contract_version` host function.
     pub disable_contract_version: HostFunction<[Cost; 4]>,
     /// Cost of calling the `call_contract` host function.
@@ -841,6 +842,7 @@ impl FromBytes for HostFunctionCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<HostFunctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCosts {
         HostFunctionCosts {

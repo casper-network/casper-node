@@ -1,3 +1,0 @@
-mod finalized_transaction_v1_approvals;
-
-pub(crate) use finalized_transaction_v1_approvals::FinalizedTransactionV1Approvals;

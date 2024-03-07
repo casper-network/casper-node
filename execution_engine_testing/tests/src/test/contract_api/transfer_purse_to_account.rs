@@ -1,4 +1,4 @@
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -24,7 +24,7 @@ static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 42);
 #[test]
 fn should_run_purse_to_account_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
     assert!(
@@ -69,7 +69,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_failure().commit();
 
@@ -93,7 +93,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::InsufficientFunds as u8,
         ),
         "Error received {:?}",

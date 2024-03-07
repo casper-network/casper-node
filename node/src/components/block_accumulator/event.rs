@@ -5,7 +5,7 @@ use std::{
 
 use derive_more::From;
 
-use casper_types::{BlockHash, BlockSignatures, BlockV2, EraId, FinalitySignature};
+use casper_types::{BlockHash, BlockSignaturesV2, BlockV2, EraId, FinalitySignatureV2};
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
@@ -26,10 +26,10 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     CreatedFinalitySignature {
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
     },
     ReceivedFinalitySignature {
-        finality_signature: Box<FinalitySignature>,
+        finality_signature: Box<FinalitySignatureV2>,
         sender: NodeId,
     },
     ExecutedBlock {
@@ -37,7 +37,7 @@ pub(crate) enum Event {
     },
     Stored {
         maybe_meta_block: Option<ForwardMetaBlock>,
-        maybe_block_signatures: Option<BlockSignatures>,
+        maybe_block_signatures: Option<BlockSignaturesV2>,
     },
 }
 

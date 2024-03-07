@@ -6,9 +6,10 @@
 //! use casper_storage::global_state::store::Store;
 //! use casper_storage::global_state::transaction_source::{Transaction, TransactionSource};
 //! use casper_storage::global_state::transaction_source::lmdb::LmdbEnvironment;
-//! use casper_storage::global_state::trie::{Pointer, PointerBlock, Trie};
+//! use casper_storage::global_state::trie::{PointerBlock, Trie};
 //! use casper_storage::global_state::trie_store::lmdb::LmdbTrieStore;
 //! use casper_types::Digest;
+//! use casper_types::global_state::Pointer;
 //! use casper_types::bytesrepr::{ToBytes, Bytes};
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;

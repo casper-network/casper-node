@@ -4,8 +4,10 @@ use derive_more::From;
 use either::Either;
 use serde::Serialize;
 
-use casper_execution_engine::engine_state;
-use casper_types::{Block, BlockHash, BlockHeader, Digest, FinalitySignature, Transaction};
+use casper_storage::{
+    block_store::types::ApprovalsHashes, data_access_layer::ExecutionResultsChecksumResult,
+};
+use casper_types::{Block, BlockHash, BlockHeader, FinalitySignature, Transaction};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -14,10 +16,7 @@ use crate::{
         fetcher::FetchResult,
     },
     effect::requests::BlockSynchronizerRequest,
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId,
-        SyncLeap,
-    },
+    types::{BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId, SyncLeap},
 };
 
 #[derive(From, Debug, Serialize)]
@@ -55,7 +54,7 @@ pub(crate) enum Event {
     GotExecutionResultsChecksum {
         block_hash: BlockHash,
         #[serde(skip_serializing)]
-        result: Result<Option<Digest>, engine_state::Error>,
+        result: ExecutionResultsChecksumResult,
     },
     DeployFetched {
         block_hash: BlockHash,
@@ -138,7 +137,7 @@ impl Display for Event {
             Event::GotExecutionResultsChecksum {
                 block_hash: _,
                 result,
-            } => match result {
+            } => match result.as_legacy() {
                 Ok(Some(digest)) => write!(f, "got exec results checksum {}", digest),
                 Ok(None) => write!(f, "got no exec results checksum"),
                 Err(error) => write!(f, "failed to get exec results checksum: {}", error),

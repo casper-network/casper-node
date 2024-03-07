@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.0.0'
+version = '2.0.0'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = false
 # This protocol version becomes active at this point.
@@ -71,8 +71,8 @@ strict_argument_checking = false
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
 consensus_protocol = 'Highway'
-# The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
-max_delegators_per_validator = 0
+# The maximum amount of delegators per validator.
+max_delegators_per_validator = 1200
 # The split in finality signature rewards between block producer and participating signers.
 finders_fee = [1, 5]
 # The proportion of baseline rewards going to reward finality signatures specifically.
@@ -217,7 +217,7 @@ size_multiplier = 100
 [wasm.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
-add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 200, arguments = [0, 0, 0, 0] }
 call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
 call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 0, 0, 420, 0] }

@@ -45,6 +45,11 @@ impl DeployItem {
             deploy_hash,
         }
     }
+
+    /// Is this a native transfer?
+    pub fn is_native_transfer(&self) -> bool {
+        matches!(self.session, ExecutableDeployItem::Transfer { .. })
+    }
 }
 
 impl From<Deploy> for DeployItem {
@@ -62,7 +67,7 @@ impl From<Deploy> for DeployItem {
             deploy.payment().clone(),
             deploy.header().gas_price(),
             authorization_keys,
-            casper_types::DeployHash::new(*deploy.hash().inner()),
+            DeployHash::new(*deploy.hash().inner()),
         )
     }
 }

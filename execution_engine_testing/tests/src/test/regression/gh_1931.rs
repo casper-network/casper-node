@@ -12,7 +12,7 @@ const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
 fn should_query_contract_package() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .commit();
 
     let install_request =
@@ -22,7 +22,8 @@ fn should_query_contract_package() {
     builder.exec(install_request).expect_success().commit();
 
     let contract_package_hash = builder
-        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
         .named_keys()
         .clone()
         .get(CONTRACT_PACKAGE_NAMED_KEY)

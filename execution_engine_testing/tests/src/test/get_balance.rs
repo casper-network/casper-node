@@ -4,9 +4,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::tracking_copy::{self, ValidationError};
+use casper_storage::tracking_copy::{self, ValidationError};
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, SecretKey, URef, U512,
+    account::AccountHash, runtime_args, AccessRights, Digest, Key, ProtocolVersion, PublicKey,
+    SecretKey, URef, U512,
 };
 
 const TRANSFER_ARG_TARGET: &str = "target";
@@ -24,8 +25,9 @@ static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 #[ignore]
 #[test]
 fn get_balance_should_work() {
+    let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -45,7 +47,7 @@ fn get_balance_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result = builder.get_purse_balance_result(alice_main_purse);
+    let alice_balance_result = builder.get_purse_balance_result(protocol_version, alice_main_purse);
 
     let alice_balance = alice_balance_result
         .motes()
@@ -114,8 +116,9 @@ fn get_balance_should_work() {
 #[ignore]
 #[test]
 fn get_balance_using_public_key_should_work() {
+    let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -135,7 +138,8 @@ fn get_balance_using_public_key_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result = builder.get_public_key_balance_result(ALICE_KEY.clone());
+    let alice_balance_result =
+        builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone());
 
     let alice_balance = alice_balance_result
         .motes()

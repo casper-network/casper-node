@@ -1,18 +1,17 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::{
-    engine_state::{
-        genesis::ExecConfigBuilder, EngineConfigBuilder, Error, ExecuteRequest, RunGenesisRequest,
-    },
-    execution,
+    engine_state::{Error, ExecuteRequest},
+    execution::ExecError,
 };
+use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::{AccountHash, Weight},
     bytesrepr::ToBytes,
@@ -22,8 +21,8 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Package, PackageHash,
-    RuntimeArgs, U512,
+    AddressableEntityHash, ApiError, CLType, CLValue, CoreConfig, GenesisAccount,
+    GenesisConfigBuilder, Key, Package, PackageHash, RuntimeArgs, U512,
 };
 use tempfile::TempDir;
 
@@ -71,14 +70,18 @@ const PAY_ENTRYPOINT: &str = "pay";
 #[ignore]
 #[test]
 fn should_not_run_genesis_with_duplicated_administrator_accounts() {
-    let engine_config = EngineConfigBuilder::default()
-        // This change below makes genesis config validation to fail as administrator accounts are
-        // only valid for private chains.
-        .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone())
-        .build();
+    let core_config = CoreConfig {
+        administrators: PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone(),
+        ..Default::default()
+    };
+    let chainspec = ChainspecConfig {
+        core_config,
+        wasm_config: Default::default(),
+        system_costs_config: Default::default(),
+    };
 
     let data_dir = TempDir::new().expect("should create temp dir");
-    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), chainspec);
 
     let duplicated_administrator_accounts = {
         let mut accounts = PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone();
@@ -91,7 +94,7 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         accounts
     };
 
-    let genesis_config = ExecConfigBuilder::default()
+    let genesis_config = GenesisConfigBuilder::default()
         .with_accounts(duplicated_administrator_accounts)
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -105,14 +108,14 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         .with_fee_handling(PRIVATE_CHAIN_FEE_HANDLING)
         .build();
 
-    let modified_genesis_request = RunGenesisRequest::new(
+    let modified_genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    builder.run_genesis(&modified_genesis_request);
+    builder.run_genesis(modified_genesis_request);
 }
 
 #[ignore]
@@ -139,7 +142,7 @@ fn genesis_accounts_should_not_update_key_weight() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -184,7 +187,7 @@ fn genesis_accounts_should_not_modify_action_thresholds() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -213,7 +216,7 @@ fn genesis_accounts_should_not_add_associated_keys() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -275,7 +278,7 @@ fn genesis_accounts_should_not_remove_associated_keys() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(ApiError::PermissionDenied))
+            Error::Exec(ExecError::Revert(ApiError::PermissionDenied))
         ),
         "{:?}",
         error
@@ -337,7 +340,7 @@ fn administrator_account_should_disable_any_account() {
     let error = builder.get_error().expect("should have error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::DeploymentAuthorizationFailure)
+        Error::TrackingCopy(TrackingCopyError::DeploymentAuthorizationFailure)
     ));
 
     let account_1_disabled = builder
@@ -475,7 +478,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .commit();
 
     let account_1_genesis = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_entity_key = account_1_genesis
@@ -484,7 +487,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
@@ -588,7 +591,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
+                Error::Exec(ExecError::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
@@ -672,7 +675,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .commit();
 
     let account_1_genesis = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_entity_key = account_1_genesis
@@ -681,7 +684,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored entity hash");
 
@@ -807,7 +810,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
+                Error::Exec(ExecError::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
@@ -896,7 +899,7 @@ fn should_not_allow_add_bid_on_private_chain() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(api_error))
+            Error::Exec(ExecError::Revert(api_error))
             if api_error == auction::Error::AuctionBidsDisabled.into(),
         ),
         "{:?}",
@@ -925,7 +928,7 @@ fn should_not_allow_delegate_on_private_chain() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(api_error))
+            Error::Exec(ExecError::Revert(api_error))
             if api_error == auction::Error::AuctionBidsDisabled.into()
         ),
         "{:?}",

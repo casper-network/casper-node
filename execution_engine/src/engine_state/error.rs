@@ -2,15 +2,20 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_storage::global_state::{self, state::CommitError};
+use casper_storage::{
+    global_state::{self, state::CommitError},
+    system::{
+        genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError, transfer::TransferError,
+    },
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
-    ProtocolVersion,
+    account::AccountHash, binary_port, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag,
+    PackageHash, ProtocolVersion,
 };
 
 use crate::{
-    engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
-    execution,
+    execution::ExecError,
     runtime::{stack, PreprocessingError},
 };
 
@@ -35,7 +40,7 @@ pub enum Error {
     WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
-    Exec(execution::Error),
+    Exec(ExecError),
     /// Storage error.
     #[error("Storage error: {0}")]
     Storage(#[from] global_state::error::Error),
@@ -114,6 +119,15 @@ pub enum Error {
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),
+    /// Storage error.
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
+    /// Native transfer error.
+    #[error("Transfer error: {0}")]
+    Transfer(TransferError),
+    /// Deprecated functionality.
+    #[error("Deprecated: {0}")]
+    Deprecated(String),
 }
 
 impl Error {
@@ -123,14 +137,20 @@ impl Error {
     /// This method should be used only by native code that has to mimic logic of a WASM executed
     /// code.
     pub fn reverter(api_error: impl Into<ApiError>) -> Error {
-        Error::Exec(execution::Error::Revert(api_error.into()))
+        Error::Exec(ExecError::Revert(api_error.into()))
     }
 }
 
-impl From<execution::Error> for Error {
-    fn from(error: execution::Error) -> Self {
+impl From<TransferError> for Error {
+    fn from(err: TransferError) -> Self {
+        Error::Transfer(err)
+    }
+}
+
+impl From<ExecError> for Error {
+    fn from(error: ExecError) -> Self {
         match error {
-            execution::Error::WasmPreprocessing(preprocessing_error) => {
+            ExecError::WasmPreprocessing(preprocessing_error) => {
                 Error::WasmPreprocessing(preprocessing_error)
             }
             _ => Error::Exec(error),
@@ -159,6 +179,25 @@ impl From<Box<GenesisError>> for Error {
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Self::RuntimeStackOverflow
+    }
+}
+
+impl From<TrackingCopyError> for Error {
+    fn from(e: TrackingCopyError) -> Self {
+        Error::TrackingCopy(e)
+    }
+}
+
+impl From<Error> for binary_port::ErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
+            Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
+            Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
+            Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::UnsupportedProtocolVersion,
+            Error::Deploy => binary_port::ErrorCode::InvalidTransaction,
+            _ => binary_port::ErrorCode::InternalError,
+        }
     }
 }
 

@@ -8,6 +8,7 @@ use num_traits::One;
 
 use casper_types::{
     account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, WasmConfig,
+    DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -33,14 +34,13 @@ const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 /// Default length of total vesting schedule period expressed in days.
 pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
     VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
+/// Default maximum number of delegators per validator.
+pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-/// Default gas cost refund ratio.
-pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(99, 100),
-};
+
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
@@ -49,8 +49,6 @@ pub const DEFAULT_COMPUTE_REWARDS: bool = true;
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
-    /// Max query depth of the engine.
-    pub(crate) max_query_depth: u64,
     /// Maximum number of associated keys (i.e. map of
     /// [`AccountHash`](casper_types::account::AccountHash)s to
     /// [`Weight`](casper_types::account::Weight)s) for a single account.
@@ -61,7 +59,7 @@ pub struct EngineConfig {
     strict_argument_checking: bool,
     /// Vesting schedule period in milliseconds.
     vesting_schedule_period_millis: u64,
-    max_delegators_per_validator: Option<u32>,
+    max_delegators_per_validator: u32,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     /// A private network specifies a list of administrative accounts.
@@ -86,13 +84,12 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         EngineConfig {
-            max_query_depth: DEFAULT_MAX_QUERY_DEPTH,
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
             minimum_delegation_amount: DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            max_delegators_per_validator: None,
+            max_delegators_per_validator: DEFAULT_MAX_DELEGATORS_PER_VALIDATOR,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             administrative_accounts: Default::default(),
@@ -106,45 +103,6 @@ impl Default for EngineConfig {
 }
 
 impl EngineConfig {
-    /// Creates a new `EngineConfig` instance.
-    ///
-    /// New code should use [`EngineConfigBuilder`] instead as some config options will otherwise be
-    /// defaulted.
-    #[deprecated(
-        since = "3.0.0",
-        note = "prefer to use EngineConfigBuilder to construct an EngineConfig"
-    )]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        max_query_depth: u64,
-        max_associated_keys: u32,
-        max_runtime_call_stack_height: u32,
-        minimum_delegation_amount: u64,
-        strict_argument_checking: bool,
-        vesting_schedule_period_millis: u64,
-        max_delegators_per_validator: Option<u32>,
-        wasm_config: WasmConfig,
-        system_config: SystemConfig,
-    ) -> EngineConfig {
-        Self {
-            max_query_depth,
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
-            administrative_accounts: Default::default(),
-            allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
-            allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
-            refund_handling: DEFAULT_REFUND_HANDLING,
-            fee_handling: DEFAULT_FEE_HANDLING,
-            compute_rewards: DEFAULT_COMPUTE_REWARDS,
-        }
-    }
-
     /// Returns the current max associated keys config.
     pub fn max_associated_keys(&self) -> u32 {
         self.max_associated_keys
@@ -181,7 +139,7 @@ impl EngineConfig {
     }
 
     /// Get the max delegators per validator
-    pub fn max_delegators_per_validator(&self) -> Option<u32> {
+    pub fn max_delegators_per_validator(&self) -> u32 {
         self.max_delegators_per_validator
     }
 
@@ -284,8 +242,8 @@ impl EngineConfigBuilder {
     }
 
     /// Sets the max delegators per validator config option.
-    pub fn with_max_delegators_per_validator(mut self, value: Option<u32>) -> Self {
-        self.max_delegators_per_validator = value;
+    pub fn with_max_delegators_per_validator(mut self, value: u32) -> Self {
+        self.max_delegators_per_validator = Some(value);
         self
     }
 
@@ -344,6 +302,9 @@ impl EngineConfigBuilder {
                     "refund ratio should be in the range of [0, 1]"
                 );
             }
+            RefundHandling::None => {
+                //noop
+            }
         }
 
         self.refund_handling = Some(refund_handling);
@@ -364,7 +325,6 @@ impl EngineConfigBuilder {
 
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
-        let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
         let max_associated_keys = self
             .max_associated_keys
             .unwrap_or(DEFAULT_MAX_ASSOCIATED_KEYS);
@@ -398,11 +358,12 @@ impl EngineConfigBuilder {
         let vesting_schedule_period_millis = self
             .vesting_schedule_period_millis
             .unwrap_or(DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS);
-        let max_delegators_per_validator = self.max_delegators_per_validator;
+        let max_delegators_per_validator = self
+            .max_delegators_per_validator
+            .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
 
         EngineConfig {
-            max_query_depth,
             max_associated_keys,
             max_runtime_call_stack_height,
             minimum_delegation_amount,

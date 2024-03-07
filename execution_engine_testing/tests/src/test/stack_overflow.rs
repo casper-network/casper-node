@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution::Error as ExecError};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::RuntimeArgs;
 
 #[ignore]
@@ -26,7 +26,7 @@ fn runtime_stack_overflow_should_cause_unreachable_error() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     builder
         .exec(do_stack_overflow_request)
         .expect_failure()

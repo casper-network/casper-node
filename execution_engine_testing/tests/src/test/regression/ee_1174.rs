@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     runtime_args,
     system::{
@@ -21,7 +21,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     let bid_amount = U512::one();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let auction = builder.get_auction_contract_hash();
 
@@ -52,5 +52,5 @@ fn should_run_ee_1174_delegation_rate_too_high() {
 
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if auction_error == system::auction::Error::DelegationRateTooLarge as u8));
+        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error))) if auction_error == system::auction::Error::DelegationRateTooLarge as u8));
 }

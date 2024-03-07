@@ -1,6 +1,10 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -9,7 +13,7 @@ use crate::{
 };
 
 /// Default gas cost for a wasmless transfer.
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 0; // 100_000_000; TODO: reinstate when adding new payment logic
 
 /// Definition of costs in the system.
 ///
@@ -68,6 +72,12 @@ impl SystemConfig {
         &self.mint_costs
     }
 
+    /// Sets mint costs.
+    pub fn with_mint_costs(mut self, mint_costs: MintCosts) -> Self {
+        self.mint_costs = mint_costs;
+        self
+    }
+
     /// Returns the costs of executing `handle_payment` entry points.
     pub fn handle_payment_costs(&self) -> &HandlePaymentCosts {
         &self.handle_payment_costs
@@ -91,6 +101,7 @@ impl Default for SystemConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<SystemConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
         SystemConfig {

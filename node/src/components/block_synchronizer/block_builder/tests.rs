@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, thread, time::Duration};
 
 use num_rational::Ratio;
 
-use casper_types::{testing::TestRng, TestBlockBuilder, Transaction};
+use casper_types::{
+    testing::TestRng, ChainNameDigest, FinalitySignatureV2, TestBlockBuilder, Transaction,
+};
 
 use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
 
@@ -211,6 +213,7 @@ fn register_era_validator_weights() {
 #[test]
 fn register_executable_block() {
     let mut rng = TestRng::new();
+    let chain_name_hash = ChainNameDigest::random(&mut rng);
     // Create a random block.
     let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
@@ -234,9 +237,15 @@ fn register_executable_block() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
+    let sig = FinalitySignatureV2::create(
+        *block.hash(),
+        block.height(),
+        block.era_id(),
+        chain_name_hash,
+        &ALICE_SECRET_KEY,
+    );
     assert_eq!(
-        signature_acquisition.apply_signature(sig, &weights),
+        signature_acquisition.apply_signature(sig.into(), &weights),
         Acceptance::NeededIt
     );
     // Set the builder's state to `HaveStrictFinalitySignatures`.
@@ -280,6 +289,7 @@ fn register_executable_block() {
 #[test]
 fn register_block_execution() {
     let mut rng = TestRng::new();
+    let chain_name_hash = ChainNameDigest::random(&mut rng);
     // Create a random block.
     let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
@@ -303,9 +313,15 @@ fn register_block_execution() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
+    let sig = FinalitySignatureV2::create(
+        *block.hash(),
+        block.height(),
+        block.era_id(),
+        chain_name_hash,
+        &ALICE_SECRET_KEY,
+    );
     assert_eq!(
-        signature_acquisition.apply_signature(sig, &weights),
+        signature_acquisition.apply_signature(sig.into(), &weights),
         Acceptance::NeededIt
     );
 
@@ -356,6 +372,7 @@ fn register_block_execution() {
 #[test]
 fn register_block_executed() {
     let mut rng = TestRng::new();
+    let chain_name_hash = ChainNameDigest::random(&mut rng);
     // Create a random block.
     let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
@@ -379,9 +396,15 @@ fn register_block_executed() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
+    let sig = FinalitySignatureV2::create(
+        *block.hash(),
+        block.height(),
+        block.era_id(),
+        chain_name_hash,
+        &ALICE_SECRET_KEY,
+    );
     assert_eq!(
-        signature_acquisition.apply_signature(sig, &weights),
+        signature_acquisition.apply_signature(sig.into(), &weights),
         Acceptance::NeededIt
     );
     // Set the builder state to `HaveStrictFinalitySignatures`.
@@ -421,6 +444,7 @@ fn register_block_executed() {
 #[test]
 fn register_block_marked_complete() {
     let mut rng = TestRng::new();
+    let chain_name_hash = ChainNameDigest::random(&mut rng);
     // Create a random block.
     let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
@@ -446,9 +470,15 @@ fn register_block_marked_complete() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
+    let sig = FinalitySignatureV2::create(
+        *block.hash(),
+        block.height(),
+        block.era_id(),
+        chain_name_hash,
+        &ALICE_SECRET_KEY,
+    );
     assert_eq!(
-        signature_acquisition.apply_signature(sig, &weights),
+        signature_acquisition.apply_signature(sig.into(), &weights),
         Acceptance::NeededIt
     );
 

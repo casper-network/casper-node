@@ -4,11 +4,17 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::SystemContractRegistry;
+use casper_storage::{
+    data_access_layer::{
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistrySelector,
+    },
+    global_state::state::StateProvider,
+};
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AddressableEntityHash, CLValue, Key, StoredValue, KEY_HASH_LENGTH,
+    AddressableEntityHash, CLValue, Key, ProtocolVersion, StoredValue, SystemEntityRegistry,
+    KEY_HASH_LENGTH,
 };
 
 use crate::utils::{hash_from_str, print_entry};
@@ -92,14 +98,14 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
         });
     assert!(remainder.is_empty());
 
-    let mut registry = SystemContractRegistry::new();
+    let mut registry = SystemEntityRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
     registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
     print_entry(
-        &Key::SystemContractRegistry,
+        &Key::SystemEntityRegistry,
         &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }
@@ -108,17 +114,33 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
     let builder =
         LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 
-    let mint_hash = builder.get_system_mint_hash();
-    let handle_payment_hash = builder.get_system_handle_payment_hash();
-    let auction_hash = builder.get_system_auction_hash();
+    let registry_req = SystemEntityRegistryRequest::new(
+        builder.get_post_state_hash(),
+        ProtocolVersion::V2_0_0,
+        SystemEntityRegistrySelector::All,
+    );
 
-    let mut registry = SystemContractRegistry::new();
-    registry.insert(MINT.to_string(), mint_hash);
-    registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
-    registry.insert(AUCTION.to_string(), auction_hash);
+    let registry = match builder
+        .data_access_layer()
+        .system_entity_registry(registry_req)
+        .as_legacy()
+        .expect("should have payload")
+    {
+        SystemEntityRegistryPayload::All(registry) => registry,
+        SystemEntityRegistryPayload::EntityKey(_) => {
+            panic!("expected registry");
+        }
+    };
+
+    // make sure expected entries exist
+    let _ = *registry.get(MINT).expect("mint should exist");
+    let _ = *registry.get(AUCTION).expect("auction should exist");
+    let _ = *registry
+        .get(HANDLE_PAYMENT)
+        .expect("handle payment should exist");
 
     print_entry(
-        &Key::SystemContractRegistry,
+        &Key::SystemEntityRegistry,
         &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }

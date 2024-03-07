@@ -88,7 +88,8 @@ pub extern "C" fn call() {
 
         entry_points
     };
-    let (contract_hash, _contract_version) = storage::new_contract(entry_points, None, None, None);
+    let (contract_hash, _contract_version) =
+        storage::new_contract(entry_points, None, None, None, None);
 
     my_call_contract(contract_hash, "do_nothing", RuntimeArgs::default());
 }

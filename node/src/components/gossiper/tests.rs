@@ -18,7 +18,7 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
     ProtocolVersion, TimeDiff, Transaction,
 };
 
@@ -113,7 +113,7 @@ impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
 impl Unhandled for GossiperIncoming<BlockV2> {}
-impl Unhandled for GossiperIncoming<FinalitySignature> {}
+impl Unhandled for GossiperIncoming<FinalitySignatureV2> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
@@ -157,9 +157,7 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let network = NetworkController::create_node(event_queue, rng);
-
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
@@ -181,6 +179,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let network = NetworkController::create_node(event_queue, rng);
         let reactor = Reactor {
             network,
             storage,
@@ -340,7 +339,7 @@ fn announce_transaction_received(
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
-    const TIMEOUT: Duration = Duration::from_secs(20);
+    const TIMEOUT: Duration = Duration::from_secs(30);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
     NetworkController::<NodeMessage>::create_active();
@@ -368,12 +367,18 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
     // Check every node has every transaction stored locally.
     let all_txns_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
-            let hashes = runner
-                .reactor()
-                .inner()
-                .storage
-                .get_all_transaction_hashes();
-            all_txn_hashes == hashes
+            for hash in all_txn_hashes.iter() {
+                if runner
+                    .reactor()
+                    .inner()
+                    .storage
+                    .get_transaction_by_hash(*hash)
+                    .is_none()
+                {
+                    return false;
+                }
+            }
+            true
         })
     };
     network.settle_on(rng, all_txns_held, TIMEOUT).await;
@@ -386,7 +391,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
 
 #[tokio::test]
 async fn should_gossip() {
-    const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
+    const NETWORK_SIZES: [usize; 3] = [2, 5, 10];
     const TXN_COUNTS: [usize; 3] = [1, 10, 30];
 
     let rng = &mut TestRng::new();

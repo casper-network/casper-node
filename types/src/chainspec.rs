@@ -6,12 +6,15 @@ mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
 mod fee_handling;
+pub mod genesis_config;
 mod global_state_update;
 mod highway_config;
 mod network_config;
+mod next_upgrade;
 mod protocol_config;
 mod refund_handling;
 mod transaction_config;
+mod upgrade_config;
 mod vm_config;
 
 use std::{fmt::Debug, sync::Arc};
@@ -27,7 +30,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -37,18 +40,24 @@ pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
 pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
 pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "std", test))]
+pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
+pub use next_upgrade::NextUpgrade;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
+pub use upgrade_config::ProtocolUpgradeConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
-    StandardPaymentCosts, StorageCosts, SystemConfig, UpgradeConfig, WasmConfig,
+    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(feature = "testing", test))]
@@ -104,6 +113,11 @@ pub struct Chainspec {
 }
 
 impl Chainspec {
+    /// Returns the hash of the chainspec's name.
+    pub fn name_hash(&self) -> ChainNameDigest {
+        ChainNameDigest::from_chain_name(&self.network_config.name)
+    }
+
     /// Serializes `self` and hashes the resulting bytes.
     pub fn hash(&self) -> Digest {
         let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {
@@ -141,7 +155,7 @@ impl Chainspec {
         current_protocol_version: ProtocolVersion,
         era_id: EraId,
         chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-    ) -> Result<UpgradeConfig, String> {
+    ) -> Result<ProtocolUpgradeConfig, String> {
         let chainspec_registry = ChainspecRegistry::new_with_optional_global_state(
             chainspec_raw_bytes.chainspec_bytes(),
             chainspec_raw_bytes.maybe_global_state_bytes(),
@@ -152,8 +166,9 @@ impl Chainspec {
                 return Err(format!("failed to generate global state update: {}", err));
             }
         };
+        let fee_handling = self.core_config.fee_handling;
 
-        Ok(UpgradeConfig::new(
+        Ok(ProtocolUpgradeConfig::new(
             pre_state_hash,
             current_protocol_version,
             self.protocol_config.version,
@@ -165,6 +180,7 @@ impl Chainspec {
             Some(self.core_config.unbonding_delay),
             global_state_update,
             chainspec_registry,
+            fee_handling,
         ))
     }
 }

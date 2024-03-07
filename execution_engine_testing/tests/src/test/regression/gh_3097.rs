@@ -2,6 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     runtime_args, AddressableEntityHash, EntityVersionKey, PackageHash, RuntimeArgs,
 };
@@ -33,26 +34,26 @@ fn should_run_regression() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let disabled_contract_hash = account
         .named_keys()
         .get(DISABLED_CONTRACT_HASH_KEY)
         .unwrap()
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let enabled_contract_hash = account
         .named_keys()
         .get(ENABLED_CONTRACT_HASH_KEY)
         .unwrap()
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash = account
@@ -111,12 +112,12 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidEntityVersion(version)
+            Error::Exec(
+                ExecError::DisabledEntityVersion(version)
             )
-            if version == EntityVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(2, 1),
         ),
-        "Expected invalid contract version, found {:?}",
+        "Expected disabled contract version, found {:?}",
         error,
     );
 
@@ -168,12 +169,12 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidEntityVersion(version)
+            Error::Exec(
+                ExecError::DisabledEntityVersion(version)
             )
-            if version == EntityVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(2, 1),
         ),
-        "Expected invalid contract version, found {:?}",
+        "Expected disabled contract version, found {:?}",
         error,
     );
 
@@ -228,12 +229,12 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidEntityVersion(version)
+            Error::Exec(
+                ExecError::DisabledEntityVersion(version)
             )
-            if version == EntityVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(2, 1),
         ),
-        "Expected invalid contract version, found {:?}",
+        "Expected disabled contract version, found {:?}",
         error,
     );
 
@@ -281,8 +282,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::DisabledEntity(contract_hash)
+            Error::Exec(
+                ExecError::DisabledEntity(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -307,8 +308,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::DisabledEntity(contract_hash)
+            Error::Exec(
+                ExecError::DisabledEntity(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -347,8 +348,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::DisabledEntity(contract_hash)
+            Error::Exec(
+                ExecError::DisabledEntity(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),

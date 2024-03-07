@@ -44,6 +44,7 @@
 //! will usually be dictated by a restriction on a method on an
 //! [`EffectBuilder`](crate::effect::EffectBuilder).
 
+pub(crate) mod binary_port;
 pub(crate) mod block_accumulator;
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
@@ -60,7 +61,6 @@ pub mod in_memory_network;
 pub(crate) mod metrics;
 pub(crate) mod network;
 pub(crate) mod rest_server;
-pub mod rpc_server;
 pub(crate) mod shutdown_trigger;
 pub mod storage;
 pub(crate) mod sync_leaper;
@@ -128,6 +128,14 @@ pub(crate) trait Component<REv> {
     /// The event type that is handled by the component.
     type Event;
 
+    /// Name of the component.
+    fn name(&self) -> &str;
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore failpoints.
+    }
+
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
@@ -138,14 +146,6 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
-
-    /// Name of the component.
-    fn name(&self) -> &str;
-
-    /// Activate/deactivate a failpoint.
-    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
-        // Default is to ignore failpoints.
-    }
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {

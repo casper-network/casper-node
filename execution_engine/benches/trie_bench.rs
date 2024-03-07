@@ -1,16 +1,17 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casper_storage::global_state::trie::{Pointer, PointerBlock, Trie};
+use casper_storage::global_state::trie::{PointerBlock, Trie};
 use casper_types::{
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     bytesrepr::{FromBytes, ToBytes},
-    package::PackageKindTag,
+    global_state::Pointer,
     AddressableEntityHash, CLValue, Digest, Key, StoredValue,
 };
 
 fn serialize_trie_leaf(b: &mut Bencher) {
     let contract_key = Key::addressable_entity_key(
-        PackageKindTag::SmartContract,
+        EntityKindTag::SmartContract,
         AddressableEntityHash::new([42; 32]),
     );
     let leaf = Trie::Leaf {
@@ -22,7 +23,7 @@ fn serialize_trie_leaf(b: &mut Bencher) {
 
 fn deserialize_trie_leaf(b: &mut Bencher) {
     let contract_key: Key = Key::addressable_entity_key(
-        PackageKindTag::SmartContract,
+        EntityKindTag::SmartContract,
         AddressableEntityHash::new([42; 32]),
     );
     let leaf = Trie::Leaf {
