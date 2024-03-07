@@ -13,8 +13,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
-    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, U512,
+    AccessRights, EraId, Gas, Key, MintCosts, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
+    U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

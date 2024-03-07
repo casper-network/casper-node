@@ -18,7 +18,8 @@ use casper_types::{
     GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
     MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;

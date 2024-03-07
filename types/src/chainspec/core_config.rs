@@ -29,7 +29,7 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 
 /// Configuration values associated with the core protocol.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]

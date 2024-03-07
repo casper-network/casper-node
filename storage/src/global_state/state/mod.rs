@@ -18,7 +18,7 @@ use tracing::{debug, error, warn};
 pub use self::lmdb::make_temporary_global_state;
 
 use casper_types::{
-    addressable_entity::EntityKindTag,
+    addressable_entity::{EntityKindTag, NamedKeys},
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
