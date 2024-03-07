@@ -957,7 +957,7 @@ fn accumulator_should_leap() {
     }
 
     let upgrade_attempt_execution_threshold = attempt_execution_threshold * 2;
-    block_accumulator.register_activation_point(ActivationPoint::EraId(era_id.successor()));
+    block_accumulator.register_activation_point(Some(ActivationPoint::EraId(era_id.successor())));
     let offset = centurion.saturating_sub(upgrade_attempt_execution_threshold);
     for height in offset..centurion {
         expected_leap_instruction(

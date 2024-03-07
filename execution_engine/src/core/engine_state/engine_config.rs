@@ -212,6 +212,12 @@ impl EngineConfig {
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
     }
+
+    /// Sets the `wasm_config.max_memory` to `new_value`.
+    #[cfg(feature = "test-support")]
+    pub fn set_max_memory(&mut self, new_value: u32) {
+        self.wasm_config.max_memory = new_value;
+    }
 }
 
 /// A builder for an [`EngineConfig`].

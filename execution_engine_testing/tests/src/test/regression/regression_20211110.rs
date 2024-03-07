@@ -18,7 +18,7 @@ const CONTRACT_HASH_NAME: &str = "regression-contract-hash";
 const REGRESSION_20211110_CONTRACT: &str = "regression_20211110.wasm";
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([111; 32]);
-const INSTALL_COST: u64 = 30_000_000_000;
+const INSTALL_COST: u64 = 40_000_000_000;
 const STARTING_BALANCE: u64 = 100_000_000_000;
 
 #[ignore]

@@ -53,7 +53,7 @@ pub fn call_contract<T: CLTyped + FromBytes>(
     let (contract_hash_ptr, contract_hash_size, _bytes1) = contract_api::to_ptr(contract_hash);
     let (entry_point_name_ptr, entry_point_name_size, _bytes2) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes2) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes3) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();
@@ -87,13 +87,13 @@ pub fn call_versioned_contract<T: CLTyped + FromBytes>(
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
-    let (contract_package_hash_ptr, contract_package_hash_size, _bytes) =
+    let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);
-    let (contract_version_ptr, contract_version_size, _bytes) =
+    let (contract_version_ptr, contract_version_size, _bytes2) =
         contract_api::to_ptr(contract_version);
-    let (entry_point_name_ptr, entry_point_name_size, _bytes) =
+    let (entry_point_name_ptr, entry_point_name_size, _bytes3) =
         contract_api::to_ptr(entry_point_name);
-    let (runtime_args_ptr, runtime_args_size, _bytes) = contract_api::to_ptr(runtime_args);
+    let (runtime_args_ptr, runtime_args_size, _bytes4) = contract_api::to_ptr(runtime_args);
 
     let bytes_written = {
         let mut bytes_written = MaybeUninit::uninit();

@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "7.0.0"
+version = "7.0.1"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "7.0.0"
+version = "7.0.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.5.5"
+version = "1.5.6"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -5308,6 +5308,14 @@ dependencies = [
 
 [[package]]
 name = "regression_20220119"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "regression_20240105"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

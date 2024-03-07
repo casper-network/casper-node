@@ -2,7 +2,6 @@
 mod bytes;
 
 use alloc::{
-    alloc::{alloc, Layout},
     collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     string::String,
@@ -15,7 +14,6 @@ use core::{
     convert::TryInto,
     fmt::{self, Display, Formatter},
     mem,
-    ptr::NonNull,
 };
 
 #[cfg(feature = "datasize")]
@@ -415,7 +413,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         ensure_efficient_serialization::<T>();
 
-        let mut result = try_vec_with_capacity(self.serialized_length())?;
+        let mut result = Vec::with_capacity(self.serialized_length());
         let length_32: u32 = self.len().try_into().map_err(|_| Error::NotRepresentable)?;
         result.append(&mut length_32.to_bytes()?);
 
@@ -454,28 +452,20 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     }
 }
 
-// TODO Replace `try_vec_with_capacity` with `Vec::try_reserve_exact` once it's in stable.
-fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
-    // see https://doc.rust-lang.org/src/alloc/raw_vec.rs.html#75-98
-    let elem_size = mem::size_of::<T>();
-    let alloc_size = capacity.checked_mul(elem_size).ok_or(Error::OutOfMemory)?;
-
-    let ptr = if alloc_size == 0 {
-        NonNull::<T>::dangling()
-    } else {
-        let align = mem::align_of::<T>();
-        let layout = Layout::from_size_align(alloc_size, align).map_err(|_| Error::OutOfMemory)?;
-        let raw_ptr = unsafe { alloc(layout) };
-        let non_null_ptr = NonNull::<u8>::new(raw_ptr).ok_or(Error::OutOfMemory)?;
-        non_null_ptr.cast()
-    };
-    unsafe { Ok(Vec::from_raw_parts(ptr.as_ptr(), 0, capacity)) }
-}
-
 fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error> {
     ensure_efficient_serialization::<T>();
 
     Vec::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
+}
+
+/// Returns a conservative estimate for the preallocated number of elements for a new `Vec<T>`.
+///
+/// `hint` indicates the desired upper limit in heap size (in bytes), which is itself bounded by
+/// 4096 bytes. This function will never return less than 1.
+#[inline]
+fn cautious<T>(hint: usize) -> usize {
+    let el_size = core::mem::size_of::<T>();
+    core::cmp::max(core::cmp::min(hint, 4096 / el_size), 1)
 }
 
 impl<T: FromBytes> FromBytes for Vec<T> {
@@ -484,7 +474,12 @@ impl<T: FromBytes> FromBytes for Vec<T> {
 
         let (count, mut stream) = u32::from_bytes(bytes)?;
 
-        let mut result = try_vec_with_capacity(count as usize)?;
+        if count == 0 {
+            return Ok((Vec::new(), stream));
+        }
+
+        let mut result = Vec::with_capacity(cautious::<T>(count as usize));
+
         for _ in 0..count {
             let (value, remainder) = T::from_bytes(stream)?;
             result.push(value);
@@ -1252,7 +1247,7 @@ where
 /// avoid using serializing Vec<u8>.
 fn u8_slice_to_bytes(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let serialized_length = u8_slice_serialized_length(bytes);
-    let mut vec = try_vec_with_capacity(serialized_length)?;
+    let mut vec = Vec::with_capacity(serialized_length);
     let length_prefix: u32 = bytes
         .len()
         .try_into()
@@ -1328,6 +1323,8 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use crate::U128;
+
     use super::*;
 
     #[test]
@@ -1370,6 +1367,54 @@ mod tests {
     fn should_fail_to_serialize_slice_of_u8() {
         let bytes = b"0123456789".to_vec();
         bytes.to_bytes().unwrap();
+    }
+
+    #[test]
+    fn should_calculate_capacity() {
+        #[allow(dead_code)]
+        struct CustomStruct {
+            u8_field: u8,
+            u16_field: u16,
+            u32_field: u32,
+            u64_field: u64,
+            // Here we're using U128 type that represents u128 with a two u64s which is what the
+            // compiler is doing for x86_64. On 64-bit ARM architecture u128 is aligned
+            // to 16 bytes, but on x86_64 it's aligned to 8 bytes. This changes the
+            // memory layout of the struct and affects the results of function `cautious`.
+            // The expected behaviour of u128 alignment is 8 bytes instead of 16,
+            // and there is a bug in the rust compiler for this: https://github.com/rust-lang/rust/issues/54341
+            u128_field: U128,
+            str_field: String,
+        }
+        assert_eq!(
+            cautious::<usize>(u32::MAX as usize),
+            512,
+            "hint is 2^32-1 and we can only preallocate 512 elements"
+        );
+        assert_eq!(
+            cautious::<u8>(usize::MAX),
+            4096,
+            "hint is usize::MAX and we can only preallocate 4096 elements"
+        );
+        assert_eq!(
+            cautious::<u16>(usize::MAX),
+            2048,
+            "hint is usize::MAX and we can only preallocate 2048 elements"
+        );
+        assert_eq!(
+            cautious::<CustomStruct>(usize::MAX),
+            73,
+            "hint is usize::MAX and we can only preallocate 73 elements"
+        );
+    }
+
+    #[test]
+    fn deserializing_empty_vec_has_no_capacity() {
+        let bytes = ToBytes::to_bytes(&(0u32, b"123")).unwrap();
+        let (vec, rem): (Vec<u32>, _) = FromBytes::from_bytes(&bytes).unwrap();
+        assert!(vec.is_empty());
+        assert_eq!(vec.capacity(), 0);
+        assert_eq!(rem, b"123");
     }
 }
 

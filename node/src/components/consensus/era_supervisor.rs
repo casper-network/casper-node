@@ -1033,7 +1033,7 @@ impl EraSupervisor {
             ProtocolOutcome::QueueAction(action_id) => effect_builder
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
-            ProtocolOutcome::CreateNewBlock(block_context) => {
+            ProtocolOutcome::CreateNewBlock(block_context, proposal_expiry) => {
                 let accusations = self
                     .iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
@@ -1050,7 +1050,9 @@ impl EraSupervisor {
                             .set_timeout(Duration::from_millis(delay))
                             .await;
                     }
-                    let appendable_block = effect_builder.request_appendable_block(timestamp).await;
+                    let appendable_block = effect_builder
+                        .request_appendable_block(timestamp, proposal_expiry)
+                        .await;
                     Arc::new(appendable_block.into_block_payload(accusations, random_bit))
                 }
                 .event(move |block_payload| {

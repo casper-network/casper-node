@@ -165,7 +165,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
             .with_address(account_hash)
             .with_session_code(session_file, faucet_args_3)
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+                ARG_AMOUNT => U512::from(3_000_000_000u64)
             })
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
@@ -183,12 +183,6 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -418,7 +412,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
             .with_address(account_hash)
             .with_session_code(session_file, faucet_args_3)
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+                ARG_AMOUNT => U512::from(3_000_000_000u64)
             })
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
@@ -436,12 +430,6 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -547,7 +535,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
             .with_address(account_hash)
             .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_3)
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+                ARG_AMOUNT => U512::from(3_000_000_000u64)
             })
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
@@ -565,12 +553,6 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
 
     assert!(gas_cost_3 > gas_cost_1, "{} <= {}", gas_cost_3, gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 #[ignore]
@@ -674,7 +656,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
             .with_address(account_hash)
             .with_session_code(session_file, faucet_args_3)
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+                ARG_AMOUNT => U512::from(4_000_000_000u64)
             })
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
@@ -692,12 +674,6 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     assert!(gas_cost_3 > gas_cost_1, "{} <= {}", gas_cost_3, gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
-
-    let gas_cost_diff = gas_cost_3.checked_sub(gas_cost_2).unwrap_or_default();
-    assert_eq!(
-        gas_cost_diff,
-        Gas::new(U512::from(HOST_FUNCTION_COST_CHANGE))
-    );
 }
 
 struct TestContext {

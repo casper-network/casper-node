@@ -946,15 +946,15 @@ where
                 // Record the time the pong arrived and forward it to outgoing.
                 let pong = TaggedTimestamp::from_parts(Instant::now(), nonce);
                 if self.outgoing_manager.record_pong(peer_id, pong) {
-                    effect_builder
-                        .announce_block_peer_with_justification(
-                            peer_id,
-                            BlocklistJustification::PongLimitExceeded,
-                        )
-                        .ignore()
-                } else {
-                    Effects::new()
+                    // Note: We no longer block peers here with a `PongLimitExceeded` for failed
+                    //       pongs, merely warn.
+                    info!(
+                        "peer {} exceeded failed pong limit, or allowed number of pongs",
+                        peer_id // Redundant information due to span, but better safe than sorry.
+                    );
                 }
+
+                Effects::new()
             }
             Message::Payload(payload) => {
                 effect_builder.announce_incoming(peer_id, payload).ignore()
