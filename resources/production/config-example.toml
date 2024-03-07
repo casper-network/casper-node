@@ -249,9 +249,6 @@ bubble_timeouts = true
 # The maximum time a peer is allowed to take to receive a fatal error.
 error_timeout = '10 seconds'
 
-# The maximum frame size.
-max_frame_size = 4096
-
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
