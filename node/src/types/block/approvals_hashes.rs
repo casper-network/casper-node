@@ -39,17 +39,18 @@ pub(crate) struct ApprovalsHashes {
 }
 
 impl ApprovalsHashes {
-    // pub(crate) fn new(
-    //     block_hash: BlockHash,
-    //     approvals_hashes: Vec<ApprovalsHash>,
-    //     merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
-    // ) -> Self {
-    //     Self {
-    //         block_hash,
-    //         approvals_hashes,
-    //         merkle_proof_approvals,
-    //     }
-    // }
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        block_hash: BlockHash,
+        approvals_hashes: Vec<ApprovalsHash>,
+        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    ) -> Self {
+        Self {
+            block_hash,
+            approvals_hashes,
+            merkle_proof_approvals,
+        }
+    }
 
     fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         let merkle_proof_approvals = &self.merkle_proof_approvals;
@@ -115,10 +116,6 @@ impl ApprovalsHashes {
     pub(crate) fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
-
-    // pub(crate) fn approvals_hashes(&self) -> Vec<ApprovalsHash> {
-    //     self.approvals_hashes.clone()
-    // }
 }
 
 impl FetchItem for ApprovalsHashes {

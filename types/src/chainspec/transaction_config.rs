@@ -1,9 +1,6 @@
 mod deploy_config;
 mod transaction_v1_config;
 
-#[cfg(any(feature = "testing", test))]
-use alloc::str::FromStr;
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -23,7 +20,6 @@ pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
 pub use transaction_v1_config::TransactionV1Config;
 
 /// The default minimum number of motes that can be transferred.
-#[cfg(any(feature = "testing", test))]
 pub const DEFAULT_MIN_TRANSFER_MOTES: u64 = 2_500_000_000;
 
 /// Configuration values associated with Transactions.
@@ -106,7 +102,6 @@ impl TransactionConfig {
     }
 }
 
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
 impl Default for TransactionConfig {
     fn default() -> Self {
         let eighteeen_hours = TimeDiff::from_seconds(18 * 60 * 60);
@@ -122,7 +117,7 @@ impl Default for TransactionConfig {
             block_gas_limit: 10_000_000_000_000,
             native_transfer_cost: 2_500_000_000,
             native_transfer_minimum_motes: DEFAULT_MIN_TRANSFER_MOTES,
-            max_timestamp_leeway: TimeDiff::from_str("5sec").unwrap(),
+            max_timestamp_leeway: TimeDiff::from_seconds(5),
             deploy_config: DeployConfig::default(),
             transaction_v1_config: TransactionV1Config::default(),
         }

@@ -102,36 +102,6 @@ impl ValidatorMatrix {
         }
     }
 
-    // /// Creates a new validator matrix with just a single validator.
-    // #[cfg(test)]
-    // pub(crate) fn new_with_validators<I: IntoIterator<Item = PublicKey>>(
-    //     secret_signing_key: Arc<SecretKey>,
-    //     public_keys: I,
-    // ) -> Self {
-    //     let public_signing_key = PublicKey::from(&*secret_signing_key);
-    //     let finality_threshold_fraction = Ratio::new(1, 3);
-    //     let era_id = EraId::new(0);
-    //     let weights = EraValidatorWeights::new(
-    //         era_id,
-    //         public_keys
-    //             .into_iter()
-    //             .map(|pub_key| (pub_key, 100.into()))
-    //             .collect(),
-    //         finality_threshold_fraction,
-    //     );
-    //     ValidatorMatrix {
-    //         inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
-    //         chainspec_name_hash: ChainNameDigest::from_chain_name("casper-example"),
-    //         chainspec_validators: None,
-    //         chainspec_activation_era: EraId::from(0),
-    //         finality_threshold_fraction,
-    //         public_signing_key,
-    //         secret_signing_key,
-    //         auction_delay: 1,
-    //         retrograde_latch: None,
-    //     }
-    // }
-
     #[cfg(test)]
     pub(crate) fn public_keys(&self, era_id: &EraId) -> Vec<PublicKey> {
         let mut ret = vec![];

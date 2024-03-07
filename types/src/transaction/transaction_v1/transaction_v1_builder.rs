@@ -476,7 +476,6 @@ impl<'a> TransactionV1Builder<'a> {
             self.ttl,
             self.body,
             self.pricing_mode,
-            self.payment_amount,
             initiator_addr_and_secret_key,
         );
 

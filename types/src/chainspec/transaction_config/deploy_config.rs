@@ -4,15 +4,17 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Motes,
 };
-#[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, U512};
+
+#[cfg(any(feature = "std", test))]
+use crate::U512;
 
 /// The default  maximum number of motes that payment code execution can cost.
-#[cfg(any(feature = "testing", test))]
 pub const DEFAULT_MAX_PAYMENT_MOTES: u64 = 2_500_000_000;
 
 /// Configuration values associated with deploys.
@@ -49,7 +51,7 @@ impl DeployConfig {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(feature = "std", test))]
 impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
