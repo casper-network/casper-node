@@ -164,15 +164,11 @@ pub(super) fn new_v1_standard(
     TransactionV1::random_standard(rng, Some(timestamp), Some(ttl))
 }
 
-pub(super) fn new_v1_staking(
-    rng: &mut TestRng,
-    timestamp: Timestamp,
-    ttl: TimeDiff,
-) -> TransactionV1 {
+pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
     TransactionV1::random_staking(rng, Some(timestamp), Some(ttl))
 }
 
-pub(super) fn new_v1_install_upgrade(
+pub(super) fn new_install_upgrade(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
@@ -245,7 +241,7 @@ pub(super) fn new_legacy_transfer(
     )
 }
 
-pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+pub(super) fn new_mint(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
     if rng.gen() {
         new_v1_transfer(rng, timestamp, ttl).into()
     } else {
@@ -268,8 +264,8 @@ pub(super) fn new_non_transfer(
 ) -> Transaction {
     match rng.gen_range(0..3) {
         0 => new_standard(rng, timestamp, ttl),
-        1 => new_v1_install_upgrade(rng, timestamp, ttl).into(),
-        2 => new_v1_staking(rng, timestamp, ttl).into(),
+        1 => new_install_upgrade(rng, timestamp, ttl).into(),
+        2 => new_auction(rng, timestamp, ttl).into(),
         _ => unreachable!(),
     }
 }
@@ -283,27 +279,52 @@ async fn validate_block(
     stakings: Vec<Transaction>,
     installs_upgrades: Vec<Transaction>,
 ) -> bool {
+    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     // Assemble the block to be validated.
-    let transfers_for_block = transfers
+    let mint_for_block = transfers
         .iter()
+        .filter(|transaction| {
+            transaction
+                .footprint(&chainspec)
+                .expect("must create footprint")
+                .is_mint()
+        })
         .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let standards_for_block = standards
         .iter()
+        .filter(|transaction| {
+            transaction
+                .footprint(&chainspec)
+                .expect("must create footprint")
+                .is_standard()
+        })
         .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
-    let stakings_for_block = stakings
+    let auction_for_block = stakings
         .iter()
+        .filter(|transaction| {
+            transaction
+                .footprint(&chainspec)
+                .expect("must create footprint")
+                .is_auction()
+        })
         .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let installs_upgrades_for_block = installs_upgrades
         .iter()
+        .filter(|transaction| {
+            transaction
+                .footprint(&chainspec)
+                .expect("must create footprint")
+                .is_install_upgrade()
+        })
         .map(|transaction| (transaction.hash(), transaction.approvals()))
         .collect_vec();
     let proposed_block = new_proposed_block(
         timestamp,
-        transfers_for_block,
-        stakings_for_block,
+        mint_for_block,
+        auction_for_block,
         installs_upgrades_for_block,
         standards_for_block,
     );
@@ -311,7 +332,6 @@ async fn validate_block(
     // Create the reactor and component.
     let reactor = MockReactor::new(rng);
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
-    let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
     let mut block_validator = BlockValidator::new(
         Arc::new(chainspec),
         reactor.validator_matrix.clone(),
@@ -410,8 +430,8 @@ async fn ttl() {
         new_non_transfer(&mut rng, 900.into(), ttl),
     ];
     let transfers = vec![
-        new_transfer(&mut rng, 1000.into(), ttl),
-        new_transfer(&mut rng, 900.into(), ttl),
+        new_mint(&mut rng, 1000.into(), ttl),
+        new_mint(&mut rng, 900.into(), ttl),
     ];
 
     // Both 1000 and 1100 are timestamps compatible with the transactions and transfers.
@@ -604,7 +624,7 @@ async fn should_fetch_from_multiple_peers() {
             .map(|i| new_non_transfer(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
-            .map(|i| new_transfer(&mut rng, (1000 + i).into(), ttl))
+            .map(|i| new_mint(&mut rng, (1000 + i).into(), ttl))
             .collect_vec();
 
         // Assemble the block to be validated.

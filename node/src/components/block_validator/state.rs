@@ -186,7 +186,7 @@ impl BlockValidationState {
             return Err(());
         }
         if block.auction_count() > config.block_max_auction_count as usize {
-            warn!("too many staking transactions");
+            warn!("too many auction transactions");
             return Err(());
         }
         if block.install_upgrade_count() > config.block_max_install_upgrade_count as usize {
@@ -194,7 +194,7 @@ impl BlockValidationState {
             return Err(());
         }
         if block.mint_count() > config.block_max_mint_count as usize {
-            warn!("too many transfers");
+            warn!("too many mint transactions");
             return Err(());
         }
 
@@ -589,19 +589,19 @@ mod tests {
 
         fn new_state(
             &mut self,
-            transfer_count: u64,
-            staking_count: u64,
+            mint_count: u64,
+            auction_count: u64,
             install_upgrade_count: u64,
             standard_count: u64,
         ) -> (BlockValidationState, Option<Responder<bool>>) {
-            let total_non_transfer_count = standard_count + staking_count + install_upgrade_count;
+            let total_non_transfer_count = standard_count + auction_count + install_upgrade_count;
             let ttl = TimeDiff::from_seconds(10);
-            let timestamp = Timestamp::from(1000 + total_non_transfer_count + transfer_count);
+            let timestamp = Timestamp::from(1000 + total_non_transfer_count + mint_count);
 
-            let transfers_for_block = {
+            let mint_for_block = {
                 let mut ret = vec![];
-                for _ in 0..transfer_count {
-                    let txn = new_transfer(self.rng, timestamp, ttl);
+                for _ in 0..mint_count {
+                    let txn = new_mint(self.rng, timestamp, ttl);
                     ret.push((txn.hash(), txn.approvals().clone()));
                     self.transactions.push(txn);
                 }
@@ -609,10 +609,10 @@ mod tests {
                 ret
             };
 
-            let staking_for_block = {
+            let auction_for_block = {
                 let mut ret = vec![];
-                for _ in 0..staking_count {
-                    let txn = new_v1_staking(self.rng, timestamp, ttl);
+                for _ in 0..auction_count {
+                    let txn = new_auction(self.rng, timestamp, ttl);
                     ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
                     self.transactions.push(Transaction::V1(txn));
                 }
@@ -622,7 +622,7 @@ mod tests {
             let install_upgrade_for_block = {
                 let mut ret = vec![];
                 for _ in 0..install_upgrade_count {
-                    let txn = new_v1_install_upgrade(self.rng, timestamp, ttl);
+                    let txn = new_install_upgrade(self.rng, timestamp, ttl);
                     ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
                     self.transactions.push(Transaction::V1(txn));
                 }
@@ -641,8 +641,8 @@ mod tests {
 
             let proposed_block = new_proposed_block(
                 timestamp,
-                transfers_for_block,
-                staking_for_block,
+                mint_for_block,
+                auction_for_block,
                 install_upgrade_for_block,
                 standard_for_block,
             );
@@ -664,21 +664,21 @@ mod tests {
 
     // Please note: values in the following test cases must much the production chainspec.
     const MAX_STANDARD_COUNT: u64 = 100;
-    const MAX_STAKING_COUNT: u64 = 200;
+    const MAX_AUCTION_COUNT: u64 = 200;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
-    const MAX_TRANSFER_COUNT: u64 = 1000;
+    const MAX_MINT_COUNT: u64 = 1000;
 
     struct TestCase {
-        transfer_count: u64,
-        staking_count: u64,
+        mint_count: u64,
+        auction_count: u64,
         install_upgrade_count: u64,
         standard_count: u64,
         state_validator: fn((BlockValidationState, Option<Responder<bool>>)) -> bool,
     }
 
     const NO_TRANSACTIONS: TestCase = TestCase {
-        transfer_count: 0,
-        staking_count: 0,
+        mint_count: 0,
+        auction_count: 0,
         install_upgrade_count: 0,
         standard_count: 0,
         state_validator: |(state, responder)| {
@@ -686,9 +686,9 @@ mod tests {
         },
     };
 
-    const FULL_STAKING: TestCase = TestCase {
-        transfer_count: 0,
-        staking_count: MAX_STAKING_COUNT,
+    const FULL_AUCTION: TestCase = TestCase {
+        mint_count: 0,
+        auction_count: MAX_AUCTION_COUNT,
         install_upgrade_count: 0,
         standard_count: 0,
         state_validator: |(state, responder)| {
@@ -696,25 +696,25 @@ mod tests {
         },
     };
 
-    const LESS_THAN_MAX_STAKING: TestCase = TestCase {
-        staking_count: FULL_STAKING.staking_count - 1,
+    const LESS_THAN_MAX_AUCTION: TestCase = TestCase {
+        auction_count: FULL_AUCTION.auction_count - 1,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
-        ..FULL_STAKING
+        ..FULL_AUCTION
     };
 
-    const TOO_MANY_STAKING: TestCase = TestCase {
-        staking_count: FULL_STAKING.staking_count + 1,
+    const TOO_MANY_AUCTION: TestCase = TestCase {
+        auction_count: FULL_AUCTION.auction_count + 1,
         state_validator: |(state, responder)| {
             responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
         },
-        ..FULL_STAKING
+        ..FULL_AUCTION
     };
 
     const FULL_INSTALL_UPGRADE: TestCase = TestCase {
-        transfer_count: 0,
-        staking_count: 0,
+        mint_count: 0,
+        auction_count: 0,
         install_upgrade_count: MAX_INSTALL_UPGRADE_COUNT,
         standard_count: 0,
         state_validator: |(state, responder)| {
@@ -739,8 +739,8 @@ mod tests {
     };
 
     const FULL_STANDARD: TestCase = TestCase {
-        transfer_count: 0,
-        staking_count: 0,
+        mint_count: 0,
+        auction_count: 0,
         install_upgrade_count: 0,
         standard_count: MAX_STANDARD_COUNT,
         state_validator: |(state, responder)| {
@@ -764,9 +764,9 @@ mod tests {
         ..FULL_STANDARD
     };
 
-    const FULL_TRANSFER: TestCase = TestCase {
-        transfer_count: MAX_TRANSFER_COUNT,
-        staking_count: 0,
+    const FULL_MINT: TestCase = TestCase {
+        mint_count: MAX_MINT_COUNT,
+        auction_count: 0,
         install_upgrade_count: 0,
         standard_count: 0,
         state_validator: |(state, responder)| {
@@ -774,26 +774,26 @@ mod tests {
         },
     };
 
-    const LESS_THAN_MAX_TRANSFER: TestCase = TestCase {
-        transfer_count: FULL_TRANSFER.transfer_count - 1,
+    const LESS_THAN_MAX_MINT: TestCase = TestCase {
+        mint_count: FULL_MINT.mint_count - 1,
         state_validator: |(state, responder)| {
             responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
         },
-        ..FULL_TRANSFER
+        ..FULL_MINT
     };
 
-    const TOO_MANY_TRANSFER: TestCase = TestCase {
-        transfer_count: FULL_TRANSFER.transfer_count + 1,
+    const TOO_MANY_MINT: TestCase = TestCase {
+        mint_count: FULL_MINT.mint_count + 1,
         state_validator: |(state, responder)| {
             responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
         },
-        ..FULL_TRANSFER
+        ..FULL_MINT
     };
 
     fn run_test_case(
         TestCase {
-            transfer_count,
-            staking_count,
+            mint_count,
+            auction_count,
             install_upgrade_count,
             standard_count,
             state_validator,
@@ -802,8 +802,8 @@ mod tests {
     ) {
         let mut fixture = Fixture::new(rng);
         let state = fixture.new_state(
-            transfer_count,
-            staking_count,
+            mint_count,
+            auction_count,
             install_upgrade_count,
             standard_count,
         );
@@ -817,11 +817,11 @@ mod tests {
     }
 
     #[test]
-    fn new_state_should_respect_staking_limits() {
+    fn new_state_should_respect_auction_limits() {
         let mut rng = TestRng::new();
-        run_test_case(TOO_MANY_STAKING, &mut rng);
-        run_test_case(FULL_STAKING, &mut rng);
-        run_test_case(LESS_THAN_MAX_STAKING, &mut rng);
+        run_test_case(TOO_MANY_AUCTION, &mut rng);
+        run_test_case(FULL_AUCTION, &mut rng);
+        run_test_case(LESS_THAN_MAX_AUCTION, &mut rng);
     }
 
     #[test]
@@ -841,11 +841,11 @@ mod tests {
     }
 
     #[test]
-    fn new_state_should_respect_transfer_limits() {
+    fn new_state_should_respect_mint_limits() {
         let mut rng = TestRng::new();
-        run_test_case(TOO_MANY_TRANSFER, &mut rng);
-        run_test_case(FULL_TRANSFER, &mut rng);
-        run_test_case(LESS_THAN_MAX_TRANSFER, &mut rng);
+        run_test_case(TOO_MANY_MINT, &mut rng);
+        run_test_case(FULL_MINT, &mut rng);
+        run_test_case(LESS_THAN_MAX_MINT, &mut rng);
     }
 
     #[test]
@@ -854,15 +854,14 @@ mod tests {
         let fixture = Fixture::new(&mut rng);
 
         let timestamp = Timestamp::from(1000);
-        let transfers = vec![new_transfer(fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
+        let mint = vec![new_mint(fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
-        let transfers_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> = transfers
+        let mint_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> = mint
             .iter()
             .map(|transaction| (transaction.hash(), transaction.approvals()))
             .collect();
 
-        let proposed_block =
-            new_proposed_block(timestamp, transfers_for_block, vec![], vec![], vec![]);
+        let proposed_block = new_proposed_block(timestamp, mint_for_block, vec![], vec![], vec![]);
 
         let (state, maybe_responder) = BlockValidationState::new(
             &proposed_block,
@@ -882,16 +881,16 @@ mod tests {
         let mut fixture = Fixture::new(&mut rng);
 
         // This test must generate number of transactions within the limits as per the chainspec.
-        let (transfer_count, staking_count, install_upgrade_count, standard_count) = loop {
+        let (transfer_count, auction_count, install_upgrade_count, standard_count) = loop {
             let transfer_count = fixture.rng.gen_range(0..10);
-            let staking_count = fixture.rng.gen_range(0..20);
+            let auction_count = fixture.rng.gen_range(0..20);
             let install_upgrade_count = fixture.rng.gen_range(0..2);
             let standard_count = fixture.rng.gen_range(0..10);
             // Ensure at least one transaction is generated. Otherwise the state will be Valid.
-            if transfer_count + staking_count + install_upgrade_count + standard_count > 0 {
+            if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
                 break (
                     transfer_count,
-                    staking_count,
+                    auction_count,
                     install_upgrade_count,
                     standard_count,
                 );
@@ -899,7 +898,7 @@ mod tests {
         };
         let (state, maybe_responder) = fixture.new_state(
             transfer_count,
-            staking_count,
+            auction_count,
             install_upgrade_count,
             standard_count,
         );
@@ -913,7 +912,7 @@ mod tests {
             } => {
                 assert_eq!(
                     missing_transactions.len() as u64,
-                    standard_count + transfer_count + install_upgrade_count + staking_count
+                    standard_count + transfer_count + install_upgrade_count + auction_count
                 );
                 assert_eq!(holders.len(), 1);
                 assert_eq!(holders.values().next().unwrap(), &HolderState::Unasked);
@@ -1156,7 +1155,6 @@ mod tests {
         // While there is still at least one missing transaction, `try_add_transaction_footprint`
         // should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
-        println!("{}", footprints.len());
         while footprints.len() > 1 {
             let (transaction_hash, footprint) = footprints.pop().unwrap();
             let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
