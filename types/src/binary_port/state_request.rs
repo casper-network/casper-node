@@ -52,7 +52,7 @@ pub enum GlobalStateRequest {
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..4) {
             0 => {
                 let path_count = rng.gen_range(10..20);
                 let state_identifier = if rng.gen() {
@@ -82,6 +82,17 @@ impl GlobalStateRequest {
             2 => GlobalStateRequest::Trie {
                 trie_key: Digest::random(rng),
             },
+            3 => {
+                let state_identifier = if rng.gen() {
+                    Some(GlobalStateIdentifier::random(rng))
+                } else {
+                    None
+                };
+                GlobalStateRequest::DictionaryItem {
+                    state_identifier,
+                    identifier: DictionaryItemIdentifier::random(rng),
+                }
+            }
             _ => unreachable!(),
         }
     }

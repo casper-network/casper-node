@@ -301,9 +301,9 @@ async fn binary_port_component() {
         node_status(),
         get_block_header(highest_block.clone_header()),
         get_block_transfers(highest_block.clone_header()),
-        get_era_summary(*highest_block.state_root_hash()),
-        get_all_bids(*highest_block.state_root_hash()),
-        get_trie(*highest_block.state_root_hash()),
+        get_era_summary(state_root_hash),
+        get_all_bids(state_root_hash),
+        get_trie(state_root_hash),
         get_dictionary_item_by_addr(
             state_root_hash,
             *Key::dictionary(test_dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes())
