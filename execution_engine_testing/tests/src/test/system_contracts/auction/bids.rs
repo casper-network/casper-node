@@ -56,10 +56,12 @@ const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
 const ADD_BID_AMOUNT_1: u64 = 95_000;
 const ADD_BID_AMOUNT_2: u64 = 47_500;
+const ADD_BID_AMOUNT_3: u64 = 200_000;
 const ADD_BID_DELEGATION_RATE_1: DelegationRate = 10;
 const BID_AMOUNT_2: u64 = 5_000;
 const ADD_BID_DELEGATION_RATE_2: DelegationRate = 15;
 const WITHDRAW_BID_AMOUNT_2: u64 = 15_000;
+const ADD_BID_DELEGATION_RATE_3: DelegationRate = 20;
 
 const DELEGATE_AMOUNT_1: u64 = 125_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATE_AMOUNT_2: u64 = 15_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
@@ -82,6 +84,13 @@ static NON_FOUNDER_VALIDATOR_2_PK: Lazy<PublicKey> = Lazy::new(|| {
 });
 static NON_FOUNDER_VALIDATOR_2_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_2_PK));
+
+static NON_FOUNDER_VALIDATOR_3_PK: Lazy<PublicKey> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([5; SecretKey::ED25519_LENGTH]).unwrap();
+    PublicKey::from(&secret_key)
+});
+static NON_FOUNDER_VALIDATOR_3_ADDR: Lazy<AccountHash> =
+    Lazy::new(|| AccountHash::from(&*NON_FOUNDER_VALIDATOR_3_PK));
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
@@ -4440,7 +4449,7 @@ fn should_fail_bid_public_key_change_if_conflicting_validator_bid_exists() {
     let error = builder.get_error().expect("must get error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error)))
+        Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
         if auction_error == AuctionError::ChangeBidPublicKey as u8));
 }
 
@@ -4477,6 +4486,16 @@ fn should_change_validator_bid_public_key() {
     )
     .build();
 
+    let validator_3_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_3_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
     let delegator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -4504,6 +4523,17 @@ fn should_change_validator_bid_public_key() {
             ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
             ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
             ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let validator_3_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_3_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_3_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_3),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_3,
         },
     )
     .build();
@@ -4536,7 +4566,9 @@ fn should_change_validator_bid_public_key() {
         delegator_2_fund_request,
         validator_1_fund_request,
         validator_2_fund_request,
+        validator_3_fund_request,
         validator_1_add_bid_request,
+        validator_3_add_bid_request,
         delegator_1_validator_1_delegate_request,
         delegator_2_validator_1_delegate_request,
     ];
@@ -4551,12 +4583,31 @@ fn should_change_validator_bid_public_key() {
 
     builder.advance_eras_by_default_auction_delay();
 
+    // redelegate funds to validator 3
+    let delegator_1_redelegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_REDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_3_PK.clone()
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_redelegate_request)
+        .commit()
+        .expect_success();
+
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 3);
+    assert_eq!(bids.len(), 4);
     assert!(bids
         .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
         .is_none());
 
+    // change validator 1 bid public key
     let change_bid_public_key_request = ExecuteRequestBuilder::standard(
         *NON_FOUNDER_VALIDATOR_1_ADDR,
         CONTRACT_CHANGE_BID_PUBLIC_KEY,
@@ -4575,7 +4626,7 @@ fn should_change_validator_bid_public_key() {
         .expect_success();
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 4);
+    assert_eq!(bids.len(), 5);
     let new_validator_bid = bids
         .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK.clone())
         .unwrap();
@@ -4584,15 +4635,22 @@ fn should_change_validator_bid_public_key() {
         U512::from(ADD_BID_AMOUNT_1)
     );
 
-    let old_validator_bid = bids
-        .validator_bid(&NON_FOUNDER_VALIDATOR_1_PK.clone())
+    let bridge = bids
+        .bridge(
+            &NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            &NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            &era_id,
+        )
         .unwrap();
-    let bridge_data = old_validator_bid.new_validator_bid_bridge().unwrap();
     assert_eq!(
-        bridge_data.new_validator_public_key(),
+        bridge.old_validator_public_key(),
+        &NON_FOUNDER_VALIDATOR_1_PK.clone()
+    );
+    assert_eq!(
+        bridge.new_validator_public_key(),
         &NON_FOUNDER_VALIDATOR_2_PK.clone()
     );
-    assert_eq!(*bridge_data.key_change_era_id(), era_id);
+    assert_eq!(*bridge.era_id(), era_id);
 
     assert!(bids
         .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK)
@@ -4604,7 +4662,10 @@ fn should_change_validator_bid_public_key() {
     let delegator = bids
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_1_PK)
         .expect("should have account1 delegation");
-    assert_eq!(delegator.staked_amount(), U512::from(DELEGATE_AMOUNT_1));
+    assert_eq!(
+        delegator.staked_amount(),
+        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
     let delegator = bids
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_2_PK)
         .expect("should have account2 delegation");
@@ -4628,14 +4689,32 @@ fn should_change_validator_bid_public_key() {
     builder.exec(distribute_request).commit().expect_success();
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 4);
+    assert_eq!(bids.len(), 5);
 
     let delegator = bids
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_1_PK)
         .expect("should have account1 delegation");
-    assert!(delegator.staked_amount() > U512::from(DELEGATE_AMOUNT_1));
+    assert!(
+        delegator.staked_amount()
+            > U512::from(
+                DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT
+            )
+    );
     let delegator = bids
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_2_PK)
         .expect("should have account2 delegation");
     assert!(delegator.staked_amount() > U512::from(DELEGATE_AMOUNT_2));
+
+    // advance eras until unbonds are processed
+    builder.advance_eras_by(DEFAULT_UNBONDING_DELAY + 1);
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 6);
+    let delegator = bids
+        .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_3_PK, &BID_ACCOUNT_1_PK)
+        .expect("should have account1 delegation");
+    assert_eq!(
+        delegator.staked_amount(),
+        U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
 }

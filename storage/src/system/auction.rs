@@ -15,8 +15,9 @@ use crate::system::auction::detail::{
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        BidAddr, BidKind, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        UnbondingPurse, ValidatorBid, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
+        BidAddr, BidKind, Bridge, DelegationRate, EraInfo, EraValidators, Error,
+        SeigniorageRecipients, UnbondingPurse, ValidatorBid, ValidatorWeights,
+        DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, HoldsEpoch, PublicKey, U512,
 };
@@ -745,16 +746,19 @@ pub trait Auction:
         debug!("changing validator bid {validator_bid_addr} public key from {public_key} to {new_public_key}");
 
         // store new validator bid
-        let mut new_validator_bid = validator_bid.clone();
-        new_validator_bid.with_validator_public_key(new_public_key.clone());
+        validator_bid.with_validator_public_key(new_public_key.clone());
         self.write_bid(
             new_validator_bid_addr.into(),
-            BidKind::Validator(new_validator_bid),
+            BidKind::Validator(validator_bid),
         )?;
 
-        // update old validator bid
-        validator_bid.with_new_validator_bid_bridge(new_public_key.clone(), self.read_era_id()?);
-        self.write_bid(validator_bid_addr.into(), BidKind::Validator(validator_bid))?;
+        // store bridge record in place of old validator bid
+        let bridge = Bridge::new(
+            public_key.clone(),
+            new_public_key.clone(),
+            self.read_era_id()?,
+        );
+        self.write_bid(validator_bid_addr.into(), BidKind::Bridge(Box::new(bridge)))?;
 
         debug!("transferring delegator bids from validator bid {validator_bid_addr} to {new_validator_bid_addr}");
         let delegators = read_delegator_bids(self, &public_key)?;

@@ -308,16 +308,27 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
 pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
-    validator_public_key: PublicKey,
+    mut validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
 ) -> Result<Vec<(AccountHash, U512, URef)>, Error>
 where
     P: RuntimeProvider + StorageProvider,
 {
-    // fetch current `ValidatorBid` if public key was changed
-    let validator_bid_addr = BidAddr::from(validator_public_key);
-    let validator_bid = read_current_validator_bid(provider, &validator_bid_addr.into())?;
-    let validator_public_key = validator_bid.validator_public_key().clone();
+    // fetch most recent validator public key if public key was changed
+    // or the validator withdrew their bid completely
+    let mut validator_bid_addr = BidAddr::from(validator_public_key.clone());
+    let validator_public_key = loop {
+        match provider.read_bid(&validator_bid_addr.into())? {
+            Some(BidKind::Validator(validator_bid)) => {
+                break validator_bid.validator_public_key().clone()
+            }
+            Some(BidKind::Bridge(bridge)) => {
+                validator_public_key = bridge.new_validator_public_key().clone();
+                validator_bid_addr = BidAddr::from(validator_public_key.clone());
+            }
+            _ => break validator_public_key,
+        };
+    };
 
     let mut delegator_payouts = Vec::new();
     for (delegator_public_key, delegator_reward) in rewards {
@@ -397,7 +408,7 @@ where
     P: StorageProvider,
 {
     let bid_key = BidAddr::from(validator_public_key.clone()).into();
-    let bonding_purse = match read_validator_bid(provider, &bid_key) {
+    let bonding_purse = match read_current_validator_bid(provider, &bid_key) {
         Ok(mut validator_bid) => {
             let purse = *validator_bid.bonding_purse();
             validator_bid.increase_stake(amount)?;
@@ -603,15 +614,14 @@ where
     if !bid_key.is_bid_addr_key() {
         return Err(Error::InvalidKeyVariant);
     }
-    if let Some(BidKind::Validator(mut validator_bid)) = provider.read_bid(bid_key)? {
-        while let Some(new_bid_bridge) = validator_bid.new_validator_bid_bridge() {
-            let validator_bid_addr =
-                BidAddr::from(new_bid_bridge.new_validator_public_key().clone());
-            validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+    match provider.read_bid(bid_key)? {
+        Some(BidKind::Validator(validator_bid)) => Ok(validator_bid),
+        Some(BidKind::Bridge(bridge)) => {
+            let validator_bid_addr = BidAddr::from(bridge.new_validator_public_key().clone());
+            let validator_bid = read_current_validator_bid(provider, &validator_bid_addr.into())?;
+            Ok(validator_bid)
         }
-        Ok(validator_bid)
-    } else {
-        Err(Error::ValidatorNotFound)
+        _ => Err(Error::ValidatorNotFound),
     }
 }
 
