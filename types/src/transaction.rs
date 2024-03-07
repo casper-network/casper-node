@@ -136,6 +136,14 @@ impl Transaction {
         }
     }
 
+    /// Returns the header.
+    pub fn header(&self) -> TransactionHeader {
+        match self {
+            Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
+            Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
+        }
+    }
+
     /// Returns the computed approvals hash identifying this transaction's approvals.
     pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
@@ -221,11 +229,67 @@ impl Transaction {
         }
     }
 
-    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
-    pub fn is_native(&self) -> bool {
+    /// Is this a native mint transaction.
+    pub fn is_native_mint(&self) -> bool {
         match self {
-            Transaction::Deploy(deploy) => deploy.session().is_transfer(),
-            Transaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
+            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => {
+                    &TransactionEntryPoint::Transfer == transaction_v1.entry_point()
+                }
+            },
+        }
+    }
+
+    /// Is this a native auction transaction.
+    pub fn is_native_auction(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => false,
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => match transaction_v1.entry_point() {
+                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+                    TransactionEntryPoint::AddBid
+                    | TransactionEntryPoint::WithdrawBid
+                    | TransactionEntryPoint::Delegate
+                    | TransactionEntryPoint::Undelegate
+                    | TransactionEntryPoint::Redelegate
+                    | TransactionEntryPoint::ActivateBid => true,
+                },
+            },
+        }
+    }
+
+    /// Authorization keys.
+    pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(transaction_v1) => transaction_v1
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+        }
+    }
+
+    /// The session args.
+    pub fn session_args(&self) -> &RuntimeArgs {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().args(),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+        }
+    }
+
+    /// The entry point.
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().into(),
+            Transaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
         }
     }
 

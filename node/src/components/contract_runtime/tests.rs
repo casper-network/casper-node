@@ -377,19 +377,20 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .crank_until(rng, execution_completed, TEST_TIMEOUT)
         .await;
 
+    let actual = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state
+        .lock()
+        .unwrap()
+        .next_block_height();
+
+    let expected = next_block_height;
+
     // Check that the next block height expected by the contract runtime is `next_block_height` and
     // not 3.
-    assert_eq!(
-        runner
-            .reactor()
-            .inner()
-            .contract_runtime
-            .execution_pre_state
-            .lock()
-            .unwrap()
-            .next_block_height(),
-        next_block_height
-    );
+    assert_eq!(actual, expected);
 }
 
 #[cfg(test)]

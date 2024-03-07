@@ -7,29 +7,31 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+use num_rational::Ratio;
 
-use casper_storage::data_access_layer::{TransferConfig, TransferRequest};
+use casper_storage::{
+    data_access_layer::TransferRequest,
+    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
+};
 use casper_types::{
     account::AccountHash,
     bytesrepr::ToBytes,
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_SOURCE, ARG_TARGET},
-    BlockTime, CLValue, Digest, Gas, InitiatorAddr, ProtocolVersion, PublicKey, RuntimeArgs,
-    TransactionHash, TransactionV1Hash, TransferTarget, URef, U512,
+    BlockTime, CLValue, Digest, FeeHandling, Gas, InitiatorAddr, ProtocolVersion, RefundHandling,
+    RuntimeArgs, TransactionHash, TransactionV1Hash, TransferTarget, URef, U512,
 };
 
 use crate::{
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_BLOCK_TIME,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_BLOCK_TIME, DEFAULT_PROTOCOL_VERSION,
 };
 
 /// Builds a [`TransferRequest`].
 #[derive(Debug)]
 pub struct TransferRequestBuilder {
-    config: TransferConfig,
+    config: NativeRuntimeConfig,
     state_hash: Digest,
     block_time: BlockTime,
     protocol_version: ProtocolVersion,
-    proposer: PublicKey,
     transaction_hash: Option<TransactionHash>,
     initiator: InitiatorAddr,
     authorization_keys: BTreeSet<AccountHash>,
@@ -39,7 +41,18 @@ pub struct TransferRequestBuilder {
 
 impl TransferRequestBuilder {
     /// The default value used for `TransferRequest::config`.
-    pub const DEFAULT_CONFIG: TransferConfig = TransferConfig::Unadministered;
+    pub const DEFAULT_CONFIG: NativeRuntimeConfig = NativeRuntimeConfig::new(
+        TransferConfig::Unadministered,
+        FeeHandling::PayToProposer,
+        RefundHandling::Refund {
+            refund_ratio: Ratio::new_raw(99, 100),
+        },
+        0,
+        true,
+        true,
+        None,
+        500_000_000_000,
+    );
     /// The default value used for `TransferRequest::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
     /// The default value used for `TransferRequest::gas`.
@@ -68,7 +81,6 @@ impl TransferRequestBuilder {
             state_hash: Self::DEFAULT_STATE_HASH,
             block_time: BlockTime::new(DEFAULT_BLOCK_TIME),
             protocol_version: *DEFAULT_PROTOCOL_VERSION,
-            proposer: DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
             transaction_hash: None,
             initiator: InitiatorAddr::PublicKey(DEFAULT_ACCOUNT_PUBLIC_KEY.clone()),
             authorization_keys: iter::once(*DEFAULT_ACCOUNT_ADDR).collect(),
@@ -77,8 +89,8 @@ impl TransferRequestBuilder {
         }
     }
 
-    /// Sets the transfer config of the [`TransferRequest`].
-    pub fn with_transfer_config(mut self, config: TransferConfig) -> Self {
+    /// Sets the native runtime config of the [`TransferRequest`].
+    pub fn with_native_runtime_config(mut self, config: NativeRuntimeConfig) -> Self {
         self.config = config;
         self
     }
@@ -92,12 +104,6 @@ impl TransferRequestBuilder {
     /// Sets the protocol version used by the [`TransferRequest`].
     pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.protocol_version = protocol_version;
-        self
-    }
-
-    /// Sets the proposer used by the [`TransferRequest`].
-    pub fn with_proposer(mut self, proposer: PublicKey) -> Self {
-        self.proposer = proposer;
         self
     }
 
@@ -153,12 +159,12 @@ impl TransferRequestBuilder {
                 let mut result = [0; 32];
                 let mut hasher = VarBlake2b::new(32).unwrap();
 
-                match &self.config {
+                match &self.config.transfer_config() {
                     TransferConfig::Administered {
                         administrative_accounts,
-                        allow_unrestricted_transfer,
+                        allow_unrestricted_transfers,
                     } => hasher.update(
-                        (administrative_accounts, allow_unrestricted_transfer)
+                        (administrative_accounts, allow_unrestricted_transfers)
                             .to_bytes()
                             .unwrap(),
                     ),
@@ -166,10 +172,26 @@ impl TransferRequestBuilder {
                         hasher.update([1]);
                     }
                 }
+                hasher.update(self.config.fee_handling().to_bytes().unwrap());
+                hasher.update(self.config.refund_handling().to_bytes().unwrap());
+                hasher.update(
+                    self.config
+                        .vesting_schedule_period_millis()
+                        .to_bytes()
+                        .unwrap(),
+                );
+                hasher.update(self.config.allow_auction_bids().to_bytes().unwrap());
+                hasher.update(self.config.compute_rewards().to_bytes().unwrap());
+                hasher.update(
+                    self.config
+                        .max_delegators_per_validator()
+                        .to_bytes()
+                        .unwrap(),
+                );
+                hasher.update(self.config.minimum_delegation_amount().to_bytes().unwrap());
                 hasher.update(self.state_hash);
                 hasher.update(self.block_time.to_bytes().unwrap());
                 hasher.update(self.protocol_version.to_bytes().unwrap());
-                hasher.update(self.proposer.to_bytes().unwrap());
                 hasher.update(self.initiator.to_bytes().unwrap());
                 hasher.update(self.authorization_keys.to_bytes().unwrap());
                 hasher.update(self.args.to_bytes().unwrap());
@@ -186,7 +208,6 @@ impl TransferRequestBuilder {
             self.state_hash,
             self.block_time,
             self.protocol_version,
-            self.proposer,
             txn_hash,
             self.initiator,
             self.authorization_keys,

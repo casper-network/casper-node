@@ -10,7 +10,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state, execution,
+    engine_state,
+    execution::ExecError,
     runtime::{
         PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
@@ -139,7 +140,7 @@ fn should_pass_elem_section() {
     assert!(
         matches!(
             elem_does_not_fit_err,
-            Some(engine_state::Error::Exec(execution::Error::Interpreter(ref msg)))
+            Some(engine_state::Error::Exec(ExecError::Interpreter(ref msg)))
             if msg == "elements segment does not fit"
         ),
         "{:?}",

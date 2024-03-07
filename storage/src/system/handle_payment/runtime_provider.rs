@@ -26,7 +26,7 @@ pub trait RuntimeProvider {
     fn get_caller(&self) -> AccountHash;
 
     /// Get refund handling.
-    fn refund_handling(&self) -> &RefundHandling;
+    fn refund_handling(&self) -> RefundHandling;
 
     /// Returns fee handling value.
     fn fee_handling(&self) -> FeeHandling;

@@ -8,7 +8,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
     TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 
 use casper_types::{
     account::AccountHash,
@@ -232,7 +232,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
         if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
@@ -287,7 +287,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     assert!(
         matches!(
             exec_result,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
         if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",

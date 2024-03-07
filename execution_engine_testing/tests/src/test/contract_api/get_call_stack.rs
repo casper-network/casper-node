@@ -1,7 +1,10 @@
 use num_traits::One;
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
-use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
+use casper_execution_engine::{
+    engine_state::{Error as CoreError, ExecuteRequest},
+    execution::ExecError,
+};
 use casper_types::{
     addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
     CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue,
@@ -246,9 +249,7 @@ fn assert_invalid_context(builder: &mut LmdbWasmTestBuilder, depth: usize) {
         let error = builder.get_error().unwrap();
         assert!(matches!(
             error,
-            casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext
-            )
+            casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext)
         ));
     }
 }
@@ -336,6 +337,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
 mod session {
     use crate::test::contract_api::get_call_stack::EntityWithKeys;
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
+    use casper_execution_engine::execution::ExecError;
     use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
     use num_traits::Zero;
 
@@ -573,9 +575,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -627,9 +628,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -680,9 +680,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -729,9 +728,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -776,9 +774,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -830,9 +827,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -884,9 +880,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -929,9 +924,8 @@ mod session {
             } else {
                 builder.exec(execute_request).expect_failure();
 
-                let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                    casper_execution_engine::execution::Error::InvalidContext,
-                );
+                let expected_error =
+                    casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
                 builder.assert_error(expected_error)
             }
@@ -2145,9 +2139,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2186,9 +2179,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2225,9 +2217,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2267,9 +2258,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2307,9 +2297,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2349,9 +2338,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2388,9 +2376,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2426,9 +2413,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2467,9 +2453,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2508,9 +2493,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2548,9 +2532,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2590,9 +2573,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2630,9 +2612,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2672,9 +2653,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2711,9 +2691,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2750,9 +2729,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2803,9 +2781,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2853,9 +2830,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2902,9 +2878,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2948,9 +2923,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -2997,9 +2971,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -3045,9 +3018,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -3092,9 +3064,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }
@@ -3133,9 +3104,8 @@ mod session {
 
             builder.exec(execute_request).expect_failure();
 
-            let expected_error = casper_execution_engine::engine_state::Error::Exec(
-                casper_execution_engine::execution::Error::InvalidContext,
-            );
+            let expected_error =
+                casper_execution_engine::engine_state::Error::Exec(ExecError::InvalidContext);
 
             builder.assert_error(expected_error);
         }

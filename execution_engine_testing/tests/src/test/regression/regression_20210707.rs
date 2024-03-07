@@ -1,15 +1,19 @@
+use once_cell::sync::Lazy;
+
 use casper_engine_test_support::{
     DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
     TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
+use casper_execution_engine::{
+    engine_state::{Error as CoreError, ExecuteRequest},
+    execution::ExecError,
+};
 use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
     PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
-use once_cell::sync::Lazy;
 
 use crate::wasm_utils;
 

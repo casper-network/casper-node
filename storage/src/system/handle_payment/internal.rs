@@ -52,7 +52,7 @@ pub fn get_refund_purse<R: RuntimeProvider>(
 fn calculate_refund_and_fee(
     gas_spent: U512,
     payment_purse_balance: U512,
-    refund_handling: &RefundHandling,
+    refund_handling: RefundHandling,
 ) -> Result<(U512, U512), Error> {
     let unspent = payment_purse_balance
         .checked_sub(gas_spent)
@@ -61,10 +61,10 @@ fn calculate_refund_and_fee(
     let refund_ratio = match refund_handling {
         RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
             debug_assert!(
-                refund_ratio <= &Ratio::one(),
+                refund_ratio <= Ratio::one(),
                 "refund ratio should be a proper fraction"
             );
-            let (numer, denom) = (*refund_ratio).into();
+            let (numer, denom) = refund_ratio.into();
             Ratio::new_raw(U512::from(numer), U512::from(denom))
         }
     };
@@ -265,13 +265,13 @@ mod tests {
     fn should_move_dust_to_reward() {
         let refund_ratio = Ratio::new_raw(1, 3);
         let refund = RefundHandling::Refund { refund_ratio };
-        test_refund_handling(&refund);
+        test_refund_handling(refund);
 
         let burn = RefundHandling::Burn { refund_ratio };
-        test_refund_handling(&burn);
+        test_refund_handling(burn);
     }
 
-    fn test_refund_handling(refund_handling: &RefundHandling) {
+    fn test_refund_handling(refund_handling: RefundHandling) {
         let purse_bal = U512::from(10u64);
         let gas = U512::from(3u64);
         let (a, b) = calculate_refund_and_fee(gas, purse_bal, refund_handling).unwrap();
@@ -290,7 +290,7 @@ mod tests {
             let refund_ratio = Ratio::new_raw(percentage, 100);
             let refund = RefundHandling::Refund { refund_ratio };
 
-            let (a, b) = calculate_refund_and_fee(gas, purse_bal, &refund).unwrap();
+            let (a, b) = calculate_refund_and_fee(gas, purse_bal, refund).unwrap();
 
             let a = Ratio::from(a);
             let b = Ratio::from(b);
@@ -328,7 +328,7 @@ mod proptests {
         fn refund_and_fee_equals_balance(refund_ratio in proper_fraction(DENOM_MAX), (balance, gas) in balance_and_gas(BALANCE_MAX)) {
             let refund = RefundHandling::Refund { refund_ratio };
 
-            let (refund, fee) = calculate_refund_and_fee(gas, balance, &refund).unwrap();
+            let (refund, fee) = calculate_refund_and_fee(gas, balance, refund).unwrap();
             prop_assert_eq!(refund + fee, balance);
         }
     }

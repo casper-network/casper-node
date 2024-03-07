@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{Error as StateError, ExecuteRequest},
-    execution::Error as ExecError,
+    execution::ExecError,
 };
 use casper_types::{
     ApiError, BlockTime, Digest, RuntimeArgs, Transaction, TransactionSessionKind,

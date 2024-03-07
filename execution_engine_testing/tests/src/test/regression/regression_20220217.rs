@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{account::AccountHash, runtime_args, system::mint, AccessRights, URef, U512};
 
 const TRANSFER_TO_NAMED_PURSE_CONTRACT: &str = "transfer_to_named_purse.wasm";
@@ -50,7 +50,7 @@ fn regression_20220217_transfer_mint_by_hash_from_main_purse() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == default_purse.with_access_rights(AccessRights::READ_ADD_WRITE),
         ),
         "Expected {:?} revert but received {:?}",
@@ -100,7 +100,7 @@ fn regression_20220217_transfer_mint_by_package_hash_from_main_purse() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == default_purse.with_access_rights(AccessRights::READ_ADD_WRITE),
         ),
         "Expected {:?} revert but received {:?}",
@@ -195,7 +195,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == purse_1
         ),
         "Expected forged uref but received {:?}",
@@ -246,7 +246,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == purse_1
         ),
         "Expected forged uref but received {:?}",
@@ -332,7 +332,7 @@ fn regression_20220217_auction_add_bid_directly() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == default_purse.with_access_rights(AccessRights::READ_ADD_WRITE),
         ),
         "Expected {:?} revert but received {:?}",
@@ -376,7 +376,7 @@ fn regression_20220217_() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == default_purse.with_access_rights(AccessRights::READ_ADD_WRITE),
         ),
         "Expected {:?} revert but received {:?}",

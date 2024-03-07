@@ -17,7 +17,7 @@ use casper_execution_engine::engine_state::EngineState;
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
-use casper_types::{Chainspec, EraId, Key, PublicKey};
+use casper_types::{Chainspec, EraId, Key};
 use once_cell::sync::Lazy;
 use std::{
     cmp,
@@ -25,7 +25,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -56,8 +56,8 @@ where
 pub(super) async fn exec_or_requeue<REv>(
     engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
-    metrics: Arc<Metrics>,
     chainspec: Arc<Chainspec>,
+    metrics: Arc<Metrics>,
     mut exec_queue: ExecQueue,
     shared_pre_state: Arc<Mutex<ExecutionPreState>>,
     current_pre_state: ExecutionPreState,
@@ -75,9 +75,6 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    let protocol_version = chainspec.protocol_version();
-    let activation_point = chainspec.protocol_config.activation_point;
-    let prune_batch_size = chainspec.core_config.prune_batch_size;
     if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
@@ -93,7 +90,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 }
             };
 
-            info!("rewards successfully computed");
+            debug!("rewards successfully computed");
 
             rewards
         } else {
@@ -101,15 +98,6 @@ pub(super) async fn exec_or_requeue<REv>(
             BTreeMap::new()
         });
     }
-
-    let administrative_accounts = chainspec
-        .core_config
-        .administrators
-        .iter()
-        .map(PublicKey::to_account_hash)
-        .collect();
-    let allow_unrestricted_transfers = chainspec.core_config.allow_unrestricted_transfers;
-    let system_costs = chainspec.system_costs_config;
 
     let BlockAndExecutionResults {
         block,
@@ -121,16 +109,11 @@ pub(super) async fn exec_or_requeue<REv>(
         execute_finalized_block(
             engine_state.as_ref(),
             data_access_layer.as_ref(),
+            chainspec.as_ref(),
             Some(contract_runtime_metrics),
-            protocol_version,
             current_pre_state,
             executable_block,
-            activation_point.era_id(),
             key_block_height_for_activation_point,
-            prune_batch_size,
-            &administrative_accounts,
-            allow_unrestricted_transfers,
-            system_costs,
         )
     })
     .await
@@ -194,7 +177,7 @@ pub(super) async fn exec_or_requeue<REv>(
             .await;
     }
 
-    info!(
+    debug!(
         block_hash = %block.hash(),
         height = block.height(),
         era = block.era_id().value(),

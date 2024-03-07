@@ -1,6 +1,6 @@
 use num_rational::Ratio;
 
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
@@ -847,7 +847,7 @@ fn should_allow_funding_by_an_authorized_account() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::User(
+            engine_state::Error::Exec(ExecError::Revert(ApiError::User(
                 FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET
             )))
         ),

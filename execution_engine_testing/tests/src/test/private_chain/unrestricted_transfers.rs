@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_storage::system::transfer::TransferError;
 use casper_types::{
     account::AccountHash,
@@ -53,9 +53,9 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::RestrictedTransferAttempted)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected RestrictedTransferAttempted error, found {:?}",
         error
     );
 
@@ -102,10 +102,7 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(
-            error,
-            Error::Exec(execution::Error::DisabledUnrestrictedTransfers)
-        ),
+        matches!(error, Error::Exec(ExecError::DisabledUnrestrictedTransfers)),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
@@ -270,7 +267,7 @@ fn should_disallow_transfer_to_own_purse_in_wasm_session() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
+            Error::Exec(ExecError::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -297,7 +294,7 @@ fn should_allow_admin_to_transfer_to_own_purse_in_wasm_session() {
 
 #[ignore]
 #[test]
-fn should_disallow_transfer_to_own_purse_via_native_transfer() {
+fn should_disallow_transfer_to_unknown_target_from_non_admin() {
     let mut builder = super::private_chain_setup();
 
     let session_args = runtime_args! {
@@ -336,9 +333,9 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::UnableToVerifyTargetIsAdmin)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected UnableToVerifyTargetIsAdmin error, found {:?}",
         error
     );
 }
@@ -413,7 +410,7 @@ fn should_disallow_wasm_payment_to_purse() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
+            Error::Exec(ExecError::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()
         ),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
@@ -467,7 +464,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::ForgedReference(_))),
+        matches!(error, Error::Exec(ExecError::ForgedReference(_))),
         "expected InvalidContext error, found {:?}",
         error
     );
@@ -509,9 +506,9 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     assert!(
         matches!(
             error,
-            Error::Transfer(TransferError::DisabledUnrestrictedTransfers)
+            Error::Transfer(TransferError::RestrictedTransferAttempted)
         ),
-        "expected DisabledUnrestrictedTransfers error, found {:?}",
+        "expected RestrictedTransferAttempted error, found {:?}",
         error
     );
 
@@ -568,7 +565,7 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::Revert(api_error)) if api_error == mint::Error::DisabledUnrestrictedTransfers.into()),
+            Error::Exec(ExecError::Revert(api_error)) if api_error == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
@@ -609,7 +606,7 @@ fn should_not_allow_direct_mint_transfer_with_system_addr_specified() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        matches!(error, Error::Exec(ExecError::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
@@ -637,7 +634,7 @@ fn should_not_allow_direct_mint_transfer_with_an_admin_in_to_field() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        matches!(error, Error::Exec(ExecError::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );
@@ -665,7 +662,7 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
+        matches!(error, Error::Exec(ExecError::Revert(revert)) if revert == mint::Error::DisabledUnrestrictedTransfers.into()),
         "expected DisabledUnrestrictedTransfers error, found {:?}",
         error
     );

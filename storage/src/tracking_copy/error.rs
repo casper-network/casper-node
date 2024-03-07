@@ -144,9 +144,6 @@ pub enum Error {
     /// Error writing a dictionary item key which exceeded maximum allowed length.
     #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
-    /// Missing system entity registry.
-    #[error("Missing system entity registry")]
-    MissingSystemEntityRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),

@@ -2,19 +2,25 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{Digest, KeyTag, StoredValue};
 
-/// Represents a request to obtain all values under the given key tag.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AllValuesRequest {
-    state_hash: Digest,
-    key_tag: KeyTag,
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TaggedValuesSelection {
+    // All values under the specified key tag.
+    All(KeyTag),
 }
 
-impl AllValuesRequest {
+/// Represents a request to obtain all values under the given key tag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaggedValuesRequest {
+    state_hash: Digest,
+    selection: TaggedValuesSelection,
+}
+
+impl TaggedValuesRequest {
     /// Creates new request.
-    pub fn new(state_hash: Digest, key_tag: KeyTag) -> Self {
+    pub fn new(state_hash: Digest, selection: TaggedValuesSelection) -> Self {
         Self {
             state_hash,
-            key_tag,
+            selection,
         }
     }
 
@@ -25,16 +31,26 @@ impl AllValuesRequest {
 
     /// Returns key tag.
     pub fn key_tag(&self) -> KeyTag {
-        self.key_tag
+        match self.selection {
+            TaggedValuesSelection::All(key_tag) => key_tag,
+        }
+    }
+
+    /// Returns selection criteria.
+    pub fn selection(&self) -> TaggedValuesSelection {
+        self.selection
     }
 }
+
 /// Represents a result of a `get_all_values` request.
 #[derive(Debug)]
-pub enum AllValuesResult {
+pub enum TaggedValuesResult {
     /// Invalid state root hash.
     RootNotFound,
     /// Contains values returned from the global state.
     Success {
+        /// The requested selection.
+        selection: TaggedValuesSelection,
         /// Current values.
         values: Vec<StoredValue>,
     },

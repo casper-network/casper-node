@@ -120,7 +120,7 @@ impl SignedBlockHeader {
     }
 
     /// Replaces the signature field of the last `block_signatures` entry with the `System` variant
-    /// of [`Signature`], rendering that entry invalid.
+    /// of [`crate::crypto::Signature`], rendering that entry invalid.
     ///
     /// Note that [`Self::is_valid`] will be unaffected by this as it only checks for equality in
     /// the block hash and era ID of the header and signatures; no cryptographic verification is

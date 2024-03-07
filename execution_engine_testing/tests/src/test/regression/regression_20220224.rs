@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{runtime_args, system::mint, ApiError, RuntimeArgs};
 
 const CONTRACT_REGRESSION_PAYMENT: &str = "regression_payment.wasm";
@@ -39,7 +39,7 @@ fn should_not_transfer_above_approved_limit_in_payment_code() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
+            engine_state::Error::Exec(ExecError::Revert(ApiError::Mint(mint_error)))
             if mint_error == mint::Error::UnapprovedSpendingAmount as u8
         ),
         "Expected unapproved spending amount error but received {:?}",

@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash, runtime_args, Key, RuntimeArgs, ENTITY_INITIAL_VERSION, U512,
 };
@@ -73,7 +73,7 @@ fn should_call_group_restricted_session() {
 
     builder.exec(exec_request_2).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
 #[ignore]
@@ -110,7 +110,7 @@ fn should_call_group_restricted_session_caller() {
 
     builder.exec(exec_request_2).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
+    builder.assert_error(Error::Exec(ExecError::InvalidContext));
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
 #[test]
@@ -233,7 +233,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
 #[ignore]
@@ -342,7 +342,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
 #[ignore]
@@ -481,7 +481,7 @@ fn should_call_group_restricted_contract_as_session() {
 
     builder.exec(exec_request_3).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
 #[ignore]
@@ -532,7 +532,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
 #[ignore]
@@ -581,7 +581,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
     let exec_request_3 = {
         let args = runtime_args! {
@@ -605,7 +605,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
 
     builder.exec(exec_request_3).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
 #[ignore]
@@ -654,7 +654,7 @@ fn should_not_call_uncallable_session_from_deploy() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
     let exec_request_3 = {
         let args = runtime_args! {
@@ -677,7 +677,7 @@ fn should_not_call_uncallable_session_from_deploy() {
     };
     builder.exec(exec_request_3).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
 #[test]
@@ -744,7 +744,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
         .get_last_exec_result()
         .expect("should have last response");
     let error = response.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+    assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
 #[test]
@@ -802,5 +802,5 @@ fn should_call_group_restricted_stored_payment_code() {
 
     builder.exec(exec_request_3).expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
+    builder.assert_error(Error::Exec(ExecError::InvalidContext));
 }

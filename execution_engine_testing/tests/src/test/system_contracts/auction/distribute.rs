@@ -271,9 +271,10 @@ fn should_distribute_delegation_rate_zero() {
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -535,9 +536,10 @@ fn should_withdraw_bids_after_distribute() {
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -837,9 +839,10 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -1250,9 +1253,10 @@ fn should_distribute_delegation_rate_half() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -1661,9 +1665,10 @@ fn should_distribute_uneven_delegation_rate_zero() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -1962,9 +1967,10 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             .with_run_auction(true)
             .build();
 
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -2291,9 +2297,10 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
-        builder
-            .step(step_request)
-            .expect("must execute step successfully");
+        assert!(
+            builder.step(step_request).is_success(),
+            "must execute step successfully"
+        );
     }
 
     let mut rewards = BTreeMap::new();
@@ -3072,9 +3079,12 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         VALIDATOR_1.clone(),
         expected_total_reward_after.to_integer(),
     );
-    builder
-        .distribute(None, new_protocol_version, &rewards, 10, timestamp_millis)
-        .expect("must distribute");
+    assert!(
+        builder
+            .distribute(None, new_protocol_version, rewards, timestamp_millis)
+            .is_success(),
+        "must distribute"
+    );
 
     let mut rewards = BTreeMap::new();
     rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);

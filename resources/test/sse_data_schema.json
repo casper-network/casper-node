@@ -2003,6 +2003,13 @@
           "enum": [
             "Redelegate"
           ]
+        },
+        {
+          "description": "The `activate_bid` native entry point, used to used to reactivate an inactive bid.",
+          "type": "string",
+          "enum": [
+            "ActivateBid"
+          ]
         }
       ]
     },

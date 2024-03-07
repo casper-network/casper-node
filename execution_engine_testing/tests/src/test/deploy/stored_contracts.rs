@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash, runtime_args, EntityVersion, EntityVersionKey, EraId, PackageHash,
     ProtocolVersion, RuntimeArgs, ENTITY_INITIAL_VERSION, U512,
@@ -177,9 +177,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
         "calling a non-existent entry point should not work"
     );
 
-    let expected_error = Error::Exec(execution::Error::NoSuchMethod(
-        "electric-boogaloo".to_string(),
-    ));
+    let expected_error = Error::Exec(ExecError::NoSuchMethod("electric-boogaloo".to_string()));
 
     builder.assert_error(expected_error);
 }
@@ -238,7 +236,7 @@ fn should_exec_stored_code_by_hash() {
 
     let error = builder.get_error().unwrap();
 
-    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
+    assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }
 
 #[ignore]
@@ -286,7 +284,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
 
     let error = builder.get_error().unwrap();
 
-    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
+    assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }
 
 #[ignore]
@@ -336,7 +334,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
 
     let error = builder.get_error().expect("must have error");
 
-    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
+    assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }
 
 #[ignore]
@@ -382,7 +380,7 @@ fn should_exec_stored_code_by_named_hash() {
 
         let error = builder.get_error().unwrap();
 
-        assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
+        assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
     }
 }
 
@@ -455,7 +453,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
         "calling a payment module with increased major protocol version should be error"
     );
 
-    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+    let expected_error = Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
         expected: 2,
         actual: 1,
     });
@@ -529,7 +527,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         "calling a payment module with increased major protocol version should be error"
     );
 
-    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+    let expected_error = Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
         expected: 2,
         actual: 1,
     });
@@ -627,7 +625,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     let error = builder.get_error().expect("must have error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+        Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
             expected: 2,
             actual: 1
         })
@@ -708,7 +706,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 
     let entity_version_key = EntityVersionKey::new(2, 1);
 
-    let expected_error = Error::Exec(execution::Error::InvalidEntityVersion(entity_version_key));
+    let expected_error = Error::Exec(ExecError::InvalidEntityVersion(entity_version_key));
 
     builder.assert_error(expected_error);
 }
@@ -799,7 +797,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     assert!(
         matches!(
             error,
-            Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+            Error::Exec(ExecError::IncompatibleProtocolMajorVersion {
                 expected: 2,
                 actual: 1
             }),
@@ -890,5 +888,5 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
 
     let error = builder.get_error().unwrap();
 
-    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
+    assert_matches!(error, Error::Exec(ExecError::ForgedReference(_)))
 }

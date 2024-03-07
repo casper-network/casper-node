@@ -10,9 +10,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{DeployHash, TransactionV1Hash};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest,
+};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -31,6 +34,14 @@ pub enum TransactionHash {
 }
 
 impl TransactionHash {
+    /// Digest representation of hash.
+    pub fn digest(&self) -> Digest {
+        match self {
+            TransactionHash::Deploy(deploy_hash) => *deploy_hash.inner(),
+            TransactionHash::V1(transaction_hash) => *transaction_hash.inner(),
+        }
+    }
+
     /// Returns a random `TransactionHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {

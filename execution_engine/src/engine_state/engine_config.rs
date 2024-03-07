@@ -215,8 +215,8 @@ impl EngineConfig {
     }
 
     /// Returns the engine config's refund ratio.
-    pub fn refund_handling(&self) -> &RefundHandling {
-        &self.refund_handling
+    pub fn refund_handling(&self) -> RefundHandling {
+        self.refund_handling
     }
 
     /// Returns the engine config's fee handling strategy.

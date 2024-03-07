@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{Error, MAX_PAYMENT},
-    execution,
+    execution::ExecError,
 };
 use casper_types::{
     account::AccountHash, execution::TransformKind, runtime_args, system::handle_payment, ApiError,
@@ -134,10 +134,7 @@ fn should_forward_payment_execution_runtime_error() {
         .expect("there should be a response");
 
     let error = exec_result.as_error().expect("should have error");
-    assert_matches!(
-        error,
-        Error::Exec(execution::Error::Revert(ApiError::User(100)))
-    );
+    assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::User(100))));
 }
 
 #[ignore]
@@ -202,7 +199,7 @@ fn should_forward_payment_execution_gas_limit_error() {
         .expect("there should be a response");
 
     let error = exec_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
@@ -246,7 +243,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         .expect("there should be a response");
 
     let error = exec_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
@@ -306,7 +303,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     );
 
     let error = exec_result.as_error().expect("should have error");
-    assert_matches!(error, Error::Exec(execution::Error::GasLimit));
+    assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(

@@ -15,17 +15,15 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_execution_engine::engine_state::{
-    execute_request::ExecuteRequest,
-    execution_result::ExecutionResult,
-    step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneConfig, PruneResult, StepError,
-    DEFAULT_MAX_QUERY_DEPTH,
+    execute_request::ExecuteRequest, execution_result::ExecutionResult, EngineConfig,
+    EngineConfigBuilder, EngineState, Error, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
-        BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, QueryRequest, QueryResult, TransferConfig, TransferRequest,
+        BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, QueryRequest, QueryResult, StepRequest, StepResult, TransferRequest,
         TransferResult,
     },
     global_state::{
@@ -37,6 +35,7 @@ use casper_storage::{
         trie::Trie,
         trie_store::lmdb::LmdbTrieStore,
     },
+    system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
 };
 use casper_types::{
     account::AccountHash,
@@ -120,7 +119,7 @@ pub struct WasmTestBuilder<S> {
     engine_state: Rc<EngineState<S>>,
     exec_results: Vec<ExecutionResult>,
     upgrade_results: Vec<ProtocolUpgradeResult>,
-    prune_results: Vec<Result<PruneResult, Error>>,
+    prune_results: Vec<PruneResult>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
@@ -555,20 +554,22 @@ impl LmdbWasmTestBuilder {
             .as_ref()
             .expect("scratch state should exist");
 
-        cached_state
-            .commit_step(step_request)
-            .expect("unable to run step request against scratch global state");
+        match cached_state.commit_step(step_request) {
+            StepResult::RootNotFound => {
+                panic!("Root not found")
+            }
+            StepResult::Failure(err) => {
+                panic!("{:?}", err)
+            }
+            StepResult::Success { .. } => {}
+        }
         self
     }
 
     /// Runs a [`TransferRequest`].
     pub fn transfer_and_commit(&mut self, mut transfer_request: TransferRequest) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
-        let transfer_config = TransferConfig::new(
-            self.engine_state.config().administrative_accounts().clone(),
-            self.engine_state.config().allow_unrestricted_transfers(),
-        );
-        transfer_request.set_state_hash_and_config(pre_state_hash, transfer_config);
+        transfer_request.set_state_hash_and_config(pre_state_hash, self.native_runtime_config());
         let gas = transfer_request.gas();
         let data_access_layer = self.engine_state.get_state();
         let transfer_result = data_access_layer.transfer(transfer_request);
@@ -877,17 +878,62 @@ where
     }
 
     /// Increments engine state.
-    pub fn step(&mut self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
+    pub fn step(&mut self, step_request: StepRequest) -> StepResult {
         let step_result = self.engine_state.commit_step(step_request);
 
-        if let Ok(StepSuccess {
+        if let StepResult::Success {
             post_state_hash, ..
-        }) = &step_result
+        } = step_result
         {
-            self.post_state_hash = Some(*post_state_hash);
+            self.post_state_hash = Some(post_state_hash);
         }
 
         step_result
+    }
+
+    fn native_runtime_config(&self) -> NativeRuntimeConfig {
+        let transfer_config = TransferConfig::new(
+            self.engine_state.config().administrative_accounts().clone(),
+            self.engine_state.config().allow_unrestricted_transfers(),
+        );
+        NativeRuntimeConfig::new(
+            transfer_config,
+            self.engine_state.config().fee_handling(),
+            self.engine_state.config().refund_handling(),
+            self.engine_state.config().vesting_schedule_period_millis(),
+            self.engine_state.config().allow_auction_bids(),
+            self.engine_state.config().compute_rewards(),
+            self.engine_state.config().max_delegators_per_validator(),
+            self.engine_state.config().minimum_delegation_amount(),
+        )
+    }
+
+    /// Distribute fees.
+    pub fn distribute_fees(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        block_time: u64,
+    ) -> FeeResult {
+        let native_runtime_config = self.native_runtime_config();
+
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let fee_req = FeeRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            BlockTime::new(block_time),
+        );
+        let fee_result = self.engine_state.commit_fees(fee_req);
+
+        if let FeeResult::Success {
+            post_state_hash, ..
+        } = fee_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        fee_result
     }
 
     /// Distributes the rewards.
@@ -895,22 +941,29 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        rewards: &BTreeMap<PublicKey, U512>,
-        next_block_height: u64,
-        time: u64,
-    ) -> Result<Digest, StepError> {
+        rewards: BTreeMap<PublicKey, U512>,
+        block_time: u64,
+    ) -> BlockRewardsResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
-        let post_state_hash = self.engine_state.distribute_block_rewards(
+        let native_runtime_config = self.native_runtime_config();
+        let distribute_req = BlockRewardsRequest::new(
+            native_runtime_config,
             pre_state_hash,
             protocol_version,
+            BlockTime::new(block_time),
             rewards,
-            next_block_height,
-            BlockTime::new(time),
-        )?;
+        );
+        let distribute_block_rewards_result =
+            self.engine_state.commit_block_rewards(distribute_req);
 
-        self.post_state_hash = Some(post_state_hash);
+        if let BlockRewardsResult::Success {
+            post_state_hash, ..
+        } = distribute_block_rewards_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
 
-        Ok(post_state_hash)
+        distribute_block_rewards_result
     }
 
     /// Expects a successful run
@@ -1550,14 +1603,20 @@ where
             .with_run_auction(true);
 
         for _ in 0..num_eras {
+            let state_hash = self.get_post_state_hash();
             let step_request = step_request_builder
                 .clone()
-                .with_parent_state_hash(self.get_post_state_hash())
+                .with_parent_state_hash(state_hash)
                 .with_next_era_id(self.get_era().successor())
                 .build();
 
-            self.step(step_request)
-                .expect("failed to execute step request");
+            match self.step(step_request) {
+                StepResult::RootNotFound => panic!("Root not found {:?}", state_hash),
+                StepResult::Failure(err) => panic!("{:?}", err),
+                StepResult::Success { .. } => {
+                    // noop
+                }
+            }
         }
     }
 
@@ -1600,13 +1659,13 @@ where
     }
 
     /// Commits a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
+    pub fn commit_prune(&mut self, prune_config: PruneRequest) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success {
+        if let PruneResult::Success {
             post_state_hash,
             effects,
-        }) = &result
+        } = &result
         {
             self.post_state_hash = Some(*post_state_hash);
             self.effects.push(effects.clone());
@@ -1617,7 +1676,7 @@ where
     }
 
     /// Returns a `Result` containing a [`PruneResult`].
-    pub fn get_prune_result(&self, index: usize) -> Option<&Result<PruneResult, Error>> {
+    pub fn get_prune_result(&self, index: usize) -> Option<&PruneResult> {
         self.prune_results.get(index)
     }
 
@@ -1627,13 +1686,14 @@ where
         let result = self
             .prune_results
             .last()
-            .expect("Expected to be called after a system upgrade.")
-            .as_ref();
+            .expect("Expected to be called after a system upgrade.");
 
-        let prune_result = result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
-        match prune_result {
+        match result {
             PruneResult::RootNotFound => panic!("Root not found"),
-            PruneResult::DoesNotExist => panic!("Does not exists"),
+            PruneResult::MissingKey => panic!("Does not exists"),
+            PruneResult::Failure(tce) => {
+                panic!("{:?}", tce);
+            }
             PruneResult::Success { .. } => {}
         }
 
@@ -1647,7 +1707,7 @@ where
 
         let refund_ratio = match self.engine_state.config().refund_handling() {
             RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
-                *refund_ratio
+                refund_ratio
             }
         };
 

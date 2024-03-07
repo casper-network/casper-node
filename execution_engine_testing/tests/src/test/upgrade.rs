@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_execution_engine::{engine_state, execution::Error};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
@@ -815,7 +815,7 @@ fn should_only_upgrade_if_threshold_is_met() {
     builder.exec(invalid_upgrade_request).expect_failure();
 
     builder.assert_error(engine_state::Error::Exec(
-        Error::UpgradeAuthorizationFailure,
+        ExecError::UpgradeAuthorizationFailure,
     ));
 
     let authorization_keys = {

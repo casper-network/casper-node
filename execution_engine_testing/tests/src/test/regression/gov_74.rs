@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error},
-    execution::Error as ExecError,
+    execution::ExecError,
     runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig};

@@ -9,10 +9,7 @@ use casper_types::{
     PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget,
 };
 
-use crate::{
-    engine_state::error::Error,
-    execution::{self},
-};
+use crate::{engine_state::error::Error, execution::ExecError};
 
 /// The type of execution about to be performed.
 #[derive(Clone, Debug)]
@@ -102,7 +99,7 @@ impl<'a> ExecutionKind<'a> {
                 let entity_key = named_keys
                     .get(&alias)
                     .cloned()
-                    .ok_or_else(|| Error::Exec(execution::Error::NamedKeyNotFound(alias)))?;
+                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias)))?;
 
                 match entity_key {
                     Key::Hash(hash) => AddressableEntityHash::new(hash),
@@ -121,26 +118,25 @@ impl<'a> ExecutionKind<'a> {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
-                        package_hash,
-                    )))?;
+                    .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
                 if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
+                    return Err(Error::Exec(ExecError::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
                 *package
                     .lookup_entity_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
+                    .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
                         contract_version_key,
                     )))?
             }
             TransactionInvocationTarget::PackageAlias { alias, version } => {
-                let package_key = named_keys.get(&alias).cloned().ok_or_else(|| {
-                    Error::Exec(execution::Error::NamedKeyNotFound(alias.to_string()))
-                })?;
+                let package_key = named_keys
+                    .get(&alias)
+                    .cloned()
+                    .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.to_string())))?;
 
                 let package_hash = match package_key {
                     Key::Hash(hash) | Key::Package(hash) => PackageHash::new(hash),
@@ -154,19 +150,17 @@ impl<'a> ExecutionKind<'a> {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
-                        package_hash,
-                    )))?;
+                    .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
                 if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
+                    return Err(Error::Exec(ExecError::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
                 *package
                     .lookup_entity_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
+                    .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
                         contract_version_key,
                     )))?
             }

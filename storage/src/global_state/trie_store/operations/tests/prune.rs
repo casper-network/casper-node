@@ -52,7 +52,7 @@ mod partial_tries {
         let root_after_prune =
             match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
                 PruneResult::Pruned(root_after_prune) => root_after_prune,
-                PruneResult::DoesNotExist => panic!("key did not exist"),
+                PruneResult::MissingKey => panic!("key did not exist"),
                 PruneResult::RootNotFound => panic!("root should be found"),
             };
         assert_eq!(root_after_prune, *expected_root_after_prune);
@@ -99,7 +99,7 @@ mod partial_tries {
         let mut txn = environment.create_read_write_txn()?;
         match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
             PruneResult::Pruned(_) => panic!("should not prune"),
-            PruneResult::DoesNotExist => Ok(()),
+            PruneResult::MissingKey => Ok(()),
             PruneResult::RootNotFound => panic!("root should be found"),
         }
     }
@@ -258,7 +258,7 @@ mod full_tries {
                 PruneResult::Pruned(new_root) => {
                     expected_root = new_root;
                 }
-                PruneResult::DoesNotExist => {}
+                PruneResult::MissingKey => {}
                 PruneResult::RootNotFound => panic!("should find root"),
             }
         }

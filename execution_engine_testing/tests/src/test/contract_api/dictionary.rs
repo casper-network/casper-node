@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, AccessRights,
@@ -233,7 +233,7 @@ fn should_not_write_with_read_access_rights() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::InvalidAccess {
+            EngineError::Exec(ExecError::InvalidAccess {
                 required: AccessRights::WRITE
             })
         ),
@@ -284,7 +284,7 @@ fn should_not_read_with_write_access_rights() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::InvalidAccess {
+            EngineError::Exec(ExecError::InvalidAccess {
                 required: AccessRights::READ
             })
         ),
@@ -363,7 +363,7 @@ fn should_not_write_with_forged_uref() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::ForgedReference(uref))
+            EngineError::Exec(ExecError::ForgedReference(uref))
             if *uref == forged_uref
         ),
         "Received error {:?}",
@@ -400,7 +400,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::InvalidDictionaryItemKey))
+            EngineError::Exec(ExecError::Revert(ApiError::InvalidDictionaryItemKey))
         ),
         "Received error {:?}",
         error
@@ -436,7 +436,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::InvalidDictionaryItemKey))
+            EngineError::Exec(ExecError::Revert(ApiError::InvalidDictionaryItemKey))
         ),
         "Received error {:?}",
         error
@@ -469,7 +469,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::DictionaryItemKeyExceedsLength))
+            EngineError::Exec(ExecError::Revert(ApiError::DictionaryItemKeyExceedsLength))
         ),
         "Received error {:?}",
         error
@@ -502,7 +502,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::DictionaryItemKeyExceedsLength))
+            EngineError::Exec(ExecError::Revert(ApiError::DictionaryItemKeyExceedsLength))
         ),
         "Received error {:?}",
         error

@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{self, EngineConfigBuilder},
-    execution,
+    execution::ExecError,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
@@ -126,15 +126,18 @@ fn should_initialize_default_vesting_schedule() {
 
     era_end_timestamp_millis += DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     let stored_value_after = builder
         .query(None, bid_addr.into(), &[])
@@ -243,35 +246,41 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
+        matches!(error, engine_state::Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error))) if auction_error == auction::Error::ValidatorFundsLocked as u8),
         "vesting schedule is not yet initialized"
     );
 
     let mut era_end_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     era_end_timestamp_millis += DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     builder
         .exec(withdraw_bid_request_2)
@@ -323,16 +332,19 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 
     let era_end_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
 
-    builder
-        .step(
-            StepRequestBuilder::default()
-                .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                .with_parent_state_hash(builder.get_post_state_hash())
-                .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                .with_run_auction(true)
-                .build(),
-        )
-        .expect("should run step to initialize a schedule");
+    assert!(
+        builder
+            .step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_run_auction(true)
+                    .build(),
+            )
+            .is_success(),
+        "should run step to initialize a schedule"
+    );
 
     let withdraw_bid_request_1 = {
         let sender = *DEFAULT_PROPOSER_ADDR;
@@ -384,15 +396,13 @@ mod fixture {
 
             // Move forward the clock and initialize vesting schedule with 13 weeks after initial 90
             // days lock up.
-            builder
-                .step(
-                    StepRequestBuilder::default()
-                        .with_era_end_timestamp_millis(era_end_timestamp_millis)
-                        .with_parent_state_hash(builder.get_post_state_hash())
-                        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-                        .build(),
-                )
-                .unwrap();
+            builder.step(
+                StepRequestBuilder::default()
+                    .with_era_end_timestamp_millis(era_end_timestamp_millis)
+                    .with_parent_state_hash(builder.get_post_state_hash())
+                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .build(),
+            );
         })
         .unwrap();
     }

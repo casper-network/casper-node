@@ -1,6 +1,6 @@
 //! Support for applying upgrades on the execution engine.
 use num_rational::Ratio;
-use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use thiserror::Error;
 use tracing::{debug, error};
@@ -11,7 +11,6 @@ use casper_types::{
         NamedKeyValue, NamedKeys, Weight,
     },
     bytesrepr::{self, ToBytes},
-    execution::Effects,
     system::{
         auction::{
             BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
@@ -36,21 +35,6 @@ use crate::{
 
 const NO_PRUNE: bool = false;
 const PRUNE: bool = true;
-
-/// Represents a successfully executed upgrade.
-#[derive(Debug, Clone)]
-pub struct UpgradeSuccess {
-    /// New state root hash generated after effects were applied.
-    pub post_state_hash: Digest,
-    /// Effects of executing an upgrade request.
-    pub effects: Effects,
-}
-
-impl fmt::Display for UpgradeSuccess {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
-    }
-}
 
 /// Represents outcomes of a failed protocol upgrade.
 #[derive(Clone, Error, Debug)]
