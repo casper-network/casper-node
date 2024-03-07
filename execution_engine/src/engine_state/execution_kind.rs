@@ -116,20 +116,26 @@ impl<'a> ExecutionKind<'a> {
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
-                let contract_version_key = maybe_version_key
+                let entity_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
                     .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
-                if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(ExecError::InvalidEntityVersion(
-                        contract_version_key,
+                if package.is_version_missing(entity_version_key) {
+                    return Err(Error::Exec(ExecError::MissingEntityVersion(
+                        entity_version_key,
+                    )));
+                }
+
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
+                        entity_version_key,
                     )));
                 }
 
                 *package
-                    .lookup_entity_hash(contract_version_key)
+                    .lookup_entity_hash(entity_version_key)
                     .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
-                        contract_version_key,
+                        entity_version_key,
                     )))?
             }
             TransactionInvocationTarget::PackageAlias { alias, version } => {
@@ -148,20 +154,26 @@ impl<'a> ExecutionKind<'a> {
                 let maybe_version_key =
                     version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
-                let contract_version_key = maybe_version_key
+                let entity_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
                     .ok_or(Error::Exec(ExecError::NoActiveEntityVersions(package_hash)))?;
 
-                if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(ExecError::InvalidEntityVersion(
-                        contract_version_key,
+                if package.is_version_missing(entity_version_key) {
+                    return Err(Error::Exec(ExecError::MissingEntityVersion(
+                        entity_version_key,
+                    )));
+                }
+
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(Error::Exec(ExecError::DisabledEntityVersion(
+                        entity_version_key,
                     )));
                 }
 
                 *package
-                    .lookup_entity_hash(contract_version_key)
+                    .lookup_entity_hash(entity_version_key)
                     .ok_or(Error::Exec(ExecError::InvalidEntityVersion(
-                        contract_version_key,
+                        entity_version_key,
                     )))?
             }
         };

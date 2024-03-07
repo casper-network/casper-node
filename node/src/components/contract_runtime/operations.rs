@@ -4,7 +4,7 @@ use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
-    self, execution_result::ExecutionResultAndMessages, EngineState, ExecuteRequest,
+    self, execution_result::ExecutionResultAndMessages, ExecuteRequest, ExecutionEngineV1,
     ExecutionResult as EngineExecutionResult,
 };
 use casper_storage::{
@@ -12,11 +12,11 @@ use casper_storage::{
     data_access_layer::{
         BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
         EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest, TransferResult,
+        PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
-        lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-        StateReader,
+        lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
+        StateProvider, StateReader,
     },
     system::runtime_native::Config as NativeRuntimeConfig,
 };
@@ -43,8 +43,8 @@ use crate::{
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    execution_engine_v1: &ExecutionEngineV1,
     chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
     execution_pre_state: ExecutionPreState,
@@ -82,7 +82,7 @@ pub fn execute_finalized_block(
     let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
-    let scratch_state = data_access_layer.get_scratch_engine_state();
+    let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
     // Pay out fees, if relevant.
@@ -93,7 +93,7 @@ pub fn execute_finalized_block(
             protocol_version,
             block_time,
         );
-        match data_access_layer.distribute_fees(fee_req) {
+        match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash))
             }
@@ -126,7 +126,7 @@ pub fn execute_finalized_block(
             block_time,
             rewards.clone(),
         );
-        match data_access_layer.distribute_block_rewards(rewards_req) {
+        match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
                 return Err(BlockExecutionError::RootNotFound(state_root_hash))
             }
@@ -160,7 +160,12 @@ pub fn execute_finalized_block(
 
         match request {
             UserRequest::Execute(execute_request) => {
-                let exec_result_and_msgs = execute(engine_state, metrics.clone(), execute_request)?;
+                let exec_result_and_msgs = execute(
+                    &scratch_state,
+                    execution_engine_v1,
+                    metrics.clone(),
+                    execute_request,
+                )?;
 
                 trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
                 // As for now a given state is expected to exist.
@@ -183,12 +188,12 @@ pub fn execute_finalized_block(
                 let gas = transfer_request.gas();
                 // native transfer auto-commits
                 let transfer_result = data_access_layer.transfer(transfer_request);
-                if let TransferResult::Success {
-                    post_state_hash, ..
-                } = &transfer_result
-                {
-                    state_root_hash = *post_state_hash;
-                }
+                // if let TransferResult::Success {
+                //     post_state_hash, ..
+                // } = &transfer_result
+                // {
+                //     state_root_hash = *post_state_hash;
+                // }
                 trace!(%txn_hash, ?transfer_result, "native transfer result");
                 let Ok(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
@@ -479,14 +484,15 @@ fn commit_execution_result(
 ///
 /// Returns effects of the execution.
 pub(super) fn speculatively_execute<S>(
-    engine_state: &EngineState<S>,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     execution_state: SpeculativeExecutionState,
     native_runtime_config: NativeRuntimeConfig,
     system_costs: SystemConfig,
     txn: Transaction,
 ) -> Result<SpeculativeExecutionResult, SpeculativeExecutionError>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     let SpeculativeExecutionState {
         state_root_hash,
@@ -505,14 +511,16 @@ where
     )?;
 
     match request {
-        UserRequest::Execute(execute_request) => execute(engine_state, None, execute_request)
-            .map(|res_and_msgs| {
-                SpeculativeExecutionResult::new(
-                    res_and_msgs.execution_result,
-                    res_and_msgs.messages,
-                )
-            })
-            .map_err(SpeculativeExecutionError::from),
+        UserRequest::Execute(execute_request) => {
+            execute(state_provider, execution_engine_v1, None, execute_request)
+                .map(|res_and_msgs| {
+                    SpeculativeExecutionResult::new(
+                        res_and_msgs.execution_result,
+                        res_and_msgs.messages,
+                    )
+                })
+                .map_err(SpeculativeExecutionError::from)
+        }
         UserRequest::Transfer(_transfer_request) => {
             todo!("route native transactions to data access layer, but don't commit them");
         }
@@ -520,17 +528,18 @@ where
 }
 
 fn execute<S>(
-    engine_state: &EngineState<S>,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<ExecutionResultAndMessages, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
-    let result = engine_state
-        .execute_transaction(execute_request)
+    let result = execution_engine_v1
+        .exec(state_provider, execute_request)
         .map(ExecutionResultAndMessages::from);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());

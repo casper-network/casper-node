@@ -1,7 +1,6 @@
 use std::{collections::BTreeSet, convert::TryInto};
 
 use crate::global_state::{error::Error as GlobalStateError, state::StateReader};
-
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof, ByteCode,
     ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package,
@@ -72,7 +71,7 @@ where
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error> {
         let balance_key: URef = purse_key
             .into_uref()
-            .ok_or(TrackingCopyError::KeyIsNotAURef(purse_key))?;
+            .ok_or(TrackingCopyError::UnexpectedKeyVariant(purse_key))?;
         Ok(Key::Balance(balance_key.addr()))
     }
 
@@ -93,7 +92,7 @@ where
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error> {
         let balance_key: Key = purse_key
             .uref_to_hash()
-            .ok_or(TrackingCopyError::KeyIsNotAURef(purse_key))?;
+            .ok_or(TrackingCopyError::UnexpectedKeyVariant(purse_key))?;
         let proof: TrieMerkleProof<Key, StoredValue> = self
             .read_with_proof(&balance_key)?
             .ok_or(TrackingCopyError::KeyNotFound(purse_key))?;

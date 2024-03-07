@@ -33,15 +33,13 @@ pub struct StateTracker<T> {
 
 impl<T: StateReader> StateTracker<T> {
     /// Creates a new `StateTracker`.
-    pub fn new(mut reader: T) -> Self {
+    pub fn new(mut reader: T, protocol_version: ProtocolVersion) -> Self {
         // Read the URef under which total supply is stored.
         let total_supply_key = reader.get_total_supply_key();
 
         // Read the total supply.
         let total_supply_sv = reader.query(total_supply_key).expect("should query");
         let total_supply = total_supply_sv.into_cl_value().expect("should be cl value");
-
-        let protocol_version = reader.get_protocol_version();
 
         Self {
             reader,
@@ -260,7 +258,6 @@ impl<T: StateReader> StateTracker<T> {
         if let Some(key_and_snapshot) = &self.seigniorage_recipients {
             return key_and_snapshot.clone();
         }
-
         // Read the key under which the snapshot is stored.
         let validators_key = self.reader.get_seigniorage_recipients_key();
 

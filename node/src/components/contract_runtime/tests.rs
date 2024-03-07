@@ -401,7 +401,10 @@ mod trie_chunking_tests {
     use tempfile::tempdir;
 
     use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
-    use casper_storage::global_state::{state::StateProvider, trie::Trie};
+    use casper_storage::global_state::{
+        state::{CommitProvider, StateProvider},
+        trie::Trie,
+    };
     use casper_types::{
         account::AccountHash,
         bytesrepr,
@@ -498,16 +501,17 @@ mod trie_chunking_tests {
             &Registry::default(),
         )
         .unwrap();
-        let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
+        let empty_state_root = contract_runtime.data_access_layer().empty_root();
         let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
             effects.push(Transform::new(key, TransformKind::Write(value)));
         }
-        let post_state_hash = contract_runtime
-            .engine_state()
-            .commit_effects(empty_state_root, effects)
+        let post_state_hash = &contract_runtime
+            .data_access_layer()
+            .as_ref()
+            .commit(empty_state_root, effects)
             .expect("applying effects to succeed");
-        (contract_runtime, post_state_hash)
+        (contract_runtime, *post_state_hash)
     }
 
     fn read_trie(contract_runtime: &ContractRuntime, id: TrieOrChunkId) -> TrieOrChunk {

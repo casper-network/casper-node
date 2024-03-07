@@ -1,14 +1,15 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
+    utils, ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    StepRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::{
-    engine_state::{self, EngineConfigBuilder},
+    engine_state::{self},
     execution::ExecError,
 };
 use casper_storage::data_access_layer::GenesisRequest;
@@ -176,9 +177,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfigBuilder::new()
-        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
-        .build();
+    let engine_config = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis);
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
     builder.run_genesis(genesis_request);
@@ -309,11 +309,10 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfigBuilder::new()
-        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
-        .build();
+    let chainspec = ChainspecConfig::default()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis);
 
-    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
     builder.run_genesis(genesis_request);
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(

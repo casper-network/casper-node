@@ -224,7 +224,7 @@ impl Executor {
 
         let contract = match tracking_copy
             .borrow_mut()
-            .get_addressable_entity(entity_hash)
+            .get_addressable_entity_by_hash(entity_hash)
         {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),

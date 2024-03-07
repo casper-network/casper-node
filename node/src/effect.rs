@@ -133,8 +133,8 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
     BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
     FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade, Package,
-    ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
+    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
 use crate::{
@@ -152,7 +152,7 @@ use crate::{
         transaction_acceptor,
     },
     failpoints::FailpointActivation,
-    reactor::{EventQueueHandle, QueueKind},
+    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,

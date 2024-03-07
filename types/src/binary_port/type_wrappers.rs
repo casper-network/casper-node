@@ -117,6 +117,28 @@ impl From<NetworkName> for String {
     }
 }
 
+/// Type representing the reactor state name.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReactorStateName(String);
+
+impl ReactorStateName {
+    /// Constructs new reactor state name.
+    pub fn new(value: impl ToString) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Retrieve the name as a `String`.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl From<ReactorStateName> for String {
+    fn from(reactor_state: ReactorStateName) -> Self {
+        reactor_state.0
+    }
+}
+
 /// Type representing last progress of the sync process.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LastProgress(Timestamp);
@@ -310,6 +332,7 @@ impl FromBytes for TransactionWithExecutionInfo {
 impl_bytesrepr_for_type_wrapper!(Uptime);
 impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
+impl_bytesrepr_for_type_wrapper!(ReactorStateName);
 impl_bytesrepr_for_type_wrapper!(LastProgress);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
 
@@ -341,6 +364,12 @@ mod tests {
     fn network_name_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&NetworkName::new(rng.random_string(5..20)));
+    }
+
+    #[test]
+    fn reactor_state_name_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&ReactorStateName::new(rng.random_string(5..20)));
     }
 
     #[test]

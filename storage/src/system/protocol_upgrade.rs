@@ -294,27 +294,33 @@ where
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_contract_entry_points(
         &self,
-        contract_hash: AddressableEntityHash,
-        system_contract_type: SystemEntityType,
+        entity_hash: AddressableEntityHash,
+        system_entity_type: SystemEntityType,
     ) -> Result<(), ProtocolUpgradeError> {
-        debug!(%system_contract_type, "refresh system contract entry points");
-        let contract_name = system_contract_type.contract_name();
-        let entry_points = system_contract_type.contract_entry_points();
+        debug!(%system_entity_type, "refresh system contract entry points");
+        let entity_name = system_entity_type.entity_name();
+        let entry_points = system_entity_type.entry_points();
 
-        let (mut contract, maybe_named_keys, must_prune) =
-            self.retrieve_system_entity(contract_hash, system_contract_type)?;
+        let (mut entity, maybe_named_keys, must_prune) =
+            match self.retrieve_system_entity(entity_hash, system_entity_type) {
+                Ok(ret) => ret,
+                Err(err) => {
+                    error!("{:?}", err);
+                    return Err(err);
+                }
+            };
 
         let mut package =
-            self.retrieve_system_package(contract.package_hash(), system_contract_type)?;
+            self.retrieve_system_package(entity.package_hash(), system_entity_type)?;
 
-        package.disable_entity_version(contract_hash).map_err(|_| {
-            ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
+        package.disable_entity_version(entity_hash).map_err(|_| {
+            ProtocolUpgradeError::FailedToDisablePreviousVersion(entity_name.to_string())
         })?;
 
-        contract.set_protocol_version(self.config.new_protocol_version());
+        entity.set_protocol_version(self.config.new_protocol_version());
 
         let new_entity = AddressableEntity::new(
-            contract.package_hash(),
+            entity.package_hash(),
             ByteCodeHash::default(),
             entry_points,
             self.config.new_protocol_version(),
@@ -322,7 +328,7 @@ where
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::System(system_contract_type),
+            EntityKind::System(system_entity_type),
         );
 
         let byte_code_key = Key::byte_code_key(ByteCodeAddr::Empty);
@@ -332,23 +338,23 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = new_entity.entity_key(contract_hash);
+        let entity_key = new_entity.entity_key(entity_hash);
 
         self.tracking_copy
             .borrow_mut()
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
         if let Some(named_keys) = maybe_named_keys {
-            let entity_addr = EntityAddr::new_system(contract_hash.value());
+            let entity_addr = EntityAddr::new_system(entity_hash.value());
 
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                     .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
 
+                let entry_key = Key::NamedKey(entry_addr);
+
                 let named_key_value = NamedKeyValue::from_concrete_values(key, string)
                     .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
-
-                let entry_key = Key::NamedKey(entry_addr);
 
                 self.tracking_copy
                     .borrow_mut()
@@ -358,11 +364,11 @@ where
 
         package.insert_entity_version(
             self.config.new_protocol_version().value().major,
-            contract_hash,
+            entity_hash,
         );
 
         self.tracking_copy.borrow_mut().write(
-            Key::Package(contract.package_hash().value()),
+            Key::Package(entity.package_hash().value()),
             StoredValue::Package(package),
         );
 
@@ -370,11 +376,11 @@ where
             // Start pruning legacy records
             self.tracking_copy
                 .borrow_mut()
-                .prune(Key::Hash(contract.package_hash().value()));
+                .prune(Key::Hash(entity.package_hash().value()));
             self.tracking_copy
                 .borrow_mut()
-                .prune(Key::Hash(contract_hash.value()));
-            let contract_wasm_key = Key::Hash(contract.byte_code_hash().value());
+                .prune(Key::Hash(entity_hash.value()));
+            let contract_wasm_key = Key::Hash(entity.byte_code_hash().value());
 
             self.tracking_copy.borrow_mut().prune(contract_wasm_key);
         }
@@ -423,15 +429,29 @@ where
 
     fn retrieve_system_entity(
         &self,
-        contract_hash: AddressableEntityHash,
+        entity_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
     ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         debug!(%system_contract_type, "retrieve system entity");
+        if let Some(StoredValue::Contract(system_contract)) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::Hash(entity_hash.value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
+            })?
+        {
+            let named_keys = system_contract.named_keys().clone();
+            return Ok((system_contract.into(), Some(named_keys), PRUNE));
+        }
+
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
             .read(&Key::AddressableEntity(EntityAddr::new_system(
-                contract_hash.value(),
+                entity_hash.value(),
             )))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
@@ -440,21 +460,6 @@ where
             })?
         {
             return Ok((system_entity, None, NO_PRUNE));
-        }
-
-        if let Some(StoredValue::Contract(system_contract)) = self
-            .tracking_copy
-            .borrow_mut()
-            .read(&Key::Hash(contract_hash.value()))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                    system_contract_type.to_string(),
-                )
-            })?
-        {
-            let named_keys = system_contract.named_keys().clone();
-
-            return Ok((system_contract.into(), Some(named_keys), PRUNE));
         }
 
         Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
@@ -566,7 +571,7 @@ where
         debug!(?fee_handling, "create accumulation purse if required");
         match fee_handling {
             FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
-            FeeHandling::Accumulate => {}
+            FeeHandling::Accumulate | FeeHandling::None => {}
         }
         let mut address_generator = {
             let seed_bytes = (

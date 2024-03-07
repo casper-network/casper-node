@@ -937,7 +937,6 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
@@ -1213,7 +1212,7 @@ where
             } => {
                 let package = self.context.get_package(contract_package_hash)?;
 
-                let contract_version_key = match version {
+                let entity_version_key = match version {
                     Some(version) => EntityVersionKey::new(
                         self.context.protocol_version().value().major,
                         version,
@@ -1225,10 +1224,19 @@ where
                         }
                     },
                 };
+
+                if package.is_version_missing(entity_version_key) {
+                    return Err(ExecError::MissingEntityVersion(entity_version_key));
+                }
+
+                if !package.is_version_enabled(entity_version_key) {
+                    return Err(ExecError::DisabledEntityVersion(entity_version_key));
+                }
+
                 let entity_hash = package
-                    .lookup_entity_hash(contract_version_key)
+                    .lookup_entity_hash(entity_version_key)
                     .copied()
-                    .ok_or(ExecError::InvalidEntityVersion(contract_version_key))?;
+                    .ok_or(ExecError::MissingEntityVersion(entity_version_key))?;
 
                 let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
                     Key::addressable_entity_key(EntityKindTag::System, entity_hash)
@@ -1257,8 +1265,8 @@ where
         // Check for major version compatibility before calling
         if !entity.is_compatible_protocol_version(protocol_version) {
             return Err(ExecError::IncompatibleProtocolMajorVersion {
-                actual: entity.protocol_version().value().major,
                 expected: protocol_version.value().major,
+                actual: entity.protocol_version().value().major,
             });
         }
 

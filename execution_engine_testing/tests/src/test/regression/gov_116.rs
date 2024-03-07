@@ -1,12 +1,11 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    utils, ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -241,9 +240,8 @@ fn should_retain_genesis_validator_slot_protection() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = {
-        let engine_config = EngineConfigBuilder::default()
-            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
-            .build();
+        let chainspec = ChainspecConfig::default()
+            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS);
 
         let run_genesis_request = {
             let accounts = GENESIS_ACCOUNTS.clone();
@@ -260,7 +258,7 @@ fn should_retain_genesis_validator_slot_protection() {
             )
         };
 
-        let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
+        let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(chainspec);
         builder.run_genesis(run_genesis_request);
 
         let fund_request = TransferRequestBuilder::new(

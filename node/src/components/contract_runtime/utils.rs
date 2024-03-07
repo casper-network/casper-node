@@ -13,7 +13,7 @@ use crate::{
     fatal,
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
-use casper_execution_engine::engine_state::EngineState;
+use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
@@ -54,8 +54,8 @@ where
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn exec_or_requeue<REv>(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    execution_engine_v1: Arc<ExecutionEngineV1>,
     chainspec: Arc<Chainspec>,
     metrics: Arc<Metrics>,
     mut exec_queue: ExecQueue,
@@ -107,8 +107,8 @@ pub(super) async fn exec_or_requeue<REv>(
     } = match run_intensive_task(move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
-            engine_state.as_ref(),
             data_access_layer.as_ref(),
+            execution_engine_v1.as_ref(),
             chainspec.as_ref(),
             Some(contract_runtime_metrics),
             current_pre_state,

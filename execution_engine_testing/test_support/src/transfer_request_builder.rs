@@ -50,7 +50,7 @@ impl TransferRequestBuilder {
         0,
         true,
         true,
-        None,
+        0,
         500_000_000_000,
     );
     /// The default value used for `TransferRequest::state_hash`.
