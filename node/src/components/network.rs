@@ -275,8 +275,11 @@ where
         };
 
         // Start connection manager.
-        let rpc_builder =
-            transport::create_rpc_builder(&self.chain_info.networking_config, &self.config);
+        let rpc_builder = transport::create_rpc_builder(
+            &self.chain_info.networking_config,
+            &self.config,
+            &self.chain_info,
+        );
 
         // Setup connection manager, then learn all known addresses.
         let handshake_configuration = HandshakeConfiguration::new(

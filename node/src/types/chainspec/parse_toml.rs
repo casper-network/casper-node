@@ -27,6 +27,7 @@ use super::{
 struct TomlNetwork {
     name: String,
     maximum_handshake_message_size: u32,
+    maximum_frame_size: u32,
     networking_config: PerChannel<JulietConfig>,
 }
 
@@ -64,6 +65,7 @@ impl From<&Chainspec> for TomlChainspec {
             name: chainspec.network_config.name.clone(),
             maximum_handshake_message_size: chainspec.network_config.maximum_handshake_message_size,
             networking_config: chainspec.network_config.networking_config,
+            maximum_frame_size: chainspec.network_config.maximum_frame_size,
         };
 
         let core = chainspec.core_config.clone();
@@ -104,6 +106,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         accounts_config,
         maximum_handshake_message_size: toml_chainspec.network.maximum_handshake_message_size,
         networking_config: toml_chainspec.network.networking_config,
+        maximum_frame_size: toml_chainspec.network.maximum_frame_size,
     };
 
     // global_state_update.toml must live in the same directory as chainspec.toml.

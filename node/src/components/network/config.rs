@@ -38,9 +38,6 @@ const DEFAULT_BUBBLE_TIMEOUTS: bool = true;
 /// Default value for error timeout.
 const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
 
-/// Default max frame size
-const DEFAULT_MAX_FRAME_SIZE: u32 = 4096;
-
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -65,7 +62,6 @@ impl Default for Config {
             conman: Default::default(),
             bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
             error_timeout: DEFAULT_ERROR_TIMEOUT,
-            max_frame_size: DEFAULT_MAX_FRAME_SIZE,
         }
     }
 }
@@ -139,8 +135,6 @@ pub struct Config {
     pub bubble_timeouts: bool,
     /// The maximum time a peer is allowed to take to receive an error.
     pub error_timeout: TimeDiff,
-    /// The maximum frame size.
-    pub max_frame_size: u32,
 }
 
 #[cfg(test)]

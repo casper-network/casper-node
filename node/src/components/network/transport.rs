@@ -3,9 +3,8 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{marker::PhantomData, pin::Pin, time::Duration};
+use std::{marker::PhantomData, pin::Pin};
 
-use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -22,6 +21,7 @@ use crate::{
 };
 
 use super::{
+    chain_info::ChainInfo,
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
     error::{ConnectionError, MessageReceiverError},
     handshake::HandshakeConfiguration,
@@ -34,9 +34,10 @@ use super::{
 pub(super) fn create_rpc_builder(
     juliet_config: &PerChannel<JulietConfig>,
     config: &Config,
+    chain_info: &ChainInfo,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
-        juliet::protocol::ProtocolBuilder::new().max_frame_size(config.max_frame_size),
+        juliet::protocol::ProtocolBuilder::new().max_frame_size(chain_info.maximum_frame_size),
         |protocol, (channel, juliet_config)| {
             protocol.channel_config(channel.into_channel_id(), juliet_config.into())
         },
