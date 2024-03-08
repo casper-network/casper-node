@@ -198,6 +198,9 @@ impl From<SpeculativeExecutionError> for binary_port::ErrorCode {
         match error {
             SpeculativeExecutionError::NewRequest(_) => binary_port::ErrorCode::InvalidTransaction,
             SpeculativeExecutionError::EngineState(error) => error.into(),
+            SpeculativeExecutionError::NativeNotSupported => {
+                binary_port::ErrorCode::UnsupportedRequest
+            }
         }
     }
 }

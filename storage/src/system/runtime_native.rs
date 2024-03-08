@@ -363,13 +363,6 @@ where
         &self.id
     }
 
-    pub fn maybe_transaction_hash(&self) -> Option<TransactionHash> {
-        match self.id {
-            Id::Transaction(ret) => Some(ret),
-            Id::Seed(_) => None,
-        }
-    }
-
     pub fn phase(&self) -> Phase {
         self.phase
     }

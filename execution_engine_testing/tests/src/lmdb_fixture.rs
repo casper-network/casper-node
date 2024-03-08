@@ -88,6 +88,7 @@ pub fn builder_from_global_state_fixture(
         LmdbWasmTestBuilder::open(
             &path_to_gs,
             ChainspecConfig::default(),
+            lmdb_fixture_state.genesis_protocol_version(),
             lmdb_fixture_state.post_state_hash,
         ),
         lmdb_fixture_state,

@@ -337,6 +337,7 @@ impl LmdbWasmTestBuilder {
     fn create_or_open<T: AsRef<Path>>(
         global_state_dir: T,
         chainspec: ChainspecConfig,
+        protocol_version: ProtocolVersion,
         mode: GlobalStateMode,
     ) -> Self {
         let _ = env_logger::try_init();
@@ -383,7 +384,8 @@ impl LmdbWasmTestBuilder {
             state: global_state,
             max_query_depth,
         });
-        let engine_config = chainspec.engine_config();
+        let mut engine_config = chainspec.engine_config();
+        engine_config.set_protocol_version(protocol_version);
         let engine_state = ExecutionEngineV1::new(engine_config);
 
         let post_state_hash = mode.post_state_hash();
@@ -436,10 +438,16 @@ impl LmdbWasmTestBuilder {
     pub fn open<T: AsRef<OsStr> + ?Sized>(
         data_dir: &T,
         chainspec: ChainspecConfig,
+        protocol_version: ProtocolVersion,
         post_state_hash: Digest,
     ) -> Self {
         let global_state_path = Self::global_state_dir(data_dir);
-        Self::open_raw(global_state_path, chainspec, post_state_hash)
+        Self::open_raw(
+            global_state_path,
+            chainspec,
+            protocol_version,
+            post_state_hash,
+        )
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -448,11 +456,13 @@ impl LmdbWasmTestBuilder {
     pub fn open_raw<T: AsRef<Path>>(
         global_state_dir: T,
         chainspec: ChainspecConfig,
+        protocol_version: ProtocolVersion,
         post_state_hash: Digest,
     ) -> Self {
         Self::create_or_open(
             global_state_dir,
             chainspec,
+            protocol_version,
             GlobalStateMode::Open(post_state_hash),
         )
     }
@@ -469,6 +479,7 @@ impl LmdbWasmTestBuilder {
         let mut builder = Self::create_or_open(
             temp_dir.path(),
             chainspec,
+            DEFAULT_PROTOCOL_VERSION,
             GlobalStateMode::Create(database_flags),
         );
 
@@ -536,7 +547,7 @@ impl LmdbWasmTestBuilder {
         self
     }
 
-    /// Runs a [`TransferRequest`].
+    /// Runs a [`TransferRequest`] and commits the resulting effects.
     pub fn transfer_and_commit(&mut self, mut transfer_request: TransferRequest) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
         transfer_request.set_state_hash_and_config(pre_state_hash, self.native_runtime_config());

@@ -8,7 +8,7 @@ use crate::{
             runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
             system_provider::SystemProvider, Mint,
         },
-        runtime_native::RuntimeNative,
+        runtime_native::{Id, RuntimeNative},
     },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
 };
@@ -16,9 +16,9 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, Transfer, TransferAddr, TransferV2, TransferV2Addr, URef,
-    U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Digest, Gas, InitiatorAddr, Key, Phase,
+    PublicKey, StoredValue, SystemEntityRegistry, TransactionHash, TransactionV1Hash, Transfer,
+    TransferAddr, TransferV2, TransferV2Addr, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -218,8 +218,9 @@ where
             self.address_generator().create_address(),
         ));
         let key = Key::Transfer(transfer_addr);
-        let Some(txn_hash) = self.maybe_transaction_hash() else {
-            return Err(Error::RecordTransferFailure)
+        let txn_hash = match self.id() {
+            Id::Transaction(txn_hash) => *txn_hash,
+            Id::Seed(seed) => TransactionHash::V1(TransactionV1Hash::new(Digest::hash(seed))),
         };
         let from = InitiatorAddr::AccountHash(self.get_caller());
         let fee = Gas::zero(); // TODO

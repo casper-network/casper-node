@@ -399,7 +399,7 @@ mod fixture {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             );
         })
