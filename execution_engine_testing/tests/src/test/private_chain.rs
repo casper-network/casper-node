@@ -155,8 +155,8 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
 
 static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<GenesisRequest> = Lazy::new(|| {
     GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG.clone(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )

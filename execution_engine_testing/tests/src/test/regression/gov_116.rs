@@ -251,8 +251,8 @@ fn should_retain_genesis_validator_slot_protection() {
                 .build();
 
             GenesisRequest::new(
-                *DEFAULT_GENESIS_CONFIG_HASH,
-                *DEFAULT_PROTOCOL_VERSION,
+                DEFAULT_GENESIS_CONFIG_HASH,
+                DEFAULT_PROTOCOL_VERSION,
                 exec_config,
                 DEFAULT_CHAINSPEC_REGISTRY.clone(),
             )

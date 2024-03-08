@@ -1333,7 +1333,7 @@ where
     /// Gets [`EraValidators`].
     pub fn get_era_validators(&mut self) -> EraValidators {
         let state_hash = self.get_post_state_hash();
-        let request = EraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let request = EraValidatorsRequest::new(state_hash, DEFAULT_PROTOCOL_VERSION);
         let result = self.data_access_layer.era_validators(request);
 
         if let EraValidatorsResult::Success { era_validators } = result {

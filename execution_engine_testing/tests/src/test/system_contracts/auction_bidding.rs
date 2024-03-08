@@ -549,7 +549,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 
-    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);

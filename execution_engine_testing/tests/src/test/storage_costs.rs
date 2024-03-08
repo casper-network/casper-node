@@ -118,7 +118,7 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
-        .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();

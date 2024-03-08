@@ -31,13 +31,11 @@ static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
         MessageLimits::default(),
     )
 });
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        DEFAULT_PROTOCOL_VERSION.value().major,
-        DEFAULT_PROTOCOL_VERSION.value().minor,
-        DEFAULT_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    DEFAULT_PROTOCOL_VERSION.value().major,
+    DEFAULT_PROTOCOL_VERSION.value().minor,
+    DEFAULT_PROTOCOL_VERSION.value().patch + 1,
+);
 
 fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32>) -> Vec<u8> {
     let module = builder::module()
@@ -261,8 +259,8 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     //
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
-        .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-        .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+        .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
+        .with_new_protocol_version(NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 

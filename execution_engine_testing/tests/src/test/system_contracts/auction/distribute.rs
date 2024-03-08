@@ -3043,7 +3043,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let new_seigniorage_multiplier = Ratio::new_raw(1, 10);
     let new_round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE * new_seigniorage_multiplier;
 
-    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
     let sem_ver = old_protocol_version.value();
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);

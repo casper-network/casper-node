@@ -46,7 +46,7 @@ pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
 /// Default protocol version.
-pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]

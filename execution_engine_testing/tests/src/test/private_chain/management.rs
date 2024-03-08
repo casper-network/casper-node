@@ -110,8 +110,8 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         .build();
 
     let modified_genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );

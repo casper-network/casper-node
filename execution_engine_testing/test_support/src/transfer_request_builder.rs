@@ -80,7 +80,7 @@ impl TransferRequestBuilder {
             config: Self::DEFAULT_CONFIG,
             state_hash: Self::DEFAULT_STATE_HASH,
             block_time: BlockTime::new(DEFAULT_BLOCK_TIME),
-            protocol_version: *DEFAULT_PROTOCOL_VERSION,
+            protocol_version: DEFAULT_PROTOCOL_VERSION,
             transaction_hash: None,
             initiator: InitiatorAddr::PublicKey(DEFAULT_ACCOUNT_PUBLIC_KEY.clone()),
             authorization_keys: iter::once(*DEFAULT_ACCOUNT_ADDR).collect(),

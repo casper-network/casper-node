@@ -45,14 +45,12 @@ const TOKEN_AMOUNT: u64 = 1_000_000;
 const ARG_PURSE_NAME: &str = "purse_name";
 const TEST_PURSE_NAME: &str = "test";
 
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 const HOST_FUNCTION_COST_CHANGE: HostFunctionCost = 13_730_593; // random prime number
@@ -720,8 +718,8 @@ fn make_wasm_config(
 
 fn make_upgrade_request() -> ProtocolUpgradeConfig {
     UpgradeRequestBuilder::new()
-        .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-        .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+        .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+        .with_new_protocol_version(NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build()
 }

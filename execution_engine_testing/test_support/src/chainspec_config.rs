@@ -135,7 +135,7 @@ impl ChainspecConfig {
             .build();
 
         Ok(GenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
             genesis_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),

@@ -1,5 +1,3 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, TransferRequestBuilder,
     UpgradeRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
@@ -17,14 +15,12 @@ const VALIDATOR_STAKE: u64 = 1_000_000_000;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 fn generate_secret_keys() -> impl Iterator<Item = SecretKey> {
     (1u64..).map(|i| {
@@ -56,8 +52,8 @@ fn regression_20220221_should_distribute_to_many_validators() {
     let mut upgrade_request = UpgradeRequestBuilder::default()
         .with_new_validator_slots(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT + 1)
         .with_pre_state_hash(builder.get_post_state_hash())
-        .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-        .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+        .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+        .with_new_protocol_version(NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
@@ -118,7 +114,7 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     let step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
+        .with_protocol_version(NEW_PROTOCOL_VERSION)
         // Next era id is used for returning future era validators, which we don't need to inspect
         // in this test.
         .with_next_era_id(era_id)

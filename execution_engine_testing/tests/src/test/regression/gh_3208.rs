@@ -133,7 +133,7 @@ fn should_initialize_default_vesting_schedule() {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             )
             .is_success(),
@@ -171,8 +171,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
     };
 
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -258,7 +258,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -274,7 +274,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -303,8 +303,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
     };
 
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -337,7 +337,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )

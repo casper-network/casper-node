@@ -32,8 +32,8 @@ fn test_check_transfer_success_with_source_only() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -93,8 +93,8 @@ fn test_check_transfer_success_with_source_only_errors() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -154,8 +154,8 @@ fn test_check_transfer_success_with_source_and_target() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );

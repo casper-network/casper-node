@@ -157,8 +157,8 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
 pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> GenesisRequest {
     let config = create_genesis_config(accounts);
     GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )

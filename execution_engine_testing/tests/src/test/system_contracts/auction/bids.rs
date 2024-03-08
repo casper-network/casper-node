@@ -704,8 +704,8 @@ fn should_get_first_seigniorage_recipients() {
         .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
         .build();
     let run_genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -869,8 +869,8 @@ fn should_release_founder_stake() {
             .build();
 
         GenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
-            *DEFAULT_PROTOCOL_VERSION,
+            DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_PROTOCOL_VERSION,
             exec_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )
@@ -2468,8 +2468,8 @@ fn should_not_undelegate_vfta_holder_stake() {
             .build();
 
         GenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
-            *DEFAULT_PROTOCOL_VERSION,
+            DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_PROTOCOL_VERSION,
             exec_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )
@@ -2658,8 +2658,8 @@ fn should_release_vfta_holder_stake() {
             .build();
 
         GenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
-            *DEFAULT_PROTOCOL_VERSION,
+            DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_PROTOCOL_VERSION,
             genesis_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         )

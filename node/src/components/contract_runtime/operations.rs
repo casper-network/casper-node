@@ -522,7 +522,7 @@ where
                 .map_err(SpeculativeExecutionError::from)
         }
         UserRequest::Transfer(_transfer_request) => {
-            todo!("route native transactions to data access layer, but don't commit them");
+            Err(SpeculativeExecutionError::NativeNotSupported)
         }
     }
 }

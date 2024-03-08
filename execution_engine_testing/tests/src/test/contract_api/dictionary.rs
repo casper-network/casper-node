@@ -522,8 +522,8 @@ fn should_query_dictionary_items_with_test_builder() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );

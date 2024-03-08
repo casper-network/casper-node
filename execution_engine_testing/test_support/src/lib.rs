@@ -81,9 +81,9 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
-
 /// Default genesis config hash.
-pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
+pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
+
 /// Default account secret key.
 pub static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
@@ -98,9 +98,9 @@ pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 /// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000_u64;
 /// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
 /// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
@@ -127,7 +127,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     ret
 });
 /// Default [`ProtocolVersion`].
-pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V2_0_0);
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 /// Default payment.
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 /// Default [`WasmConfig`].
@@ -160,7 +160,7 @@ pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
 pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
     ChainspecConfig::create_genesis_request_from_production_chainspec(
         DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_PROTOCOL_VERSION,
     )
     .expect("must create the request")
 });

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
@@ -7,8 +9,6 @@ use casper_types::{
     account::AccountHash, system::handle_payment::ACCUMULATION_PURSE_KEY, EntityAddr, EraId,
     FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
 };
-use once_cell::sync::Lazy;
-use std::collections::BTreeSet;
 
 use crate::{
     lmdb_fixture,
@@ -16,14 +16,12 @@ use crate::{
     wasm_utils,
 };
 
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 #[ignore]
 #[test]
@@ -212,7 +210,7 @@ fn should_distribute_accumulated_fees_to_admins() {
     let mut administrative_accounts: BTreeSet<AccountHash> = BTreeSet::new();
     administrative_accounts.insert(*DEFAULT_ADMIN_ACCOUNT_ADDR);
 
-    let result = builder.distribute_fees(None, *DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
+    let result = builder.distribute_fees(None, DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
 
     assert!(result.is_success(), "expected success not: {:?}", result);
 
@@ -267,8 +265,8 @@ fn should_accumulate_fees_after_upgrade() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(EraId::default())
             .with_fee_handling(FeeHandling::Accumulate)
             .build()

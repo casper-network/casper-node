@@ -188,6 +188,9 @@ pub enum SpeculativeExecutionError {
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
     EngineState(#[from] EngineStateError),
+    /// Native transactions are not supported.
+    #[error("native transactions cannot be speculatively executed")]
+    NativeNotSupported,
 }
 
 impl From<SpeculativeExecutionError> for binary_port::ErrorCode {

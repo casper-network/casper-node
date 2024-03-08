@@ -46,14 +46,12 @@ const NEW_UNDELEGATE_COST: u32 = 2_500_000_000;
 const NEW_REDELEGATE_COST: u32 = 2_500_000_000;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 const ARG_PURSE_NAME: &str = "purse_name";
 const NAMED_PURSE_NAME: &str = "purse_1";
@@ -185,8 +183,8 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
     };
@@ -455,8 +453,8 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
     };
@@ -900,8 +898,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
     };

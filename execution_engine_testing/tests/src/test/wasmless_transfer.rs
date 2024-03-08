@@ -868,7 +868,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major,
         old_protocol_version.value().minor,
@@ -884,7 +884,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
