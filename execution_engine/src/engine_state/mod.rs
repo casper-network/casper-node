@@ -171,7 +171,7 @@ impl ExecutionEngineV1 {
         let session_execution_kind = match &session {
             Session::Stored(invocation_target) => match ExecutionKind::new_stored(
                 &mut *tracking_copy.borrow_mut(),
-                invocation_target.clone(),
+                invocation_target,
                 session_entry_point,
                 &entity_named_keys,
                 protocol_version,
@@ -184,7 +184,7 @@ impl ExecutionEngineV1 {
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Standard,
                 module_bytes,
-            } => ExecutionKind::new_standard(module_bytes, false),
+            } => ExecutionKind::new_standard(module_bytes),
             Session::ModuleBytes {
                 kind: TransactionSessionKind::Installer,
                 module_bytes,
@@ -200,9 +200,7 @@ impl ExecutionEngineV1 {
                 module_bytes,
                 ..
             } => ExecutionKind::new_isolated(module_bytes),
-            Session::DeployModuleBytes(module_bytes) => {
-                ExecutionKind::new_standard(module_bytes, true)
-            }
+            Session::DeployModuleBytes(module_bytes) => ExecutionKind::new_deploy(module_bytes),
         };
 
         // Get account main purse balance key
@@ -276,12 +274,12 @@ impl ExecutionEngineV1 {
         // payment_code_spec_6: system contract validity
         let Some(payment_purse_key) =
             handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY).copied() else {
-            return Ok(ExecutionResult::precondition_failure(Error::Deploy));
+            return Ok(ExecutionResult::precondition_failure(Error::FailedToGetPaymentPurse));
         };
 
         let payment_purse_uref = payment_purse_key
             .into_uref()
-            .ok_or(Error::InvalidKeyVariant)?;
+            .ok_or_else(|| Error::InvalidKeyVariant(payment_purse_key))?;
 
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
@@ -332,7 +330,7 @@ impl ExecutionEngineV1 {
                 Payment::Stored(invocation_target) => {
                     match ExecutionKind::new_stored(
                         &mut *tracking_copy.borrow_mut(),
-                        invocation_target.clone(),
+                        invocation_target,
                         payment_entry_point,
                         &entity_named_keys,
                         protocol_version,
@@ -344,7 +342,7 @@ impl ExecutionEngineV1 {
                     }
                 }
                 Payment::ModuleBytes(module_bytes) => {
-                    match ExecutionKind::new_for_payment(module_bytes) {
+                    match ExecutionKind::new_standard_for_payment(module_bytes) {
                         Ok(execution_kind) => Some(execution_kind),
                         Err(error) => {
                             return Ok(ExecutionResult::precondition_failure(error));
@@ -466,7 +464,11 @@ impl ExecutionEngineV1 {
         let payment_purse_key: Key =
             match handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY) {
                 Some(key) => *key,
-                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+                None => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::FailedToGetPaymentPurse,
+                    ))
+                }
             };
         let purse_balance_key = match tracking_copy
             .borrow_mut()

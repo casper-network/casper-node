@@ -25,7 +25,7 @@ use casper_types::{
 };
 use tempfile::TempDir;
 
-use super::{ExecError, RuntimeContext};
+use super::{CallingAddContractVersion, ExecError, RuntimeContext};
 use crate::engine_state::EngineConfig;
 
 const TXN_HASH_RAW: [u8; 32] = [1u8; 32];
@@ -163,7 +163,7 @@ fn new_runtime_context<'a>(
         Vec::default(),
         U512::MAX,
         EntryPointType::Session,
-        false,
+        CallingAddContractVersion::Forbidden,
     );
 
     (runtime_context, tempdir)
@@ -431,7 +431,7 @@ fn contract_key_addable_valid() {
         Vec::default(),
         U512::zero(),
         EntryPointType::Session,
-        false,
+        CallingAddContractVersion::Forbidden,
     );
 
     assert!(runtime_context
@@ -490,7 +490,7 @@ fn contract_key_addable_invalid() {
         Vec::default(),
         U512::zero(),
         EntryPointType::Session,
-        false,
+        CallingAddContractVersion::Forbidden,
     );
 
     let result = runtime_context.metered_add_gs(contract_key, named_uref_tuple);

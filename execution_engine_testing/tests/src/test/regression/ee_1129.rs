@@ -2,7 +2,7 @@ use casper_wasm::builder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_types::{GenesisAccount, GenesisValidator};
+use casper_types::{GenesisAccount, GenesisValidator, Key};
 
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -253,7 +253,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -297,7 +297,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -348,7 +348,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -396,7 +396,7 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
         .cloned()
         .expect("should have error");
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );

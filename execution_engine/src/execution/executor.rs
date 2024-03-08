@@ -22,7 +22,7 @@ use crate::{
     },
     execution::ExecError,
     runtime::{Runtime, RuntimeStack},
-    runtime_context::RuntimeContext,
+    runtime_context::{CallingAddContractVersion, RuntimeContext},
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -89,15 +89,14 @@ impl Executor {
 
         let entity_key = Key::addressable_entity_key(entity_kind.tag(), entity_hash);
 
-        let allow_casper_add_contract_version = match execution_kind {
-            ExecutionKind::Standard {
-                allow_casper_add_contract_version,
-                ..
-            } => allow_casper_add_contract_version,
+        let calling_add_contract_version = match execution_kind {
             ExecutionKind::Installer(_)
             | ExecutionKind::Upgrader(_)
-            | ExecutionKind::Stored { .. } => true,
-            ExecutionKind::Isolated(_) => false,
+            | ExecutionKind::Stored { .. }
+            | ExecutionKind::Deploy(_) => CallingAddContractVersion::Allowed,
+            ExecutionKind::Standard(_) | ExecutionKind::Isolated(_) => {
+                CallingAddContractVersion::Forbidden
+            }
         };
 
         let context = self.create_runtime_context(
@@ -118,16 +117,17 @@ impl Executor {
             gas_limit,
             spending_limit,
             EntryPointType::Session,
-            allow_casper_add_contract_version,
+            calling_add_contract_version,
         );
 
         let mut runtime = Runtime::new(context);
 
         let result = match execution_kind {
-            ExecutionKind::Standard { module_bytes, .. }
+            ExecutionKind::Standard(module_bytes)
             | ExecutionKind::Installer(module_bytes)
             | ExecutionKind::Upgrader(module_bytes)
-            | ExecutionKind::Isolated(module_bytes) => {
+            | ExecutionKind::Isolated(module_bytes)
+            | ExecutionKind::Deploy(module_bytes) => {
                 runtime.execute_module_bytes(module_bytes, stack)
             }
             ExecutionKind::Stored {
@@ -239,7 +239,7 @@ impl Executor {
 
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
         let entity_key = entity_addr.into();
-        let allow_casper_add_contract_version = false;
+        let calling_add_contract_version = CallingAddContractVersion::Forbidden;
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
@@ -258,7 +258,7 @@ impl Executor {
             gas_limit,
             remaining_spending_limit,
             EntryPointType::AddressableEntity,
-            allow_casper_add_contract_version,
+            calling_add_contract_version,
         );
 
         let mut runtime = Runtime::new(runtime_context);
@@ -321,7 +321,7 @@ impl Executor {
         gas_limit: Gas,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
-        allow_casper_add_contract_version: bool,
+        calling_add_contract_version: CallingAddContractVersion,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -350,7 +350,7 @@ impl Executor {
             transfers,
             remaining_spending_limit,
             entry_point_type,
-            allow_casper_add_contract_version,
+            calling_add_contract_version,
         )
     }
 

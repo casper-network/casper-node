@@ -108,7 +108,7 @@ pub use block::{
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ACCOUNT_BYTE_CODE_HASH};
+pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,

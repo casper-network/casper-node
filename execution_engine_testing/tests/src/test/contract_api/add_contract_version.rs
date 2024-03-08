@@ -87,6 +87,6 @@ fn should_disallow_add_contract_version_via_transaction_v1_standard() {
 
 #[ignore]
 #[test]
-fn should_allow_add_contract_version_via_transaction_v1_isolated() {
+fn should_disallow_add_contract_version_via_transaction_v1_isolated() {
     try_add_contract_version(TransactionSessionKind::Isolated, false)
 }

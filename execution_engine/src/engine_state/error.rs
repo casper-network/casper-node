@@ -66,8 +66,8 @@ pub enum Error {
     #[error("Mint error: {0}")]
     Mint(String),
     /// Invalid key variant.
-    #[error("Unsupported key type")]
-    InvalidKeyVariant,
+    #[error("Unsupported key type: {0}")]
+    InvalidKeyVariant(Key),
     /// Protocol upgrade error.
     #[error("Protocol upgrade error: {0}")]
     ProtocolUpgrade(#[from] ProtocolUpgradeError),
@@ -131,6 +131,9 @@ pub enum Error {
     /// Deprecated functionality.
     #[error("Deprecated: {0}")]
     Deprecated(String),
+    /// Failed to get the payment purse from the handle-payment named keys.
+    #[error("Failed to get the payment purse from the handle-payment named keys")]
+    FailedToGetPaymentPurse,
 }
 
 impl Error {
@@ -198,7 +201,6 @@ impl From<Error> for binary_port::ErrorCode {
             Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
             Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
             Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::UnsupportedProtocolVersion,
-            Error::Deploy => binary_port::ErrorCode::InvalidTransaction,
             _ => binary_port::ErrorCode::InternalError,
         }
     }
