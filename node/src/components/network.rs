@@ -276,9 +276,9 @@ where
 
         // Start connection manager.
         let rpc_builder = transport::create_rpc_builder(
-            self.chain_info.networking_config.clone(),
-            self.config.send_buffer_size,
-            self.config.ack_timeout,
+            &self.chain_info.networking_config,
+            &self.config,
+            &self.chain_info,
         );
 
         // Setup connection manager, then learn all known addresses.
@@ -301,6 +301,7 @@ where
             self.our_id,
             Box::new(protocol_handler),
             rpc_builder,
+            self.config.conman,
         );
         self.conman = Some(conman);
         self.learn_known_addresses();

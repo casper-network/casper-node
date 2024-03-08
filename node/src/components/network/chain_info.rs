@@ -26,6 +26,8 @@ pub(crate) struct ChainInfo {
     pub(super) network_name: String,
     /// The maximum handshake message size, as supplied from the chainspec.
     pub(super) maximum_handshake_message_size: u32,
+    /// The maximum frame size for network transport, as supplied from the chainspec.
+    pub maximum_frame_size: u32,
     /// The protocol version.
     pub(super) protocol_version: ProtocolVersion,
     /// The hash of the chainspec.
@@ -45,6 +47,7 @@ impl ChainInfo {
             protocol_version: ProtocolVersion::V1_0_0,
             chainspec_hash: Digest::hash(format!("{}-chainspec", network_name)),
             networking_config: Default::default(),
+            maximum_frame_size: 4096,
         }
     }
 
@@ -74,6 +77,7 @@ impl From<&Chainspec> for ChainInfo {
             protocol_version: chainspec.protocol_version(),
             chainspec_hash: chainspec.hash(),
             networking_config: chainspec.network_config.networking_config,
+            maximum_frame_size: chainspec.network_config.maximum_frame_size,
         }
     }
 }

@@ -5,7 +5,6 @@
 
 use std::{marker::PhantomData, pin::Pin};
 
-use casper_types::TimeDiff;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -22,34 +21,35 @@ use crate::{
 };
 
 use super::{
+    chain_info::ChainInfo,
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
     error::{ConnectionError, MessageReceiverError},
     handshake::HandshakeConfiguration,
-    Channel, Event, FromIncoming, Identity, Payload, PerChannel, Transport,
+    Channel, Config, Event, FromIncoming, Identity, Payload, PerChannel, Transport,
 };
 
-/// Creats a new RPC builder with the currently fixed Juliet configuration.
+/// Creates a new RPC builder with Juliet configuration as specified in the config and chainspec.
 ///
 /// The resulting `RpcBuilder` can be reused for multiple connections.
 pub(super) fn create_rpc_builder(
-    juliet_config: PerChannel<JulietConfig>,
-    buffer_size: PerChannel<Option<usize>>,
-    ack_timeout: TimeDiff,
+    juliet_config: &PerChannel<JulietConfig>,
+    config: &Config,
+    chain_info: &ChainInfo,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
-        juliet::protocol::ProtocolBuilder::new(),
+        juliet::protocol::ProtocolBuilder::new().max_frame_size(chain_info.maximum_frame_size),
         |protocol, (channel, juliet_config)| {
             protocol.channel_config(channel.into_channel_id(), juliet_config.into())
         },
     );
 
     // If buffer_size is not specified, `in_flight_limit * 2` is used:
-    let buffer_size = buffer_size.map(|channel, maybe_buffer_size| {
+    let buffer_size = config.send_buffer_size.map(|channel, maybe_buffer_size| {
         maybe_buffer_size.unwrap_or((2 * juliet_config.get(channel).in_flight_limit).into())
     });
 
     let io_core = buffer_size.into_iter().fold(
-        juliet::io::IoCoreBuilder::new(protocol),
+        juliet::io::IoCoreBuilder::new(protocol).error_timeout(config.error_timeout.into()),
         |io_core, (channel, buffer_size)| {
             io_core.buffer_size(channel.into_channel_id(), buffer_size)
         },
@@ -58,8 +58,8 @@ pub(super) fn create_rpc_builder(
     juliet::rpc::RpcBuilder::new(io_core)
         // We currently disable bubble timeouts due to not having enough data on whether nodes can
         // process data fast enough in all cases. For now, we just warn.
-        .with_bubble_timeouts(false)
-        .with_default_timeout(ack_timeout.into())
+        .with_bubble_timeouts(config.bubble_timeouts)
+        .with_default_timeout(config.ack_timeout.into())
 }
 
 /// Adapter for incoming Juliet requests.

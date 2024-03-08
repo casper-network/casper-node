@@ -23,7 +23,7 @@ pub struct PerChannel<T> {
 }
 
 impl<T> PerChannel<T> {
-    /// Returns tbuffer_sizehe value stored for the given channel.
+    /// Returns data value stored for the given channel.
     #[inline(always)]
     pub const fn get(&self, channel: Channel) -> &T {
         match channel {

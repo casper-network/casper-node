@@ -19,10 +19,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use casper_types::PublicKey;
+use casper_types::{PublicKey, TimeDiff};
+use datasize::DataSize;
 use futures::{TryFuture, TryFutureExt};
 use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use thiserror::Error;
 use tokio::{
@@ -71,29 +72,30 @@ pub(crate) struct ConMan {
     shutdown: DropSwitch<ObservableFuse>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(DataSize, Debug, Copy, Clone, Deserialize, Serialize)]
 /// Configuration settings for the connection manager.
-struct Config {
-    /// The timeout for one TCP to be connection to be established, from a single `connect` call.
-    tcp_connect_timeout: Duration,
+pub struct Config {
+    /// The timeout for a single underlying TCP connection to be established.
+    tcp_connect_timeout: TimeDiff,
     /// Maximum time allowed for TLS setup and handshaking to proceed.
-    setup_timeout: Duration,
+    setup_timeout: TimeDiff,
     /// How often to reattempt a connection.
     ///
     /// At one second, 8 attempts means that the last attempt will be delayed for 128 seconds.
+    #[data_size(skip)]
     tcp_connect_attempts: NonZeroUsize,
     /// Base delay for the backoff, grows exponentially until `tcp_connect_attempts` maxes out.
-    tcp_connect_base_backoff: Duration,
+    tcp_connect_base_backoff: TimeDiff,
     /// How long to back off from reconnecting to an address after a failure that indicates a
     /// significant problem.
-    significant_error_backoff: Duration,
+    significant_error_backoff: TimeDiff,
     /// How long to back off from reconnecting to an address if the error is likely not going to
     /// change for a long time.
-    permanent_error_backoff: Duration,
-    /// How long to wait before reconnecting when a succesful outgoing connection is lost.
-    successful_reconnect_delay: Duration,
+    permanent_error_backoff: TimeDiff,
+    /// How long to wait before reconnecting when a successful outgoing connection is lost.
+    successful_reconnect_delay: TimeDiff,
     /// The minimum time a connection must have successfully served data to not be seen as flaky.
-    flaky_connection_threshold: Duration,
+    flaky_connection_threshold: TimeDiff,
     /// Number of incoming connections before refusing to accept any new ones.
     max_incoming_connections: usize,
     /// Number of outgoing connections before stopping to connect to learned addresses.
@@ -269,8 +271,8 @@ impl ConMan {
         our_id: NodeId,
         protocol_handler: Box<dyn ProtocolHandler>,
         rpc_builder: RpcBuilder<{ super::Channel::COUNT }>,
+        cfg: Config,
     ) -> Self {
-        let cfg = Config::default();
         let ctx = Arc::new(ConManContext {
             cfg,
             protocol_handler,
@@ -450,7 +452,7 @@ impl ConManContext {
             }
         }
 
-        // Our initial check whether or not we can connect was succesful, spawn a handler.
+        // Our initial check whether or not we can connect was successful, spawn a handler.
         let span = error_span!("outgoing", %peer_addr);
         trace!(%peer_addr, "learned about address");
 
@@ -528,7 +530,7 @@ async fn handle_incoming(
         peer_id,
         handshake_outcome,
     } = match tokio::time::timeout(
-        ctx.cfg.setup_timeout,
+        ctx.cfg.setup_timeout.into(),
         ctx.protocol_handler.setup_incoming(stream),
     )
     .await
@@ -720,7 +722,7 @@ impl OutgoingHandler {
                     // Regular connection closure, i.e. without an error reported.
 
                     // Judge how long the connection was active.
-                    let delay = if duration > ctx.cfg.flaky_connection_threshold {
+                    let delay = if duration > ctx.cfg.flaky_connection_threshold.into() {
                         rate_limited!(LOST_CONNECTION, |dropped| info!(
                             dropped,
                             "lost connection, will reconnect"
@@ -734,7 +736,7 @@ impl OutgoingHandler {
                         ctx.cfg.significant_error_backoff
                     };
 
-                    tokio::time::sleep(delay).await;
+                    tokio::time::sleep(delay.into()).await;
 
                     // After this, the loop will repeat, triggering a reconnect.
                 }
@@ -745,11 +747,11 @@ impl OutgoingHandler {
                 }
                 Err(OutgoingError::FailedToCompleteHandshake(err)) => {
                     debug!(%err, "failed to complete handshake");
-                    break Instant::now() + ctx.cfg.significant_error_backoff;
+                    break Instant::now() + ctx.cfg.significant_error_backoff.into();
                 }
                 Err(OutgoingError::LoopbackEncountered) => {
                     info!("found loopback");
-                    break Instant::now() + ctx.cfg.permanent_error_backoff;
+                    break Instant::now() + ctx.cfg.permanent_error_backoff.into();
                 }
                 Err(OutgoingError::ReconnectionAttemptsExhausted(err)) => {
                     // We could not connect to the address, so we are going to forget it.
@@ -765,14 +767,14 @@ impl OutgoingHandler {
                         |dropped| warn!(%err, dropped, "encountered juliet RPC error")
                     );
                     // TODO: If there was a user error, try to extract a reconnection hint.
-                    break Instant::now() + ctx.cfg.significant_error_backoff;
+                    break Instant::now() + ctx.cfg.significant_error_backoff.into();
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
                     // This is "our bad", but the peer has been informed of our address now.
                     // TODO: When an incoming connection is made (from the peer), consider clearing
                     //       this faster.
                     debug!("should be incoming connection");
-                    break Instant::now() + ctx.cfg.permanent_error_backoff;
+                    break Instant::now() + ctx.cfg.permanent_error_backoff.into();
                 }
             }
         };
@@ -806,8 +808,8 @@ impl OutgoingHandler {
     async fn connect_and_serve(&mut self) -> Result<Duration, OutgoingError> {
         let stream = retry_with_exponential_backoff(
             self.ctx.cfg.tcp_connect_attempts,
-            self.ctx.cfg.tcp_connect_base_backoff,
-            || connect(self.ctx.cfg.tcp_connect_timeout, self.peer_addr),
+            self.ctx.cfg.tcp_connect_base_backoff.into(),
+            || connect(self.ctx.cfg.tcp_connect_timeout.into(), self.peer_addr),
         )
         .await
         .map_err(OutgoingError::ReconnectionAttemptsExhausted)?;
@@ -816,7 +818,7 @@ impl OutgoingHandler {
             peer_id,
             handshake_outcome,
         } = tokio::time::timeout(
-            self.ctx.cfg.setup_timeout,
+            self.ctx.cfg.setup_timeout.into(),
             self.ctx.protocol_handler.setup_outgoing(stream),
         )
         .await
@@ -1036,19 +1038,31 @@ impl Display for Direction {
     }
 }
 
+const DEFAULT_TCP_CONNECT_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
+const DEFAULT_SETUP_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
+const DEFAULT_TCP_CONNECT_ATTEMPTS: usize = 8;
+const DEFAULT_TCP_CONNECT_BASE_BACKOFF: TimeDiff = TimeDiff::from_seconds(1);
+const DEFAULT_SIGNIFICANT_ERROR_BACKOFF: TimeDiff = TimeDiff::from_seconds(60);
+const DEFAULT_PERMANENT_ERROR_BACKOFF: TimeDiff = TimeDiff::from_seconds(10 * 60);
+const DEFAULT_SUCCESSFUL_RECONNECT_DELAY: TimeDiff = TimeDiff::from_seconds(1);
+const DEFAULT_FLAKY_CONNECTION_THRESHOLD: TimeDiff = TimeDiff::from_seconds(60);
+const DEFAULT_MAX_INCOMING_CONNECTIONS: usize = 10_000;
+const DEFAULT_MAX_OUTGOING_CONNECTIONS: usize = 10_000;
+
 impl Default for Config {
     fn default() -> Self {
         Self {
-            tcp_connect_timeout: Duration::from_secs(10),
-            setup_timeout: Duration::from_secs(10),
-            tcp_connect_attempts: NonZeroUsize::new(8).unwrap(),
-            tcp_connect_base_backoff: Duration::from_secs(1),
-            significant_error_backoff: Duration::from_secs(60),
-            permanent_error_backoff: Duration::from_secs(10 * 60),
-            flaky_connection_threshold: Duration::from_secs(60),
-            successful_reconnect_delay: Duration::from_secs(1),
-            max_incoming_connections: 10_000,
-            max_outgoing_connections: 10_000,
+            tcp_connect_timeout: DEFAULT_TCP_CONNECT_TIMEOUT,
+            setup_timeout: DEFAULT_SETUP_TIMEOUT,
+            tcp_connect_attempts: NonZeroUsize::new(DEFAULT_TCP_CONNECT_ATTEMPTS)
+                .expect("expected non-zero DEFAULT_TCP_CONNECT_ATTEMPTS"),
+            tcp_connect_base_backoff: DEFAULT_TCP_CONNECT_BASE_BACKOFF,
+            significant_error_backoff: DEFAULT_SIGNIFICANT_ERROR_BACKOFF,
+            permanent_error_backoff: DEFAULT_PERMANENT_ERROR_BACKOFF,
+            flaky_connection_threshold: DEFAULT_FLAKY_CONNECTION_THRESHOLD,
+            successful_reconnect_delay: DEFAULT_SUCCESSFUL_RECONNECT_DELAY,
+            max_incoming_connections: DEFAULT_MAX_INCOMING_CONNECTIONS,
+            max_outgoing_connections: DEFAULT_MAX_OUTGOING_CONNECTIONS,
         }
     }
 }
