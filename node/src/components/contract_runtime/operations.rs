@@ -158,7 +158,7 @@ pub fn execute_finalized_block(
             &system_costs,
         )?;
 
-        match request {
+        let (exec_result_and_msgs, should_commit) = match request {
             UserRequest::Execute(execute_request) => {
                 let exec_result_and_msgs = execute(
                     &scratch_state,
@@ -166,47 +166,39 @@ pub fn execute_finalized_block(
                     metrics.clone(),
                     execute_request,
                 )?;
-
                 trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
-                // As for now a given state is expected to exist.
-                let new_state_root_hash = commit_execution_result(
-                    &scratch_state,
-                    metrics.clone(),
-                    state_root_hash,
-                    txn_hash,
-                    &exec_result_and_msgs.execution_result,
-                )?;
-                execution_artifacts.push(ExecutionArtifact::new(
-                    txn_hash,
-                    txn_header,
-                    ExecutionResult::from(exec_result_and_msgs.execution_result),
-                    exec_result_and_msgs.messages,
-                ));
-                state_root_hash = new_state_root_hash;
+                (exec_result_and_msgs, true)
             }
             UserRequest::Transfer(transfer_request) => {
                 let gas = transfer_request.gas();
-                // native transfer auto-commits
                 let transfer_result = data_access_layer.transfer(transfer_request);
-                // if let TransferResult::Success {
-                //     post_state_hash, ..
-                // } = &transfer_result
-                // {
-                //     state_root_hash = *post_state_hash;
-                // }
                 trace!(%txn_hash, ?transfer_result, "native transfer result");
                 let Ok(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 };
-                let exec_result_and_msgs = ExecutionResultAndMessages::from(exec_result);
-                execution_artifacts.push(ExecutionArtifact::new(
-                    txn_hash,
-                    txn_header,
-                    ExecutionResult::from(exec_result_and_msgs.execution_result),
-                    exec_result_and_msgs.messages,
-                ));
+                (ExecutionResultAndMessages::from(exec_result), true)
             }
+        };
+
+        if should_commit {
+            let new_state_root_hash = commit_execution_result(
+                &scratch_state,
+                metrics.clone(),
+                state_root_hash,
+                txn_hash,
+                &exec_result_and_msgs.execution_result,
+            )?;
+            state_root_hash = new_state_root_hash;
         }
+
+        let exec_result = ExecutionResult::from(exec_result_and_msgs.execution_result);
+        let msgs = exec_result_and_msgs.messages;
+        execution_artifacts.push(ExecutionArtifact::new(
+            txn_hash,
+            txn_header,
+            exec_result,
+            msgs,
+        ));
     }
 
     // Write the transaction approvals' and execution results' checksums to global state.
