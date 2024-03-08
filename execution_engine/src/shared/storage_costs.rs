@@ -9,7 +9,7 @@ use casper_types::{
 };
 
 /// Default gas cost per byte stored.
-pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 630_000;
+pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 1_117_587;
 
 /// Represents a cost table for storage costs.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]

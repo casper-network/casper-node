@@ -191,6 +191,7 @@ pub(crate) struct MainReactor {
     upgrade_timeout: TimeDiff,
     sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
+    prevent_validator_shutdown: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -216,7 +217,7 @@ impl reactor::Reactor for MainReactor {
             ),
 
             MainEvent::FatalAnnouncement(fatal_ann) => {
-                if self.consensus.is_active_validator() {
+                if self.consensus.is_active_validator() && self.prevent_validator_shutdown {
                     warn!(%fatal_ann, "consensus is active, not shutting down");
                     Effects::new()
                 } else {
@@ -290,18 +291,21 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::UpgradeWatcherAnnouncement(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
+            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement(
+                maybe_next_upgrade,
+            )) => {
                 // register activation point of upgrade w/ block accumulator
-                self.block_accumulator
-                    .register_activation_point(next_upgrade.activation_point());
+                self.block_accumulator.register_activation_point(
+                    maybe_next_upgrade
+                        .as_ref()
+                        .map(|next_upgrade| next_upgrade.activation_point()),
+                );
                 reactor::wrap_effects(
                     MainEvent::UpgradeWatcher,
                     self.upgrade_watcher.handle_event(
                         effect_builder,
                         rng,
-                        upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                        upgrade_watcher::Event::GotNextUpgrade(maybe_next_upgrade),
                     ),
                 )
             }
@@ -1001,6 +1005,7 @@ impl reactor::Reactor for MainReactor {
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let protocol_version = chainspec.protocol_config.version;
+        let prevent_validator_shutdown = config.value().node.prevent_validator_shutdown;
 
         let trusted_hash = config.value().node.trusted_hash;
         let (root_dir, config) = config.into_parts();
@@ -1200,11 +1205,24 @@ impl reactor::Reactor for MainReactor {
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
+            prevent_validator_shutdown,
         };
         info!("MainReactor: instantiated");
-        let effects = effect_builder
-            .immediately()
-            .event(|()| MainEvent::ReactorCrank);
+
+        // If there's an upgrade staged with the same activation point as the current one, we must
+        // shut down immediately for upgrade.
+        let should_upgrade_immediately = reactor.upgrade_watcher.next_upgrade_activation_point()
+            == Some(reactor.chainspec.protocol_config.activation_point.era_id());
+        let effects = if should_upgrade_immediately {
+            info!("MainReactor: immediate shutdown for upgrade");
+            effect_builder
+                .immediately()
+                .event(|()| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade))
+        } else {
+            effect_builder
+                .immediately()
+                .event(|()| MainEvent::ReactorCrank)
+        };
         Ok((reactor, effects))
     }
 

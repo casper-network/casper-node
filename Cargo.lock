@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "7.0.0"
+version = "7.0.1"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "7.0.0"
+version = "7.0.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.5.5"
+version = "1.5.6"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -4046,14 +4046,14 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.8.6"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b9d9a46eff5b4ff64b45a9e316a6d1e0bc719ef429cbec4dc630684212bfdf9"
+checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
 dependencies = [
  "libc",
  "log",
  "wasi",
- "windows-sys 0.45.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -5315,6 +5315,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "regression_20240105"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "remove-associated-key"
 version = "0.1.0"
 dependencies = [
@@ -6194,7 +6202,7 @@ dependencies = [
  "autocfg",
  "bytes",
  "libc",
- "mio 0.8.6",
+ "mio 0.8.11",
  "num_cpus",
  "pin-project-lite",
  "socket2",

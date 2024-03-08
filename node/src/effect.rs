@@ -993,13 +993,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces upgrade activation point read.
-    pub(crate) async fn announce_upgrade_activation_point_read(self, next_upgrade: NextUpgrade)
+    pub(crate) async fn upgrade_watcher_announcement(self, maybe_next_upgrade: Option<NextUpgrade>)
     where
         REv: From<UpgradeWatcherAnnouncement>,
     {
         self.event_queue
             .schedule(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
+                UpgradeWatcherAnnouncement(maybe_next_upgrade),
                 QueueKind::Control,
             )
             .await
@@ -1705,13 +1705,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
+    pub(crate) async fn request_appendable_block(
+        self,
+        timestamp: Timestamp,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock
     where
         REv: From<DeployBufferRequest>,
     {
         self.make_request(
             |responder| DeployBufferRequest::GetAppendableBlock {
                 timestamp,
+                request_expiry,
                 responder,
             },
             QueueKind::Consensus,
