@@ -9,6 +9,7 @@ use std::{
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::{AccountHash, ActionThresholds, AssociatedKeys},
+    addressable_entity::{NamedKeyAddr, NamedKeyValue},
     binary_port::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
         ConsensusStatus, ConsensusValidatorChanges, DictionaryItemIdentifier, ErrorCode,
@@ -21,7 +22,7 @@ use casper_types::{
     testing::TestRng,
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
-    GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
+    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
     SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef,
 };
 use juliet::{
@@ -56,6 +57,7 @@ struct TestData {
     secret_signing_key: Arc<SecretKey>,
     state_root_hash: Digest,
     test_account_hash: AccountHash,
+    test_entity_addr: EntityAddr,
     test_dict_seed_uref: URef,
 }
 
@@ -174,6 +176,7 @@ async fn setup() -> (
                 secret_signing_key,
                 state_root_hash,
                 test_account_hash: effects.test_account_hash,
+                test_entity_addr: effects.test_entity_addr,
                 test_dict_seed_uref: effects.test_dict_seed_uref,
             },
         ),
@@ -183,6 +186,7 @@ async fn setup() -> (
 fn test_effects(rng: &mut TestRng) -> TestEffects {
     // we set up some basic data for global state tests, including an account and a dictionary
     let account_hash = AccountHash::new(rng.gen());
+    let entity_addr = rng.gen();
     let dict_seed_uref = rng.gen();
     let dict_key = Key::dictionary(dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes());
     let dict_value = CLValueDictionary::new(
@@ -208,9 +212,23 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
             ActionThresholds::default(),
         ))),
     ));
+    effects.push(Transform::new(
+        Key::NamedKey(
+            NamedKeyAddr::new_from_string(entity_addr, TEST_DICT_NAME.to_owned())
+                .expect("should create named key addr"),
+        ),
+        TransformKind::Write(StoredValue::NamedKey(
+            NamedKeyValue::from_concrete_values(
+                Key::URef(dict_seed_uref),
+                TEST_DICT_NAME.to_owned(),
+            )
+            .expect("should create named key value"),
+        )),
+    ));
     TestEffects {
         effects,
         test_account_hash: account_hash,
+        test_entity_addr: entity_addr,
         test_dict_seed_uref: dict_seed_uref,
     }
 }
@@ -218,6 +236,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
 struct TestEffects {
     effects: Effects,
     test_account_hash: AccountHash,
+    test_entity_addr: EntityAddr,
     test_dict_seed_uref: URef,
 }
 
@@ -278,8 +297,9 @@ async fn binary_port_component() {
                 highest_block,
                 secret_signing_key,
                 state_root_hash,
-                test_dict_seed_uref,
                 test_account_hash,
+                test_entity_addr,
+                test_dict_seed_uref,
             },
         ),
     ) = setup().await;
@@ -315,9 +335,15 @@ async fn binary_port_component() {
             test_dict_seed_uref,
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
-        get_dictionary_item_by_named_key(
+        get_dictionary_item_by_legacy_named_key(
             state_root_hash,
             test_account_hash,
+            TEST_DICT_NAME.to_owned(),
+            TEST_DICT_ITEM_KEY.to_owned(),
+        ),
+        get_dictionary_item_by_named_key(
+            state_root_hash,
+            test_entity_addr,
             TEST_DICT_NAME.to_owned(),
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
@@ -732,9 +758,35 @@ fn get_dictionary_item_by_seed_uref(
     }
 }
 
-fn get_dictionary_item_by_named_key(
+fn get_dictionary_item_by_legacy_named_key(
     state_root_hash: Digest,
     hash: AccountHash,
+    dictionary_name: String,
+    dictionary_item_key: String,
+) -> TestCase {
+    TestCase {
+        name: "get_dictionary_item_by_legacy_named_key",
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            identifier: DictionaryItemIdentifier::AccountNamedKey {
+                hash,
+                dictionary_name,
+                dictionary_item_key,
+            },
+        })),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| matches!(res.into_inner(), (StoredValue::CLValue(_), _)),
+            )
+        }),
+    }
+}
+
+fn get_dictionary_item_by_named_key(
+    state_root_hash: Digest,
+    addr: EntityAddr,
     dictionary_name: String,
     dictionary_item_key: String,
 ) -> TestCase {
@@ -742,8 +794,8 @@ fn get_dictionary_item_by_named_key(
         name: "get_dictionary_item_by_named_key",
         request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::AccountNamedKey {
-                hash,
+            identifier: DictionaryItemIdentifier::EntityNamedKey {
+                addr,
                 dictionary_name,
                 dictionary_item_key,
             },

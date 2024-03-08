@@ -8,18 +8,19 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    DictionaryAddr, HashAddr, URef,
+    DictionaryAddr, EntityAddr, HashAddr, URef,
 };
 
 const ACCOUNT_NAMED_KEY_TAG: u8 = 0;
 const CONTRACT_NAMED_KEY_TAG: u8 = 1;
-const UREF_TAG: u8 = 2;
-const DICTIONARY_ITEM_TAG: u8 = 3;
+const ENTITY_NAMED_KEY_TAG: u8 = 2;
+const UREF_TAG: u8 = 3;
+const DICTIONARY_ITEM_TAG: u8 = 4;
 
 /// Options for dictionary item lookups.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DictionaryItemIdentifier {
-    /// Lookup a dictionary item via an Account's named keys.
+    /// Lookup a dictionary item via an accounts named keys.
     AccountNamedKey {
         /// The account hash.
         hash: AccountHash,
@@ -28,10 +29,19 @@ pub enum DictionaryItemIdentifier {
         /// The dictionary item key formatted as a string.
         dictionary_item_key: String,
     },
-    /// Lookup a dictionary item via a Contract's named keys.
+    /// Lookup a dictionary item via a contracts named keys.
     ContractNamedKey {
         /// The contract hash.
         hash: HashAddr,
+        /// The named key under which the dictionary seed URef is stored.
+        dictionary_name: String,
+        /// The dictionary item key formatted as a string.
+        dictionary_item_key: String,
+    },
+    /// Lookup a dictionary item via an entities named keys.
+    EntityNamedKey {
+        /// The entity address.
+        addr: EntityAddr,
         /// The named key under which the dictionary seed URef is stored.
         dictionary_name: String,
         /// The dictionary item key formatted as a string.
@@ -101,6 +111,16 @@ impl ToBytes for DictionaryItemIdentifier {
                 dictionary_name.write_bytes(writer)?;
                 dictionary_item_key.write_bytes(writer)
             }
+            DictionaryItemIdentifier::EntityNamedKey {
+                addr,
+                dictionary_name,
+                dictionary_item_key,
+            } => {
+                ENTITY_NAMED_KEY_TAG.write_bytes(writer)?;
+                addr.write_bytes(writer)?;
+                dictionary_name.write_bytes(writer)?;
+                dictionary_item_key.write_bytes(writer)
+            }
             DictionaryItemIdentifier::URef {
                 seed_uref,
                 dictionary_item_key,
@@ -120,20 +140,29 @@ impl ToBytes for DictionaryItemIdentifier {
         U8_SERIALIZED_LENGTH
             + match self {
                 DictionaryItemIdentifier::AccountNamedKey {
-                    hash: key,
+                    hash,
                     dictionary_name,
                     dictionary_item_key,
                 } => {
-                    key.serialized_length()
+                    hash.serialized_length()
                         + dictionary_name.serialized_length()
                         + dictionary_item_key.serialized_length()
                 }
                 DictionaryItemIdentifier::ContractNamedKey {
-                    hash: key,
+                    hash,
                     dictionary_name,
                     dictionary_item_key,
                 } => {
-                    key.serialized_length()
+                    hash.serialized_length()
+                        + dictionary_name.serialized_length()
+                        + dictionary_item_key.serialized_length()
+                }
+                DictionaryItemIdentifier::EntityNamedKey {
+                    addr,
+                    dictionary_name,
+                    dictionary_item_key,
+                } => {
+                    addr.serialized_length()
                         + dictionary_name.serialized_length()
                         + dictionary_item_key.serialized_length()
                 }
@@ -170,6 +199,19 @@ impl FromBytes for DictionaryItemIdentifier {
                 Ok((
                     DictionaryItemIdentifier::ContractNamedKey {
                         hash: key,
+                        dictionary_name,
+                        dictionary_item_key,
+                    },
+                    remainder,
+                ))
+            }
+            ENTITY_NAMED_KEY_TAG => {
+                let (addr, remainder) = FromBytes::from_bytes(remainder)?;
+                let (dictionary_name, remainder) = String::from_bytes(remainder)?;
+                let (dictionary_item_key, remainder) = String::from_bytes(remainder)?;
+                Ok((
+                    DictionaryItemIdentifier::EntityNamedKey {
+                        addr,
                         dictionary_name,
                         dictionary_item_key,
                     },
