@@ -1,21 +1,42 @@
-use crate::{
-    system::runtime_native::Config as NativeRuntimeConfig, tracking_copy::TrackingCopyError,
-};
+use std::collections::BTreeSet;
+
+use serde::Serialize;
+use thiserror::Error;
+use tracing::error;
+
 use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     execution::Effects,
     system::{auction, auction::DelegationRate},
-    CLTyped, CLValue, Chainspec, Digest, ProtocolVersion, PublicKey, RuntimeArgs,
-    TransactionEntryPoint, TransactionHash, U512,
+    BlockTime, CLTyped, CLValue, CLValueError, Digest, InitiatorAddr, ProtocolVersion, PublicKey,
+    RuntimeArgs, TransactionHash, U512,
 };
-use std::collections::BTreeSet;
-use tracing::error;
+
+use crate::{
+    system::runtime_native::Config as NativeRuntimeConfig, tracking_copy::TrackingCopyError,
+};
+
+/// An error returned when constructing an [`AuctionMethod`] using invalid runtime args.
+#[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
+pub enum InvalidAuctionRuntimeArgs {
+    /// Required arg missing.
+    #[error("missing '{0}' arg")]
+    MissingArg(String),
+    /// Failed to parse the given arg.
+    #[error("failed to parse '{arg}' arg: {error}")]
+    CLValue {
+        /// The arg name.
+        arg: String,
+        /// The failure.
+        error: CLValueError,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuctionMethod {
     ActivateBid {
-        validator_public_key: PublicKey,
+        validator: PublicKey,
     },
     AddBid {
         public_key: PublicKey,
@@ -27,73 +48,33 @@ pub enum AuctionMethod {
         amount: U512,
     },
     Delegate {
-        delegator_public_key: PublicKey,
-        validator_public_key: PublicKey,
+        delegator: PublicKey,
+        validator: PublicKey,
         amount: U512,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     },
     Undelegate {
-        delegator_public_key: PublicKey,
-        validator_public_key: PublicKey,
+        delegator: PublicKey,
+        validator: PublicKey,
         amount: U512,
     },
     Redelegate {
-        delegator_public_key: PublicKey,
-        validator_public_key: PublicKey,
+        delegator: PublicKey,
+        validator: PublicKey,
         amount: U512,
         new_validator: PublicKey,
         minimum_delegation_amount: u64,
     },
 }
 
-#[allow(clippy::result_unit_err)]
 impl AuctionMethod {
-    pub fn from_parts(
-        entry_point: TransactionEntryPoint,
-        runtime_args: &RuntimeArgs,
-        chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
-        match entry_point {
-            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
-                error!(
-                    "attempt to get auction method using a non-auction entry point {}",
-                    entry_point
-                );
-                Err(())
-            }
-            TransactionEntryPoint::ActivateBid => {
-                Self::activate_bid_from_args(runtime_args, chainspec)
-            }
-            TransactionEntryPoint::AddBid => Self::add_bid_from_args(runtime_args, chainspec),
-            TransactionEntryPoint::WithdrawBid => {
-                Self::withdraw_bid_from_args(runtime_args, chainspec)
-            }
-            TransactionEntryPoint::Delegate => Self::delegate_from_args(runtime_args, chainspec),
-            TransactionEntryPoint::Undelegate => {
-                Self::undelegate_from_args(runtime_args, chainspec)
-            }
-            TransactionEntryPoint::Redelegate => {
-                Self::redelegate_from_args(runtime_args, chainspec)
-            }
-        }
+    pub fn new_activate_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+        let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+        Ok(Self::ActivateBid { validator })
     }
 
-    pub fn activate_bid_from_args(
-        runtime_args: &RuntimeArgs,
-        _chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
-        let validator_public_key: PublicKey =
-            Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
-        Ok(Self::ActivateBid {
-            validator_public_key,
-        })
-    }
-
-    pub fn add_bid_from_args(
-        runtime_args: &RuntimeArgs,
-        _chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
+    pub fn new_add_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -104,79 +85,72 @@ impl AuctionMethod {
         })
     }
 
-    pub fn withdraw_bid_from_args(
-        runtime_args: &RuntimeArgs,
-        _chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
+    pub fn new_withdraw_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         Ok(Self::WithdrawBid { public_key, amount })
     }
 
-    pub fn delegate_from_args(
+    pub fn new_delegate(
         runtime_args: &RuntimeArgs,
-        chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
-        let delegator_public_key = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
-        let validator_public_key = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+        max_delegators_per_validator: u32,
+        minimum_delegation_amount: u64,
+    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
+        let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+        let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
-        let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-
         Ok(Self::Delegate {
-            delegator_public_key,
-            validator_public_key,
+            delegator,
+            validator,
             amount,
             max_delegators_per_validator,
             minimum_delegation_amount,
         })
     }
 
-    pub fn undelegate_from_args(
-        runtime_args: &RuntimeArgs,
-        _chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
-        let delegator_public_key = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
-        let validator_public_key = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+    pub fn new_undelegate(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+        let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+        let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
         Ok(Self::Undelegate {
-            delegator_public_key,
-            validator_public_key,
+            delegator,
+            validator,
             amount,
         })
     }
 
-    pub fn redelegate_from_args(
+    pub fn new_redelegate(
         runtime_args: &RuntimeArgs,
-        chainspec: &Chainspec,
-    ) -> Result<Self, ()> {
-        let delegator_public_key = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
-        let validator_public_key = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
+        minimum_delegation_amount: u64,
+    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
+        let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
+        let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         let new_validator = Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-
         Ok(Self::Redelegate {
-            delegator_public_key,
-            validator_public_key,
+            delegator,
+            validator,
             amount,
             new_validator,
             minimum_delegation_amount,
         })
     }
 
-    fn get_named_argument<T: FromBytes + CLTyped>(args: &RuntimeArgs, name: &str) -> Result<T, ()> {
-        let arg: CLValue = args.get(name).cloned().ok_or(())?;
-        match arg.into_t() {
-            Ok(val) => Ok(val),
-            Err(err) => {
-                error!("{:?}", err);
-                Err(())
-            }
-        }
+    fn get_named_argument<T: FromBytes + CLTyped>(
+        args: &RuntimeArgs,
+        name: &str,
+    ) -> Result<T, InvalidAuctionRuntimeArgs> {
+        let arg: &CLValue = args
+            .get(name)
+            .ok_or_else(|| InvalidAuctionRuntimeArgs::MissingArg(name.to_string()))?;
+        arg.to_t()
+            .map_err(|error| InvalidAuctionRuntimeArgs::CLValue {
+                arg: name.to_string(),
+                error,
+            })
     }
 }
 
@@ -187,7 +161,7 @@ pub struct BiddingRequest {
     /// State root hash.
     state_hash: Digest,
     /// Block time represented as a unix timestamp.
-    block_time: u64,
+    block_time: BlockTime,
     /// The protocol version.
     protocol_version: ProtocolVersion,
     /// The auction method.
@@ -195,7 +169,7 @@ pub struct BiddingRequest {
     /// Transaction hash.
     transaction_hash: TransactionHash,
     /// Base account.
-    address: AccountHash,
+    initiator: InitiatorAddr,
     /// List of authorizing accounts.
     authorization_keys: BTreeSet<AccountHash>,
 }
@@ -206,10 +180,10 @@ impl BiddingRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: u64,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
-        address: AccountHash,
+        initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
         auction_method: AuctionMethod,
     ) -> Self {
@@ -219,7 +193,7 @@ impl BiddingRequest {
             block_time,
             protocol_version,
             transaction_hash,
-            address,
+            initiator,
             authorization_keys,
             auction_method,
         }
@@ -237,16 +211,16 @@ impl BiddingRequest {
         self.protocol_version
     }
 
-    pub fn auction_method(&self) -> AuctionMethod {
-        self.auction_method.clone()
+    pub fn auction_method(&self) -> &AuctionMethod {
+        &self.auction_method
     }
 
     pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
     }
 
-    pub fn address(&self) -> AccountHash {
-        self.address
+    pub fn initiator(&self) -> &InitiatorAddr {
+        &self.initiator
     }
 
     pub fn authorization_keys(&self) -> &BTreeSet<AccountHash> {

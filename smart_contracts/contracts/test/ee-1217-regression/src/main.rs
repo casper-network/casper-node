@@ -68,10 +68,10 @@ pub extern "C" fn withdraw_bid_session() {
 }
 
 fn activate_bid() {
-    let public_key: PublicKey = runtime::get_named_arg(auction::ARG_VALIDATOR_PUBLIC_KEY);
+    let public_key: PublicKey = runtime::get_named_arg(auction::ARG_VALIDATOR);
     let auction = system::get_auction();
     let args = runtime_args! {
-        auction::ARG_VALIDATOR_PUBLIC_KEY => public_key,
+        auction::ARG_VALIDATOR => public_key,
     };
     runtime::call_contract::<()>(auction, auction::METHOD_ACTIVATE_BID, args);
 }

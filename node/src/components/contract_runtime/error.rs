@@ -9,7 +9,9 @@ use casper_execution_engine::engine_state::{
     Error as EngineStateError, NewRequestError as NewExecuteRequestError,
 };
 use casper_storage::{
-    data_access_layer::{BlockRewardsError, FeeError, StepError},
+    data_access_layer::{
+        bidding::InvalidAuctionRuntimeArgs, BlockRewardsError, FeeError, StepError,
+    },
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
@@ -46,7 +48,7 @@ pub(crate) enum ContractRuntimeError {
 }
 
 /// Error returned if constructing a new user request fails.
-#[derive(Copy, Clone, Eq, PartialEq, Error, Serialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
 pub enum NewUserRequestError {
     /// The transaction is a native one, but the wrapped deploy is not a transfer.
     #[error("native transaction of deploy variant is not a transfer")]
@@ -54,6 +56,9 @@ pub enum NewUserRequestError {
     /// The transaction is a native version 1 variant, but has a custom entry point.
     #[error("cannot use custom variant for entry point in native transaction v1 {0}")]
     InvalidEntryPoint(TransactionHash),
+    /// The transaction is a native auction one, but the runtime args are invalid.
+    #[error(transparent)]
+    InvalidAuctionRuntimeArgs(#[from] InvalidAuctionRuntimeArgs),
     /// Error constructing a new execution request.
     #[error(transparent)]
     Execute(#[from] NewExecuteRequestError),

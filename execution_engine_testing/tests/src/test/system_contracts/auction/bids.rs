@@ -1893,12 +1893,12 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 #[test]
 fn should_handle_evictions() {
     let activate_bid = |builder: &mut LmdbWasmTestBuilder, validator_public_key: PublicKey| {
-        const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
+        const ARG_VALIDATOR: &str = "validator";
         let run_request = ExecuteRequestBuilder::standard(
             AccountHash::from(&validator_public_key),
             CONTRACT_ACTIVATE_BID,
             runtime_args! {
-                ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
+                ARG_VALIDATOR => validator_public_key,
             },
         )
         .build();

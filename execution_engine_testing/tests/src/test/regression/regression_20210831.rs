@@ -444,7 +444,7 @@ fn regression_20210831_should_fail_to_activate_bid() {
 
     let sender = *ACCOUNT_2_ADDR;
     let activate_bid_args = runtime_args! {
-        auction::ARG_VALIDATOR_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
     };
 
     let activate_bid_request_1 = ExecuteRequestBuilder::contract_call_by_hash(

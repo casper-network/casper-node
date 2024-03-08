@@ -683,15 +683,14 @@ pub trait Auction:
 
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
-    fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let provided_account_hash =
-            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+    fn activate_bid(&mut self, validator: PublicKey) -> Result<(), Error> {
+        let provided_account_hash = AccountHash::from_public_key(&validator, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
         }
 
-        let key = BidAddr::from(validator_public_key).into();
+        let key = BidAddr::from(validator).into();
         if let Some(BidKind::Validator(mut validator_bid)) = self.read_bid(&key)? {
             validator_bid.activate();
             self.write_bid(key, BidKind::Validator(validator_bid))?;

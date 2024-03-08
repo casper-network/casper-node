@@ -1,9 +1,10 @@
 //! Outcome of an `ExecutionRequest`.
 
 use std::collections::VecDeque;
+
 use tracing::{debug, trace};
 
-use casper_storage::data_access_layer::TransferResult;
+use casper_storage::data_access_layer::{BiddingResult, TransferResult};
 use casper_types::{
     bytesrepr::FromBytes,
     contract_messages::Messages,
@@ -316,28 +317,41 @@ impl ExecutionResult {
         (None, self)
     }
 
-    /// A temporary measure to keep things functioning mid-refactor.
-    #[allow(clippy::result_unit_err)]
-    pub fn from_transfer_result(transfer_result: TransferResult, gas: Gas) -> Result<Self, ()> {
+    /// Converts a transfer result to an execution result.
+    pub fn from_transfer_result(transfer_result: TransferResult, gas: Gas) -> Option<Self> {
         match transfer_result {
-            TransferResult::RootNotFound => {
-                Err(())
-            }
-            // native transfer is auto-commit...but execution results does not currently allow
-            // for a post state hash to be returned.
-            TransferResult::Success {
-                transfers, effects, .. // post_state_hash
-            } => {
-                Ok(ExecutionResult::Success {
-                    transfers,
+            TransferResult::RootNotFound => None,
+            TransferResult::Success { transfers, effects } => Some(ExecutionResult::Success {
+                transfers,
+                gas,
+                effects,
+                messages: Messages::default(),
+            }),
+            TransferResult::Failure(te) => {
+                Some(ExecutionResult::Failure {
+                    error: Error::Transfer(te),
+                    transfers: vec![],
                     gas,
-                    effects,
+                    effects: Effects::default(), // currently not returning effects on failure
                     messages: Messages::default(),
                 })
             }
-            TransferResult::Failure(te) => {
-                Ok(ExecutionResult::Failure {
-                    error: Error::Transfer(te),
+        }
+    }
+
+    /// Converts a bidding result to an execution result.
+    pub fn from_bidding_result(bidding_result: BiddingResult, gas: Gas) -> Option<Self> {
+        match bidding_result {
+            BiddingResult::RootNotFound => None,
+            BiddingResult::Success { effects, .. } => Some(ExecutionResult::Success {
+                transfers: vec![],
+                gas,
+                effects,
+                messages: Messages::default(),
+            }),
+            BiddingResult::Failure(te) => {
+                Some(ExecutionResult::Failure {
+                    error: Error::TrackingCopy(te),
                     transfers: vec![],
                     gas,
                     effects: Effects::default(), // currently not returning effects on failure

@@ -10,9 +10,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        BlockRewardsRequest, BlockRewardsResult, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest,
+        AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
+        FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -169,14 +170,31 @@ pub fn execute_finalized_block(
                 trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
                 (exec_result_and_msgs, true)
             }
-            UserRequest::Transfer(transfer_request) => {
+            UserRequest::Mint(transfer_request) => {
                 let gas = transfer_request.gas();
-                let transfer_result = data_access_layer.transfer(transfer_request);
+                let transfer_result = scratch_state.transfer(transfer_request);
                 trace!(%txn_hash, ?transfer_result, "native transfer result");
-                let Ok(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
+                let Some(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
                     return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 };
                 (ExecutionResultAndMessages::from(exec_result), true)
+            }
+            UserRequest::Auction(bidding_request) => {
+                // NOTE: native auction transactions auto-commit.
+                let gas = auction_gas(bidding_request.auction_method(), &system_costs);
+                let bidding_result = scratch_state.bidding(bidding_request);
+                trace!(?txn_hash, ?bidding_result, "native auction result");
+                if let BiddingResult::Success {
+                    post_state_hash, ..
+                } = &bidding_result
+                {
+                    state_root_hash = *post_state_hash;
+                }
+
+                let Some(exec_result) = EngineExecutionResult::from_bidding_result(bidding_result, gas) else {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                };
+                (ExecutionResultAndMessages::from(exec_result), false)
             }
         };
 
@@ -513,7 +531,7 @@ where
                 })
                 .map_err(SpeculativeExecutionError::from)
         }
-        UserRequest::Transfer(_transfer_request) => {
+        UserRequest::Mint(_) | UserRequest::Auction(_) => {
             Err(SpeculativeExecutionError::NativeNotSupported)
         }
     }
@@ -631,7 +649,8 @@ pub(crate) fn compute_execution_results_checksum<'a>(
 
 enum UserRequest {
     Execute(ExecuteRequest),
-    Transfer(TransferRequest),
+    Mint(TransferRequest),
+    Auction(BiddingRequest),
 }
 
 impl UserRequest {
@@ -644,61 +663,94 @@ impl UserRequest {
         native_runtime_config: NativeRuntimeConfig,
         system_costs: &SystemConfig,
     ) -> Result<Self, NewUserRequestError> {
-        if txn.is_native_mint() {
-            let txn_hash = txn.hash();
-            let initiator_addr = txn.initiator_addr();
-            let authorization_keys = txn.signers();
-
-            let v1_txn = match txn {
-                Transaction::Deploy(deploy) => {
-                    if !deploy.is_transfer() {
-                        return Err(NewUserRequestError::ExpectedNativeTransferDeploy(txn_hash));
-                    }
-                    let transfer_req = TransferRequest::with_runtime_args(
-                        native_runtime_config,
-                        state_hash,
-                        block_time,
-                        protocol_version,
-                        txn_hash,
-                        initiator_addr,
-                        authorization_keys,
-                        deploy.session().args().clone(),
-                        Gas::new(system_costs.mint_costs().transfer),
-                    );
-                    return Ok(UserRequest::Transfer(transfer_req));
-                }
-                Transaction::V1(v1_txn) => v1_txn,
-            };
-
-            match v1_txn.entry_point() {
-                TransactionEntryPoint::Custom(_) => {
-                    return Err(NewUserRequestError::InvalidEntryPoint(txn_hash));
-                }
-                TransactionEntryPoint::Transfer => {
-                    let transfer_req = TransferRequest::with_runtime_args(
-                        native_runtime_config,
-                        state_hash,
-                        block_time,
-                        protocol_version,
-                        txn_hash,
-                        initiator_addr,
-                        authorization_keys,
-                        v1_txn.take_args(),
-                        Gas::new(system_costs.mint_costs().transfer),
-                    );
-                    return Ok(UserRequest::Transfer(transfer_req));
-                }
-                TransactionEntryPoint::AddBid => todo!("make auction request"),
-                TransactionEntryPoint::WithdrawBid => todo!("make auction request"),
-                TransactionEntryPoint::Delegate => todo!("make auction request"),
-                TransactionEntryPoint::Undelegate => todo!("make auction request"),
-                TransactionEntryPoint::Redelegate => todo!("make auction request"),
-                TransactionEntryPoint::ActivateBid => todo!("make auction request"),
-            }
+        if !txn.is_native() {
+            let execute_req = ExecuteRequest::new(state_hash, block_time, txn, proposer)
+                .map_err(NewUserRequestError::Execute)?;
+            return Ok(UserRequest::Execute(execute_req));
         }
 
-        let execute_req = ExecuteRequest::new(state_hash, block_time, txn, proposer)
-            .map_err(NewUserRequestError::Execute)?;
-        Ok(UserRequest::Execute(execute_req))
+        let txn_hash = txn.hash();
+        let initiator_addr = txn.initiator_addr();
+        let authorization_keys = txn.signers();
+
+        // Return early for native deploy, i.e. a transfer.
+        let v1_txn = match txn {
+            Transaction::Deploy(deploy) => {
+                if !deploy.is_transfer() {
+                    return Err(NewUserRequestError::ExpectedNativeTransferDeploy(txn_hash));
+                }
+                let transfer_req = TransferRequest::with_runtime_args(
+                    native_runtime_config,
+                    state_hash,
+                    block_time,
+                    protocol_version,
+                    txn_hash,
+                    initiator_addr,
+                    authorization_keys,
+                    deploy.session().args().clone(),
+                    Gas::new(system_costs.mint_costs().transfer),
+                );
+                return Ok(UserRequest::Mint(transfer_req));
+            }
+            Transaction::V1(v1_txn) => v1_txn,
+        };
+
+        // Return early for native V1 mint transaction, i.e. a transfer.
+        let auction_method = match v1_txn.entry_point() {
+            TransactionEntryPoint::Custom(_) => {
+                return Err(NewUserRequestError::InvalidEntryPoint(txn_hash));
+            }
+            TransactionEntryPoint::Transfer => {
+                let transfer_req = TransferRequest::with_runtime_args(
+                    native_runtime_config,
+                    state_hash,
+                    block_time,
+                    protocol_version,
+                    txn_hash,
+                    initiator_addr,
+                    authorization_keys,
+                    v1_txn.take_args(),
+                    Gas::new(system_costs.mint_costs().transfer),
+                );
+                return Ok(UserRequest::Mint(transfer_req));
+            }
+            TransactionEntryPoint::AddBid => AuctionMethod::new_add_bid(v1_txn.args())?,
+            TransactionEntryPoint::WithdrawBid => AuctionMethod::new_withdraw_bid(v1_txn.args())?,
+            TransactionEntryPoint::Delegate => AuctionMethod::new_delegate(
+                v1_txn.args(),
+                native_runtime_config.max_delegators_per_validator(),
+                native_runtime_config.minimum_delegation_amount(),
+            )?,
+            TransactionEntryPoint::Undelegate => AuctionMethod::new_undelegate(v1_txn.args())?,
+            TransactionEntryPoint::Redelegate => AuctionMethod::new_redelegate(
+                v1_txn.args(),
+                native_runtime_config.minimum_delegation_amount(),
+            )?,
+            TransactionEntryPoint::ActivateBid => AuctionMethod::new_activate_bid(v1_txn.args())?,
+        };
+
+        // We're left with only native V1 auction transactions.
+        let bidding_req = BiddingRequest::new(
+            native_runtime_config,
+            state_hash,
+            block_time,
+            protocol_version,
+            txn_hash,
+            initiator_addr,
+            authorization_keys,
+            auction_method,
+        );
+        Ok(UserRequest::Auction(bidding_req))
+    }
+}
+
+fn auction_gas(method: &AuctionMethod, system_costs: &SystemConfig) -> Gas {
+    match method {
+        AuctionMethod::ActivateBid { .. } => Gas::new(system_costs.auction_costs().activate_bid),
+        AuctionMethod::AddBid { .. } => Gas::new(system_costs.auction_costs().add_bid),
+        AuctionMethod::WithdrawBid { .. } => Gas::new(system_costs.auction_costs().withdraw_bid),
+        AuctionMethod::Delegate { .. } => Gas::new(system_costs.auction_costs().delegate),
+        AuctionMethod::Undelegate { .. } => Gas::new(system_costs.auction_costs().undelegate),
+        AuctionMethod::Redelegate { .. } => Gas::new(system_costs.auction_costs().redelegate),
     }
 }

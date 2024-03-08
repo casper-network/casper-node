@@ -6,7 +6,7 @@ use super::super::TransactionV1ConfigFailure;
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::ARG_VALIDATOR_PUBLIC_KEY,
+    system::auction::ARG_VALIDATOR,
     CLType, CLTyped, CLValue, CLValueError, PublicKey, RuntimeArgs, TransferTarget, URef, U512,
 };
 
@@ -35,8 +35,7 @@ const REDELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("valid
 const REDELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
 const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("new_validator");
 
-const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> =
-    RequiredArg::new(ARG_VALIDATOR_PUBLIC_KEY);
+const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_VALIDATOR);
 
 struct RequiredArg<T> {
     name: &'static str,

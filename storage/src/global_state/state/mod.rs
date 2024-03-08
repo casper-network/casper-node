@@ -620,7 +620,7 @@ pub trait CommitProvider: StateProvider {
         let config = request.config();
         let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
 
-        let initiating_address = request.address();
+        let initiating_address = request.initiator().account_hash();
         let authorization_keys = request.authorization_keys();
         let transfer_config = config.transfer_config();
         let administrative_accounts = transfer_config.administrative_accounts();
@@ -651,13 +651,11 @@ pub trait CommitProvider: StateProvider {
             Phase::Session,
         );
 
-        let auction_method = request.auction_method();
+        let auction_method = request.auction_method().clone();
 
         let result = match auction_method {
-            AuctionMethod::ActivateBid {
-                validator_public_key,
-            } => runtime
-                .activate_bid(validator_public_key)
+            AuctionMethod::ActivateBid { validator } => runtime
+                .activate_bid(validator)
                 .map(|_| AuctionMethodRet::Unit)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
@@ -677,8 +675,8 @@ pub trait CommitProvider: StateProvider {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
             AuctionMethod::Delegate {
-                delegator_public_key,
-                validator_public_key,
+                delegator: delegator_public_key,
+                validator: validator_public_key,
                 amount,
                 max_delegators_per_validator,
                 minimum_delegation_amount,
@@ -693,8 +691,8 @@ pub trait CommitProvider: StateProvider {
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::Undelegate {
-                delegator_public_key,
-                validator_public_key,
+                delegator: delegator_public_key,
+                validator: validator_public_key,
                 amount,
             } => runtime
                 .undelegate(delegator_public_key, validator_public_key, amount)
@@ -703,8 +701,8 @@ pub trait CommitProvider: StateProvider {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
                 }),
             AuctionMethod::Redelegate {
-                delegator_public_key,
-                validator_public_key,
+                delegator: delegator_public_key,
+                validator: validator_public_key,
                 amount,
                 new_validator,
                 minimum_delegation_amount,

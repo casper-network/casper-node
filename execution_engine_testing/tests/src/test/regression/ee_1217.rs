@@ -623,7 +623,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
         None,
         CONTRACT_ACTIVATE_BID_ENTRYPOINT_SESSION,
         runtime_args! {
-            auction::ARG_VALIDATOR_PUBLIC_KEY => default_public_key_arg,
+            auction::ARG_VALIDATOR => default_public_key_arg,
         },
     )
     .build();
@@ -689,7 +689,7 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
         None,
         CONTRACT_ACTIVATE_BID_ENTRYPOINT_CONTRACT,
         runtime_args! {
-            auction::ARG_VALIDATOR_PUBLIC_KEY => default_public_key_arg,
+            auction::ARG_VALIDATOR => default_public_key_arg,
         },
     )
     .build();

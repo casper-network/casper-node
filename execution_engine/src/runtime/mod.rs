@@ -985,12 +985,9 @@ where
             auction::METHOD_ACTIVATE_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.activate_bid)?;
 
-                let validator_public_key: PublicKey =
-                    Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEY)?;
+                let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
 
-                runtime
-                    .activate_bid(validator_public_key)
-                    .map_err(Self::reverter)?;
+                runtime.activate_bid(validator).map_err(Self::reverter)?;
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
