@@ -4,6 +4,7 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_storage::{
     data_access_layer::{
         SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistrySelector,
@@ -111,8 +112,12 @@ fn generate_system_entity_registry_using_protocol_data(data_dir: &Path) {
 }
 
 fn generate_system_entity_registry_using_global_state(data_dir: &Path, state_hash: &str) {
-    let builder =
-        LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
+    let builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        hash_from_str(state_hash),
+    );
 
     let registry_req = SystemEntityRegistryRequest::new(
         builder.get_post_state_hash(),

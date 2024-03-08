@@ -1,4 +1,5 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     account::Account, addressable_entity::NamedKeys, bytesrepr::ToBytes, system::mint,
     AccessRights, AsymmetricType, CLTyped, CLValue, Key, PublicKey, StoredValue, URef, U512,
@@ -25,7 +26,12 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
 
     // Open the global state that should be in the supplied directory.
     let post_state_hash = hash_from_str(state_hash);
-    let test_builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), post_state_hash);
+    let test_builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        post_state_hash,
+    );
 
     let admin_values = matches.values_of("admin").expect("at least one argument");
 
