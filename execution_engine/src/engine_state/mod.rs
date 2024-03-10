@@ -20,7 +20,6 @@ use casper_storage::{
 };
 
 use casper_types::{
-    addressable_entity::EntityKind,
     system::{
         handle_payment::{self},
         HANDLE_PAYMENT,
@@ -242,9 +241,7 @@ impl ExecutionEngineV1 {
             }
         };
 
-        let entity_kind = entity.entity_kind();
-
-        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
+        let entity_addr = entity.entity_addr(entity_hash);
 
         let entity_named_keys = match tracking_copy
             .borrow_mut()
@@ -432,7 +429,6 @@ impl ExecutionEngineV1 {
                 match executor.exec_standard_payment(
                     payment_args,
                     &entity,
-                    entity_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -465,7 +461,6 @@ impl ExecutionEngineV1 {
                     payment_args,
                     entity_hash,
                     &entity,
-                    entity_kind,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -633,7 +628,6 @@ impl ExecutionEngineV1 {
                 session_args,
                 entity_hash,
                 &entity,
-                entity_kind,
                 &mut session_named_keys,
                 session_access_rights,
                 authorization_keys.clone(),
@@ -785,7 +779,6 @@ impl ExecutionEngineV1 {
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    EntityKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
                     blocktime,

@@ -351,7 +351,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 ],
                 CLType::Unit,
                 EntryPointAccess::Public,
-                EntryPointType::AddressableEntity,
+                EntryPointType::Called,
             );
 
             entry_points.add_entry_point(public_contract_entry_point);

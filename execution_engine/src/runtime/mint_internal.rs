@@ -143,7 +143,7 @@ where
     fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
         let maybe_value = self
             .context
-            .read_gs_direct(&Key::Balance(uref.addr()))
+            .read_gs_unsafe(&Key::Balance(uref.addr()))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {

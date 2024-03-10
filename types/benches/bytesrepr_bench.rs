@@ -473,7 +473,7 @@ fn sample_contract(entry_points_len: u8) -> AddressableEntity {
                 args,
                 casper_types::CLType::U512,
                 EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::AddressableEntity,
+                EntryPointType::Called,
             );
             tmp.add_entry_point(entry_point);
         });

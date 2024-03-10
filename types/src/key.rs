@@ -31,6 +31,7 @@ use rand::{
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use tracing::warn;
 
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
@@ -46,7 +47,10 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     package::PackageHash,
-    system::auction::{BidAddr, BidAddrTag},
+    system::{
+        auction::{BidAddr, BidAddrTag},
+        mint::BalanceHoldAddr,
+    },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
     TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
@@ -56,6 +60,7 @@ const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
+const BALANCE_HOLD_PREFIX: &str = "balance-hold-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
@@ -119,209 +124,6 @@ pub type PackageAddr = [u8; ADDR_LENGTH];
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
-#[allow(missing_docs)]
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum KeyTag {
-    Account = 0,
-    Hash = 1,
-    URef = 2,
-    Transfer = 3,
-    DeployInfo = 4,
-    EraInfo = 5,
-    Balance = 6,
-    Bid = 7,
-    Withdraw = 8,
-    Dictionary = 9,
-    SystemContractRegistry = 10,
-    EraSummary = 11,
-    Unbond = 12,
-    ChainspecRegistry = 13,
-    ChecksumRegistry = 14,
-    BidAddr = 15,
-    Package = 16,
-    AddressableEntity = 17,
-    ByteCode = 18,
-    Message = 19,
-    NamedKey = 20,
-}
-
-impl KeyTag {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..21) {
-            0 => KeyTag::Account,
-            1 => KeyTag::Hash,
-            2 => KeyTag::URef,
-            3 => KeyTag::Transfer,
-            4 => KeyTag::DeployInfo,
-            5 => KeyTag::EraInfo,
-            6 => KeyTag::Balance,
-            7 => KeyTag::Bid,
-            8 => KeyTag::Withdraw,
-            9 => KeyTag::Dictionary,
-            10 => KeyTag::SystemContractRegistry,
-            11 => KeyTag::EraSummary,
-            12 => KeyTag::Unbond,
-            13 => KeyTag::ChainspecRegistry,
-            14 => KeyTag::ChecksumRegistry,
-            15 => KeyTag::BidAddr,
-            16 => KeyTag::Package,
-            17 => KeyTag::AddressableEntity,
-            18 => KeyTag::ByteCode,
-            19 => KeyTag::Message,
-            20 => KeyTag::NamedKey,
-            _ => panic!(),
-        }
-    }
-}
-
-impl Display for KeyTag {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            KeyTag::Account => write!(f, "Account"),
-            KeyTag::Hash => write!(f, "Hash"),
-            KeyTag::URef => write!(f, "URef"),
-            KeyTag::Transfer => write!(f, "Transfer"),
-            KeyTag::DeployInfo => write!(f, "DeployInfo"),
-            KeyTag::EraInfo => write!(f, "EraInfo"),
-            KeyTag::Balance => write!(f, "Balance"),
-            KeyTag::Bid => write!(f, "Bid"),
-            KeyTag::Withdraw => write!(f, "Withdraw"),
-            KeyTag::Dictionary => write!(f, "Dictionary"),
-            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
-            KeyTag::EraSummary => write!(f, "EraSummary"),
-            KeyTag::Unbond => write!(f, "Unbond"),
-            KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
-            KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
-            KeyTag::BidAddr => write!(f, "BidAddr"),
-            KeyTag::Package => write!(f, "Package"),
-            KeyTag::AddressableEntity => write!(f, "AddressableEntity"),
-            KeyTag::ByteCode => write!(f, "ByteCode"),
-            KeyTag::Message => write!(f, "Message"),
-            KeyTag::NamedKey => write!(f, "NamedKey"),
-        }
-    }
-}
-
-impl ToBytes for KeyTag {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut result = bytesrepr::unchecked_allocate_buffer(self);
-        self.write_bytes(&mut result)?;
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        KEY_ID_SERIALIZED_LENGTH
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        writer.push(*self as u8);
-        Ok(())
-    }
-}
-
-impl FromBytes for KeyTag {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (id, rem) = u8::from_bytes(bytes)?;
-        let tag = match id {
-            tag if tag == KeyTag::Account as u8 => KeyTag::Account,
-            tag if tag == KeyTag::Hash as u8 => KeyTag::Hash,
-            tag if tag == KeyTag::URef as u8 => KeyTag::URef,
-            tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
-            tag if tag == KeyTag::DeployInfo as u8 => KeyTag::DeployInfo,
-            tag if tag == KeyTag::EraInfo as u8 => KeyTag::EraInfo,
-            tag if tag == KeyTag::Balance as u8 => KeyTag::Balance,
-            tag if tag == KeyTag::Bid as u8 => KeyTag::Bid,
-            tag if tag == KeyTag::Withdraw as u8 => KeyTag::Withdraw,
-            tag if tag == KeyTag::Dictionary as u8 => KeyTag::Dictionary,
-            tag if tag == KeyTag::SystemContractRegistry as u8 => KeyTag::SystemContractRegistry,
-            tag if tag == KeyTag::EraSummary as u8 => KeyTag::EraSummary,
-            tag if tag == KeyTag::Unbond as u8 => KeyTag::Unbond,
-            tag if tag == KeyTag::ChainspecRegistry as u8 => KeyTag::ChainspecRegistry,
-            tag if tag == KeyTag::ChecksumRegistry as u8 => KeyTag::ChecksumRegistry,
-            tag if tag == KeyTag::BidAddr as u8 => KeyTag::BidAddr,
-            tag if tag == KeyTag::Package as u8 => KeyTag::Package,
-            tag if tag == KeyTag::AddressableEntity as u8 => KeyTag::AddressableEntity,
-            tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
-            tag if tag == KeyTag::Message as u8 => KeyTag::Message,
-            tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
-            _ => return Err(Error::Formatting),
-        };
-        Ok((tag, rem))
-    }
-}
-
-/// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
-/// global state.
-#[repr(C)]
-#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-pub enum Key {
-    /// A `Key` under which a user account is stored.
-    Account(AccountHash),
-    /// A `Key` under which a smart contract is stored and which is the pseudo-hash of the
-    /// contract.
-    Hash(HashAddr),
-    /// A `Key` which is a [`URef`], under which most types of data can be stored.
-    URef(URef),
-    /// A `Key` under which a transfer is stored.
-    Transfer(TransferAddr),
-    /// A `Key` under which a deploy info is stored.
-    DeployInfo(DeployHash),
-    /// A `Key` under which an era info is stored.
-    EraInfo(EraId),
-    /// A `Key` under which a purse balance is stored.
-    Balance(URefAddr),
-    /// A `Key` under which bid information is stored.
-    Bid(AccountHash),
-    /// A `Key` under which withdraw information is stored.
-    Withdraw(AccountHash),
-    /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
-    /// which a dictionary is stored.
-    Dictionary(DictionaryAddr),
-    /// A `Key` under which system contract hashes are stored.
-    SystemEntityRegistry,
-    /// A `Key` under which current era info is stored.
-    EraSummary,
-    /// A `Key` under which unbond information is stored.
-    Unbond(AccountHash),
-    /// A `Key` under which chainspec and other hashes are stored.
-    ChainspecRegistry,
-    /// A `Key` under which a registry of checksums is stored.
-    ChecksumRegistry,
-    /// A `Key` under which bid information is stored.
-    BidAddr(BidAddr),
-    /// A `Key` under which package information is stored.
-    Package(PackageAddr),
-    /// A `Key` under which an addressable entity is stored.
-    AddressableEntity(EntityAddr),
-    /// A `Key` under which a byte code record is stored.
-    ByteCode(ByteCodeAddr),
-    /// A `Key` under which a message is stored.
-    Message(MessageAddr),
-    /// A `Key` under which a single named key entry is stored.
-    NamedKey(NamedKeyAddr),
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for Key {
-    fn schema_name() -> String {
-        String::from("Key")
-    }
-
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some(
-            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
-                user accounts) are stored in global state."
-                .to_string(),
-        );
-        schema_object.into()
-    }
-}
-
 /// Errors produced when converting a `String` into a `Key`.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -368,6 +170,8 @@ pub enum FromStrError {
     Message(contract_messages::FromStrError),
     /// Named key parse error.
     NamedKey(String),
+    /// Balance hold parse error.
+    BalanceHold(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -446,9 +250,204 @@ impl Display for FromStrError {
             FromStrError::NamedKey(error) => {
                 write!(f, "named-key from string error: {}", error)
             }
+            FromStrError::BalanceHold(error) => {
+                write!(f, "balance-hold from string error: {}", error)
+            }
+
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum KeyTag {
+    Account = 0,
+    Hash = 1,
+    URef = 2,
+    Transfer = 3,
+    DeployInfo = 4,
+    EraInfo = 5,
+    Balance = 6,
+    Bid = 7,
+    Withdraw = 8,
+    Dictionary = 9,
+    SystemContractRegistry = 10,
+    EraSummary = 11,
+    Unbond = 12,
+    ChainspecRegistry = 13,
+    ChecksumRegistry = 14,
+    BidAddr = 15,
+    Package = 16,
+    AddressableEntity = 17,
+    ByteCode = 18,
+    Message = 19,
+    NamedKey = 20,
+    BalanceHold = 21,
+}
+
+impl KeyTag {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..21) {
+            0 => KeyTag::Account,
+            1 => KeyTag::Hash,
+            2 => KeyTag::URef,
+            3 => KeyTag::Transfer,
+            4 => KeyTag::DeployInfo,
+            5 => KeyTag::EraInfo,
+            6 => KeyTag::Balance,
+            7 => KeyTag::Bid,
+            8 => KeyTag::Withdraw,
+            9 => KeyTag::Dictionary,
+            10 => KeyTag::SystemContractRegistry,
+            11 => KeyTag::EraSummary,
+            12 => KeyTag::Unbond,
+            13 => KeyTag::ChainspecRegistry,
+            14 => KeyTag::ChecksumRegistry,
+            15 => KeyTag::BidAddr,
+            16 => KeyTag::Package,
+            17 => KeyTag::AddressableEntity,
+            18 => KeyTag::ByteCode,
+            19 => KeyTag::Message,
+            20 => KeyTag::NamedKey,
+            21 => KeyTag::BalanceHold,
+            _ => panic!(),
+        }
+    }
+}
+
+impl Display for KeyTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            KeyTag::Account => write!(f, "Account"),
+            KeyTag::Hash => write!(f, "Hash"),
+            KeyTag::URef => write!(f, "URef"),
+            KeyTag::Transfer => write!(f, "Transfer"),
+            KeyTag::DeployInfo => write!(f, "DeployInfo"),
+            KeyTag::EraInfo => write!(f, "EraInfo"),
+            KeyTag::Balance => write!(f, "Balance"),
+            KeyTag::Bid => write!(f, "Bid"),
+            KeyTag::Withdraw => write!(f, "Withdraw"),
+            KeyTag::Dictionary => write!(f, "Dictionary"),
+            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
+            KeyTag::EraSummary => write!(f, "EraSummary"),
+            KeyTag::Unbond => write!(f, "Unbond"),
+            KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
+            KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
+            KeyTag::BidAddr => write!(f, "BidAddr"),
+            KeyTag::Package => write!(f, "Package"),
+            KeyTag::AddressableEntity => write!(f, "AddressableEntity"),
+            KeyTag::ByteCode => write!(f, "ByteCode"),
+            KeyTag::Message => write!(f, "Message"),
+            KeyTag::NamedKey => write!(f, "NamedKey"),
+            KeyTag::BalanceHold => write!(f, "BalanceHold"),
+        }
+    }
+}
+
+impl ToBytes for KeyTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        KEY_ID_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
+}
+
+impl FromBytes for KeyTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (id, rem) = u8::from_bytes(bytes)?;
+        let tag = match id {
+            tag if tag == KeyTag::Account as u8 => KeyTag::Account,
+            tag if tag == KeyTag::Hash as u8 => KeyTag::Hash,
+            tag if tag == KeyTag::URef as u8 => KeyTag::URef,
+            tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
+            tag if tag == KeyTag::DeployInfo as u8 => KeyTag::DeployInfo,
+            tag if tag == KeyTag::EraInfo as u8 => KeyTag::EraInfo,
+            tag if tag == KeyTag::Balance as u8 => KeyTag::Balance,
+            tag if tag == KeyTag::Bid as u8 => KeyTag::Bid,
+            tag if tag == KeyTag::Withdraw as u8 => KeyTag::Withdraw,
+            tag if tag == KeyTag::Dictionary as u8 => KeyTag::Dictionary,
+            tag if tag == KeyTag::SystemContractRegistry as u8 => KeyTag::SystemContractRegistry,
+            tag if tag == KeyTag::EraSummary as u8 => KeyTag::EraSummary,
+            tag if tag == KeyTag::Unbond as u8 => KeyTag::Unbond,
+            tag if tag == KeyTag::ChainspecRegistry as u8 => KeyTag::ChainspecRegistry,
+            tag if tag == KeyTag::ChecksumRegistry as u8 => KeyTag::ChecksumRegistry,
+            tag if tag == KeyTag::BidAddr as u8 => KeyTag::BidAddr,
+            tag if tag == KeyTag::Package as u8 => KeyTag::Package,
+            tag if tag == KeyTag::AddressableEntity as u8 => KeyTag::AddressableEntity,
+            tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
+            tag if tag == KeyTag::Message as u8 => KeyTag::Message,
+            tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
+            tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
+            _ => return Err(Error::Formatting),
+        };
+        Ok((tag, rem))
+    }
+}
+
+/// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
+/// global state.
+#[repr(C)]
+#[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub enum Key {
+    /// A `Key` under which a user account is stored.
+    Account(AccountHash),
+    /// A `Key` under which a smart contract is stored and which is the pseudo-hash of the
+    /// contract.
+    Hash(HashAddr),
+    /// A `Key` which is a [`URef`], under which most types of data can be stored.
+    URef(URef),
+    /// A `Key` under which a transfer is stored.
+    Transfer(TransferAddr),
+    /// A `Key` under which a deploy info is stored.
+    DeployInfo(DeployHash),
+    /// A `Key` under which an era info is stored.
+    EraInfo(EraId),
+    /// A `Key` under which a purse balance is stored.
+    Balance(URefAddr),
+    /// A `Key` under which bid information is stored.
+    Bid(AccountHash),
+    /// A `Key` under which withdraw information is stored.
+    Withdraw(AccountHash),
+    /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
+    /// which a dictionary is stored.
+    Dictionary(DictionaryAddr),
+    /// A `Key` under which system contract hashes are stored.
+    SystemEntityRegistry,
+    /// A `Key` under which current era info is stored.
+    EraSummary,
+    /// A `Key` under which unbond information is stored.
+    Unbond(AccountHash),
+    /// A `Key` under which chainspec and other hashes are stored.
+    ChainspecRegistry,
+    /// A `Key` under which a registry of checksums is stored.
+    ChecksumRegistry,
+    /// A `Key` under which bid information is stored.
+    BidAddr(BidAddr),
+    /// A `Key` under which package information is stored.
+    Package(PackageAddr),
+    /// A `Key` under which an addressable entity is stored.
+    AddressableEntity(EntityAddr),
+    /// A `Key` under which a byte code record is stored.
+    ByteCode(ByteCodeAddr),
+    /// A `Key` under which a message is stored.
+    Message(MessageAddr),
+    /// A `Key` under which a single named key entry is stored.
+    NamedKey(NamedKeyAddr),
+    /// A `Key` under which a hold on a purse balance is stored.
+    BalanceHold(BalanceHoldAddr),
 }
 
 impl Key {
@@ -477,6 +476,7 @@ impl Key {
             Key::ByteCode(..) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
+            Key::BalanceHold(_) => String::from("Key::BalanceHold"),
         }
     }
 
@@ -575,6 +575,9 @@ impl Key {
             }
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
+            }
+            Key::BalanceHold(balance_hold_addr) => {
+                format!("{}{}", BALANCE_HOLD_PREFIX, balance_hold_addr)
             }
         }
     }
@@ -1042,6 +1045,118 @@ impl Key {
             false
         }
     }
+
+    /// Is the record under this key readable by the entity corresponding to the imputed address?
+    pub fn is_readable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can read everything
+            return true;
+        }
+        let ret = match self {
+            Key::BidAddr(_) => {
+                // all bids are public information
+                true
+            }
+            Key::URef(uref) => {
+                // uref's require explicit permissions
+                uref.is_readable()
+            }
+            Key::SystemEntityRegistry | Key::Package(_) => {
+                // the system entities and all packages are public info
+                true
+            }
+            Key::AddressableEntity(addr_entity_addr) => {
+                // smart contracts and system contracts are public
+                // and an entity can read its own entity record
+                addr_entity_addr.tag() != EntityKindTag::Account || entity_addr == addr_entity_addr
+            }
+            Key::Account(account_hash) | Key::Unbond(account_hash) => {
+                // and an account holder can read their own account record
+                entity_addr.tag() == EntityKindTag::Account
+                    && entity_addr.value() == account_hash.value()
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can read its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => false,
+        };
+        if !ret {
+            let reading_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?reading_entity_key, attempted_key=?self,  "attempt to read without permission")
+        }
+        ret
+    }
+
+    /// Is the record under this key addable by the entity corresponding to the imputed address?
+    pub fn is_addable(&self, entity_addr: &EntityAddr) -> bool {
+        // unlike readable / writeable which are universally supported,
+        //  only some data types support commutative add / extension
+        let ret = match self {
+            Key::URef(uref) => uref.is_addable(),
+            Key::AddressableEntity(addr_entity_addr) => {
+                // an entity can extend itself (only associated keys, currently)
+                entity_addr == addr_entity_addr
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can extend its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // other data types do not support commutative addition / extension
+                let adding_entity_key = Key::AddressableEntity(*entity_addr);
+                warn!(?adding_entity_key, attempted_key=?self,  "attempt to add on an unsupported data type");
+                return false; // we want the above more explicit warn message, not both messages.
+            }
+        };
+        if !ret {
+            let adding_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?adding_entity_key, attempted_key=?self,  "attempt to add without permission");
+        }
+        ret
+    }
+
+    /// Is the record under this key writeable by the entity corresponding to the imputed address?
+    pub fn is_writeable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can write everything
+            return true;
+        }
+        let ret = match self {
+            Key::URef(uref) => uref.is_writeable(),
+            Key::NamedKey(named_key_addr) => {
+                // an entity can write to its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // only the system can write other kinds of records
+                false
+            }
+        };
+        if !ret {
+            let writing_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?writing_entity_key, attempted_key=?self,  "attempt to write without permission")
+        }
+        ret
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Key {
+    fn schema_name() -> String {
+        String::from("Key")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
+                user accounts) are stored in global state."
+                .to_string(),
+        );
+        schema_object.into()
+    }
 }
 
 impl Display for Key {
@@ -1107,6 +1222,9 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
+            Key::BalanceHold(balance_hold_addr) => {
+                write!(f, "Key::BalanceHold({})", balance_hold_addr)
+            }
         }
     }
 }
@@ -1141,6 +1259,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
+            Key::BalanceHold(_) => KeyTag::BalanceHold,
         }
     }
 }
@@ -1255,6 +1374,9 @@ impl ToBytes for Key {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
             Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
+            Key::BalanceHold(balance_hold_addr) => {
+                U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+            }
         }
     }
 
@@ -1289,6 +1411,7 @@ impl ToBytes for Key {
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
+            Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
         }
     }
 }
@@ -1381,6 +1504,10 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
+            KeyTag::BalanceHold => {
+                let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
+                Ok((Key::BalanceHold(balance_hold_addr), rem))
+            }
         }
     }
 }
@@ -1411,6 +1538,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
+        Key::BalanceHold(_) => unimplemented!(),
     }
 }
 
@@ -1438,6 +1566,7 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
+            20 => Key::BalanceHold(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1470,6 +1599,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
+        BalanceHold(&'a BalanceHoldAddr),
     }
 
     #[derive(Deserialize)]
@@ -1496,6 +1626,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
+        BalanceHold(BalanceHoldAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1524,6 +1655,9 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
+                Key::BalanceHold(balance_hold_addr) => {
+                    BinarySerHelper::BalanceHold(balance_hold_addr)
+                }
             }
         }
     }
@@ -1554,6 +1688,9 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
+                BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
+                    Key::BalanceHold(balance_hold_addr)
+                }
             }
         }
     }
@@ -1591,7 +1728,7 @@ mod tests {
         bytesrepr::{Error, FromBytes},
         transfer::TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
         uref::UREF_FORMATTED_STRING_PREFIX,
-        AccessRights, URef,
+        AccessRights, BlockTime, URef,
     };
 
     const ENTITY_PREFIX: &str = "addressable-entity-";
@@ -1640,6 +1777,8 @@ mod tests {
         EntityAddr::new_contract_entity_addr([42; 32]),
         [43; 32],
     ));
+    const BALANCE_HOLD: Key =
+        Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1668,6 +1807,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        BALANCE_HOLD,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2125,6 +2265,15 @@ mod tests {
             Key::from_formatted_str(no_prefix).unwrap_err().to_string(),
             "unknown prefix for key"
         );
+
+        let balance_hold_err = Key::from_formatted_str(BALANCE_HOLD_PREFIX)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            balance_hold_err.starts_with("balance-hold from string error: "),
+            "{}",
+            bid_addr_err
+        );
     }
 
     #[test]
@@ -2205,5 +2354,7 @@ mod tests {
             nines.into(),
             1,
         )));
+        round_trip(&Key::NamedKey(NamedKeyAddr::default()));
+        round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
     }
 }

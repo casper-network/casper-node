@@ -213,7 +213,7 @@ where
             AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
-            .read_gs_direct(&Key::Account(account_hash))
+            .read_gs_unsafe(&Key::Account(account_hash))
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
@@ -230,7 +230,7 @@ where
 
         let maybe_value = self
             .context
-            .read_gs_direct(&contract_key)
+            .read_gs_unsafe(&contract_key)
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)

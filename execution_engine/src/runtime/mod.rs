@@ -579,7 +579,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             mint_addr.into(),
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -713,7 +713,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             handle_payment_key,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -812,7 +812,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             auction_key,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -1125,25 +1125,23 @@ where
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
-            (EntryPointType::AddressableEntity, EntryPointType::Session) => {
+            (EntryPointType::Called, EntryPointType::Caller) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(ExecError::InvalidContext)
             }
-            (EntryPointType::Factory, EntryPointType::Session) => {
+            (EntryPointType::Factory, EntryPointType::Caller) => {
                 // Session code can't be called from Installer code for security reasons.
                 Err(ExecError::InvalidContext)
             }
-            (EntryPointType::Session, EntryPointType::Session) => {
+            (EntryPointType::Caller, EntryPointType::Caller) => {
                 // Session code called from session reuses current base key
                 match self.context.get_entity_key().into_entity_hash() {
                     Some(entity_hash) => Ok(entity_hash),
                     None => Err(ExecError::InvalidEntity(entity_hash)),
                 }
             }
-            (EntryPointType::Session, EntryPointType::AddressableEntity)
-            | (EntryPointType::AddressableEntity, EntryPointType::AddressableEntity) => {
-                Ok(entity_hash)
-            }
+            (EntryPointType::Caller, EntryPointType::Called)
+            | (EntryPointType::Called, EntryPointType::Called) => Ok(entity_hash),
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
                 Ok(entity_hash)
@@ -1378,7 +1376,7 @@ where
             all_urefs
         };
 
-        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+        let entity_addr = entity.entity_addr(entity_hash);
 
         let entity_named_keys = self
             .context
@@ -2757,7 +2755,7 @@ where
     }
 
     fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, ExecError> {
-        let maybe_value = self.context.read_gs_direct(&Key::Balance(purse.addr()))?;
+        let maybe_value = self.context.read_gs_unsafe(&Key::Balance(purse.addr()))?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {
                 let value = CLValue::into_t(value)?;

@@ -47,7 +47,10 @@ use crate::{
         ContractVersions,
     },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
+    system::{
+        auction::{Bid, BidAddr, BidKind, ValidatorBid},
+        mint::BalanceHoldAddr,
+    },
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
@@ -115,6 +118,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         bid_addr_delegator_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
+        balance_hold_addr_arb().prop_map(Key::BalanceHold),
         Just(Key::EraSummary),
     ]
 }
@@ -141,6 +145,12 @@ pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
     let x = u8_slice_32();
     let y = u8_slice_32();
     (x, y).prop_map(BidAddr::new_delegator_addr)
+}
+
+pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
+    let x = uref_arb().prop_map(|uref| uref.addr());
+    let y = any::<u64>();
+    (x, y).prop_map(|(x, y)| BalanceHoldAddr::new_gas(x, BlockTime::new(y)))
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -318,8 +328,8 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
 
 pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
-        Just(EntryPointType::Session),
-        Just(EntryPointType::AddressableEntity),
+        Just(EntryPointType::Caller),
+        Just(EntryPointType::Called),
         Just(EntryPointType::Factory),
     ]
 }

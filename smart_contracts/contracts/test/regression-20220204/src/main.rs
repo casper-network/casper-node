@@ -34,7 +34,7 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, URef::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     type NonTrivialArg = BTreeMap<String, Key>;
@@ -44,7 +44,7 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, NonTrivialArg::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     let named_keys = {

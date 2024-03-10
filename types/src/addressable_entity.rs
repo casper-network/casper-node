@@ -262,6 +262,11 @@ impl AddressableEntityHash {
         AddressableEntityHash(value)
     }
 
+    /// Get the entity addr for this entity hash from the corresponding entity.
+    pub fn entity_addr(&self, entity: AddressableEntity) -> EntityAddr {
+        entity.entity_addr(*self)
+    }
+
     /// Returns the raw bytes of the contract hash as an array.
     pub fn value(&self) -> HashAddr {
         self.0
@@ -654,7 +659,7 @@ impl EntryPoints {
     pub fn contains_stored_session(&self) -> bool {
         self.0
             .values()
-            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Session)
+            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Caller)
     }
 }
 
@@ -960,6 +965,12 @@ impl EntityAddr {
         }
     }
 
+    /// Is this a system entity address?
+    pub fn is_system(&self) -> bool {
+        self.tag() == EntityKindTag::System
+            || self.value() == PublicKey::System.to_account_hash().value()
+    }
+
     /// Returns the 32 bytes of the [`EntityAddr`].
     pub fn value(&self) -> HashAddr {
         match self {
@@ -1157,6 +1168,15 @@ impl NamedKeyAddr {
         }
 
         Err(FromStrError::InvalidPrefix)
+    }
+}
+
+impl Default for NamedKeyAddr {
+    fn default() -> Self {
+        NamedKeyAddr {
+            base_addr: EntityAddr::System(HashAddr::default()),
+            string_bytes: Default::default(),
+        }
     }
 }
 
@@ -1479,6 +1499,16 @@ impl AddressableEntity {
             associated_keys,
             message_topics,
             entity_kind,
+        }
+    }
+
+    /// Get the entity addr for this entity from the corresponding hash.
+    pub fn entity_addr(&self, entity_hash: AddressableEntityHash) -> EntityAddr {
+        let hash_addr = entity_hash.value();
+        match self.entity_kind {
+            EntityKind::System(_) => EntityAddr::new_system_entity_addr(hash_addr),
+            EntityKind::Account(_) => EntityAddr::new_account_entity_addr(hash_addr),
+            EntityKind::SmartContract => EntityAddr::new_contract_entity_addr(hash_addr),
         }
     }
 
@@ -1918,13 +1948,21 @@ impl From<Account> for AddressableEntity {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
-    /// Runs as session code (caller)
-    /// Deprecated, retained to allow read back of legacy stored session.
-    Session = 0b00000000,
-    /// Runs within called entity's context (called)
-    AddressableEntity = 0b00000001,
-    /// This entry point is intended to extract a subset of bytecode.
-    /// Runs within called entity's context (called)
+    /// Runs using the calling entity's context.
+    /// In v1.x this was used for both "session" code run using the originating
+    /// Account's context, and also for "StoredSession" code that ran in the
+    /// caller's context. While this made systemic sense due to the way the runtime
+    /// context nesting works, this dual usage was very confusing to most human beings.
+    ///
+    /// In v2.x the renamed Caller variant is exclusively used for wasm run using the initiating
+    /// account entity's context. Previously installed 1.x stored session code should
+    /// continue to work as the binary value matches but we no longer allow such logic
+    /// to be upgraded, nor do we allow new stored session to be installed.
+    Caller = 0b00000000,
+    /// Runs using the called entity's context.
+    Called = 0b00000001,
+    /// Extract a subset of bytecode and installs it as a new smart contract.
+    /// Runs using the called entity's context.
     Factory = 0b10000000,
 }
 
@@ -1946,8 +1984,8 @@ impl EntryPointType {
     /// Returns true if entry point type is invalid for the context.
     pub fn is_invalid_context(&self) -> bool {
         match self {
-            EntryPointType::Session => true,
-            EntryPointType::AddressableEntity | EntryPointType::Factory => false,
+            EntryPointType::Caller => true,
+            EntryPointType::Called | EntryPointType::Factory => false,
         }
     }
 }
@@ -2073,7 +2111,7 @@ impl Default for EntryPoint {
             args: Vec::new(),
             ret: CLType::Unit,
             access: EntryPointAccess::Public,
-            entry_point_type: EntryPointType::Session,
+            entry_point_type: EntryPointType::Caller,
         }
     }
 }

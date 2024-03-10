@@ -14,12 +14,14 @@ pub const BLOCKTIME_SERIALIZED_LENGTH: usize = U64_SERIALIZED_LENGTH;
 /// A newtype wrapping a [`u64`] which represents the block time.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Default, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize,
+)]
 pub struct BlockTime(u64);
 
 impl BlockTime {
     /// Constructs a `BlockTime`.
-    pub fn new(value: u64) -> Self {
+    pub const fn new(value: u64) -> Self {
         BlockTime(value)
     }
 

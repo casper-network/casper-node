@@ -339,45 +339,22 @@ where
     ) -> Result<(), Self::Error> {
         let account_hash = account.account_hash();
 
-        let mut generator =
-            AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
-
-        let byte_code_hash = ByteCodeHash::default();
-        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
-        let package_hash = PackageHash::new(generator.new_hash_address());
-
-        let entry_points = EntryPoints::new();
-
-        let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
-        let action_thresholds = {
-            let account_threshold = account.action_thresholds().clone();
-            ActionThresholds::new(
-                Weight::new(account_threshold.deployment.value()),
-                Weight::new(1u8),
-                Weight::new(account_threshold.key_management.value()),
-            )
-            .map_err(Self::Error::SetThresholdFailure)?
-        };
-
+        // carry forward the account hash to allow reverse lookup
+        let entity_hash = AddressableEntityHash::new(account_hash.value());
         let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
 
-        self.migrate_named_keys(entity_addr, account.named_keys().clone())?;
+        // migrate named keys -- if this fails there is no reason to proceed further.
+        let named_keys = account.named_keys().clone();
+        self.migrate_named_keys(entity_addr, named_keys)?;
 
-        let entity = AddressableEntity::new(
-            package_hash,
-            byte_code_hash,
-            entry_points,
-            protocol_version,
-            account.main_purse(),
-            associated_keys,
-            action_thresholds,
-            MessageTopics::default(),
-            EntityKind::Account(account_hash),
-        );
+        // write package first
+        let package_hash = {
+            let mut generator =
+                AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-        let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let package_hash = PackageHash::new(generator.new_hash_address());
+            let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-        let package = {
             let mut package = Package::new(
                 access_key,
                 EntityVersions::default(),
@@ -386,22 +363,54 @@ where
                 PackageStatus::Locked,
             );
             package.insert_entity_version(protocol_version.value().major, entity_hash);
-            package
+            self.write(package_hash.into(), package.into());
+            package_hash
         };
 
-        let entity_key: Key = entity.entity_key(entity_hash);
+        // write entity after package
+        {
+            // currently, addressable entities of account kind are not permitted to have bytecode
+            // however, we intend to revisit this and potentially allow it in a future release
+            // as a replacement for stored session.
+            let byte_code_hash = ByteCodeHash::default();
+            let entry_points = EntryPoints::new();
 
-        self.write(entity_key, entity.into());
-        self.write(package_hash.into(), package.into());
-        let contract_by_account = match CLValue::from_t(entity_key) {
-            Ok(cl_value) => cl_value,
-            Err(err) => return Err(Self::Error::CLValue(err)),
-        };
+            let action_thresholds = {
+                let account_threshold = account.action_thresholds().clone();
+                ActionThresholds::new(
+                    Weight::new(account_threshold.deployment.value()),
+                    Weight::new(1u8),
+                    Weight::new(account_threshold.key_management.value()),
+                )
+                .map_err(Self::Error::SetThresholdFailure)?
+            };
 
-        self.write(
-            Key::Account(account_hash),
-            StoredValue::CLValue(contract_by_account),
-        );
+            let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
+
+            let entity = AddressableEntity::new(
+                package_hash,
+                byte_code_hash,
+                entry_points,
+                protocol_version,
+                account.main_purse(),
+                associated_keys,
+                action_thresholds,
+                MessageTopics::default(),
+                EntityKind::Account(account_hash),
+            );
+            let entity_key = entity.entity_key(entity_hash);
+            let contract_by_account = match CLValue::from_t(entity_key) {
+                Ok(cl_value) => cl_value,
+                Err(err) => return Err(Self::Error::CLValue(err)),
+            };
+
+            self.write(entity_key, entity.into());
+            self.write(
+                Key::Account(account_hash),
+                StoredValue::CLValue(contract_by_account),
+            );
+        }
+
         Ok(())
     }
 
@@ -426,8 +435,7 @@ where
                 }
             };
             let auction = self.get_addressable_entity_by_hash(auction_hash)?;
-            let auction_addr =
-                EntityAddr::new_with_tag(auction.entity_kind(), auction_hash.value());
+            let auction_addr = auction.entity_addr(auction_hash);
             let auction_named_keys = self.get_named_keys(auction_addr)?;
             let auction_access_rights =
                 auction.extract_access_rights(auction_hash, &auction_named_keys);
@@ -444,7 +452,7 @@ where
                 }
             };
             let mint = self.get_addressable_entity_by_hash(mint_hash)?;
-            let mint_addr = EntityAddr::new_with_tag(mint.entity_kind(), mint_hash.value());
+            let mint_addr = mint.entity_addr(mint_hash);
             let mint_named_keys = self.get_named_keys(mint_addr)?;
             let mint_access_rights = mint.extract_access_rights(mint_hash, &mint_named_keys);
             (mint_named_keys, mint_access_rights)
@@ -461,8 +469,7 @@ where
                 }
             };
             let payment = self.get_addressable_entity_by_hash(payment_hash)?;
-            let payment_addr =
-                EntityAddr::new_with_tag(payment.entity_kind(), payment_hash.value());
+            let payment_addr = payment.entity_addr(payment_hash);
             let payment_named_keys = self.get_named_keys(payment_addr)?;
             let payment_access_rights =
                 payment.extract_access_rights(payment_hash, &mint_named_keys);
@@ -499,7 +506,7 @@ where
             authorization_keys,
             administrative_accounts,
         )?;
-        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+        let entity_addr = entity.entity_addr(entity_hash);
         let named_keys = self.get_named_keys(entity_addr)?;
         let access_rights = entity
             .extract_access_rights(AddressableEntityHash::new(entity_addr.value()), &named_keys);

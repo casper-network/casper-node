@@ -147,7 +147,6 @@ fn new_runtime_context<'a>(
         entity_address,
         BTreeSet::from_iter(vec![account_hash]),
         access_rights,
-        EntityKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
@@ -161,7 +160,7 @@ fn new_runtime_context<'a>(
         Gas::default(),
         Vec::default(),
         U512::MAX,
-        EntryPointType::Session,
+        EntryPointType::Caller,
     );
 
     (runtime_context, tempdir)
@@ -243,10 +242,10 @@ fn use_uref_valid() {
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(uref_as_key, value)
     });
-    query_result.expect("writing using valid uref should succeed");
+    result.expect("writing using valid uref should succeed");
 }
 
 #[test]
@@ -257,30 +256,30 @@ fn use_uref_forged() {
     let named_keys = NamedKeys::new();
     // named_keys.insert(String::new(), Key::from(uref));
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result =
+    let result =
         build_runtime_context_and_execute(named_keys, |mut rc| rc.metered_write_gs(uref, value));
 
-    assert_forged_reference(query_result);
+    assert_forged_reference(result);
 }
 
 #[test]
 fn account_key_not_writeable() {
     let mut rng = rand::thread_rng();
     let acc_key = random_account_key(&mut rng);
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
 fn entity_key_readable_valid() {
     // Entity key is readable if it is a "base" key - current context of the
     // execution.
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         let base_key = rc.get_entity_key();
         let entity = rc.get_entity();
 
@@ -293,7 +292,7 @@ fn entity_key_readable_valid() {
         Ok(())
     });
 
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -304,7 +303,7 @@ fn account_key_addable_returns_type_mismatch() {
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         let account_key: Key = rc.account_hash.into();
         let uref_name = "NewURef".to_owned();
         let named_key = StoredValue::CLValue(CLValue::from_t((uref_name, uref_as_key)).unwrap());
@@ -312,7 +311,7 @@ fn account_key_addable_returns_type_mismatch() {
         rc.metered_add_gs(account_key, named_key)
     });
 
-    assert!(query_result.is_err());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -322,14 +321,14 @@ fn account_key_addable_invalid() {
     let mut rng = rand::thread_rng();
     let other_acc_key = random_account_key(&mut rng);
 
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_add_gs(
             other_acc_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
 
-    assert_invalid_access(query_result, AccessRights::ADD);
+    assert_invalid_access(result, AccessRights::ADD);
 }
 
 #[test]
@@ -338,10 +337,10 @@ fn contract_key_readable_valid() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result =
+    let result =
         build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&contract_key));
 
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -350,14 +349,14 @@ fn contract_key_not_writeable() {
     // execution.
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+    let result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         rc.metered_write_gs(
             contract_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
 
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
@@ -414,7 +413,6 @@ fn contract_key_addable_valid() {
         contract_key,
         authorization_keys,
         access_rights,
-        EntityKind::SmartContract,
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
@@ -428,7 +426,7 @@ fn contract_key_addable_valid() {
         Gas::default(),
         Vec::default(),
         U512::zero(),
-        EntryPointType::Session,
+        EntryPointType::Caller,
     );
 
     assert!(runtime_context
@@ -472,7 +470,6 @@ fn contract_key_addable_invalid() {
         other_contract_key,
         authorization_keys,
         access_rights,
-        EntityKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
@@ -486,7 +483,7 @@ fn contract_key_addable_invalid() {
         Gas::default(),
         Vec::default(),
         U512::zero(),
-        EntryPointType::Session,
+        EntryPointType::Caller,
     );
 
     let result = runtime_context.metered_add_gs(contract_key, named_uref_tuple);
@@ -502,9 +499,8 @@ fn uref_key_readable_valid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result =
-        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
-    assert!(query_result.is_ok());
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -515,9 +511,8 @@ fn uref_key_readable_invalid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result =
-        build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
-    assert_invalid_access(query_result, AccessRights::READ);
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
+    assert_invalid_access(result, AccessRights::READ);
 }
 
 #[test]
@@ -528,13 +523,13 @@ fn uref_key_writeable_valid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -545,13 +540,13 @@ fn uref_key_writeable_invalid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::WRITE);
+    assert_invalid_access(result, AccessRights::WRITE);
 }
 
 #[test]
@@ -562,12 +557,12 @@ fn uref_key_addable_valid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
             .expect("Writing to the GlobalState should work.");
         rc.metered_add_gs(uref_key, CLValue::from_t(1_i32).unwrap())
     });
-    assert!(query_result.is_ok());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -578,49 +573,37 @@ fn uref_key_addable_invalid() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_key);
 
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let result = build_runtime_context_and_execute(named_keys, |mut rc| {
         rc.metered_add_gs(
             uref_key,
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
-    assert_invalid_access(query_result, AccessRights::ADD);
+    assert_invalid_access(result, AccessRights::ADD);
 }
 
 #[test]
-fn hash_key_readable() {
-    // values under hash's are universally readable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
-        let mut rng = rand::thread_rng();
-        let key = random_hash(&mut rng);
-        runtime_context.validate_readable(&key)
-    };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_ok())
-}
-
-#[test]
-fn hash_key_writeable() {
+fn hash_key_is_not_writeable() {
     // values under hash's are immutable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_writeable(&key)
     };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_err())
+    let result = build_runtime_context_and_execute(NamedKeys::new(), functor);
+    assert!(result.is_err())
 }
 
 #[test]
-fn hash_key_addable_invalid() {
+fn hash_key_is_not_addable() {
     // values under hashes are immutable
-    let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let mut rng = rand::thread_rng();
         let key = random_hash(&mut rng);
         runtime_context.validate_addable(&key)
     };
-    let query_result = build_runtime_context_and_execute(NamedKeys::new(), query);
-    assert!(query_result.is_err())
+    let result = build_runtime_context_and_execute(NamedKeys::new(), functor);
+    assert!(result.is_err())
 }
 
 #[test]
@@ -628,7 +611,7 @@ fn manage_associated_keys() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let account_hash = AccountHash::new([42; 32]);
         let weight = Weight::new(155);
 
@@ -688,7 +671,7 @@ fn manage_associated_keys() {
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -696,7 +679,7 @@ fn action_thresholds_management() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let entity_hash_by_account_hash =
             CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
 
@@ -738,7 +721,7 @@ fn action_thresholds_management() {
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -746,9 +729,10 @@ fn should_verify_ownership_before_adding_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
+        // TODO: this test should be updated to use v2.0.0 / AddressableEntity model
         let entity_hash_by_account_hash =
             CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
 
@@ -770,13 +754,17 @@ fn should_verify_ownership_before_adding_key() {
             .expect_err("This operation should return error");
 
         match err {
+            ExecError::UnexpectedKeyVariant(_) => {
+                // This is the v2.0.0 error as this test is currently using Key::Hash
+                // instead of Key::AddressableEntity
+            }
             ExecError::AddKeyFailure(AddKeyFailure::PermissionDenied) => {}
             e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -784,9 +772,10 @@ fn should_verify_ownership_before_removing_a_key() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
+        // TODO: this test should be updated to use v2.0.0 / AddressableEntity model
         runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
@@ -794,13 +783,17 @@ fn should_verify_ownership_before_removing_a_key() {
             .expect_err("This operation should return error");
 
         match err {
+            ExecError::UnexpectedKeyVariant(_) => {
+                // this is the v2.0 error because this test is currently using
+                // Key::Hash instead of Key::AddressableEntity
+            }
             ExecError::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
@@ -808,9 +801,10 @@ fn should_verify_ownership_before_setting_action_threshold() {
     // Testing a valid case only - successfully added a key, and successfully removed,
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
+        // TODO: this test should be updated to v2.0.0 / AddressableEntityHash model
         runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
@@ -818,19 +812,23 @@ fn should_verify_ownership_before_setting_action_threshold() {
             .expect_err("This operation should return error");
 
         match err {
+            ExecError::UnexpectedKeyVariant(_) => {
+                // this is what is returned under protocol version 2.0 because Key::Hash(_) is
+                // deprecated.
+            }
             ExecError::SetThresholdFailure(SetThresholdFailure::PermissionDeniedError) => {}
             ref e => panic!("Invalid error variant: {:?}", e),
         }
 
         Ok(())
     };
-    let _ = build_runtime_context_and_execute(named_keys, query);
+    let _ = build_runtime_context_and_execute(named_keys, functor);
 }
 
 #[test]
 fn can_roundtrip_key_value_pairs() {
     let named_keys = NamedKeys::new();
-    let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         let deploy_hash = [1u8; 32];
         let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
         let test_uref = create_uref_as_key(&mut uref_address_generator, AccessRights::default())
@@ -849,8 +847,8 @@ fn can_roundtrip_key_value_pairs() {
 
         Ok(result == Some(test_value))
     };
-    let query_result = build_runtime_context_and_execute(named_keys, query).expect("should be ok");
-    assert!(query_result)
+    let result = build_runtime_context_and_execute(named_keys, functor).expect("should be ok");
+    assert!(result)
 }
 
 #[test]
