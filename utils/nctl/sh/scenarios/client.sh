@@ -217,21 +217,33 @@ function test_get_dictionary_item() {
     local DICTIONARY_KEY
     local DICTIONARY_NAME
     local OUTPUT
+    local ENTITY_ADDR
 
     log_step "Testing Client Subcommand: get-dictionary-item"
 
     DICTIONARY_KEY="foo"
     DICTIONARY_NAME="nctl_dictionary"
 
-    OUTPUT=$($(get_path_to_client) get-dictionary-item \
+    OUTPUT=$($(get_path_to_client) query-global-state \
         --node-address "$(get_node_address_rpc)" \
         --state-root-hash "$(get_state_root_hash)" \
-        --dictionary-item-key "$DICTIONARY_KEY" \
-        --dictionary-name "$DICTIONARY_NAME" \
-        --account-hash "$ACCOUNT_HASH")
+        --key "$ACCOUNT_HASH")
 
-    # Check client responded
-    test_with_jq "$OUTPUT"
+    ENTITY_ADDR=$(echo "$OUTPUT" | jq -r '.result.stored_value.CLValue.parsed')
+
+    # TODO: Uncomment this after:
+    # 1. "https://github.com/casper-network/casper-node/pull/4592" - is merged to node
+    # 2. "casper-client" is updated to support "--entity-identifier" for "get-dictionary-item"
+    
+    # OUTPUT=$($(get_path_to_client) get-dictionary-item \
+        # --node-address "$(get_node_address_rpc)" \
+        # --state-root-hash "$(get_state_root_hash)" \
+        # --dictionary-item-key "$DICTIONARY_KEY" \
+        # --dictionary-name "$DICTIONARY_NAME" \
+        # --entity-identifier "$ENTITY_ADDR")
+
+    # # Check client responded
+    # test_with_jq "$OUTPUT"
 }
 
 # casper-client sign-deploy
