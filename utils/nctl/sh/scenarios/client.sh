@@ -77,7 +77,7 @@ function main() {
     # 0. Wait for network start up
     do_await_genesis_era_to_complete
     # 1. Check Subcommand Count
-    compare_client_subcommand_count "$(get_client_subcommand_count)" "26"
+    compare_client_subcommand_count "$(get_client_subcommand_count)" "31"
     # 2. Test Each Subcommand Outputs Help
     test_subcommand_help
     # 3. Test generate-completion subcommand: Each SHELL
