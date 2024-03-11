@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::Effects;
 #[cfg(feature = "json-schema")]
-use super::{Transform, TransformKind};
+use super::{TransformKindV2, TransformV2};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 #[cfg(any(feature = "json-schema", feature = "testing", test))]
@@ -43,8 +43,8 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     )
     .unwrap();
     let mut effects = Effects::new();
-    effects.push(Transform::new(key1, TransformKind::AddUInt64(8u64)));
-    effects.push(Transform::new(key2, TransformKind::Identity));
+    effects.push(TransformV2::new(key1, TransformKindV2::AddUInt64(8u64)));
+    effects.push(TransformV2::new(key2, TransformKindV2::Identity));
 
     let transfers = vec![
         TransferAddr::V2(TransferV2Addr::new([89; KEY_HASH_LENGTH])),

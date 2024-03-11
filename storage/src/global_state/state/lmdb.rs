@@ -6,7 +6,7 @@ use lmdb::{DatabaseFlags, RwTransaction};
 use tempfile::TempDir;
 
 use casper_types::{
-    execution::{Effects, Transform, TransformKind},
+    execution::{Effects, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
@@ -450,7 +450,7 @@ pub fn make_temporary_global_state(
     let mut effects = Effects::new();
 
     for (key, stored_value) in initial_data {
-        let transform = Transform::new(key.normalize(), TransformKind::Write(stored_value));
+        let transform = TransformV2::new(key.normalize(), TransformKindV2::Write(stored_value));
         effects.push(transform);
     }
 
@@ -463,7 +463,7 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{account::AccountHash, execution::TransformKind, CLValue, Digest};
+    use casper_types::{account::AccountHash, execution::TransformKindV2, CLValue, Digest};
 
     use crate::global_state::state::scratch::tests::TestPair;
 
@@ -526,7 +526,7 @@ mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.clone()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.clone()));
                 tmp.push(transform);
             }
             tmp
@@ -550,7 +550,7 @@ mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.clone()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.clone()));
                 tmp.push(transform);
             }
             tmp

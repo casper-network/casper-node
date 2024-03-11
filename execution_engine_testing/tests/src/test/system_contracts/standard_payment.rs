@@ -12,8 +12,8 @@ use casper_execution_engine::{
     execution::ExecError,
 };
 use casper_types::{
-    account::AccountHash, execution::TransformKind, runtime_args, system::handle_payment, ApiError,
-    Gas, Key, Motes, RuntimeArgs, U512,
+    account::AccountHash, execution::TransformKindV2, runtime_args, system::handle_payment,
+    ApiError, Gas, Key, Motes, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -535,12 +535,12 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .into_uref()
         .unwrap();
 
-    let transforms_from_genesis_map: HashMap<Key, TransformKind> = effects_from_genesis
+    let transforms_from_genesis_map: HashMap<Key, TransformKindV2> = effects_from_genesis
         .transforms()
         .iter()
         .map(|transform| (*transform.key(), transform.kind().clone()))
         .collect();
-    let transforms_from_account_1_map: HashMap<Key, TransformKind> = effects_from_account_1
+    let transforms_from_account_1_map: HashMap<Key, TransformKindV2> = effects_from_account_1
         .transforms()
         .iter()
         .map(|transform| (*transform.key(), transform.kind().clone()))
@@ -557,7 +557,10 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
                         transforms_from_genesis_map.get(transform.key()),
                         transforms_from_account_1_map.get(transform.key()),
                     ),
-                    (Some(TransformKind::Write(_)), Some(TransformKind::Write(_)))
+                    (
+                        Some(TransformKindV2::Write(_)),
+                        Some(TransformKindV2::Write(_))
+                    )
                 )
             {
                 Some(*transform.key())

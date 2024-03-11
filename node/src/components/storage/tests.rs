@@ -20,7 +20,7 @@ use casper_storage::block_store::{
     BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
 use casper_types::{
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     generate_ed25519_keypair,
     testing::TestRng,
     AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2,
@@ -1354,9 +1354,9 @@ fn prepare_exec_result_with_transfer(
         Gas::from(rng.gen::<u64>()),
         Some(rng.gen()),
     ));
-    let transform = Transform::new(
+    let transform = TransformV2::new(
         Key::TransactionInfo(*txn_hash),
-        TransformKind::Write(StoredValue::Transfer(transfer.clone())),
+        TransformKindV2::Write(StoredValue::Transfer(transfer.clone())),
     );
     let mut effects = Effects::new();
     effects.push(transform);

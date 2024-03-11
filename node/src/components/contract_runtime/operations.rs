@@ -24,7 +24,7 @@ use casper_storage::{
 use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
     ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionApprovalsHash,
     TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
@@ -230,9 +230,9 @@ pub fn execute_finalized_block(
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
     checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    effects.push(Transform::new(
+    effects.push(TransformV2::new(
         Key::ChecksumRegistry,
-        TransformKind::Write(
+        TransformKindV2::Write(
             CLValue::from_t(checksum_registry)
                 .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                 .into(),

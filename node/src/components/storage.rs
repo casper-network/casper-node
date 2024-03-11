@@ -65,7 +65,7 @@ use casper_types::{
     binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
     },
     AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
     BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash,
@@ -2026,17 +2026,18 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
     let mut transfers: Vec<Transfer> = vec![];
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
-            for transform_entry in &effect.transforms {
-                if let execution_result_v1::Transform::WriteTransfer(transfer_v1) =
-                    &transform_entry.transform
+            for transform_v1 in &effect.transforms {
+                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer_v1) =
+                    &transform_v1.transform
                 {
                     transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }
         ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-            for transform in effects.transforms() {
-                if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind() {
+            for transform_v2 in effects.transforms() {
+                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform_v2.kind()
+                {
                     transfers.push(transfer.clone());
                 }
             }

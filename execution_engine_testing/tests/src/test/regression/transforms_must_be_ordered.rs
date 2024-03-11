@@ -8,7 +8,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    execution::TransformKind, runtime_args, system::standard_payment, AddressableEntityHash, Key,
+    execution::TransformKindV2, runtime_args, system::standard_payment, AddressableEntityHash, Key,
     URef, U512,
 };
 
@@ -119,12 +119,12 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
                 None => return None,
             };
             let (type_index, value): (u8, i32) = match transform.kind() {
-                TransformKind::Identity => (0, 0),
-                TransformKind::Write(sv) => {
+                TransformKindV2::Identity => (0, 0),
+                TransformKindV2::Write(sv) => {
                     let v: i32 = sv.as_cl_value().unwrap().clone().into_t().unwrap();
                     (1, v)
                 }
-                TransformKind::AddInt32(v) => (2, *v),
+                TransformKindV2::AddInt32(v) => (2, *v),
                 _ => panic!("Invalid transform."),
             };
             Some((type_index, uref_index, value))
