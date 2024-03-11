@@ -452,7 +452,7 @@ fn register_deploys_and_blocks() {
 
     // test if deploys held for proposed blocks which did not get finalized in time
     // are eligible again
-    let count = rng.gen_range(0..11);
+    let count = rng.gen_range(1..11);
     let txns: Vec<_> = std::iter::repeat_with(|| Transaction::Deploy(Deploy::random(&mut rng)))
         .take(count)
         .collect();
