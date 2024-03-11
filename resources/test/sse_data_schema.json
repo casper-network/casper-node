@@ -2255,7 +2255,7 @@
           "description": "The sequence of execution transforms.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/TransformEntry"
+            "$ref": "#/definitions/TransformV1"
           }
         }
       },
@@ -2324,7 +2324,7 @@
         }
       ]
     },
-    "TransformEntry": {
+    "TransformV1": {
       "description": "A transformation performed while executing a deploy.",
       "type": "object",
       "required": [
@@ -2340,14 +2340,14 @@
           "description": "The transformation.",
           "allOf": [
             {
-              "$ref": "#/definitions/TransformV1"
+              "$ref": "#/definitions/TransformKindV1"
             }
           ]
         }
       },
       "additionalProperties": false
     },
-    "TransformV1": {
+    "TransformKindV1": {
       "description": "The actual transformation performed while executing a deploy.",
       "oneOf": [
         {
@@ -3400,12 +3400,12 @@
           "$ref": "#/definitions/Key"
         },
         "kind": {
-          "$ref": "#/definitions/TransformKind"
+          "$ref": "#/definitions/TransformKindV2"
         }
       },
       "additionalProperties": false
     },
-    "TransformKind": {
+    "TransformKindV2": {
       "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
       "oneOf": [
         {

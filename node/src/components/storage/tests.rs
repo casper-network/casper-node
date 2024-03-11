@@ -21,7 +21,7 @@ use casper_storage::block_store::{
 };
 use casper_types::{
     execution::{
-        execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
+        execution_result_v1::{ExecutionEffect, ExecutionResultV1, TransformKindV1, TransformV1},
         ExecutionResult, ExecutionResultV2,
     },
     generate_ed25519_keypair,
@@ -1365,9 +1365,9 @@ fn prepare_exec_result_with_transfer(
         rng.gen(),
         Some(rng.gen()),
     );
-    let transform = TransformEntry {
+    let transform = TransformV1 {
         key: Key::DeployInfo(*deploy_hash).to_formatted_string(),
-        transform: Transform::WriteTransfer(transfer),
+        transform: TransformKindV1::WriteTransfer(transfer),
     };
     let effect = ExecutionEffect {
         operations: vec![],

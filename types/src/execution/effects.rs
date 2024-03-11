@@ -8,16 +8,16 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::Transform;
 #[cfg(any(feature = "testing", test))]
-use super::TransformKind;
+use super::TransformKindV2;
+use super::TransformV2;
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A log of all transforms produced during execution.
 #[derive(Debug, Clone, Eq, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct Effects(Vec<Transform>);
+pub struct Effects(Vec<TransformV2>);
 
 impl Effects {
     /// Constructs a new, empty `Effects`.
@@ -26,12 +26,12 @@ impl Effects {
     }
 
     /// Returns a reference to the transforms.
-    pub fn transforms(&self) -> &[Transform] {
+    pub fn transforms(&self) -> &[TransformV2] {
         &self.0
     }
 
     /// Appends a transform.
-    pub fn push(&mut self, transform: Transform) {
+    pub fn push(&mut self, transform: TransformV2) {
         self.0.push(transform)
     }
 
@@ -51,7 +51,7 @@ impl Effects {
     }
 
     /// Consumes `self`, returning the wrapped vec.
-    pub fn value(self) -> Vec<Transform> {
+    pub fn value(self) -> Vec<TransformV2> {
         self.0
     }
 
@@ -61,7 +61,7 @@ impl Effects {
         let mut effects = Effects::new();
         let transform_count = rng.gen_range(0..6);
         for _ in 0..transform_count {
-            effects.push(Transform::new(rng.gen(), TransformKind::random(rng)));
+            effects.push(TransformV2::new(rng.gen(), TransformKindV2::random(rng)));
         }
         effects
     }
@@ -85,7 +85,7 @@ impl ToBytes for Effects {
 
 impl FromBytes for Effects {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (transforms, remainder) = Vec::<Transform>::from_bytes(bytes)?;
+        let (transforms, remainder) = Vec::<TransformV2>::from_bytes(bytes)?;
         Ok((Effects(transforms), remainder))
     }
 }
