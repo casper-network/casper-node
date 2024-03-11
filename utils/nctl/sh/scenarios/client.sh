@@ -949,7 +949,7 @@ function test_get_block() {
     BLOCK_HEIGHT=$($(get_path_to_client) get-block \
         --node-address "$(get_node_address_rpc)" \
         -b 1 \
-        | jq -r '.result.block.header.height')
+        | jq -r '.result.block_with_signatures.block.Version2.header.height')
 
     if [ "$BLOCK_HEIGHT" = "1" ]; then
         log "... correct block height found! [expected]"
