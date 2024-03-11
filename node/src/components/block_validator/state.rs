@@ -119,7 +119,7 @@ impl BlockValidationState {
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
         let transaction_count = proposed_block.transaction_count();
-        if transaction_count == 0 {
+        if transaction_count == 0 && missing_signatures.is_empty() {
             let state = BlockValidationState::Valid(proposed_block.timestamp());
             return (state, Some(responder));
         }
@@ -334,6 +334,7 @@ impl BlockValidationState {
             BlockValidationState::InProgress {
                 appendable_block,
                 missing_transactions,
+                missing_signatures,
                 responders,
                 ..
             } => {
@@ -350,9 +351,9 @@ impl BlockValidationState {
                 let footprint = footprint.clone().with_approvals(approvals);
                 match appendable_block.add_transaction(footprint.clone()) {
                     Ok(_) => {
-                        if !missing_transactions.is_empty() {
+                        if !missing_transactions.is_empty() || !missing_signatures.is_empty() {
                             // The appendable block is still valid, but we still have missing
-                            // deploys - nothing further to do here.
+                            // transactions - nothing further to do here.
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
                                 missing_transactions_len = missing_transactions.len(),
