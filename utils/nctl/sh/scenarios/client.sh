@@ -1245,14 +1245,14 @@ function get_uref_for_public_key() {
     local PUBLIC_KEY=${1}
     local OUTPUT
 
-    OUTPUT=$($(get_path_to_client) get-account \
+    OUTPUT=$($(get_path_to_client) get-entity \
         --node-address "$(get_node_address_rpc)" \
-        --public-key "$PUBLIC_KEY")
+        --entity-identifier "$PUBLIC_KEY")
 
     # Check non-empty
     check_client_responded "$OUTPUT"
 
-    echo "$OUTPUT" | jq -r '.result.account.main_purse'
+    echo "$OUTPUT" | jq -r '.result.entity.AddressableEntity.main_purse'
 }
 
 # returns block hash containing deploy
