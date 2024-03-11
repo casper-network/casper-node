@@ -150,6 +150,9 @@ function main() {
     #       the 2.0.0 client and we need the test for this case.
     # test_get_account "$ED25519_HEX" "$ED25519_ACC_HASH"
 
+    # 25. Test get-entity subcommand
+    # TODO: Add cases for other entity kinds (System, SmartContract)
+    test_get_entity_kind_account "$ED25519_HEX" "$ED25519_ACC_HASH"
     # 26. Test transfer subcommand
     test_transfer "$ED25519_ACC_HASH" "$FAUCET_DIR" '3'
     # 27. Test make-deploy subcommand
@@ -478,6 +481,38 @@ function test_get_account() {
         log "... alias output match! [expected]"
     else
         log "ERROR: Mismatched alias output!"
+        exit 1
+    fi
+}
+
+# casper-client get-entity with (EntityKind::Account)
+# ... checks valid json with jq
+# ... verifies some data matches expected outcome
+# ... compare alias output
+function test_get_entity_kind_account() {
+    local PUBLIC_KEY=${1}
+    local ACCOUNT_HASH=${2}
+    local OUTPUT
+    local ALIAS_OUTPUT
+
+    log_step "Testing Client Subcommand: get-entity (EntityKind::Account)"
+
+    OUTPUT=$($(get_path_to_client) get-entity \
+        --node-address "$(get_node_address_rpc)" \
+        --id '1' \
+        --entity-identifier "$PUBLIC_KEY")
+
+    # Check client responded
+    test_with_jq "$OUTPUT"
+
+    # Account Hash Check
+    echo $ACCOUNT_HASH
+    echo $OUTPUT | jq -r '.result.entity.AddressableEntity.entity_kind.Account'
+
+    if [ "$ACCOUNT_HASH" = "$(echo $OUTPUT | jq -r '.result.entity.AddressableEntity.entity_kind.Account')" ]; then
+        log "... account hash match! [expected]"
+    else
+        log "ERROR: Mismatched account hash!"
         exit 1
     fi
 }
