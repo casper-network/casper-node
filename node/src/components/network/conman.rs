@@ -592,8 +592,12 @@ async fn handle_incoming(
                 |dropped| info!(until=?entry.until, justification=%entry.justification, dropped, "peer is still banned")
             );
 
-            // TODO: Send a proper error using RPC client/server here (requires appropriate
-            //       Juliet API). This would allow the peer to update its backoff timer.
+            tokio::spawn(rpc_server.send_custom_error_and_shutdown(
+                ChannelId::new(0),
+                Id::new(0),
+                Bytes::from(&b"you are still banned"[..]),
+            ));
+
             return;
         }
 
