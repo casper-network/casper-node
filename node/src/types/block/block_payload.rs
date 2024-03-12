@@ -102,13 +102,7 @@ impl BlockPayload {
 
     /// Returns all of the transaction hashes and approvals within the block.
     pub fn all_transactions(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
-        let mut ret: Vec<&(TransactionHash, BTreeSet<Approval>)> = vec![];
-        for v in self.transactions.values() {
-            for val in v {
-                ret.push(val)
-            }
-        }
-        ret.into_iter()
+        self.transactions.values().flatten()
     }
 
     /// Returns the set of validators that are reported as faulty in this block.

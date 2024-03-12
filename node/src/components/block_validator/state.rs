@@ -482,13 +482,7 @@ impl BlockValidationState {
             BlockValidationState::InProgress {
                 missing_transactions,
                 ..
-            } => missing_transactions
-                .keys()
-                .map(|dt_hash| match dt_hash {
-                    TransactionHash::Deploy(deploy_hash) => TransactionHash::Deploy(*deploy_hash),
-                    TransactionHash::V1(v1) => TransactionHash::V1(*v1),
-                })
-                .collect(),
+            } => missing_transactions.keys().copied().collect(),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
         }
     }
