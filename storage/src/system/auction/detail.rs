@@ -304,7 +304,8 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
 /// Attempts to apply the delegator reward to the existing stake. If the reward recipient has
 /// completely unstaked, applies it to their unbond instead. In either case, returns
 /// the purse the amount should be applied to.
-/// If the `ValidatorBid` public key was changed, attemps to fetch the current `validator_public_key`.
+/// If the `ValidatorBid` public key was changed, attemps to fetch the current
+/// `validator_public_key`.
 pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
