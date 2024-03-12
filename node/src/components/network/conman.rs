@@ -24,6 +24,7 @@ use casper_types::{PublicKey, TimeDiff};
 use datasize::DataSize;
 use futures::{TryFuture, TryFutureExt};
 use juliet::{
+    header::ErrorKind,
     rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError},
     ChannelId, Id,
 };
@@ -48,7 +49,7 @@ use crate::{
 
 use super::{
     blocklist::BlocklistJustification, error::ConnectionError, handshake::HandshakeOutcome,
-    serialize_network_message, Transport,
+    Transport,
 };
 
 pub(crate) type ConManStateReadLock<'a> = std::sync::RwLockReadGuard<'a, ConManState>;
@@ -276,6 +277,12 @@ impl PeerError {
         }
     }
 
+    /// Attempt to deserialize a [`PeerError`] from given bytes.
+    #[inline(always)]
+    fn deserialize(raw: &[u8]) -> Option<Self> {
+        bincode::Options::deserialize(super::bincode_config(), raw).ok()
+    }
+
     /// Creates a peer error from a anything string-adjacent.
     #[inline(always)]
     fn other<E: ToString>(err: E) -> Self {
@@ -285,7 +292,13 @@ impl PeerError {
     /// Serializes the error.
     #[inline(always)]
     fn serialize(&self) -> Bytes {
-        serialize_network_message(&self)
+        bincode::Options::serialize(super::bincode_config(), self)
+            .map(Bytes::from)
+            .map_err(|err| {
+                error!(%err, "serialization failure when encoding outgoing peer_error");
+                err
+            })
+            .ok()
             .unwrap_or_else(|| Bytes::from(&b"serialization failure"[..]))
     }
 }
@@ -827,8 +840,9 @@ impl OutgoingHandler {
                         RPC_ERROR_ON_OUTGOING,
                         |dropped| warn!(%err, dropped, "encountered juliet RPC error")
                     );
-                    // TODO: If there was a user error, try to extract a reconnection hint.
-                    break Instant::now() + ctx.cfg.significant_error_backoff.into();
+
+                    let delay = reconnect_delay_from_rpc_server_error(&ctx.cfg, &err);
+                    break Instant::now() + delay;
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
                     // This is "our bad", but the peer has been informed of our address now.
@@ -1074,6 +1088,33 @@ where
                 tokio::time::sleep(backoff).await;
             }
         }
+    }
+}
+
+/// Calculates a sensible do-not-call-timeout from a given error.
+fn reconnect_delay_from_rpc_server_error(cfg: &Config, err: &RpcServerError) -> Duration {
+    let Some((header, raw)) = err.as_remote_other_err() else {
+        return cfg.significant_error_backoff.into();
+    };
+
+    if !header.is_error() || header.error_kind() != ErrorKind::Other {
+        return cfg.significant_error_backoff.into();
+    }
+
+    // It's a valid user error with a payload.
+    let Some(peer_err) = PeerError::deserialize(raw) else {
+        rate_limited!(RPC_ERROR_OTHER_INVALID_MESSAGE, |dropped| warn!(
+            dropped,
+            "failed to deserialize a custom error message"
+        ));
+        return cfg.significant_error_backoff.into();
+    };
+
+    match peer_err {
+        PeerError::YouAreBanned { time_left, .. } => {
+            time_left.min(cfg.permanent_error_backoff.into())
+        }
+        PeerError::Other(_) => cfg.significant_error_backoff.into(),
     }
 }
 
