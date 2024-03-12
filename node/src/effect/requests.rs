@@ -352,6 +352,9 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    GetLatestSwitchBlockHeader {
+        responder: Responder<Option<BlockHeader>>,
+    },
     GetSwitchBlockHeaderByEra {
         /// Era ID for which to get the block header.
         era_id: EraId,
@@ -531,6 +534,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
                 write!(formatter, "get header for height {}", block_height)
+            }
+            StorageRequest::GetLatestSwitchBlockHeader { .. } => {
+                write!(formatter, "get latest switch block header")
             }
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
                 write!(formatter, "get header for era {}", era_id)

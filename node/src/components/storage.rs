@@ -911,6 +911,11 @@ impl Storage {
                     .read_block_header_by_height(block_height, only_from_available_block_range)?;
                 responder.respond(maybe_header).ignore()
             }
+            StorageRequest::GetLatestSwitchBlockHeader { responder } => {
+                let txn = self.block_store.checkout_ro()?;
+                let maybe_header = txn.read(LatestSwitchBlock)?;
+                responder.respond(maybe_header).ignore()
+            }
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder } => {
                 let txn = self.block_store.checkout_ro()?;
                 let maybe_header = txn.read(era_id)?;

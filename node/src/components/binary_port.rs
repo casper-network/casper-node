@@ -595,6 +595,12 @@ where
             (*effect_builder.get_chainspec_raw_bytes().await).clone(),
             protocol_version,
         ),
+        InformationRequest::LatestSwitchBlockHeader => BinaryResponse::from_option(
+            effect_builder
+                .get_latest_switch_block_header_from_storage()
+                .await,
+            protocol_version,
+        ),
         InformationRequest::NodeStatus => {
             let (
                 node_uptime,
@@ -607,6 +613,7 @@ where
                 last_progress,
                 available_block_range,
                 block_sync,
+                latest_switch_block_header,
             ) = join!(
                 effect_builder.get_uptime(),
                 effect_builder.get_network_name(),
@@ -618,6 +625,7 @@ where
                 effect_builder.get_last_progress(),
                 effect_builder.get_available_block_range_from_storage(),
                 effect_builder.get_block_synchronizer_status(),
+                effect_builder.get_latest_switch_block_header_from_storage(),
             );
             let starting_state_root_hash = effect_builder
                 .get_block_header_at_height_from_storage(available_block_range.low(), true)
@@ -654,6 +662,8 @@ where
                 last_progress: last_progress.into(),
                 available_block_range,
                 block_sync,
+                latest_switch_block_hash: latest_switch_block_header
+                    .map(|header| header.block_hash()),
             };
             BinaryResponse::from_value(status, protocol_version)
         }
