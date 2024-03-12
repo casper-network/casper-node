@@ -161,7 +161,6 @@ impl ReactorEvent for Event {
     }
 }
 
-#[derive(Debug)]
 struct Reactor {
     network: InMemoryNetwork<Message>,
     storage: Storage,

@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution::Error as ExecError};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{account::AccountHash, runtime_args, system::mint, ApiError, U512};
 
 const REGRESSION_20220207_CONTRACT: &str = "regression_20220207.wasm";

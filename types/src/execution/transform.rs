@@ -6,7 +6,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::TransformKind;
+use super::TransformKindV2;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Key,
@@ -17,15 +17,15 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct Transform {
+pub struct TransformV2 {
     key: Key,
-    kind: TransformKind,
+    kind: TransformKindV2,
 }
 
-impl Transform {
+impl TransformV2 {
     /// Constructs a new `Transform`.
-    pub fn new(key: Key, kind: TransformKind) -> Self {
-        Transform { key, kind }
+    pub fn new(key: Key, kind: TransformKindV2) -> Self {
+        TransformV2 { key, kind }
     }
 
     /// Returns the key whose value was transformed.
@@ -34,17 +34,17 @@ impl Transform {
     }
 
     /// Returns the transformation kind.
-    pub fn kind(&self) -> &TransformKind {
+    pub fn kind(&self) -> &TransformKindV2 {
         &self.kind
     }
 
     /// Consumes `self`, returning its constituent parts.
-    pub fn destructure(self) -> (Key, TransformKind) {
+    pub fn destructure(self) -> (Key, TransformKindV2) {
         (self.key, self.kind)
     }
 }
 
-impl ToBytes for Transform {
+impl ToBytes for TransformV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.key.write_bytes(writer)?;
         self.kind.write_bytes(writer)
@@ -61,11 +61,11 @@ impl ToBytes for Transform {
     }
 }
 
-impl FromBytes for Transform {
+impl FromBytes for TransformV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (key, remainder) = Key::from_bytes(bytes)?;
-        let (transform, remainder) = TransformKind::from_bytes(remainder)?;
-        let transform_entry = Transform {
+        let (transform, remainder) = TransformKindV2::from_bytes(remainder)?;
+        let transform_entry = TransformV2 {
             key,
             kind: transform,
         };

@@ -26,6 +26,8 @@ mod access_rights;
 pub mod account;
 pub mod addressable_entity;
 pub mod api_error;
+mod auction_state;
+pub mod binary_port;
 mod block;
 mod block_time;
 mod byte_code;
@@ -49,10 +51,12 @@ pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
+pub mod global_state;
 mod json_pretty_printer;
 mod key;
 mod motes;
 pub mod package;
+mod peers_map;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -68,6 +72,7 @@ mod transfer;
 mod transfer_result;
 mod uint;
 mod uref;
+mod validator_change;
 
 #[cfg(feature = "std")]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
@@ -75,6 +80,7 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
+
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
@@ -86,19 +92,20 @@ pub use addressable_entity::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
+pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader, BlockHeaderV1,
-    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
-    BlockSignaturesV2, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd, EraEndV1,
-    EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
-    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlockHeader,
+    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
+    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockIdentifier, BlockSignatures,
+    BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2, BlockSyncStatus,
+    BlockSynchronizerStatus, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd,
+    EraEndV1, EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
+    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
-
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
@@ -109,9 +116,9 @@ pub use chainspec::{
     GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
-    MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig,
+    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
+    TransactionV1Config, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -160,10 +167,13 @@ pub use motes::Motes;
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
+pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
-pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
+pub use stored_value::{
+    GlobalStateIdentifier, StoredValue, TypeMismatch as StoredValueTypeMismatch,
+};
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
@@ -171,7 +181,7 @@ pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::{
     AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
     FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, InitiatorAddr,
     NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
     TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
@@ -192,6 +202,7 @@ pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
+pub use validator_change::ValidatorChange;
 
 /// OS page size.
 #[cfg(feature = "std")]

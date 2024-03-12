@@ -18,21 +18,24 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use crate::global_state::{
-    error::Error as GlobalStateError, state::StateReader, trie::merkle_proof::TrieMerkleProof,
-    DEFAULT_MAX_QUERY_DEPTH,
+    error::Error as GlobalStateError, state::StateReader,
+    trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_types::{
     addressable_entity::{NamedKeyAddr, NamedKeys},
-    bytesrepr::{self},
+    bytesrepr,
     contract_messages::{Message, Messages},
-    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
+    global_state::TrieMerkleProof,
     handle_stored_dictionary_value, CLType, CLValue, CLValueError, Digest, Key, KeyTag,
     StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
 use self::meter::{heap_meter::HeapSize, Meter};
 pub use self::{
-    error::Error as TrackingCopyError, ext::TrackingCopyExt, ext_entity::TrackingCopyEntityExt,
+    error::Error as TrackingCopyError,
+    ext::TrackingCopyExt,
+    ext_entity::{FeesPurseHandling, TrackingCopyEntityExt},
 };
 
 /// Result of a query on a `TrackingCopy`.
@@ -360,7 +363,7 @@ where
         let normalized_key = key.normalize();
         if let Some(value) = self.get(&normalized_key)? {
             self.effects
-                .push(Transform::new(normalized_key, TransformKind::Identity));
+                .push(TransformV2::new(normalized_key, TransformKindV2::Identity));
             Ok(Some(value))
         } else {
             Ok(None)
@@ -372,7 +375,7 @@ where
     pub fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
-        let transform = Transform::new(normalized_key, TransformKind::Write(value));
+        let transform = TransformV2::new(normalized_key, TransformKindV2::Write(value));
         self.effects.push(transform);
     }
 
@@ -402,8 +405,10 @@ where
     pub fn prune(&mut self, key: Key) {
         let normalized_key = key.normalize();
         self.cache.insert_prune(normalized_key);
-        self.effects
-            .push(Transform::new(normalized_key, TransformKind::Prune(key)));
+        self.effects.push(TransformV2::new(
+            normalized_key,
+            TransformKindV2::Prune(key),
+        ));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -428,23 +433,23 @@ where
         let transform_kind = match value {
             StoredValue::CLValue(cl_value) => match *cl_value.cl_type() {
                 CLType::I32 => match cl_value.into_t() {
-                    Ok(value) => TransformKind::AddInt32(value),
+                    Ok(value) => TransformKindV2::AddInt32(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U64 => match cl_value.into_t() {
-                    Ok(value) => TransformKind::AddUInt64(value),
+                    Ok(value) => TransformKindV2::AddUInt64(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U128 => match cl_value.into_t() {
-                    Ok(value) => TransformKind::AddUInt128(value),
+                    Ok(value) => TransformKindV2::AddUInt128(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U256 => match cl_value.into_t() {
-                    Ok(value) => TransformKind::AddUInt256(value),
+                    Ok(value) => TransformKindV2::AddUInt256(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U512 => match cl_value.into_t() {
-                    Ok(value) => TransformKind::AddUInt512(value),
+                    Ok(value) => TransformKindV2::AddUInt512(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 _ => {
@@ -453,7 +458,7 @@ where
                             Ok((name, key)) => {
                                 let mut named_keys = NamedKeys::new();
                                 named_keys.insert(name, key);
-                                TransformKind::AddKeys(named_keys)
+                                TransformKindV2::AddKeys(named_keys)
                             }
                             Err(error) => return Ok(AddResult::from(error)),
                         }
@@ -469,13 +474,15 @@ where
             Ok(TransformInstruction::Store(new_value)) => {
                 self.cache.insert_write(normalized_key, new_value);
                 self.effects
-                    .push(Transform::new(normalized_key, transform_kind));
+                    .push(TransformV2::new(normalized_key, transform_kind));
                 Ok(AddResult::Success)
             }
             Ok(TransformInstruction::Prune(key)) => {
                 self.cache.insert_prune(normalized_key);
-                self.effects
-                    .push(Transform::new(normalized_key, TransformKind::Prune(key)));
+                self.effects.push(TransformV2::new(
+                    normalized_key,
+                    TransformKindV2::Prune(key),
+                ));
                 Ok(AddResult::Success)
             }
             Err(TransformError::TypeMismatch(type_mismatch)) => {
@@ -775,7 +782,7 @@ pub fn validate_query_proof(
         return Err(ValidationError::UnexpectedKey);
     }
 
-    if hash != &first_proof.compute_state_hash()? {
+    if hash != &compute_state_hash(first_proof)? {
         return Err(ValidationError::InvalidProofHash);
     }
 
@@ -802,7 +809,7 @@ pub fn validate_query_proof(
             return Err(ValidationError::UnexpectedKey);
         }
 
-        if hash != &proof.compute_state_hash()? {
+        if hash != &compute_state_hash(proof)? {
             return Err(ValidationError::InvalidProofHash);
         }
 
@@ -845,7 +852,7 @@ pub fn validate_query_merkle_proof(
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
 
-    if hash != &first_proof.compute_state_hash()? {
+    if hash != &compute_state_hash(first_proof)? {
         return Err(ValidationError::InvalidProofHash);
     }
 
@@ -868,7 +875,7 @@ pub fn validate_balance_proof(
         return Err(ValidationError::UnexpectedKey);
     }
 
-    if hash != &balance_proof.compute_state_hash()? {
+    if hash != &compute_state_hash(balance_proof)? {
         return Err(ValidationError::InvalidProofHash);
     }
 

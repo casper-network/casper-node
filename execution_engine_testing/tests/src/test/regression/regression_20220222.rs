@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{account::AccountHash, runtime_args, U512};
 
 const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
@@ -54,7 +54,7 @@ fn regression_20220222_escalate() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::ForgedReference(forged_uref))
+            engine_state::Error::Exec(ExecError::ForgedReference(forged_uref))
             if forged_uref == alice_main_purse.into_add()
         ),
         "Expected revert but received {:?}",

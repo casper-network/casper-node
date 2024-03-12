@@ -9,7 +9,8 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{Effects, Transform, TransformInstruction, TransformKind},
+    execution::{Effects, TransformInstruction, TransformKindV2, TransformV2},
+    global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
 
@@ -23,12 +24,11 @@ use crate::{
         state::{CommitError, CommitProvider, StateProvider, StateReader},
         store::Store,
         transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie::{Trie, TrieRaw},
         trie_store::{
             lmdb::LmdbTrieStore,
             operations::{
-                keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-                PruneResult, ReadResult,
+                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
             },
         },
     },
@@ -225,10 +225,10 @@ impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
-        for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
+        for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
-                (None, TransformKind::Write(new_value)) => TransformInstruction::store(new_value),
+                (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
@@ -305,17 +305,8 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
-        let txn = self.environment.create_read_txn()?;
-        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
-        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
-            cache: Arc::clone(&self.cache),
-            environment: Arc::clone(&self.environment),
-            trie_store: Arc::clone(&self.trie_store),
-            root_hash: state_hash,
-        });
-        txn.commit()?;
-        Ok(maybe_state)
+    fn empty_root(&self) -> Digest {
+        self.empty_root_hash
     }
 
     fn tracking_copy(
@@ -328,8 +319,17 @@ impl StateProvider for ScratchGlobalState {
         }
     }
 
-    fn empty_root(&self) -> Digest {
-        self.empty_root_hash
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
+        let txn = self.environment.create_read_txn()?;
+        let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
+        let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
+            cache: Arc::clone(&self.cache),
+            environment: Arc::clone(&self.environment),
+            trie_store: Arc::clone(&self.trie_store),
+            root_hash: state_hash,
+        });
+        txn.commit()?;
+        Ok(maybe_state)
     }
 
     fn trie(&self, request: TrieRequest) -> TrieResult {
@@ -419,30 +419,6 @@ impl StateProvider for ScratchGlobalState {
         txn.commit()?;
         Ok(missing_descendants)
     }
-
-    fn prune_keys(
-        &self,
-        mut state_root_hash: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        for key in keys_to_delete {
-            let prune_result = prune::<Key, StoredValue, _, _, GlobalStateError>(
-                &mut txn,
-                self.trie_store.deref(),
-                &state_root_hash,
-                key,
-            );
-            match prune_result? {
-                PruneResult::Pruned(root) => {
-                    state_root_hash = root;
-                }
-                other => return Ok(other),
-            }
-        }
-        txn.commit()?;
-        Ok(PruneResult::Pruned(state_root_hash))
-    }
 }
 
 #[cfg(test)]
@@ -452,7 +428,7 @@ pub(crate) mod tests {
 
     use casper_types::{
         account::AccountHash,
-        execution::{Effects, Transform, TransformKind},
+        execution::{Effects, TransformKindV2, TransformV2},
         CLValue, Digest,
     };
 
@@ -503,9 +479,9 @@ pub(crate) mod tests {
 
     pub(crate) fn create_test_transforms() -> Effects {
         let mut effects = Effects::new();
-        let transform = Transform::new(
+        let transform = TransformV2::new(
             Key::Account(AccountHash::new([3u8; 32])),
-            TransformKind::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+            TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
         );
         effects.push(transform);
         effects
@@ -580,7 +556,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -630,7 +606,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -671,7 +647,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp

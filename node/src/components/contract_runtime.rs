@@ -26,7 +26,7 @@ use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, EngineState};
+use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, ExecutionEngineV1};
 
 use casper_storage::{
     data_access_layer::{
@@ -88,7 +88,7 @@ pub(crate) struct ContractRuntime {
     state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     #[data_size(skip)]
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+    execution_engine_v1: Arc<ExecutionEngineV1>,
     metrics: Arc<Metrics>,
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
@@ -114,9 +114,6 @@ impl ContractRuntime {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState::default()));
 
-        let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
-            .map_err(ConfigError::GlobalState)?;
-
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
             .with_max_associated_keys(chainspec.core_config.max_associated_keys)
@@ -126,10 +123,7 @@ impl ContractRuntime {
             .with_vesting_schedule_period_millis(
                 chainspec.core_config.vesting_schedule_period.millis(),
             )
-            .with_max_delegators_per_validator(
-                (chainspec.core_config.max_delegators_per_validator != 0)
-                    .then_some(chainspec.core_config.max_delegators_per_validator),
-            )
+            .with_max_delegators_per_validator(chainspec.core_config.max_delegators_per_validator)
             .with_wasm_config(chainspec.wasm_config)
             .with_system_config(chainspec.system_costs_config)
             .with_administrative_accounts(chainspec.core_config.administrators.clone())
@@ -139,20 +133,19 @@ impl ContractRuntime {
             .with_fee_handling(chainspec.core_config.fee_handling)
             .build();
 
-        let engine_state = EngineState::new(data_access_layer, engine_config);
-
-        let engine_state = Arc::new(engine_state);
-
-        let metrics = Arc::new(Metrics::new(registry)?);
         let data_access_layer = Arc::new(
-            Self::data_access_layer(storage_dir, contract_runtime_config)
+            Self::new_data_access_layer(storage_dir, contract_runtime_config)
                 .map_err(ConfigError::GlobalState)?,
         );
+
+        let execution_engine_v1 = Arc::new(ExecutionEngineV1::new(engine_config));
+
+        let metrics = Arc::new(Metrics::new(registry)?);
 
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
             execution_pre_state,
-            engine_state,
+            execution_engine_v1,
             metrics,
             exec_queue: Default::default(),
             chainspec,
@@ -172,7 +165,7 @@ impl ContractRuntime {
         debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
-    fn data_access_layer(
+    fn new_data_access_layer(
         storage_dir: &Path,
         contract_runtime_config: &Config,
     ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
@@ -350,22 +343,6 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetBids {
-                request: bids_request,
-                responder,
-            } => {
-                trace!(?bids_request, "get bids request");
-                let metrics = Arc::clone(&self.metrics);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
-                async move {
-                    let start = Instant::now();
-                    let result = data_access_layer.bids(bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,
@@ -441,6 +418,24 @@ impl ContractRuntime {
                         .get_round_seigniorage_rate
                         .observe(start.elapsed().as_secs_f64());
                     trace!(?result, "round seigniorage rate results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTaggedValues {
+                request: tagged_values_request,
+                responder,
+            } => {
+                trace!(?tagged_values_request, "tagged values request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.tagged_values(tagged_values_request);
+                    metrics
+                        .get_all_values
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get all values result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -533,16 +528,17 @@ impl ContractRuntime {
                             finalized_block_height,
                             executable_block.transactions.len()
                         );
-                        let engine_state = Arc::clone(&self.engine_state);
                         let data_access_layer = Arc::clone(&self.data_access_layer);
+                        let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
+                        let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         effects.extend(
                             exec_or_requeue(
-                                engine_state,
                                 data_access_layer,
+                                execution_engine_v1,
+                                chainspec,
                                 metrics,
-                                self.chainspec.clone(),
                                 exec_queue,
                                 shared_pre_state,
                                 current_pre_state.clone(),
@@ -566,11 +562,13 @@ impl ContractRuntime {
                 responder,
             } => {
                 if let Transaction::Deploy(deploy) = *transaction {
-                    let engine_state = Arc::clone(&self.engine_state);
+                    let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
+                    let data_access_layer = Arc::clone(&self.data_access_layer);
                     async move {
                         let result = run_intensive_task(move || {
                             speculatively_execute(
-                                engine_state.as_ref(),
+                                data_access_layer.as_ref(),
+                                execution_engine_v1.as_ref(),
                                 execution_prestate,
                                 DeployItem::from(deploy.clone()),
                             )
@@ -669,15 +667,9 @@ impl ContractRuntime {
         Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
-        &self.engine_state
-    }
-
     /// Returns data_access_layer, for testing only.
     #[cfg(test)]
-    pub(crate) fn data_provider(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
+    pub(crate) fn data_access_layer(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
         Arc::clone(&self.data_access_layer)
     }
 }

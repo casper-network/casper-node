@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest, EntityVersion,
-    InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
+    binary_port, AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest,
+    EntityVersion, InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -68,6 +68,20 @@ impl Error {
     }
 }
 
+impl From<Error> for binary_port::ErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::EmptyBlockchain
+            | Error::InvalidDeployConfiguration(_)
+            | Error::InvalidV1Configuration(_)
+            | Error::Parameters { .. }
+            | Error::Expired { .. }
+            | Error::ExpectedDeploy
+            | Error::ExpectedTransactionV1 => binary_port::ErrorCode::InvalidTransaction,
+        }
+    }
+}
+
 /// A representation of the way in which a transaction failed parameter checks.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
 pub(crate) enum ParameterFailure {
@@ -86,8 +100,14 @@ pub(crate) enum ParameterFailure {
     #[error("package at {package_hash} does not exist")]
     NoSuchPackageAtHash { package_hash: PackageHash },
     /// Invalid contract at given version.
-    #[error("invalid contract at version: {contract_version}")]
-    InvalidContractAtVersion { contract_version: EntityVersion },
+    #[error("invalid entity at version: {entity_version}")]
+    InvalidEntityAtVersion { entity_version: EntityVersion },
+    /// Invalid contract at given version.
+    #[error("disabled entity at version: {entity_version}")]
+    DisabledEntityAtVersion { entity_version: EntityVersion },
+    /// Invalid contract at given version.
+    #[error("missing entity at version: {entity_version}")]
+    MissingEntityAtVersion { entity_version: EntityVersion },
     /// Invalid associated keys.
     #[error("account authorization invalid")]
     InvalidAssociatedKeys,

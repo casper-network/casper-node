@@ -30,16 +30,6 @@ impl TransactionHashWithApprovals {
         }
     }
 
-    pub(crate) fn new_v1(
-        transaction_hash: TransactionV1Hash,
-        approvals: BTreeSet<TransactionV1Approval>,
-    ) -> Self {
-        Self::V1 {
-            transaction_hash,
-            approvals,
-        }
-    }
-
     pub(crate) fn transaction_hash(&self) -> TransactionHash {
         match self {
             TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {

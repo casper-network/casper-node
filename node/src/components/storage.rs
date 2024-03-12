@@ -43,7 +43,7 @@ use casper_storage::block_store::{
     lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
-        LatestSwitchBlock, StateStore, Tip, TransactionFinalizedApprovals,
+        LatestSwitchBlock, StateStore, StateStoreKey, Tip, TransactionFinalizedApprovals,
     },
     BlockStoreError, BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
@@ -59,22 +59,25 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+use casper_types::SignedBlock;
+use casper_types::{
+    binary_port::DbRawBytesSpec,
+    bytesrepr::{FromBytes, ToBytes},
+    execution::{
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
+    },
+    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
+    BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash,
+    DeployHash, EraId, ExecutionInfo, FinalitySignature, FinalizedApprovals, ProtocolVersion,
+    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
+    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash,
+    TransactionWithFinalizedApprovals, Transfer,
+};
 use datasize::DataSize;
 use prometheus::Registry;
 use smallvec::SmallVec;
 use tracing::{debug, error, info, warn};
-
-use casper_types::{
-    bytesrepr::{FromBytes, ToBytes},
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
-    },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1,
-    BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash, DeployHash, EraId,
-    FinalitySignature, FinalizedApprovals, ProtocolVersion, SignedBlockHeader, StoredValue,
-    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
-    TransactionId, TransactionV1ApprovalsHash, TransactionWithFinalizedApprovals, Transfer,
-};
 
 use crate::{
     components::{
@@ -90,9 +93,9 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        AvailableBlockRange, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
-        BlockWithMetadata, ExecutableBlock, ExecutionInfo, LegacyDeploy, MaxTtl, NodeId, NodeRng,
-        SignedBlock, SyncLeap, SyncLeapIdentifier, VariantMismatch,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
+        ExecutableBlock, LegacyDeploy, MaxTtl, NodeId, NodeRng, SyncLeap, SyncLeapIdentifier,
+        VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
@@ -324,8 +327,9 @@ impl Storage {
 
         {
             let ro_txn = component.block_store.checkout_ro()?;
-            let maybe_state_store: Option<Vec<u8>> =
-                ro_txn.read(Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY))?;
+            let maybe_state_store: Option<Vec<u8>> = ro_txn.read(StateStoreKey::new(
+                Cow::Borrowed(COMPLETED_BLOCKS_STORAGE_KEY),
+            ))?;
             match maybe_state_store {
                 Some(raw) => {
                     let (mut sequences, _) = DisjointSequences::from_vec(raw)
@@ -676,6 +680,44 @@ impl Storage {
                 };
                 responder.respond(maybe_transaction).ignore()
             }
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
+                with_finalized_approvals,
+                responder,
+            } => {
+                let mut ro_txn = self.block_store.checkout_ro()?;
+
+                let transaction = if with_finalized_approvals {
+                    match self
+                        .get_transaction_with_finalized_approvals(&mut ro_txn, &transaction_hash)?
+                    {
+                        Some(transaction_wfa) => transaction_wfa.into_naive(),
+                        None => return Ok(responder.respond(None).ignore()),
+                    }
+                } else {
+                    match ro_txn.read(transaction_hash)? {
+                        Some(transaction) => transaction,
+                        None => return Ok(responder.respond(None).ignore()),
+                    }
+                };
+
+                let block_hash_height_and_era: BlockHashHeightAndEra =
+                    match ro_txn.read(transaction_hash)? {
+                        Some(value) => value,
+                        None => return Ok(responder.respond(Some((transaction, None))).ignore()),
+                    };
+
+                let execution_result = ro_txn.read(transaction_hash)?;
+                let execution_info = ExecutionInfo {
+                    block_hash: block_hash_height_and_era.block_hash,
+                    block_height: block_hash_height_and_era.block_height,
+                    execution_result,
+                };
+
+                responder
+                    .respond(Some((transaction, Some(execution_info))))
+                    .ignore()
+            }
             StorageRequest::IsTransactionStored {
                 transaction_id,
                 responder,
@@ -715,79 +757,6 @@ impl Storage {
                 })?;
                 rw_txn.commit()?;
                 responder.respond(()).ignore()
-            }
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            } => {
-                let mut ro_txn = self.block_store.checkout_ro()?;
-
-                let transaction_wfa = match self
-                    .get_transaction_with_finalized_approvals(&mut ro_txn, &transaction_hash)?
-                {
-                    Some(transaction_wfa) => transaction_wfa,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-
-                let block_hash_height_and_era: BlockHashHeightAndEra = match ro_txn
-                    .read(transaction_hash)?
-                {
-                    Some(value) => value,
-                    None => return Ok(responder.respond(Some((transaction_wfa, None))).ignore()),
-                };
-                let execution_result = ro_txn.read(transaction_hash)?;
-                let execution_info = ExecutionInfo {
-                    block_hash: block_hash_height_and_era.block_hash,
-                    block_height: block_hash_height_and_era.block_height,
-                    execution_result,
-                };
-
-                responder
-                    .respond(Some((transaction_wfa, Some(execution_info))))
-                    .ignore()
-            }
-            StorageRequest::GetSignedBlockByHash {
-                block_hash,
-                only_from_available_block_range,
-                responder,
-            } => {
-                let ro_txn = self.block_store.checkout_ro()?;
-
-                let block: Block = if let Some(block) = ro_txn.read(block_hash)? {
-                    block
-                } else {
-                    return Ok(responder.respond(None).ignore());
-                };
-
-                if !(self.should_return_block(block.height(), only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                // Check that the hash of the block retrieved is correct.
-                if block_hash != *block.hash() {
-                    error!(
-                        queried_block_hash = ?block_hash,
-                        actual_block_hash = ?block.hash(),
-                        "block not stored under hash"
-                    );
-                    debug_assert_eq!(&block_hash, block.hash());
-                    return Ok(responder.respond(None).ignore());
-                }
-                let block_signatures = match ro_txn.read(block_hash)? {
-                    Some(signatures) => signatures,
-                    None => self.get_default_block_signatures(&block),
-                };
-                if block_signatures.is_verified().is_err() {
-                    error!(?block, "invalid block signatures for block");
-                    debug_assert!(block_signatures.is_verified().is_ok());
-                    return Ok(responder.respond(None).ignore());
-                }
-                responder
-                    .respond(Some(SignedBlock {
-                        block,
-                        block_signatures,
-                    }))
-                    .ignore()
             }
             StorageRequest::GetFinalitySignature { id, responder } => {
                 let maybe_sig = self
@@ -834,72 +803,6 @@ impl Storage {
                 responder
                     .respond(Some(BlockWithMetadata {
                         block,
-                        block_signatures,
-                    }))
-                    .ignore()
-            }
-            StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            } => {
-                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                let ro_txn = self.block_store.checkout_ro()?;
-
-                let block: Block = {
-                    if let Some(block) = ro_txn.read(block_height)? {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    }
-                };
-
-                let hash = block.hash();
-                let block_signatures = match ro_txn.read(*hash)? {
-                    Some(signatures) => signatures,
-                    None => self.get_default_block_signatures(&block),
-                };
-                responder
-                    .respond(Some(SignedBlock {
-                        block,
-                        block_signatures,
-                    }))
-                    .ignore()
-            }
-            StorageRequest::GetHighestSignedBlock {
-                only_from_available_block_range,
-                responder,
-            } => {
-                let ro_txn = self.block_store.checkout_ro()?;
-
-                let highest_block = if only_from_available_block_range {
-                    // Get by height
-                    let maybe_height = self.highest_complete_block_height();
-                    let height = match maybe_height {
-                        Some(height) => height,
-                        None => return Ok(responder.respond(None).ignore()),
-                    };
-                    match ro_txn.read(height)? {
-                        Some(block) => block,
-                        None => return Ok(responder.respond(None).ignore()),
-                    }
-                } else {
-                    match DataReader::<Tip, Block>::read(&ro_txn, Tip)? {
-                        Some(block) => block,
-                        None => return Ok(responder.respond(None).ignore()),
-                    }
-                };
-                let hash = highest_block.hash();
-                let block_signatures = match ro_txn.read(*hash)? {
-                    Some(signatures) => signatures,
-                    None => self.get_default_block_signatures(&highest_block),
-                };
-                responder
-                    .respond(Some(SignedBlock {
-                        block: highest_block,
                         block_signatures,
                     }))
                     .ignore()
@@ -1061,6 +964,15 @@ impl Storage {
                 responder
                     .respond(self.key_block_height_for_activation_point)
                     .ignore()
+            }
+            StorageRequest::GetRawData {
+                key,
+                responder,
+                record_id,
+            } => {
+                let txn = self.block_store.checkout_ro()?;
+                let maybe_data: Option<DbRawBytesSpec> = txn.read((record_id, key))?;
+                responder.respond(maybe_data).ignore()
             }
         })
     }
@@ -2115,7 +2027,7 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
             for transform_entry in &effect.transforms {
-                if let execution_result_v1::Transform::WriteTransfer(transfer) =
+                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer) =
                     &transform_entry.transform
                 {
                     transfers.push(*transfer);
@@ -2124,7 +2036,7 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
         }
         ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
             for transform in effects.transforms() {
-                if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind() {
+                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform.kind() {
                     transfers.push(*transfer);
                 }
             }
@@ -2243,5 +2155,110 @@ impl Storage {
             .expect("could not create RO transaction")
             .read(era_id)
             .expect("could not retrieve value from storage")
+    }
+
+    pub(crate) fn read_signed_block_by_hash(
+        &self,
+        block_hash: BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        let ro_txn = self
+            .block_store
+            .checkout_ro()
+            .expect("should create ro txn");
+        let block: Block = ro_txn.read(block_hash).expect("should read block")?;
+
+        if !(self
+            .should_return_block(block.height(), only_from_available_block_range)
+            .expect("should check if block is in range"))
+        {
+            return None;
+        }
+        if block_hash != *block.hash() {
+            error!(
+                queried_block_hash = ?block_hash,
+                actual_block_hash = ?block.hash(),
+                "block not stored under hash"
+            );
+            debug_assert_eq!(&block_hash, block.hash());
+            return None;
+        }
+        let block_signatures = ro_txn
+            .read(block_hash)
+            .expect("should read block signatures")
+            .unwrap_or_else(|| self.get_default_block_signatures(&block));
+        if block_signatures.is_verified().is_err() {
+            error!(?block, "invalid block signatures for block");
+            debug_assert!(block_signatures.is_verified().is_ok());
+            return None;
+        }
+        Some(SignedBlock::new(block, block_signatures))
+    }
+
+    pub(crate) fn read_signed_block_by_height(
+        &self,
+        height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        if !(self
+            .should_return_block(height, only_from_available_block_range)
+            .expect("should check if block is in range"))
+        {
+            return None;
+        }
+        let ro_txn = self
+            .block_store
+            .checkout_ro()
+            .expect("should create ro txn");
+        let block: Block = ro_txn.read(height).expect("should read block")?;
+        let hash = block.hash();
+        let block_signatures = ro_txn
+            .read(*hash)
+            .expect("should read block signatures")
+            .unwrap_or_else(|| self.get_default_block_signatures(&block));
+        Some(SignedBlock::new(block, block_signatures))
+    }
+
+    pub(crate) fn read_highest_signed_block(
+        &self,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        let ro_txn = self
+            .block_store
+            .checkout_ro()
+            .expect("should create ro txn");
+        let highest_block = if only_from_available_block_range {
+            let height = self.highest_complete_block_height()?;
+            ro_txn.read(height).expect("should read block")?
+        } else {
+            DataReader::<Tip, Block>::read(&ro_txn, Tip).expect("should read block")?
+        };
+        let hash = highest_block.hash();
+        let block_signatures = match ro_txn.read(*hash).expect("should read block signatures") {
+            Some(signatures) => signatures,
+            None => self.get_default_block_signatures(&highest_block),
+        };
+        Some(SignedBlock::new(highest_block, block_signatures))
+    }
+
+    pub(crate) fn read_execution_info(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Option<ExecutionInfo> {
+        let txn = self
+            .block_store
+            .checkout_ro()
+            .expect("should create ro txn");
+        let block_hash_and_height: BlockHashHeightAndEra = txn
+            .read(transaction_hash)
+            .expect("should read block hash and height")?;
+        let execution_result = txn
+            .read(transaction_hash)
+            .expect("should read execution result");
+        Some(ExecutionInfo {
+            block_hash: block_hash_and_height.block_hash,
+            block_height: block_hash_and_height.block_height,
+            execution_result,
+        })
     }
 }

@@ -3,19 +3,18 @@ use casper_engine_test_support::{
     DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
+    account::AccountHash,
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
     EntityAddr, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 use once_cell::sync::Lazy;
+use std::collections::BTreeSet;
 
 use crate::{
     lmdb_fixture,
-    test::private_chain::{
-        self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, VALIDATOR_1_PUBLIC_KEY,
-    },
+    test::private_chain::{self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR},
     wasm_utils,
 };
 
@@ -213,15 +212,12 @@ fn should_distribute_accumulated_fees_to_admins() {
         .expect("should have admin account");
     let admin_balance_before = builder.get_purse_balance(admin.main_purse());
 
-    builder
-        .distribute(
-            None,
-            *DEFAULT_PROTOCOL_VERSION,
-            &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
-            1,
-            DEFAULT_BLOCK_TIME,
-        )
-        .expect("should distribute");
+    let mut administrative_accounts: BTreeSet<AccountHash> = BTreeSet::new();
+    administrative_accounts.insert(*DEFAULT_ADMIN_ACCOUNT_ADDR);
+
+    let result = builder.distribute_fees(None, *DEFAULT_PROTOCOL_VERSION, DEFAULT_BLOCK_TIME);
+
+    assert!(result.is_success(), "expected success not: {:?}", result);
 
     let accumulated_purse_balance_after_distribute = builder.get_purse_balance(accumulation_purse);
 
@@ -243,7 +239,6 @@ fn should_distribute_accumulated_fees_to_admins() {
 #[ignore]
 #[test]
 fn should_accumulate_fees_after_upgrade() {
-    // let mut builder = super::private_chain_setup();
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_5);
 
@@ -282,12 +277,15 @@ fn should_accumulate_fees_after_upgrade() {
             .build()
     };
 
-    let engine_config = EngineConfigBuilder::default()
-        .with_fee_handling(FeeHandling::Accumulate)
-        .build();
+    let updated_chainspec = builder
+        .chainspec()
+        .clone()
+        .with_fee_handling(FeeHandling::Accumulate);
+
+    builder.with_chainspec(updated_chainspec);
 
     builder
-        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
+        .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();

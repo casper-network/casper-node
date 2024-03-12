@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::BTreeMap, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, ops::Range};
 
 use casper_storage::data_access_layer::{
     EraValidatorsRequest, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
@@ -235,7 +235,6 @@ impl RewardsInfo {
                     | RoundSeigniorageRateResult::MintNotFound
                     | RoundSeigniorageRateResult::ValueNotFound(_)
                     | RoundSeigniorageRateResult::Failure(_) => {
-                        debug_assert!(false, "wtf");
                         return Err(RewardsError::FailedToFetchSeigniorageRate);
                     }
                     RoundSeigniorageRateResult::Success { rate } => rate,
@@ -353,7 +352,7 @@ impl EraInfo {
 /// It is done in 2 steps so that it is easier to unit test the rewards calculation.
 pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
-    chainspec: Arc<Chainspec>,
+    chainspec: &Chainspec,
     executable_block: ExecutableBlock,
 ) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
     let current_era_id = executable_block.era_id;

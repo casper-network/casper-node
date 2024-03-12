@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::marker::PhantomData;
 
 use casper_types::{
+    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
@@ -162,6 +163,26 @@ where
         Ok(txn
             .get_value::<_, V::Legacy>(self.legacy, legacy_key)?
             .map(Into::into))
+    }
+
+    pub(super) fn get_raw<Tx: LmdbTransaction>(
+        &self,
+        txn: &Tx,
+        key: &[u8],
+    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
+        let value = txn.get(self.current, &key);
+        match value {
+            Ok(raw_bytes) => Ok(Some(DbRawBytesSpec::new_current(raw_bytes))),
+            Err(lmdb::Error::NotFound) => {
+                let value = txn.get(self.legacy, &key);
+                match value {
+                    Ok(raw_bytes) => Ok(Some(DbRawBytesSpec::new_legacy(raw_bytes))),
+                    Err(lmdb::Error::NotFound) => Ok(None),
+                    Err(err) => Err(err.into()),
+                }
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     pub(super) fn exists<Tx: LmdbTransaction>(

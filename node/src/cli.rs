@@ -151,7 +151,7 @@ impl Cli {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
 
-                let mut validator_config = Self::init(&config, config_ext)?;
+                let mut reactor_config = Self::init(&config, config_ext)?;
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -162,7 +162,7 @@ impl Cli {
                 let registry = Registry::new();
 
                 let (chainspec, chainspec_raw_bytes) =
-                    <(Chainspec, ChainspecRawBytes)>::from_path(validator_config.dir())?;
+                    <(Chainspec, ChainspecRawBytes)>::from_path(reactor_config.dir())?;
 
                 info!(
                     protocol_version = %chainspec.protocol_version(),
@@ -174,16 +174,16 @@ impl Cli {
                     bail!("invalid chainspec");
                 }
 
-                validator_config.value_mut().ensure_valid(&chainspec);
+                reactor_config.value_mut().ensure_valid(&chainspec);
 
                 let network_identity = NetworkIdentity::from_config(WithDir::new(
-                    validator_config.dir(),
-                    validator_config.value().network.clone(),
+                    reactor_config.dir(),
+                    reactor_config.value().network.clone(),
                 ))
                 .context("failed to create a network identity")?;
 
                 let mut main_runner = Runner::<main_reactor::MainReactor>::with_metrics(
-                    validator_config,
+                    reactor_config,
                     Arc::new(chainspec),
                     Arc::new(chainspec_raw_bytes),
                     network_identity,

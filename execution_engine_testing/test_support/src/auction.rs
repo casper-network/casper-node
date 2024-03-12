@@ -4,17 +4,18 @@ use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::engine_state::{EngineState, ExecuteRequest};
+use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_storage::{
-    data_access_layer::GenesisRequest,
+    data_access_layer::{DataAccessLayer, GenesisRequest, TrieRequest},
     global_state::{
-        state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie},
+        state::{lmdb::LmdbGlobalState, StateProvider},
+        trie::Trie,
     },
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
+    global_state::Pointer,
     runtime_args,
     system::auction,
     ChainspecRegistry, Digest, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
@@ -113,9 +114,9 @@ pub fn run_blocks_with_transfers_and_step(
 
     let mut total_transfers = 0;
     {
-        let engine_state = builder.get_engine_state();
-        let lmdb_env = engine_state.get_state().state().environment().env();
-        let db = engine_state.get_state().state().trie_store().get_db();
+        let data_access_layer = builder.data_access_layer();
+        let lmdb_env = data_access_layer.state().environment().env();
+        let db = data_access_layer.state().trie_store().get_db();
 
         let txn = lmdb_env.begin_ro_txn().unwrap();
         let mut cursor = txn.open_ro_cursor(db).unwrap();
@@ -154,24 +155,26 @@ pub fn run_blocks_with_transfers_and_step(
             None
         };
         let exec_time = start.elapsed();
-        find_necessary_tries(
-            builder.get_engine_state(),
-            &mut necessary_tries,
-            transfer_root,
-        );
+        {
+            find_necessary_tries(
+                builder.data_access_layer(),
+                &mut necessary_tries,
+                transfer_root,
+            );
+        }
 
         if let Some(auction_root) = maybe_auction_root {
             find_necessary_tries(
-                builder.get_engine_state(),
+                builder.data_access_layer(),
                 &mut necessary_tries,
                 auction_root,
             );
         }
 
         let total_tries = {
-            let engine_state = builder.get_engine_state();
-            let lmdb_env = engine_state.get_state().state().environment().env();
-            let db = engine_state.get_state().state().trie_store().get_db();
+            let data_access_layer = builder.data_access_layer();
+            let lmdb_env = data_access_layer.state().environment().env();
+            let db = data_access_layer.state().trie_store().get_db();
             let txn = lmdb_env.begin_ro_txn().unwrap();
             let mut cursor = txn.open_ro_cursor(db).unwrap();
             cursor.iter().count()
@@ -202,13 +205,11 @@ pub fn run_blocks_with_transfers_and_step(
 }
 
 // find all necessary tries - hoist to FN
-fn find_necessary_tries<S>(
-    engine_state: &EngineState<S>,
+fn find_necessary_tries(
+    data_access_layer: &DataAccessLayer<LmdbGlobalState>,
     necessary_tries: &mut HashSet<Digest>,
     state_root: Digest,
-) where
-    S: StateProvider + CommitProvider,
-{
+) {
     let mut queue = Vec::new();
     queue.push(state_root);
 
@@ -218,8 +219,10 @@ fn find_necessary_tries<S>(
         }
         necessary_tries.insert(root);
 
-        let trie_bytes = engine_state
-            .get_trie_full(root)
+        let req = TrieRequest::new(root, None);
+        let trie_bytes = data_access_layer
+            .trie(req)
+            .into_legacy()
             .unwrap()
             .expect("trie should exist")
             .into_inner();

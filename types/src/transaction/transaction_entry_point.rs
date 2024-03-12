@@ -11,9 +11,13 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::Transaction;
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use crate::{
+    alloc::string::ToString,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    system::{auction, mint},
+};
 
 const CUSTOM_TAG: u8 = 0;
 const TRANSFER_TAG: u8 = 1;
@@ -22,6 +26,7 @@ const WITHDRAW_BID_TAG: u8 = 3;
 const DELEGATE_TAG: u8 = 4;
 const UNDELEGATE_TAG: u8 = 5;
 const REDELEGATE_TAG: u8 = 6;
+const ACTIVATE_BID_TAG: u8 = 7;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -128,6 +133,18 @@ pub enum TransactionEntryPoint {
         )
     )]
     Redelegate,
+
+    /// The `activate bid` native entry point, used to reactivate an inactive bid.
+    ///
+    /// Requires the following runtime args:
+    ///   * "validator_public_key": `PublicKey`
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            description = "The `activate_bid` native entry point, used to used to reactivate an inactive bid."
+        )
+    )]
+    ActivateBid,
 }
 
 impl TransactionEntryPoint {
@@ -142,6 +159,7 @@ impl TransactionEntryPoint {
             DELEGATE_TAG => TransactionEntryPoint::Delegate,
             UNDELEGATE_TAG => TransactionEntryPoint::Undelegate,
             REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
+            ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
             _ => unreachable!(),
         }
     }
@@ -159,6 +177,7 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Delegate => write!(formatter, "delegate"),
             TransactionEntryPoint::Undelegate => write!(formatter, "undelegate"),
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
+            TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
         }
     }
 }
@@ -176,6 +195,7 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::Delegate => DELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::Redelegate => REDELEGATE_TAG.write_bytes(writer),
+            TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
         }
     }
 
@@ -194,7 +214,8 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => 0,
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => 0,
             }
     }
 }
@@ -213,8 +234,36 @@ impl FromBytes for TransactionEntryPoint {
             DELEGATE_TAG => Ok((TransactionEntryPoint::Delegate, remainder)),
             UNDELEGATE_TAG => Ok((TransactionEntryPoint::Undelegate, remainder)),
             REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
+            ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+impl From<&str> for TransactionEntryPoint {
+    fn from(value: &str) -> Self {
+        if value.to_lowercase() == mint::METHOD_TRANSFER {
+            return TransactionEntryPoint::Transfer;
+        }
+        if value.to_lowercase() == auction::METHOD_ACTIVATE_BID {
+            return TransactionEntryPoint::ActivateBid;
+        }
+        if value.to_lowercase() == auction::METHOD_ADD_BID {
+            return TransactionEntryPoint::AddBid;
+        }
+        if value.to_lowercase() == auction::METHOD_WITHDRAW_BID {
+            return TransactionEntryPoint::WithdrawBid;
+        }
+        if value.to_lowercase() == auction::METHOD_DELEGATE {
+            return TransactionEntryPoint::Delegate;
+        }
+        if value.to_lowercase() == auction::METHOD_UNDELEGATE {
+            return TransactionEntryPoint::Undelegate;
+        }
+        if value.to_lowercase() == auction::METHOD_REDELEGATE {
+            return TransactionEntryPoint::Redelegate;
+        }
+        TransactionEntryPoint::Custom(value.to_string())
     }
 }
 
