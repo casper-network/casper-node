@@ -48,7 +48,7 @@ use crate::{
 
 use super::{
     blocklist::BlocklistJustification, error::ConnectionError, handshake::HandshakeOutcome,
-    Transport,
+    serialize_network_message, Transport,
 };
 
 pub(crate) type ConManStateReadLock<'a> = std::sync::RwLockReadGuard<'a, ConManState>;
@@ -247,6 +247,49 @@ pub(crate) struct ProtocolHandshakeOutcome {
     pub(crate) handshake_outcome: HandshakeOutcome,
 }
 
+/// An error communicated back to a peer.
+#[derive(Debug, Deserialize, Error, Serialize)]
+enum PeerError {
+    /// The peer told use we are banned.
+    #[error("you are blocked")]
+    YouAreBanned {
+        /// How long until the ban is lifted.
+        time_left: Duration,
+        /// Justification for the ban.
+        justification: String,
+    },
+    /// Banned for another reason.
+    #[error("other: {0}")]
+    Other(String),
+}
+
+impl PeerError {
+    #[inline(always)]
+    fn banned(now: Instant, until: Instant, justification: &BlocklistJustification) -> Self {
+        debug_assert!(now <= until);
+
+        let time_left = until.checked_duration_since(now).unwrap_or_default();
+
+        Self::YouAreBanned {
+            time_left,
+            justification: justification.to_string(),
+        }
+    }
+
+    /// Creates a peer error from a anything string-adjacent.
+    #[inline(always)]
+    fn other<E: ToString>(err: E) -> Self {
+        Self::Other(err.to_string())
+    }
+
+    /// Serializes the error.
+    #[inline(always)]
+    fn serialize(&self) -> Bytes {
+        serialize_network_message(&self)
+            .unwrap_or_else(|| Bytes::from(&b"serialization failure"[..]))
+    }
+}
+
 impl ProtocolHandshakeOutcome {
     /// Registers the handshake outcome on the tracing span, to give context to logs.
     ///
@@ -366,6 +409,7 @@ impl ConMan {
         &self,
         peer_id: NodeId,
         justification: BlocklistJustification,
+        now: Instant,
         until: Instant,
     ) {
         {
@@ -376,7 +420,8 @@ impl ConMan {
                 |dropped| warn!(%peer_id, %justification, dropped, "banning peer")
             );
 
-            let message = ban_message("you are being banned", &justification);
+            let peer_error = PeerError::banned(now, until, &justification);
+
             match guard.banlist.entry(peer_id) {
                 Entry::Occupied(mut occupied) => {
                     if occupied.get().until > until {
@@ -400,9 +445,11 @@ impl ConMan {
             }
 
             if let Some(route) = guard.routing_table().get(&peer_id) {
-                route
-                    .client
-                    .send_custom_error(ChannelId::new(0), Id::new(0), message);
+                route.client.send_custom_error(
+                    ChannelId::new(0),
+                    Id::new(0),
+                    peer_error.serialize(),
+                );
             }
         }
     }
@@ -597,11 +644,11 @@ async fn handle_incoming(
                 |dropped| info!(until=?entry.until, justification=%entry.justification, dropped, "peer is still banned")
             );
 
-            let message = ban_message("you are still banned", &entry.justification);
+            let peer_error = PeerError::banned(now, entry.until, &entry.justification);
             tokio::spawn(rpc_server.send_custom_error_and_shutdown(
                 ChannelId::new(0),
                 Id::new(0),
-                message,
+                peer_error.serialize(),
             ));
 
             return;
@@ -642,12 +689,6 @@ async fn handle_incoming(
             );
         }
     }
-}
-
-/// Generate a ban message to send to the peer.
-#[inline(always)]
-fn ban_message(prefix: &'static str, justification: &BlocklistJustification) -> Bytes {
-    format!("[BLOCKED] {}: {}", prefix, justification).into()
 }
 
 impl Debug for ConManContext {
@@ -871,13 +912,11 @@ impl OutgoingHandler {
                 debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
 
                 // Ensure an error is sent.
-
-                let message =
-                    ban_message("disconnecting since you are banned", &entry.justification);
+                let message = PeerError::banned(now, entry.until, &entry.justification);
                 tokio::spawn(rpc_server.send_custom_error_and_shutdown(
                     ChannelId::new(0),
                     Id::new(0),
-                    message,
+                    message.serialize(),
                 ));
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
@@ -961,7 +1000,7 @@ impl ActiveRoute {
 
                 // Send a string description of the error. This will also cause the connection to be
                 // torn down eventually, so we do not need to `break` here.
-                rpc_server.send_custom_error(channel, id, err.into());
+                rpc_server.send_custom_error(channel, id, PeerError::other(err).serialize());
             }
         }
 
