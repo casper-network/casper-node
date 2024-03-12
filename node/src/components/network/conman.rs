@@ -375,6 +375,8 @@ impl ConMan {
                 BANNING_PEER,
                 |dropped| warn!(%peer_id, %justification, dropped, "banning peer")
             );
+
+            let message = ban_message("you are being banned", &justification);
             match guard.banlist.entry(peer_id) {
                 Entry::Occupied(mut occupied) => {
                     if occupied.get().until > until {
@@ -396,10 +398,13 @@ impl ConMan {
                     });
                 }
             }
-        }
 
-        // TODO: We still need to implement the connection closing part.
-        error!("missing implementation for banned peer connection shutdown");
+            if let Some(route) = guard.routing_table().get(&peer_id) {
+                route
+                    .client
+                    .send_custom_error(ChannelId::new(0), Id::new(0), message);
+            }
+        }
     }
 
     /// Returns a read lock onto the state of this connection manager.
