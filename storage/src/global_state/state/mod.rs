@@ -21,7 +21,7 @@ use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
-    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     system,
     system::{
@@ -1476,19 +1476,19 @@ where
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
-    for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
+    for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
         let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
         let instruction = match (read_result, kind) {
-            (_, TransformKind::Identity) => {
+            (_, TransformKindV2::Identity) => {
                 // effectively a noop.
                 debug!(?state_root, ?key, "commit: attempt to commit a read.");
                 continue;
             }
-            (ReadResult::NotFound, TransformKind::Write(new_value)) => {
+            (ReadResult::NotFound, TransformKindV2::Write(new_value)) => {
                 TransformInstruction::store(new_value)
             }
-            (ReadResult::NotFound, TransformKind::Prune(key)) => {
+            (ReadResult::NotFound, TransformKindV2::Prune(key)) => {
                 // effectively a noop.
                 debug!(
                     ?state_root,

@@ -7,7 +7,7 @@ use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     bytesrepr::FromBytes,
     contract_messages::Messages,
-    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
+    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, TransformKindV2, TransformV2},
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
@@ -291,13 +291,13 @@ impl ExecutionResult {
         let new_balance_value =
             StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
         let mut effects = Effects::new();
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             account_main_purse_balance_key.normalize(),
-            TransformKind::Write(new_balance_value),
+            TransformKindV2::Write(new_balance_value),
         ));
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             proposer_main_purse_balance_key.normalize(),
-            TransformKind::AddUInt512(max_payment_cost.value()),
+            TransformKindV2::AddUInt512(max_payment_cost.value()),
         ));
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
