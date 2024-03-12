@@ -39,6 +39,7 @@ fn get_balance_should_work() {
     )
     .build();
 
+    let block_time = transfer_request.block_time;
     builder.exec(transfer_request).commit().expect_success();
 
     let alice_account = builder
@@ -47,7 +48,8 @@ fn get_balance_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result = builder.get_purse_balance_result(protocol_version, alice_main_purse);
+    let alice_balance_result =
+        builder.get_purse_balance_result(protocol_version, alice_main_purse, block_time);
 
     let alice_balance = alice_balance_result
         .motes()
@@ -130,6 +132,7 @@ fn get_balance_using_public_key_should_work() {
     )
     .build();
 
+    let block_time = transfer_request.block_time;
     builder.exec(transfer_request).commit().expect_success();
 
     let alice_account = builder
@@ -139,7 +142,7 @@ fn get_balance_using_public_key_should_work() {
     let alice_main_purse = alice_account.main_purse();
 
     let alice_balance_result =
-        builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone());
+        builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone(), block_time);
 
     let alice_balance = alice_balance_result
         .motes()

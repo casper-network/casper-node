@@ -398,7 +398,7 @@ where
             return true;
         }
 
-        if let Some(Caller::Session { account_hash }) = self.get_immediate_caller() {
+        if let Some(Caller::Initiator { account_hash }) = self.get_immediate_caller() {
             return account_hash == provided_account_hash;
         }
         false
@@ -556,6 +556,14 @@ where
         }
     }
 
+    /// Returns holds epoch.
+    fn holds_epoch(&self) -> u64 {
+        self.context
+            .get_blocktime()
+            .value()
+            .saturating_sub(self.context.engine_config().balance_hold_interval.millis())
+    }
+
     /// Calls host mint contract.
     fn call_host_mint(
         &mut self,
@@ -622,8 +630,10 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
                 let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
-                let maybe_balance: Option<U512> =
-                    mint_runtime.balance(uref).map_err(Self::reverter)?;
+
+                let maybe_balance: Option<U512> = mint_runtime
+                    .balance(uref, Some(self.holds_epoch()))
+                    .map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
             })(),
             // Type: `fn transfer(maybe_to: Option<AccountHash>, source: URef, target: URef, amount:
@@ -637,8 +647,14 @@ where
                 let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
-                let result: Result<(), mint::Error> =
-                    mint_runtime.transfer(maybe_to, source, target, amount, id);
+                let result: Result<(), mint::Error> = mint_runtime.transfer(
+                    maybe_to,
+                    source,
+                    target,
+                    amount,
+                    id,
+                    Some(self.holds_epoch()),
+                );
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -842,9 +858,10 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+                let holds_epoch = Some(self.holds_epoch());
 
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount)
+                    .add_bid(account_hash, delegation_rate, amount, holds_epoch)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -873,7 +890,7 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-
+                let holds_epoch = Some(self.holds_epoch());
                 let result = runtime
                     .delegate(
                         delegator,
@@ -881,6 +898,7 @@ where
                         amount,
                         max_delegators_per_validator,
                         minimum_delegation_amount,
+                        holds_epoch,
                     )
                     .map_err(Self::reverter)?;
 
@@ -1393,7 +1411,7 @@ where
         let stack = {
             let mut stack = self.try_get_stack()?.clone();
 
-            stack.push(Caller::stored_contract(entity.package_hash(), entity_hash))?;
+            stack.push(Caller::entity(entity.package_hash(), entity_hash))?;
 
             stack
         };
@@ -2503,9 +2521,14 @@ where
             return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
+        let holds_epoch = self.holds_epoch();
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
-        if amount > self.get_balance(source)?.unwrap_or_default() {
+        if amount
+            > self
+                .available_balance(source, Some(holds_epoch))?
+                .unwrap_or_default()
+        {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
 
@@ -2754,15 +2777,14 @@ where
         }
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, ExecError> {
-        let maybe_value = self.context.read_gs_unsafe(&Key::Balance(purse.addr()))?;
-        match maybe_value {
-            Some(StoredValue::CLValue(value)) => {
-                let value = CLValue::into_t(value)?;
-                Ok(Some(value))
-            }
-            Some(_) => Err(ExecError::UnexpectedStoredValueVariant),
-            None => Ok(None),
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, ExecError> {
+        match self.context.available_balance(&purse, holds_epoch) {
+            Ok(motes) => Ok(Some(motes.value())),
+            Err(err) => Err(err),
         }
     }
 
@@ -2785,7 +2807,7 @@ where
             }
         };
 
-        let balance = match self.get_balance(purse)? {
+        let balance = match self.available_balance(purse, Some(self.holds_epoch()))? {
             Some(balance) => balance,
             None => return Ok(Err(ApiError::InvalidPurse)),
         };
@@ -3329,11 +3351,11 @@ where
         };
 
         match immediate_caller {
-            Caller::Session { account_hash } => {
+            Caller::Initiator { account_hash } => {
                 // This case can happen during genesis where we're setting up purses for accounts.
                 Ok(account_hash == &PublicKey::System.to_account_hash())
             }
-            Caller::AddressableEntity {
+            Caller::Entity {
                 entity_hash: contract_hash,
                 ..
             } => Ok(self.context.is_system_addressable_entity(contract_hash)?),

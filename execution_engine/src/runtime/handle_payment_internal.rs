@@ -64,8 +64,12 @@ where
         }
     }
 
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        self.get_balance(purse)
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 

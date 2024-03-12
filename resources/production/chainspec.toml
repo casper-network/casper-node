@@ -112,6 +112,8 @@ refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'pay_to_proposer' }
+# How long does it take for a balance hold to fade away?
+balance_hold_interval = '24 hours'
 # List of public keys of administrator accounts. Setting this option makes only on private chains which require
 # administrator accounts for regulatory reasons.
 administrators = []

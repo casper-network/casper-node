@@ -140,19 +140,13 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
-        let maybe_value = self
-            .context
-            .read_gs_unsafe(&Key::Balance(uref.addr()))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
-        match maybe_value {
-            Some(StoredValue::CLValue(value)) => {
-                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
-                Ok(Some(value))
-            }
-            Some(_cl_value) => Err(Error::CLValue),
-            None => Ok(None),
-        }
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
     fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error> {

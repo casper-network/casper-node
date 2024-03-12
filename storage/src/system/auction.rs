@@ -69,6 +69,7 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        holds_epoch: Option<u64>,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -111,6 +112,7 @@ pub trait Auction:
             target,
             amount,
             None,
+            holds_epoch,
         )
         .map_err(|_| Error::TransferToBidPurse)?
         .map_err(|mint_error| {
@@ -208,6 +210,7 @@ pub trait Auction:
         amount: U512,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        holds_epoch: Option<u64>,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -229,6 +232,7 @@ pub trait Auction:
             amount,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            holds_epoch,
         )
     }
 

@@ -256,6 +256,7 @@ where
                     contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
+                    None, // unbonding purses do not have holds on them
                 )
                 .map_err(|_| Error::Transfer)?
                 .map_err(|_| Error::Transfer)?;
@@ -273,6 +274,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
+        holds_epoch: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.addressable_entity().main_purse().addr() == source.addr()
             || self.get_caller() == PublicKey::System.to_account_hash())
@@ -283,7 +285,7 @@ where
         // let gas_counter = self.gas_counter();
         self.extend_access_rights(&[source, target.into_add()]);
 
-        match self.transfer(to, source, target, amount, id) {
+        match self.transfer(to, source, target, amount, id, holds_epoch) {
             Ok(ret) => {
                 // self.set_gas_counter(gas_counter);
                 Ok(Ok(ret))
@@ -328,8 +330,12 @@ where
         }
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        match <Self as Mint>::balance(self, purse) {
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
+        match <Self as Mint>::balance(self, purse, holds_epoch) {
             Ok(ret) => Ok(ret),
             Err(err) => {
                 error!("{}", err);

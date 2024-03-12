@@ -34,7 +34,7 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
-    GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    GrantedAccess, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
     RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
@@ -415,31 +415,25 @@ where
     /// Reads the balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
-    #[cfg(test)]
-    pub(crate) fn read_purse_uref(
+    pub(crate) fn available_balance(
         &mut self,
         purse_uref: &URef,
-    ) -> Result<Option<CLValue>, ExecError> {
-        match self
-            .tracking_copy
+        holds_epoch: Option<u64>,
+    ) -> Result<Motes, ExecError> {
+        let key = Key::URef(*purse_uref);
+        self.tracking_copy
             .borrow_mut()
-            .read(&Key::Hash(purse_uref.addr()))
-            .map_err(ExecError::TrackingCopy)?
-        {
-            Some(stored_value) => Ok(Some(
-                stored_value.try_into().map_err(ExecError::TypeMismatch)?,
-            )),
-            None => Ok(None),
-        }
+            .get_available_balance(key, holds_epoch)
+            .map_err(ExecError::TrackingCopy)
     }
 
     #[cfg(test)]
-    pub(crate) fn write_purse_uref(
+    pub(crate) fn write_balance(
         &mut self,
         purse_uref: URef,
         cl_value: CLValue,
     ) -> Result<(), ExecError> {
-        self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
+        self.metered_write_gs_unsafe(Key::Balance(purse_uref.addr()), cl_value)
     }
 
     /// Read a stored value under a [`Key`].

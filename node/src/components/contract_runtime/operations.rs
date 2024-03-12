@@ -30,6 +30,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    system::mint::ARG_HOLDS_EPOCH,
     BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
@@ -80,6 +81,9 @@ pub fn execute_finalized_block(
     let mut execution_artifacts: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
     let block_time = executable_block.timestamp.millis();
+    let holds_epoch =
+        block_time.saturating_sub(chainspec.core_config.balance_hold_interval.millis());
+
     let start = Instant::now();
     let txn_ids = executable_block
         .transactions
@@ -94,64 +98,47 @@ pub fn execute_finalized_block(
     let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
-    // Pay out fees, if relevant.
-    {
-        let fee_req = FeeRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-        );
-        match scratch_state.distribute_fees(fee_req) {
-            FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
-            FeeResult::Success {
-                //transfers: fee_transfers,
-                post_state_hash,
-                ..
-            } => {
-                //transfers.extend(fee_transfers);
-                state_root_hash = post_state_hash;
-                // TODO: looks like effects & transfer records are associated with the
-                // ExecutionResult struct which assumes they were caused by a
-                // deploy. however, systemic operations produce effects and transfer
-                // records also.
-            }
-        }
-    }
-
-    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
-    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
-    // at one point, they were going to be paid out per block (and might be in the future)
-    // but it ended up settling on per era. the behavior is driven by Some / None as sent
-    // thus if in future calling logic passes rewards per block it should just work as is.
-    if let Some(rewards) = &executable_block.rewards {
-        let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            rewards.clone(),
-        );
-        match scratch_state.distribute_block_rewards(rewards_req) {
-            BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre))
-            }
-            BlockRewardsResult::Success {
-                post_state_hash, ..
-            } => {
-                state_root_hash = post_state_hash;
-            }
-        }
-    }
-
     for transaction in executable_block.transactions {
         let transaction_hash = transaction.hash();
+        let mut runtime_args = transaction.session_args().clone();
+        let entry_point = transaction.entry_point();
+        if entry_point.requires_holds_epoch() {
+            if let Err(cve) = runtime_args.insert(ARG_HOLDS_EPOCH, Some(holds_epoch)) {
+                error!(%transaction_hash, ?cve, "failed to extend args with holds epoch");
+                continue; // skip to next record
+            }
+        }
+
+        // handle payment per the chainspec determined fee setting
+        // match chainspec.core_config.fee_handling {
+        //     FeeHandling::None => {
+        //         // this is the "fee elimination" model...a BalanceHold for the
+        //         // amount is placed on the paying purse(s).
+        //         let hold_amount = transaction.gas_limit();
+        //         let hold_purse = get_purse_from_transaction_initiator();
+        //         let hold_req = HoldRequest::new(hold_purse, hold_amount);
+        //         match scratch_state.hold(hold_req) {
+        //             HoldResult::RootNotFound => {}
+        //             HoldResult::Failure(tce) => {}
+        //             HoldResult::Success{ effects } => {}
+        //         }
+        //     }
+        //     FeeHandling::PayToProposer => {
+        //         // this is the current mainnet mechanism...pay up front
+        //         // finalize at the end
+        //     }
+        //     FeeHandling::Accumulate => {
+        //         // this is a variation on PayToProposer that was added for
+        //         // for some private networks...the fees are all accumulated
+        //         // and distributed to administrative accounts.
+        //     }
+        //     FeeHandling::Burn => {
+        //         // this is a new variation that is not currently supported.
+        //         // this is for future use...but it is very simple...the
+        //         // fees are simply burned, lowering total supply.
+        //     }
+        // }
+
         if transaction.is_native_mint() {
             // native transfers are routed to the data provider
             let authorization_keys = transaction.authorization_keys();
@@ -163,7 +150,7 @@ pub fn execute_finalized_block(
                 transaction_hash,
                 transaction.initiator_addr().account_hash(),
                 authorization_keys,
-                transaction.session_args().clone(),
+                runtime_args,
                 U512::zero(), /* <-- this should be from chainspec cost table */
             );
             //NOTE: native mint interactions auto-commit
@@ -216,15 +203,14 @@ pub fn execute_finalized_block(
             continue;
         }
         if transaction.is_native_auction() {
-            let args = transaction.session_args();
-            let entry_point = transaction.entry_point();
-            let auction_method = match AuctionMethod::from_parts(entry_point, args, chainspec) {
-                Ok(auction_method) => auction_method,
-                Err(_) => {
-                    error!(%transaction_hash, "failed to resolve auction method");
-                    continue; // skip to next record
-                }
-            };
+            let auction_method =
+                match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
+                    Ok(auction_method) => auction_method,
+                    Err(_) => {
+                        error!(%transaction_hash, "failed to resolve auction method");
+                        continue; // skip to next record
+                    }
+                };
             let authorization_keys = transaction.authorization_keys();
             let bidding_req = BiddingRequest::new(
                 native_runtime_config.clone(),
@@ -297,6 +283,62 @@ pub fn execute_finalized_block(
             messages,
         ));
         state_root_hash = state_hash;
+    }
+
+    // Pay out fees, if relevant.
+    {
+        let fee_req = FeeRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+        );
+        match scratch_state.distribute_fees(fee_req) {
+            FeeResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
+            FeeResult::Success {
+                //transfers: fee_transfers,
+                post_state_hash,
+                ..
+            } => {
+                //transfers.extend(fee_transfers);
+                state_root_hash = post_state_hash;
+                // TODO: looks like effects & transfer records are associated with the
+                // ExecutionResult struct which assumes they were caused by a
+                // deploy. however, systemic operations produce effects and transfer
+                // records also.
+            }
+        }
+    }
+
+    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
+    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
+    // at one point, they were going to be paid out per block (and might be in the future)
+    // but it ended up settling on per era. the behavior is driven by Some / None
+    // thus if in future the calling logic passes rewards per block it should just work as is.
+    if let Some(rewards) = &executable_block.rewards {
+        let rewards_req = BlockRewardsRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+            rewards.clone(),
+        );
+        match scratch_state.distribute_block_rewards(rewards_req) {
+            BlockRewardsResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            BlockRewardsResult::Failure(bre) => {
+                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+            }
+            BlockRewardsResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
+        }
     }
 
     // handle checksum registry

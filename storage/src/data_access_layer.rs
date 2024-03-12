@@ -8,6 +8,7 @@ use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
 pub mod balance;
+mod balance_hold;
 pub mod bidding;
 pub mod bids;
 pub mod block_rewards;
@@ -29,6 +30,9 @@ mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceIdentifier, BalanceRequest, BalanceResult};
+pub use balance_hold::{
+    BalanceHoldError, BalanceHoldRequest, BalanceHoldResult, InsufficientBalanceHandling,
+};
 pub use bidding::{BiddingRequest, BiddingResult};
 pub use bids::{BidsRequest, BidsResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};

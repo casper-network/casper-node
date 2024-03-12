@@ -20,9 +20,9 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{
-        BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        balance::BalanceHandling, BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest,
+        BlockRewardsResult, BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
+        FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
         QueryResult, StepRequest, StepResult, SystemEntityRegistryPayload,
         SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
@@ -856,6 +856,7 @@ where
         let compute_rewards = self.chainspec.core_config.compute_rewards;
         let max_delegators_per_validator = self.chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = self.chainspec.core_config.minimum_delegation_amount;
+        let balance_hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
         NativeRuntimeConfig::new(
             transfer_config,
             fee_handling,
@@ -865,6 +866,7 @@ where
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         )
     }
 
@@ -1138,9 +1140,17 @@ where
         &self,
         protocol_version: ProtocolVersion,
         purse: URef,
+        block_time: u64,
     ) -> BalanceResult {
+        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
+        let balance_handling = BalanceHandling::Available {
+            block_time,
+            hold_interval,
+        };
+
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let request = BalanceRequest::from_purse(state_root_hash, protocol_version, purse);
+        let request =
+            BalanceRequest::from_purse(state_root_hash, protocol_version, purse, balance_handling);
         self.data_access_layer.balance(request)
     }
 
@@ -1149,10 +1159,20 @@ where
         &self,
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
+        block_time: u64,
     ) -> BalanceResult {
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let request =
-            BalanceRequest::from_public_key(state_root_hash, protocol_version, public_key);
+        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
+        let balance_handling = BalanceHandling::Available {
+            block_time,
+            hold_interval,
+        };
+        let request = BalanceRequest::from_public_key(
+            state_root_hash,
+            protocol_version,
+            public_key,
+            balance_handling,
+        );
         self.data_access_layer.balance(request)
     }
 

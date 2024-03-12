@@ -233,7 +233,7 @@ fn assert_each_context_has_correct_call_stack_info(
 
         assert_eq!(
             head,
-            [Caller::Session {
+            [Caller::Initiator {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -263,7 +263,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
     let (head, _) = call_stack.split_at(usize::one());
     assert_eq!(
         head,
-        [Caller::Session {
+        [Caller::Initiator {
             account_hash: *DEFAULT_ACCOUNT_ADDR,
         }],
     );
@@ -284,7 +284,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let (head, rest) = call_stack.split_at(usize::one());
         assert_eq!(
             head,
-            [Caller::Session {
+            [Caller::Initiator {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -296,7 +296,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
     for (index, expected_call_stack_element) in call_stack.iter().enumerate() {
         let maybe_call = calls.get(index);
         match (maybe_call, expected_call_stack_element) {
-            // Versioned Call with EntryPointType::Contract
+            // Versioned Call with EntryPointType::Called
             (
                 Some(Call {
                     entry_point_type,
@@ -304,21 +304,21 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
                         ContractAddress::ContractPackageHash(current_contract_package_hash),
                     ..
                 }),
-                Caller::AddressableEntity {
+                Caller::Entity {
                     package_hash: contract_package_hash,
                     ..
                 },
             ) if *entry_point_type == EntryPointType::Called
                 && *contract_package_hash == *current_contract_package_hash => {}
 
-            // Unversioned Call with EntryPointType::Contract
+            // Unversioned Call with EntryPointType::Called
             (
                 Some(Call {
                     entry_point_type,
                     contract_address: ContractAddress::ContractHash(current_contract_hash),
                     ..
                 }),
-                Caller::AddressableEntity {
+                Caller::Entity {
                     entity_hash: contract_hash,
                     ..
                 },

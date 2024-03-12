@@ -4680,14 +4680,14 @@
       "description": "Message that was emitted by an addressable entity during execution.",
       "type": "object",
       "required": [
-        "entity_addr",
+        "entity_hash",
         "index",
         "message",
         "topic_name",
         "topic_name_hash"
       ],
       "properties": {
-        "entity_addr": {
+        "entity_hash": {
           "description": "The identity of the entity that produced the message.",
           "allOf": [
             {

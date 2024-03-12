@@ -16,12 +16,13 @@ use casper_storage::{
     data_access_layer::TransferRequest,
     global_state::state::StateProvider,
     system::runtime_native::TransferConfig,
-    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyExt},
+    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
 use casper_types::{
     system::{
         handle_payment::{self},
+        mint::ARG_HOLDS_EPOCH,
         HANDLE_PAYMENT,
     },
     BlockTime, DeployInfo, Digest, EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, Motes,
@@ -154,6 +155,7 @@ impl ExecutionEngineV1 {
         let compute_rewards = self.config.compute_rewards;
         let max_delegators_per_validator = self.config.max_delegators_per_validator();
         let minimum_delegation_amount = self.config.minimum_delegation_amount();
+        let balance_hold_interval = self.config.balance_hold_interval.millis();
 
         let native_runtime_config = casper_storage::system::runtime_native::Config::new(
             transfer_config,
@@ -164,13 +166,21 @@ impl ExecutionEngineV1 {
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         );
         let wasmless_transfer_gas = Gas::new(U512::from(
             self.config().system_config().wasmless_transfer_cost(),
         ));
-
         let transaction_hash = TransactionHash::Deploy(deploy_hash);
-
+        let holds_epoch = Some(
+            blocktime
+                .value()
+                .saturating_sub(self.config.balance_hold_interval.millis()),
+        );
+        let mut runtime_args = deploy_item.session.args().clone();
+        if let Err(cve) = runtime_args.insert(ARG_HOLDS_EPOCH, holds_epoch) {
+            return Err(Error::TrackingCopy(TrackingCopyError::CLValue(cve)));
+        }
         let transfer_req = TransferRequest::with_runtime_args(
             native_runtime_config,
             prestate_hash,
@@ -179,7 +189,7 @@ impl ExecutionEngineV1 {
             transaction_hash,
             deploy_item.address,
             deploy_item.authorization_keys,
-            deploy_item.session.args().clone(),
+            runtime_args,
             wasmless_transfer_gas.value(),
         );
         let transfer_result = state_provider.transfer(transfer_req);
@@ -292,11 +302,15 @@ impl ExecutionEngineV1 {
             }
         };
 
+        let holds_epoch = blocktime
+            .value()
+            .saturating_sub(self.config.balance_hold_interval.millis());
+
         // Get account main purse balance to enforce precondition and in case of forced
         // transfer validation_spec_5: account main purse minimum balance
         let account_main_purse_balance: Motes = match tracking_copy
             .borrow_mut()
-            .get_purse_balance(entity_main_purse_key)
+            .get_available_balance(entity_main_purse_key, Some(holds_epoch))
         {
             Ok(balance) => balance,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -545,7 +559,7 @@ impl ExecutionEngineV1 {
         let payment_purse_balance: Motes = {
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance(purse_balance_key)
+                .get_available_balance(purse_balance_key, Some(holds_epoch))
             {
                 Ok(balance) => balance,
                 Err(error) => {

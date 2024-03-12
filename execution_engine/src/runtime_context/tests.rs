@@ -835,17 +835,18 @@ fn can_roundtrip_key_value_pairs() {
             .as_uref()
             .cloned()
             .expect("must have created URef from the key");
-        let test_value = CLValue::from_t("test_value".to_string()).unwrap();
+        let expected = CLValue::from_t(U512::zero()).unwrap();
 
         runtime_context
-            .write_purse_uref(test_uref.to_owned(), test_value.clone())
+            .write_balance(test_uref.to_owned(), expected.clone())
             .expect("should write_ls");
 
         let result = runtime_context
-            .read_purse_uref(&test_uref)
+            .available_balance(&test_uref, None)
             .expect("should read_ls");
 
-        Ok(result == Some(test_value))
+        let actual = CLValue::from_t(result.value()).unwrap();
+        Ok(actual == expected)
     };
     let result = build_runtime_context_and_execute(named_keys, functor).expect("should be ok");
     assert!(result)

@@ -244,6 +244,7 @@ where
                     contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
+                    None,
                 )
                 .map_err(|_| Error::Transfer)?
                 .map_err(|_| Error::Transfer)?;
@@ -264,6 +265,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
+        holds_epoch: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.context.entity().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
@@ -277,6 +279,7 @@ where
             args.insert(mint::ARG_TARGET, target)?;
             args.insert(mint::ARG_AMOUNT, amount)?;
             args.insert(mint::ARG_ID, id)?;
+            args.insert(mint::ARG_HOLDS_EPOCH, holds_epoch)?;
             Ok(())
         })
         .map_err(|_| Error::CLValue)?;
@@ -340,8 +343,12 @@ where
         })
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Runtime::get_balance(self, purse)
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 

@@ -873,6 +873,16 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner `BalanceHoldAddr` if `self` is of type
+    /// [`Key::BalanceHold`], otherwise returns `None`.
+    pub fn as_balance_hold(&self) -> Option<&BalanceHoldAddr> {
+        if let Self::BalanceHold(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
     /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
     pub fn into_uref(self) -> Option<URef> {
         match self {

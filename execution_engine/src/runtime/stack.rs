@@ -46,7 +46,7 @@ impl RuntimeStack {
     pub(crate) fn new_system_call_stack(max_height: usize) -> Self {
         RuntimeStack::new_with_frame(
             max_height,
-            Caller::session(PublicKey::System.to_account_hash()),
+            Caller::initiator(PublicKey::System.to_account_hash()),
         )
     }
 
@@ -101,7 +101,7 @@ impl RuntimeStack {
     /// Returns a stack with exactly one session element with the associated account hash.
     pub fn from_account_hash(account_hash: AccountHash, max_height: usize) -> Self {
         RuntimeStack {
-            frames: vec![Caller::session(account_hash)],
+            frames: vec![Caller::initiator(account_hash)],
             max_height,
         }
     }
@@ -119,7 +119,7 @@ mod test {
         let mut bytes = [0_u8; ACCOUNT_HASH_LENGTH];
         let n: u32 = n.try_into().unwrap();
         bytes[0..4].copy_from_slice(&n.to_le_bytes());
-        Caller::session(AccountHash::new(bytes))
+        Caller::initiator(AccountHash::new(bytes))
     }
 
     #[allow(clippy::redundant_clone)]

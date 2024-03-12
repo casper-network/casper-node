@@ -50,6 +50,15 @@ impl BalanceHoldAddrTag {
         }
         None
     }
+
+    /// Returns key prefix for a purse by balance hold addr tag.
+    pub fn purse_prefix_by_tag(&self, purse_addr: URefAddr) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = Vec::with_capacity(purse_addr.serialized_length() + 2);
+        ret.push(KeyTag::BalanceHold as u8);
+        ret.push(*self as u8);
+        purse_addr.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
 }
 
 impl Display for BalanceHoldAddrTag {
@@ -115,6 +124,13 @@ impl BalanceHoldAddr {
     pub fn purse_addr(&self) -> URefAddr {
         match self {
             BalanceHoldAddr::Gas { purse_addr, .. } => *purse_addr,
+        }
+    }
+
+    /// Returns the `[BlockTime]` when this hold was written.
+    pub fn block_time(&self) -> BlockTime {
+        match self {
+            BalanceHoldAddr::Gas { block_time, .. } => *block_time,
         }
     }
 

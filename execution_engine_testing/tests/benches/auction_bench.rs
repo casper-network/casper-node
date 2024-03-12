@@ -149,26 +149,26 @@ fn setup_bench_run_auction(
     let contract_hash = builder.get_auction_contract_hash();
     let mut next_validator_iter = validator_keys.iter().cycle();
     for delegator_public_key in delegator_keys {
-        let balance = builder
-            .get_public_key_balance_result(protocol_version, delegator_public_key.clone())
-            .motes()
-            .cloned()
-            .unwrap();
-
-        assert_eq!(U512::from(DELEGATOR_INITIAL_BALANCE), balance);
-
         let delegation_amount = U512::from(DELEGATION_AMOUNT);
         let delegator_account_hash = delegator_public_key.to_account_hash();
         let next_validator_key = next_validator_iter
             .next()
             .expect("should produce values forever");
         let delegate = create_delegate_request(
-            delegator_public_key,
+            delegator_public_key.clone(),
             next_validator_key.clone(),
             delegation_amount,
             delegator_account_hash,
             contract_hash,
         );
+        let block_time = delegate.block_time;
+        let balance = builder
+            .get_public_key_balance_result(protocol_version, delegator_public_key, block_time)
+            .motes()
+            .cloned()
+            .unwrap();
+
+        assert_eq!(U512::from(DELEGATOR_INITIAL_BALANCE), balance);
         builder.exec(delegate);
         builder.expect_success();
         builder.commit();

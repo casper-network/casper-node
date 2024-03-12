@@ -86,8 +86,8 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Read balance of given `purse`.
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        match self.read_balance(purse)? {
+    fn balance(&mut self, purse: URef, hold_epoch: Option<u64>) -> Result<Option<U512>, Error> {
+        match self.available_balance(purse, hold_epoch)? {
             some @ Some(_) => Ok(some),
             None => Err(Error::PurseNotFound),
         }
@@ -101,6 +101,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         target: URef,
         amount: U512,
         id: Option<u64>,
+        holds_epoch: Option<u64>,
     ) -> Result<(), Error> {
         if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_entity_registry() {
@@ -109,7 +110,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             };
             let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
-                Some(Caller::AddressableEntity {
+                Some(Caller::Entity {
                     entity_hash: contract_hash,
                     ..
                 }) if registry.has_contract_hash(&contract_hash) => {
@@ -117,20 +118,20 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     // transfer)
                 }
 
-                Some(Caller::Session { account_hash: _ })
+                Some(Caller::Initiator { account_hash: _ })
                     if self.is_called_from_standard_payment() =>
                 {
                     // Standard payment acts as a session without separate stack frame and calls
                     // into mint's transfer.
                 }
 
-                Some(Caller::Session { account_hash })
+                Some(Caller::Initiator { account_hash })
                     if account_hash == PublicKey::System.to_account_hash() =>
                 {
                     // System calls a session code.
                 }
 
-                Some(Caller::Session { account_hash }) => {
+                Some(Caller::Initiator { account_hash }) => {
                     // For example: a session using transfer host functions, or calling the mint's
                     // entrypoint directly
 
@@ -179,7 +180,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     }
                 }
 
-                Some(Caller::AddressableEntity {
+                Some(Caller::Entity {
                     package_hash: _,
                     entity_hash: _,
                 }) => {
@@ -210,14 +211,14 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
-        let source_balance: U512 = match self.read_balance(source)? {
+        let source_balance: U512 = match self.available_balance(source, holds_epoch)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::SourceNotFound),
         };
         if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
-        if self.read_balance(target)?.is_none() {
+        if self.available_balance(target, None)?.is_none() {
             return Err(Error::DestNotFound);
         }
         if self.get_caller() != PublicKey::System.to_account_hash()
@@ -275,7 +276,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // treat as noop
             return Ok(());
         }
-        if self.read_balance(existing_purse)?.is_none() {
+        if self.available_balance(existing_purse, None)?.is_none() {
             return Err(Error::PurseNotFound);
         }
         self.add_balance(existing_purse, amount)?;

@@ -20,6 +20,7 @@ pub struct Config {
     compute_rewards: bool,
     max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
+    balance_hold_interval: u64,
 }
 
 impl Config {
@@ -33,6 +34,7 @@ impl Config {
         compute_rewards: bool,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        balance_hold_interval: u64,
     ) -> Self {
         Config {
             transfer_config,
@@ -43,6 +45,7 @@ impl Config {
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         }
     }
 
@@ -55,6 +58,7 @@ impl Config {
         let compute_rewards = chainspec.core_config.compute_rewards;
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
+        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
         Config::new(
             transfer_config,
             fee_handling,
@@ -64,6 +68,7 @@ impl Config {
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         )
     }
 
@@ -99,6 +104,10 @@ impl Config {
         self.minimum_delegation_amount
     }
 
+    pub fn balance_hold_interval(&self) -> u64 {
+        self.balance_hold_interval
+    }
+
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
         Config {
             transfer_config,
@@ -109,6 +118,7 @@ impl Config {
             allow_auction_bids: self.allow_auction_bids,
             minimum_delegation_amount: self.minimum_delegation_amount,
             compute_rewards: self.compute_rewards,
+            balance_hold_interval: self.balance_hold_interval,
         }
     }
 }

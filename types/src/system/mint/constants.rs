@@ -4,6 +4,8 @@ pub const ARG_PURSE: &str = "purse";
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `id`.
 pub const ARG_ID: &str = "id";
+/// Named constant for `holds_epoch`.
+pub const ARG_HOLDS_EPOCH: &str = "holds_epoch";
 /// Named constant for `to`.
 pub const ARG_TO: &str = "to";
 /// Named constant for `source`.

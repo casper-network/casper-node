@@ -5,7 +5,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     execution::Effects,
-    system::{auction, auction::DelegationRate},
+    system::{auction, auction::DelegationRate, mint},
     CLTyped, CLValue, Chainspec, Digest, ProtocolVersion, PublicKey, RuntimeArgs,
     TransactionEntryPoint, TransactionHash, U512,
 };
@@ -21,6 +21,7 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        holds_epoch: Option<u64>,
     },
     WithdrawBid {
         public_key: PublicKey,
@@ -32,6 +33,7 @@ pub enum AuctionMethod {
         amount: U512,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        holds_epoch: Option<u64>,
     },
     Undelegate {
         delegator_public_key: PublicKey,
@@ -97,10 +99,12 @@ impl AuctionMethod {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+        let holds_epoch = Self::get_named_argument(runtime_args, mint::ARG_HOLDS_EPOCH)?;
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
             amount,
+            holds_epoch,
         })
     }
 
@@ -123,6 +127,7 @@ impl AuctionMethod {
 
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
+        let holds_epoch = Self::get_named_argument(runtime_args, mint::ARG_HOLDS_EPOCH)?;
 
         Ok(Self::Delegate {
             delegator_public_key,
@@ -130,6 +135,7 @@ impl AuctionMethod {
             amount,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            holds_epoch,
         })
     }
 

@@ -270,7 +270,11 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
     amount: U512,
     new_validator: Option<PublicKey>,
 ) -> Result<(), Error> {
-    if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
+    if provider
+        .available_balance(bonding_purse, None)?
+        .unwrap_or_default()
+        < amount
+    {
         return Err(Error::UnbondTooLarge);
     }
 
@@ -453,6 +457,7 @@ where
         *unbonding_purse.amount(),
         max_delegators_per_validator,
         minimum_delegation_amount,
+        None,
     );
     match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
@@ -475,6 +480,7 @@ where
 /// If specified validator exists, and if validator is not yet at max delegators count, processes
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
+#[allow(clippy::too_many_arguments)]
 pub fn handle_delegation<P>(
     provider: &mut P,
     delegator_public_key: PublicKey,
@@ -483,6 +489,7 @@ pub fn handle_delegation<P>(
     amount: U512,
     max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
+    holds_epoch: Option<u64>,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -538,6 +545,7 @@ where
             target,
             amount,
             None,
+            holds_epoch,
         )
         .map_err(|_| Error::TransferToDelegatorPurse)?
         .map_err(|mint_error| {

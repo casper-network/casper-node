@@ -4,14 +4,14 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::SystemTime};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::BalanceRequest;
+use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
@@ -79,6 +79,7 @@ pub struct TransactionAcceptor {
     administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
     metrics: metrics::Metrics,
+    balance_hold_interval: u64,
 }
 
 impl TransactionAcceptor {
@@ -101,6 +102,7 @@ impl TransactionAcceptor {
             max_associated_keys: chainspec.core_config.max_associated_keys,
             administrators,
             metrics: metrics::Metrics::new(registry)?,
+            balance_hold_interval: chainspec.core_config.balance_hold_interval.millis(),
         })
     }
 
@@ -241,10 +243,17 @@ impl TransactionAcceptor {
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
                 let protocol_version = block_header.protocol_version();
+                let hold_interval = self.balance_hold_interval;
+                let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+                let balance_handling = BalanceHandling::Available {
+                    hold_interval,
+                    block_time,
+                };
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     protocol_version,
                     entity.main_purse(),
+                    balance_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)

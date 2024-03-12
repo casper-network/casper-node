@@ -137,6 +137,7 @@ pub struct TransferArgs {
     target: URef,
     amount: U512,
     arg_id: Option<u64>,
+    holds_epoch: Option<u64>,
 }
 
 impl TransferArgs {
@@ -147,6 +148,7 @@ impl TransferArgs {
         target: URef,
         amount: U512,
         arg_id: Option<u64>,
+        holds_epoch: Option<u64>,
     ) -> Self {
         Self {
             to,
@@ -154,6 +156,7 @@ impl TransferArgs {
             target,
             amount,
             arg_id,
+            holds_epoch,
         }
     }
 
@@ -172,14 +175,19 @@ impl TransferArgs {
         self.target
     }
 
+    /// Returns `amount` field.
+    pub fn amount(&self) -> U512 {
+        self.amount
+    }
+
     /// Returns `arg_id` field.
     pub fn arg_id(&self) -> Option<u64> {
         self.arg_id
     }
 
-    /// Returns `amount` field.
-    pub fn amount(&self) -> U512 {
-        self.amount
+    /// Returns `holds_epoch` field.
+    pub fn holds_epoch(&self) -> Option<u64> {
+        self.holds_epoch
     }
 }
 
@@ -194,6 +202,7 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
         runtime_args.insert(mint::ARG_TARGET, transfer_args.target)?;
         runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount)?;
         runtime_args.insert(mint::ARG_ID, transfer_args.arg_id)?;
+        runtime_args.insert(mint::ARG_HOLDS_EPOCH, transfer_args.holds_epoch)?;
 
         Ok(runtime_args)
     }
@@ -230,7 +239,10 @@ impl TransferRuntimeArgsBuilder {
             Ok(key) => key,
             Err(_) => return false,
         };
-        tracking_copy.borrow_mut().get_purse_balance(key).is_ok()
+        tracking_copy
+            .borrow_mut()
+            .get_available_balance(key, None)
+            .is_ok()
     }
 
     /// Resolves the source purse of the transfer.
@@ -406,6 +418,15 @@ impl TransferRuntimeArgsBuilder {
         Ok(id)
     }
 
+    fn resolve_holds_epoch(&self) -> Result<Option<u64>, TransferError> {
+        let id_value = self
+            .inner
+            .get(mint::ARG_HOLDS_EPOCH)
+            .ok_or_else(|| TransferError::MissingArgument)?;
+        let id: Option<u64> = self.map_cl_value(id_value)?;
+        Ok(id)
+    }
+
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
@@ -417,7 +438,7 @@ impl TransferRuntimeArgsBuilder {
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
-        let (to, target_uref) = match self
+        let (to, target) = match self
             .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
         {
             NewTransferTargetMode::ExistingAccount {
@@ -436,23 +457,26 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let source_uref =
+        let source =
             self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
 
-        if source_uref.addr() == target_uref.addr() {
+        if source.addr() == target.addr() {
             return Err(TransferError::InvalidPurse);
         }
 
         let amount = self.resolve_amount()?;
 
-        let id = self.resolve_id()?;
+        let arg_id = self.resolve_id()?;
+
+        let holds_epoch = self.resolve_holds_epoch()?;
 
         Ok(TransferArgs {
             to,
-            source: source_uref,
-            target: target_uref,
+            source,
+            target,
             amount,
-            arg_id: id,
+            arg_id,
+            holds_epoch,
         })
     }
 

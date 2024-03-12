@@ -31,7 +31,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
     EraId, HashAddr, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,
     Timestamp, Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    TransactionV1ConfigFailure, URef, U512,
+    TransactionV1ConfigFailure, URef, URefAddr, U512,
 };
 
 use super::*;
@@ -772,6 +772,11 @@ impl reactor::Reactor for Reactor {
                 } => {
                     let key = balance_request.identifier().as_key();
 
+                    let purse_addr = match balance_request.identifier().as_purse_addr() {
+                        None => URefAddr::default(),
+                        Some(purse_addr) => purse_addr,
+                    };
+
                     let proof = TrieMerkleProof::new(
                         key,
                         StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
@@ -790,8 +795,11 @@ impl reactor::Reactor for Reactor {
                             BalanceResult::RootNotFound
                         } else {
                             BalanceResult::Success {
-                                motes: U512::from(motes),
-                                proof: Box::new(proof),
+                                purse_addr,
+                                total_balance: Default::default(),
+                                available_balance: U512::from(motes),
+                                total_balance_proof: Box::new(proof),
+                                balance_holds: Default::default(),
                             }
                         };
                     responder.respond(balance_result).ignore()
