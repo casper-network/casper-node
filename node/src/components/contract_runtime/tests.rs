@@ -404,7 +404,7 @@ mod trie_chunking_tests {
     use casper_types::{
         account::AccountHash,
         bytesrepr,
-        execution::{Transform, TransformKind},
+        execution::{TransformKindV2, TransformV2},
         global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
@@ -503,7 +503,7 @@ mod trie_chunking_tests {
         let empty_state_root = contract_runtime.data_access_layer().empty_root();
         let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
-            effects.push(Transform::new(key, TransformKind::Write(value)));
+            effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         }
         let post_state_hash = &contract_runtime
             .data_access_layer()
