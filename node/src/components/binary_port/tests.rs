@@ -6,7 +6,8 @@ use serde::Serialize;
 
 use casper_types::{
     binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest},
-    Digest, GlobalStateIdentifier, KeyTag,
+    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, TestBlockBuilder, Timestamp, Transaction,
+    TransactionV1Builder,
 };
 
 use crate::{
@@ -51,7 +52,8 @@ const DISABLED: bool = false;
 struct TestCase {
     allow_request_get_all_values: bool,
     allow_request_get_trie: bool,
-    request_generator: fn() -> BinaryRequest,
+    allow_request_speculative_exec: bool,
+    request_generator: fn(&mut TestRng) -> BinaryRequest,
 }
 
 #[tokio::test]
@@ -61,16 +63,29 @@ async fn should_execute_enabled_functions() {
     let get_all_values_enabled = TestCase {
         allow_request_get_all_values: ENABLED,
         allow_request_get_trie: rng.gen(),
-        request_generator: all_values_request,
+        allow_request_speculative_exec: rng.gen(),
+        request_generator: |_| all_values_request(),
     };
 
     let get_trie_enabled = TestCase {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: ENABLED,
-        request_generator: trie_request,
+        allow_request_speculative_exec: rng.gen(),
+        request_generator: |_| trie_request(),
     };
 
-    for test_case in [get_all_values_enabled, get_trie_enabled] {
+    let try_speculative_exec_enabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: ENABLED,
+        request_generator: try_speculative_exec_request,
+    };
+
+    for test_case in [
+        get_all_values_enabled,
+        get_trie_enabled,
+        try_speculative_exec_enabled,
+    ] {
         let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
         runner
@@ -92,16 +107,29 @@ async fn should_return_error_for_disabled_functions() {
     let get_all_values_disabled = TestCase {
         allow_request_get_all_values: DISABLED,
         allow_request_get_trie: rng.gen(),
-        request_generator: all_values_request,
+        allow_request_speculative_exec: rng.gen(),
+        request_generator: |_| all_values_request(),
     };
 
     let get_trie_disabled = TestCase {
         allow_request_get_all_values: rng.gen(),
         allow_request_get_trie: DISABLED,
-        request_generator: trie_request,
+        allow_request_speculative_exec: rng.gen(),
+        request_generator: |_| trie_request(),
     };
 
-    for test_case in [get_all_values_disabled, get_trie_disabled] {
+    let try_speculative_exec_disabled = TestCase {
+        allow_request_get_all_values: rng.gen(),
+        allow_request_get_trie: rng.gen(),
+        allow_request_speculative_exec: DISABLED,
+        request_generator: try_speculative_exec_request,
+    };
+
+    for test_case in [
+        get_all_values_disabled,
+        get_trie_disabled,
+        try_speculative_exec_disabled,
+    ] {
         let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
         let result = tokio::select! {
@@ -122,6 +150,7 @@ async fn run_test_case(
     TestCase {
         allow_request_get_all_values,
         allow_request_get_trie,
+        allow_request_speculative_exec,
         request_generator,
     }: TestCase,
     rng: &mut TestRng,
@@ -133,6 +162,7 @@ async fn run_test_case(
         enable_server: true,
         allow_request_get_all_values,
         allow_request_get_trie,
+        allow_request_speculative_exec,
         max_request_size_bytes: 1024,
         max_response_size_bytes: 1024,
         client_request_limit: 2,
@@ -164,7 +194,7 @@ async fn run_test_case(
 
     let (sender, receiver) = oneshot::channel();
     let event = BinaryPortEvent::HandleRequest {
-        request: request_generator(),
+        request: request_generator(rng),
         responder: Responder::without_shutdown(sender),
     };
 
@@ -230,6 +260,7 @@ impl Reactor for MockReactor {
                 // Runtime component, but we're not interested in the result.
                 Effects::new()
             }
+            Event::AcceptTransactionRequest(req) => req.responder.respond(Ok(())).ignore(),
         }
     }
 }
@@ -253,6 +284,8 @@ enum Event {
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     ReactorInfoRequest(ReactorInfoRequest),
+    #[from]
+    AcceptTransactionRequest(AcceptTransactionRequest),
 }
 
 impl From<ChainspecRawBytesRequest> for Event {
@@ -285,12 +318,6 @@ impl From<NetworkInfoRequest> for Event {
     }
 }
 
-impl From<AcceptTransactionRequest> for Event {
-    fn from(_request: AcceptTransactionRequest) -> Self {
-        unreachable!()
-    }
-}
-
 impl From<StorageRequest> for Event {
     fn from(_request: StorageRequest) -> Self {
         unreachable!()
@@ -307,6 +334,9 @@ impl Display for Event {
             }
             Event::ReactorInfoRequest(request) => {
                 write!(formatter, "reactor info request: {:?}", request)
+            }
+            Event::AcceptTransactionRequest(request) => {
+                write!(formatter, "accept transaction request: {:?}", request)
             }
         }
     }
@@ -338,6 +368,18 @@ fn trie_request() -> BinaryRequest {
     BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Trie {
         trie_key: Digest::hash([1u8; 32]),
     }))
+}
+
+fn try_speculative_exec_request(rng: &mut TestRng) -> BinaryRequest {
+    BinaryRequest::TrySpeculativeExec {
+        transaction: Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap()),
+        state_root_hash: Digest::hash([1u8; 32]),
+        block_time: Timestamp::random(rng),
+        protocol_version: ProtocolVersion::from_parts(2, 0, 0),
+        speculative_exec_at_block: BlockHeader::V2(
+            TestBlockBuilder::new().build(rng).take_header(),
+        ),
+    }
 }
 
 fn got_contract_runtime_request(event: &Event) -> bool {

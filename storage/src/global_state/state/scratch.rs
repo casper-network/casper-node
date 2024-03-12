@@ -9,7 +9,7 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{Effects, Transform, TransformInstruction, TransformKind},
+    execution::{Effects, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
 };
@@ -225,10 +225,10 @@ impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
-        for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
+        for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
-                (None, TransformKind::Write(new_value)) => TransformInstruction::store(new_value),
+                (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
@@ -428,7 +428,7 @@ pub(crate) mod tests {
 
     use casper_types::{
         account::AccountHash,
-        execution::{Effects, Transform, TransformKind},
+        execution::{Effects, TransformKindV2, TransformV2},
         CLValue, Digest,
     };
 
@@ -479,9 +479,9 @@ pub(crate) mod tests {
 
     pub(crate) fn create_test_transforms() -> Effects {
         let mut effects = Effects::new();
-        let transform = Transform::new(
+        let transform = TransformV2::new(
             Key::Account(AccountHash::new([3u8; 32])),
-            TransformKind::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+            TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
         );
         effects.push(transform);
         effects
@@ -556,7 +556,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -606,7 +606,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp
@@ -647,7 +647,7 @@ pub(crate) mod tests {
         let effects = {
             let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                let transform = TransformV2::new(*key, TransformKindV2::Write(value.to_owned()));
                 tmp.push(transform);
             }
             tmp

@@ -27,6 +27,8 @@ pub struct Config {
     pub allow_request_get_all_values: bool,
     /// Flag used to enable/disable the [`Trie`] request
     pub allow_request_get_trie: bool,
+    /// Flag used to enable/disable the [`TrySpeculativeExec`] request.
+    pub allow_request_speculative_exec: bool,
     /// Maximum size of a request in bytes.
     pub max_request_size_bytes: u32,
     /// Maximum size of a response in bytes.
@@ -47,6 +49,7 @@ impl Config {
             address: DEFAULT_ADDRESS.to_string(),
             allow_request_get_all_values: false,
             allow_request_get_trie: false,
+            allow_request_speculative_exec: false,
             client_request_limit: DEFAULT_CLIENT_REQUEST_LIMIT,
             max_request_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             max_response_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,

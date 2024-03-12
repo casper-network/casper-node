@@ -268,6 +268,12 @@ where
             speculative_exec_at_block,
         } => {
             metrics.binary_port_try_speculative_exec_count.inc();
+            if !config.allow_request_speculative_exec {
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::FunctionDisabled,
+                    protocol_version,
+                );
+            }
             let response = try_accept_transaction(
                 effect_builder,
                 transaction.clone(),

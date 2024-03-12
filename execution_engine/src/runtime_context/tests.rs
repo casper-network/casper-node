@@ -15,7 +15,7 @@ use casper_types::{
         SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
-    execution::TransformKind,
+    execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, DeployHash, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
@@ -222,7 +222,7 @@ where
 #[track_caller]
 fn last_transform_kind_on_addressable_entity(
     runtime_context: &RuntimeContext<LmdbGlobalStateView>,
-) -> TransformKind {
+) -> TransformKindV2 {
     let key = runtime_context.entity_key;
     runtime_context
         .effects()
@@ -640,7 +640,7 @@ fn manage_associated_keys() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
         entity
@@ -655,7 +655,7 @@ fn manage_associated_keys() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
         let value = entity
@@ -673,7 +673,7 @@ fn manage_associated_keys() {
         // Verify
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
@@ -719,7 +719,7 @@ fn action_thresholds_management() {
 
         let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
         let mutated_entity = match transform_kind {
-            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
+            TransformKindV2::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
