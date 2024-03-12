@@ -592,10 +592,11 @@ async fn handle_incoming(
                 |dropped| info!(until=?entry.until, justification=%entry.justification, dropped, "peer is still banned")
             );
 
+            let message = ban_message("you are still banned", &entry.justification);
             tokio::spawn(rpc_server.send_custom_error_and_shutdown(
                 ChannelId::new(0),
                 Id::new(0),
-                Bytes::from(&b"you are still banned"[..]),
+                message,
             ));
 
             return;
@@ -636,6 +637,12 @@ async fn handle_incoming(
             );
         }
     }
+}
+
+/// Generate a ban message to send to the peer.
+#[inline(always)]
+fn ban_message(prefix: &'static str, justification: &BlocklistJustification) -> Bytes {
+    format!("[BLOCKED] {}: {}", prefix, justification).into()
 }
 
 impl Debug for ConManContext {
@@ -859,10 +866,13 @@ impl OutgoingHandler {
                 debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
 
                 // Ensure an error is sent.
+
+                let message =
+                    ban_message("disconnecting since you are banned", &entry.justification);
                 tokio::spawn(rpc_server.send_custom_error_and_shutdown(
                     ChannelId::new(0),
                     Id::new(0),
-                    Bytes::from(&b"disconnecting since you are banned"[..]),
+                    message,
                 ));
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
