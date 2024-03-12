@@ -18,7 +18,7 @@ use casper_types::{
         PayloadType, ReactorStateName, RecordId, Uptime,
     },
     bytesrepr::{FromBytes, ToBytes},
-    execution::{Effects, Transform, TransformKind},
+    execution::{Effects, TransformKindV2, TransformV2},
     testing::TestRng,
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
@@ -196,13 +196,13 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
     );
 
     let mut effects = Effects::new();
-    effects.push(Transform::new(
+    effects.push(TransformV2::new(
         dict_key,
-        TransformKind::Write(StoredValue::CLValue(CLValue::from_t(dict_value).unwrap())),
+        TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(dict_value).unwrap())),
     ));
-    effects.push(Transform::new(
+    effects.push(TransformV2::new(
         Key::Account(account_hash),
-        TransformKind::Write(StoredValue::Account(Account::new(
+        TransformKindV2::Write(StoredValue::Account(Account::new(
             account_hash,
             iter::once((TEST_DICT_NAME.to_owned(), Key::URef(dict_seed_uref)))
                 .collect::<BTreeMap<_, _>>()
@@ -212,12 +212,12 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
             ActionThresholds::default(),
         ))),
     ));
-    effects.push(Transform::new(
+    effects.push(TransformV2::new(
         Key::NamedKey(
             NamedKeyAddr::new_from_string(entity_addr, TEST_DICT_NAME.to_owned())
                 .expect("should create named key addr"),
         ),
-        TransformKind::Write(StoredValue::NamedKey(
+        TransformKindV2::Write(StoredValue::NamedKey(
             NamedKeyValue::from_concrete_values(
                 Key::URef(dict_seed_uref),
                 TEST_DICT_NAME.to_owned(),
