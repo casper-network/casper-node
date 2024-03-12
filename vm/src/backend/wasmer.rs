@@ -14,8 +14,7 @@ use wasmer::{
     TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
-use wasmer_middlewares::{metering, Metering};
-use wasmer_types::compilation::function;
+use wasmer_middlewares::metering;
 
 use crate::{host, Config, ExportError, MemoryError, TrapCode, VMResult};
 
@@ -119,6 +118,9 @@ impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 
 
     fn context(&self) -> &Context<S> {
         &self.env.data().context
+    }
+    fn context_mut(&mut self) -> &mut Context<S> {
+        &mut self.env.data_mut().context
     }
 
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
@@ -340,7 +342,6 @@ where
                      key_space: u64,
                      key_ptr: u32,
                      key_size: u32,
-                     value_tag: u64,
                      value_ptr: u32,
                      value_size: u32| {
                         let wasmer_caller = WasmerCaller { env };
@@ -349,7 +350,6 @@ where
                             key_space,
                             key_ptr,
                             key_size,
-                            value_tag,
                             value_ptr,
                             value_size,
                         )
@@ -647,14 +647,23 @@ where
 
     /// Consume instance object and retrieve the [`Context`] object.
     fn teardown(self) -> Context<S> {
-        let WasmerInstance { env, store, .. } = self;
-        let WasmerEnv { context, .. } = env.as_ref(&store);
+        let WasmerInstance { env, mut store, .. } = self;
 
-        let Context { storage, address } = context;
+        let mut env_mut = env.into_mut(&mut store);
+
+        let data = env_mut.data_mut();
+
+        // // let data = data.clone();
+
+        // data
+
+        // // let WasmerEnv { context, .. } = env.as_ref(&store);
+
+        // let Context { storage, address } = data;
 
         Context {
-            storage: todo!(),
-            address: *address,
+            storage: data.context.storage.fork2(),
+            address: data.context.address,
         }
     }
 }

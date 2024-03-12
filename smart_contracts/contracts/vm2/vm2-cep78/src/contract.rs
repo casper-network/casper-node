@@ -50,8 +50,7 @@ mod tests {
     #[test]
     fn it_works() {
         let result = host::native::dispatch(|| {
-            let contract =
-                NFTContract::new("Foo NFT".to_string(), 35).expect("should create contract");
+            let contract = NFTContract::new("Foo NFT".to_string(), 35);
             assert_eq!(contract.state().collection_name, "Foo NFT");
         });
         assert_eq!(result, Ok(()));

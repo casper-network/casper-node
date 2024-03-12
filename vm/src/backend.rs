@@ -1,16 +1,11 @@
 pub(crate) mod wasmer;
 use bytes::Bytes;
 use casper_storage::{
-    global_state::{
-        self,
-        state::{StateProvider, StateReader},
-    },
+    global_state::{self, state::StateReader},
     TrackingCopy,
 };
 use casper_types::{Key, StoredValue};
-use std::{marker::PhantomData, ops::Deref, sync::Arc};
 use thiserror::Error;
-use wasmer_middlewares::Metering;
 
 use crate::{storage::Address, Config, VMError, VMResult};
 
@@ -51,6 +46,7 @@ impl MeteringPoints {
 pub(crate) trait Caller<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
     fn config(&self) -> &Config;
     fn context(&self) -> &Context<S>;
+    fn context_mut(&mut self) -> &mut Context<S>;
     /// Returns currently running *unmodified* bytecode.
     fn bytecode(&self) -> Bytes;
 

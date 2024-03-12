@@ -15,7 +15,6 @@ macro_rules! for_each_host_function {
                 key_space: u64,
                 key_ptr: *const u8,
                 key_size: usize,
-                value_tag: u64,
                 value_ptr: *const u8,
                 value_size: usize,
             ) -> i32;

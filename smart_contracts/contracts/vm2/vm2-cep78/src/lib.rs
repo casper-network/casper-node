@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn call_should_work() {
         let _ = dispatch_with(Environment::default(), || {
-            super::call(&[]);
+            super::call();
         });
     }
 }

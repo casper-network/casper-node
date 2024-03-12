@@ -43,7 +43,7 @@ pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
-pub use block_identifier::{BlockIdentifier, ParseBlockIdentifierError};
+pub use block_identifier::BlockIdentifier;
 pub use block_signatures::{
     BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2,
 };

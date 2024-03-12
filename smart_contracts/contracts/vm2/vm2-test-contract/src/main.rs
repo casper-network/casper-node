@@ -14,13 +14,13 @@ mod exports {
 
     use casper_sdk::{
         host, reserve_vec_space,
-        storage::Keyspace,
         sys::{CreateResult, EntryPoint, Manifest, Param},
         types::ResultCode,
         Selector,
     };
     use core::ptr::NonNull;
     use vm_common::flags::EntryPointFlags;
+    use vm_common::keyspace::Keyspace;
 
     // use crate::reserve_vec_space;
 
@@ -47,7 +47,7 @@ mod exports {
         .expect("should read");
         // host::casper_print(&format!("non_existing_entry={:?}", non_existing_entry));
 
-        host::casper_write(Keyspace::Context(b"hello"), TAG_BYTES, b"Hello, world!").unwrap();
+        host::casper_write(Keyspace::Context(b"hello"), b"Hello, world!").unwrap();
 
         let mut read2 = Vec::new();
         let existing_entry = host::casper_read(Keyspace::Context(b"hello"), |size| {
@@ -60,7 +60,7 @@ mod exports {
         let msg = String::from_utf8(read2).unwrap();
         host::casper_print(&format!("existing_entry={:?}", msg));
 
-        host::casper_write(Keyspace::Context(b"read back"), TAG_BYTES, msg.as_bytes()).unwrap();
+        host::casper_write(Keyspace::Context(b"read back"), msg.as_bytes()).unwrap();
 
         const PARAM_1: &str = "param_1";
         const PARAM_2: &str = "param_2";
@@ -183,19 +183,24 @@ pub fn foobar() {}
 #[cfg(test)]
 mod tests {
 
-    use casper_sdk::{schema::schema_helper, Contract};
+    use casper_sdk::{
+        host::native::{self, Environment},
+        Contract,
+    };
 
     use super::*;
 
     #[test]
     fn test() {
         let args = ("hello".to_string(), 123);
-        schema_helper::dispatch("call", &borsh::to_vec(&args).unwrap());
+        native::dispatch_with(Environment::default().with_input_data(args), || {
+            native::call_export("call");
+        });
     }
 
     #[test]
     fn exports() {
-        dbg!(schema_helper::list_exports());
+        dbg!(native::list_exports());
         // dbg!(schema_helpe)
     }
 }

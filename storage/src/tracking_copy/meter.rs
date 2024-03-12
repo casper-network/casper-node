@@ -12,6 +12,7 @@ pub mod heap_meter {
 
     use crate::tracking_copy::byte_size::ByteSize;
 
+    #[derive(Copy, Clone)]
     pub struct HeapSize;
 
     impl<K: ByteSize, V: ByteSize> super::Meter<K, V> for HeapSize {
@@ -33,6 +34,7 @@ pub mod heap_meter {
 pub mod count_meter {
     use std::collections::BTreeSet;
 
+    #[derive(Clone, Copy)]
     pub struct Count;
 
     impl<K, V> super::Meter<K, V> for Count {

@@ -128,7 +128,6 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let mut info = casper_sdk_sys::ReadInfo {
         data: ptr::null(),
         size: 0,
-        tag: 0,
     };
 
     extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -157,7 +156,7 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     };
 
     if ret == 0 {
-        Ok(Some(Entry { tag: info.tag }))
+        Ok(Some(Entry(())))
     } else if ret == 1 {
         Ok(None)
     } else {
@@ -165,7 +164,7 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     }
 }
 
-pub fn casper_write(key: Keyspace, value_tag: u64, value: &[u8]) -> Result<(), Error> {
+pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
     let (key_space, key_bytes) = match key {
         Keyspace::State => (0, &[][..]),
         Keyspace::Context(key_bytes) => (1, key_bytes),
@@ -175,7 +174,6 @@ pub fn casper_write(key: Keyspace, value_tag: u64, value: &[u8]) -> Result<(), E
             key_space,
             key_bytes.as_ptr(),
             key_bytes.len(),
-            value_tag,
             value.as_ptr(),
             value.len(),
         )
@@ -270,11 +268,10 @@ pub fn casper_call(
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use casper_sdk_sys::casper_env_caller;
-use vm_common::flags::ReturnFlags;
+use vm_common::{flags::ReturnFlags, keyspace::Keyspace};
 
 use crate::{
     reserve_vec_space,
-    storage::Keyspace,
     types::{Address, CallError, Entry, ResultCode},
     Contract, Selector, ToCallData,
 };
@@ -299,7 +296,7 @@ pub fn read_state<T: Default + BorshDeserialize + Contract>() -> Result<T, Error
 
 pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error> {
     let new_state = borsh::to_vec(state).unwrap();
-    casper_write(Keyspace::State, 0, &new_state)?;
+    casper_write(Keyspace::State, &new_state)?;
     Ok(())
 }
 

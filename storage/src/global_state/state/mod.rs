@@ -77,7 +77,7 @@ use crate::{
 };
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
-pub trait StateReader<K, V>: Send + Sync {
+pub trait StateReader<K, V>: Sized + Send + Sync {
     /// An error which occurs when reading state
     type Error;
 

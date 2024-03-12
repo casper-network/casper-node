@@ -8,7 +8,6 @@ pub mod cli;
 pub mod collections;
 pub mod host;
 pub mod schema;
-pub mod storage;
 pub mod types;
 
 use std::{io, marker::PhantomData, ptr::NonNull};

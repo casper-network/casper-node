@@ -1,11 +1,11 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     host::{self, read_vec},
-    storage::Keyspace,
 };
 
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
+use vm_common::keyspace::Keyspace;
 
 use std::marker::PhantomData;
 
@@ -39,7 +39,7 @@ where
         let mut prefix_bytes = self.prefix.as_bytes().to_owned();
         prefix_bytes.extend(&self.length.to_le_bytes());
         let prefix = Keyspace::Context(&prefix_bytes);
-        host::casper_write(prefix, 0, &borsh::to_vec(&value).unwrap()).unwrap();
+        host::casper_write(prefix, &borsh::to_vec(&value).unwrap()).unwrap();
         self.length += 1;
     }
 

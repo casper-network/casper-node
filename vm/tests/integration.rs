@@ -1,21 +1,14 @@
 use blake2::{Blake2b, Digest};
 use borsh::BorshSerialize;
+use bytes::Bytes;
 use casper_storage::global_state::{
     self,
     state::{lmdb::LmdbGlobalState, StateProvider},
 };
 use digest::consts::U32;
-use rand::prelude::*;
-use std::{
-    borrow::BorrowMut,
-    collections::{BTreeMap, HashMap},
-    sync::{Arc, RwLock},
-};
-// use digest::{self, Digest, FixedOutput, Update, HashMarker, typenum::Unsigned, consts::U32};
-use bytes::Bytes;
 use vm::{
     backend::{Context, WasmInstance},
-    storage::{self, Address, Contract, CreateResult, Entry, Manifest, Package},
+    storage::Address,
     ConfigBuilder, VM,
 };
 
@@ -47,22 +40,6 @@ fn cep18() {
 fn traits() {
     run_wasm(VM2_TRAITS, ());
 }
-
-type Blake2b256 = Blake2b<U32>;
-
-fn blake2b256(updater: impl FnOnce(&mut Blake2b256)) -> Address {
-    let mut hasher = Blake2b256::new();
-    updater(&mut hasher);
-    hasher.finalize().into()
-}
-
-fn make_contract_address(package_address: &Address, version: u32) -> Address {
-    blake2b256(|hasher| {
-        hasher.update(&package_address);
-        hasher.update(&version.to_le_bytes());
-    })
-}
-
 /// VM execute request specifies execution context, the wasm bytes, and other necessary information
 /// to execute.
 pub struct ExecuteRequest {
@@ -139,4 +116,14 @@ fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
         eprintln!("{result:?} {gas_summary:?}");
         instance.teardown()
     };
+
+    for (i, transform) in retrieved_context
+        .storage
+        .effects()
+        .transforms()
+        .iter()
+        .enumerate()
+    {
+        eprintln!("{:?} {:?}", i, transform);
+    }
 }

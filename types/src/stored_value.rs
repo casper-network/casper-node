@@ -21,7 +21,7 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::{MessageChecksum, MessageTopicSummary},
     contract_wasm::ContractWasm,
-    contracts::{Contract, ContractPackage},
+    contracts::{Contract, ContractPackage, ContractV2},
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
@@ -50,6 +50,8 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKeyValue = 17,
+    RawBytes = 18,
+    ContractV2 = 19,
 }
 
 /// A value stored in Global State.
@@ -98,6 +100,10 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
+    /// Raw bytes. Similar to a [`crate::StoredValue::CLValue`] but does not incur overhead of a [`crate::CLValue`] and [`crate::CLType`].
+    RawBytes(Vec<u8>),
+    /// Contract V2 record.
+    ContractV2(ContractV2),
 }
 
 impl StoredValue {
@@ -225,6 +231,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_raw_bytes(&self) -> Option<&[u8]> {
+        match self {
+            StoredValue::RawBytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
@@ -269,6 +282,14 @@ impl StoredValue {
     pub fn into_package(self) -> Option<Package> {
         match self {
             StoredValue::Package(package) => Some(package),
+            _ => None,
+        }
+    }
+
+    /// Returns the `ByteCode` if this is a `ByteCode` variant.
+    pub fn into_byte_code(self) -> Option<ByteCode> {
+        match self {
+            StoredValue::ByteCode(byte_code) => Some(byte_code),
             _ => None,
         }
     }
@@ -360,6 +381,8 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKeyValue".to_string(),
+            StoredValue::RawBytes(_) => "RawBytes".to_string(),
+            StoredValue::ContractV2(_) => "ContractV2".to_string(),
         }
     }
 
@@ -383,6 +406,8 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKeyValue,
+            StoredValue::RawBytes(_) => Tag::RawBytes,
+            StoredValue::ContractV2(_) => Tag::ContractV2,
         }
     }
 }
@@ -661,6 +686,8 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+                StoredValue::RawBytes(bytes) => bytes.len(),
+                StoredValue::ContractV2(contract_v2) => contract_v2.serialized_length(),
             }
     }
 
@@ -689,6 +716,8 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?,
+            StoredValue::RawBytes(bytes) => writer.extend_from_slice(bytes),
+            StoredValue::ContractV2(contract_v2) => contract_v2.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -751,6 +780,13 @@ impl FromBytes for StoredValue {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
             }
+            tag if tag == Tag::RawBytes as u8 => {
+                let (bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
+                Ok((StoredValue::RawBytes(bytes), remainder))
+            }
+            tag if tag == Tag::ContractV2 as u8 => ContractV2::from_bytes(remainder)
+                .map(|(contract_v2, remainder)| (StoredValue::ContractV2(contract_v2), remainder)),
+
             _ => Err(Error::Formatting),
         }
     }
@@ -796,6 +832,10 @@ mod serde_helpers {
         Message(&'a MessageChecksum),
         /// A record for NamedKey.
         NamedKey(&'a NamedKeyValue),
+        /// Raw bytes.
+        RawBytes(&'a Vec<u8>),
+        /// A contract v2.
+        ContractV2(&'a ContractV2),
     }
 
     #[derive(Deserialize)]
@@ -836,6 +876,10 @@ mod serde_helpers {
         Message(MessageChecksum),
         /// A record for NamedKey.
         NamedKey(NamedKeyValue),
+        /// Raw bytes.
+        RawBytes(Vec<u8>),
+        /// A contract v2.
+        ContractV2(ContractV2),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -863,6 +907,8 @@ mod serde_helpers {
                 }
                 StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
                 StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
+                StoredValue::RawBytes(bytes) => BinarySerHelper::RawBytes(bytes),
+                StoredValue::ContractV2(contract_v2) => BinarySerHelper::ContractV2(contract_v2),
             }
         }
     }
@@ -894,6 +940,8 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
                 BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                BinaryDeserHelper::RawBytes(bytes) => StoredValue::RawBytes(bytes),
+                BinaryDeserHelper::ContractV2(contract_v2) => StoredValue::ContractV2(contract_v2),
             }
         }
     }

@@ -285,12 +285,7 @@ impl Environment {
                 if let Some(ptr) = ptr {
                     unsafe {
                         (*info).data = ptr.as_ptr();
-                    }
-                    unsafe {
                         (*info).size = tagged_value.value.len();
-                    }
-                    unsafe {
-                        (*info).tag = tagged_value.tag;
                     }
 
                     unsafe {
@@ -313,7 +308,6 @@ impl Environment {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
-        value_tag: u64,
         value_ptr: *const u8,
         value_size: usize,
     ) -> Result<i32, NativeTrap> {
@@ -329,7 +323,7 @@ impl Environment {
         db.entry(key_space).or_default().insert(
             key_bytes,
             TaggedValue {
-                tag: value_tag,
+                tag: 0,
                 value: Bytes::copy_from_slice(value_bytes),
             },
         );
@@ -681,23 +675,13 @@ mod symbols {
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
-        value_tag: u64,
         value_ptr: *const u8,
         value_size: usize,
     ) -> i32 {
         let _name = "casper_write";
-        let _args = (
-            &key_space,
-            &key_ptr,
-            &key_size,
-            &value_tag,
-            &value_ptr,
-            &value_size,
-        );
+        let _args = (&key_space, &key_ptr, &key_size, &value_ptr, &value_size);
         let _call_result = with_current_environment(|stub| {
-            stub.casper_write(
-                key_space, key_ptr, key_size, value_tag, value_ptr, value_size,
-            )
+            stub.casper_write(key_space, key_ptr, key_size, value_ptr, value_size)
         });
         crate::host::native::handle_ret(_call_result)
     }

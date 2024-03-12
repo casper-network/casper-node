@@ -66,6 +66,7 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
+const STATE_PREFIX: &str = "state-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -144,12 +145,13 @@ pub enum KeyTag {
     ByteCode = 18,
     Message = 19,
     NamedKey = 20,
+    State = 21,
 }
 
 impl KeyTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..21) {
+        match rng.gen_range(0..=21) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -171,6 +173,7 @@ impl KeyTag {
             18 => KeyTag::ByteCode,
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
+            21 => KeyTag::State,
             _ => panic!(),
         }
     }
@@ -200,6 +203,7 @@ impl Display for KeyTag {
             KeyTag::ByteCode => write!(f, "ByteCode"),
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
+            KeyTag::State => write!(f, "State"),
         }
     }
 }
@@ -246,6 +250,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
+            tag if tag == KeyTag::State as u8 => KeyTag::State,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -302,6 +307,8 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
+    /// A `Key` under which a contract's state lives.
+    State(EntityAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -368,6 +375,8 @@ pub enum FromStrError {
     Message(contract_messages::FromStrError),
     /// Named key parse error.
     NamedKey(String),
+    /// State key parse error.
+    State(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -447,6 +456,7 @@ impl Display for FromStrError {
                 write!(f, "named-key from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
+            FromStrError::State(error) => write!(f, "state-key from string error: {}", error),
         }
     }
 }
@@ -477,6 +487,7 @@ impl Key {
             Key::ByteCode(..) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
+            Key::State(_) => String::from("Key::State"),
         }
     }
 
@@ -575,6 +586,10 @@ impl Key {
             }
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
+            }
+
+            Key::State(entity_addr) => {
+                format!("{}{}", STATE_PREFIX, entity_addr)
             }
         }
     }
@@ -769,6 +784,15 @@ impl Key {
             Ok(named_key) => return Ok(Key::NamedKey(named_key)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
+        }
+
+        if let Some(contract_entity_hash) = input.strip_prefix(STATE_PREFIX) {
+            let package_addr_bytes = checksummed_hex::decode(contract_entity_hash)
+                .map_err(|error| FromStrError::State(error.to_string()))?;
+
+            let entity_hash_addr: HashAddr = PackageAddr::try_from(package_addr_bytes.as_ref())
+                .map_err(|error| FromStrError::Package(error.to_string()))?;
+            return Ok(Key::State(EntityAddr::SmartContract(entity_hash_addr)));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1107,6 +1131,9 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
+            Key::State(entity_addr) => {
+                write!(f, "Key::State({})", entity_addr)
+            }
         }
     }
 }
@@ -1141,6 +1168,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
+            Key::State(_) => KeyTag::State,
         }
     }
 }
@@ -1255,6 +1283,7 @@ impl ToBytes for Key {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
             Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
+            Key::State(entity_addr) => KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length(),
         }
     }
 
@@ -1289,6 +1318,7 @@ impl ToBytes for Key {
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
+            Key::State(entity_addr) => entity_addr.write_bytes(writer),
         }
     }
 }
@@ -1381,6 +1411,10 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
+            KeyTag::State => {
+                let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
+                Ok((Key::State(entity_addr), rem))
+            }
         }
     }
 }
@@ -1411,13 +1445,14 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
+        Key::State(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=18) {
+        match rng.gen_range(0..=20) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1438,6 +1473,7 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
+            20 => Key::State(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1470,6 +1506,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
+        State(&'a EntityAddr),
     }
 
     #[derive(Deserialize)]
@@ -1496,6 +1533,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
+        State(EntityAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1524,6 +1562,7 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
+                Key::State(entity_addr) => BinarySerHelper::State(entity_addr),
             }
         }
     }
@@ -1554,6 +1593,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
+                BinaryDeserHelper::State(entity_addr) => Key::State(entity_addr),
             }
         }
     }
@@ -1640,6 +1680,7 @@ mod tests {
         EntityAddr::new_contract_entity_addr([42; 32]),
         [43; 32],
     ));
+    const STATE_KEY: Key = Key::State(EntityAddr::new_contract_entity_addr([42; 32]));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1668,6 +1709,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        STATE_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =

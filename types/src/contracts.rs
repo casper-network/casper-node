@@ -27,10 +27,9 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     package::PackageStatus,
-    uref,
-    uref::URef,
-    AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint, EntryPoints, Groups,
-    HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
+    uref::{self, URef},
+    AddressableEntityHash, ByteCodeAddr, CLType, CLTyped, EntityAddr, EntityVersionKey, EntryPoint,
+    EntryPoints, Groups, HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -871,26 +870,6 @@ pub struct Contract {
     protocol_version: ProtocolVersion,
 }
 
-impl From<Contract>
-    for (
-        ContractPackageHash,
-        ContractWasmHash,
-        NamedKeys,
-        EntryPoints,
-        ProtocolVersion,
-    )
-{
-    fn from(contract: Contract) -> Self {
-        (
-            contract.contract_package_hash,
-            contract.contract_wasm_hash,
-            contract.named_keys,
-            contract.entry_points,
-            contract.protocol_version,
-        )
-    }
-}
-
 impl Contract {
     /// `Contract` constructor.
     pub fn new(
@@ -1037,6 +1016,140 @@ impl Default for Contract {
             contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
             contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct EntryPointV2 {
+    pub selector: u32,
+    pub function_index: u32,
+    pub flags: u32,
+}
+
+impl ToBytes for EntryPointV2 {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.selector.serialized_length()
+            + self.function_index.serialized_length()
+            + self.flags.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.selector.write_bytes(writer)?;
+        self.function_index.write_bytes(writer)?;
+        self.flags.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for EntryPointV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (selector, bytes) = u32::from_bytes(bytes)?;
+        let (function_index, bytes) = u32::from_bytes(bytes)?;
+        let (flags, bytes) = u32::from_bytes(bytes)?;
+        Ok((
+            EntryPointV2 {
+                selector,
+                function_index,
+                flags,
+            },
+            bytes,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct ContractManifest {
+    pub owner: HashAddr,
+    pub bytecode_addr: ByteCodeAddr,
+    pub entry_points: Vec<EntryPointV2>,
+}
+
+impl ToBytes for ContractManifest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.owner.serialized_length() + self.entry_points.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.owner.write_bytes(writer)?;
+        self.bytecode_addr.write_bytes(writer)?;
+        self.entry_points.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for ContractManifest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (owner, bytes) = HashAddr::from_bytes(bytes)?;
+        let (bytecode_addr, bytes) = ByteCodeAddr::from_bytes(bytes)?;
+        let (entry_points, bytes) = Vec::<EntryPointV2>::from_bytes(bytes)?;
+        Ok((
+            ContractManifest {
+                owner,
+                bytecode_addr,
+                entry_points,
+            },
+            bytes,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub enum ContractV2 {
+    V2(ContractManifest),
+}
+
+impl ToBytes for ContractV2 {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        match self {
+            ContractV2::V2(contract_manifest) => contract_manifest.serialized_length(),
+        }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ContractV2::V2(contract_manifest) => {
+                0.write_bytes(writer)?;
+                contract_manifest.write_bytes(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for ContractV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, bytes) = u32::from_bytes(bytes)?;
+        match tag {
+            0 => {
+                let (contract_manifest, bytes) = ContractManifest::from_bytes(bytes)?;
+                Ok((ContractV2::V2(contract_manifest), bytes))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }

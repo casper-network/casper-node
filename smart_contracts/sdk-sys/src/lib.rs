@@ -30,8 +30,6 @@ pub struct ReadInfo {
     pub data: *const u8,
     /// Size in bytes.
     pub size: usize,
-    /// Value tag.
-    pub tag: u64,
 }
 
 #[repr(C)]
@@ -97,7 +95,7 @@ mod tests {
 
     #[test]
     fn all_host_functions() {
-        rahost_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
+        let host_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
         assert!(host_functions.contains(&"casper_call"));
     }
 }

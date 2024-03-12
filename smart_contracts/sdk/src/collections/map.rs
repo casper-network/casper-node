@@ -1,11 +1,11 @@
 use crate::{
     abi::{CasperABI, Declaration, Definition, StructField},
     host::{self, read_vec},
-    storage::Keyspace,
 };
 
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
+use vm_common::keyspace::Keyspace;
 
 use std::marker::PhantomData;
 
@@ -41,7 +41,7 @@ where
         // the wasm.
         key.serialize(&mut context_key).unwrap();
         let prefix = Keyspace::Context(&context_key);
-        host::casper_write(prefix, 0, &borsh::to_vec(value).unwrap()).unwrap();
+        host::casper_write(prefix, &borsh::to_vec(value).unwrap()).unwrap();
     }
 
     pub fn get(&self, key: &K) -> Option<V> {

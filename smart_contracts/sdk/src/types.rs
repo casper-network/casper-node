@@ -1,9 +1,7 @@
 pub type Address = [u8; 32];
 
 #[derive(Debug)]
-pub struct Entry {
-    pub tag: u64,
-}
+pub struct Entry(pub(crate) ());
 
 #[repr(C)]
 #[derive(Debug, PartialEq)]

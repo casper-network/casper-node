@@ -12,6 +12,7 @@ mod tests;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     convert::{From, TryInto},
+    sync::Arc,
 };
 
 use linked_hash_map::LinkedHashMap;
@@ -141,7 +142,8 @@ impl Query {
 /// Keeps track of already accessed keys.
 /// We deliberately separate cached Reads from cached mutations
 /// because we want to invalidate Reads' cache so it doesn't grow too fast.
-pub struct TrackingCopyCache<M> {
+#[derive(Clone)]
+pub struct TrackingCopyCache<M: Copy> {
     max_cache_size: usize,
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
@@ -151,7 +153,7 @@ pub struct TrackingCopyCache<M> {
     meter: M,
 }
 
-impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
+impl<M: Meter<Key, StoredValue> + Copy> TrackingCopyCache<M> {
     /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`,
     /// above which least-recently-used elements of the cache are invalidated.
     /// Measurements of elements' "size" is done with the usage of `Meter`
@@ -236,8 +238,9 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 /// An interface for the global state that caches all operations (reads and writes) instead of
 /// applying them directly to the state. This way the state remains unmodified, while the user can
 /// interact with it as if it was being modified in real time.
+#[derive(Clone)]
 pub struct TrackingCopy<R> {
-    reader: R,
+    reader: Arc<R>,
     cache: TrackingCopyCache<HeapSize>,
     effects: Effects,
     max_query_depth: u64,
@@ -279,7 +282,7 @@ where
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
     pub fn new(reader: R, max_query_depth: u64) -> TrackingCopy<R> {
         TrackingCopy {
-            reader,
+            reader: Arc::new(reader),
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
@@ -293,20 +296,38 @@ where
         &self.reader
     }
 
-    /// Creates a new TrackingCopy, using this one (including its mutations) as
-    /// the base state to read against. The intended use case for this
-    /// function is to "snapshot" the current `TrackingCopy` and produce a
-    /// new `TrackingCopy` where further changes can be made. This
-    /// allows isolating a specific set of changes (those in the new
-    /// `TrackingCopy`) from existing changes. Note that mutations to state
-    /// caused by new changes (i.e. writes and adds) only impact the new
-    /// `TrackingCopy`, not this one. Note that currently there is no `join` /
-    /// `merge` function to bring changes from a fork back to the main
-    /// `TrackingCopy`. this means the current usage requires repeated
-    /// forking, however we recognize this is sub-optimal and will revisit
-    /// in the future.
+    /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing further changes to be made.
+    ///
+    /// This method creates a new `TrackingCopy` using the current instance (including its mutations) as the base state to read against.
+    /// Mutations made to the new `TrackingCopy` will not impact the original instance.
+    ///
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to the main `TrackingCopy`.
+    /// Therefore, forking should be done repeatedly, which is sub-optimal and will be improved in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
         TrackingCopy::new(self, self.max_query_depth)
+    }
+
+    /// Returns a new `TrackingCopy` instance that is a snapshot of the current state, allowing further changes to be made.
+    ///
+    /// This method creates a new `TrackingCopy` using the current instance (including its mutations) as the base state to read against.
+    /// Mutations made to the new `TrackingCopy` will not impact the original instance.
+    ///
+    /// Note: Currently, there is no `join` or `merge` function to bring changes from a fork back to the main `TrackingCopy`.
+    /// This method is an alternative to the `fork` method and is provided for clarity and consistency in naming.
+    pub fn fork2(&self) -> Self {
+        TrackingCopy {
+            reader: Arc::clone(&self.reader),
+            cache: self.cache.clone(),
+            effects: self.effects.clone(),
+            max_query_depth: self.max_query_depth,
+            messages: self.messages.clone(),
+        }
+    }
+
+    /// Merges the caches and effects of the other `TrackingCopy` but keeps the reader instance.
+    pub fn merge(&mut self, other: TrackingCopy<R>) {
+        *self = other;
     }
 
     /// Returns a copy of the execution effects cached by this instance.
@@ -661,6 +682,12 @@ where
                 }
                 StoredValue::Message(_) => {
                     return Ok(query.into_not_found_result("Message value found."));
+                }
+                StoredValue::RawBytes(_) => {
+                    return Ok(query.into_not_found_result("RawBytes value found."));
+                }
+                StoredValue::ContractV2(_) => {
+                    return Ok(query.into_not_found_result("ContractV2 value found."));
                 }
             }
         }

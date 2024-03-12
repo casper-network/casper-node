@@ -1,8 +1,9 @@
 use std::marker::PhantomData;
 
 use borsh::BorshSerialize;
+use vm_common::keyspace::Keyspace;
 
-use crate::{host, storage::Keyspace};
+use crate::host;
 
 use super::lookup_key::{Identity, LookupKey, LookupKeyOwned};
 
@@ -32,7 +33,7 @@ where
 
     pub fn insert(&mut self, key: T) {
         let lookup_key = self.lookup.lookup(self.prefix.as_bytes(), &key);
-        host::casper_write(Keyspace::Context(lookup_key.as_ref()), 0, &[]).unwrap();
+        host::casper_write(Keyspace::Context(lookup_key.as_ref()), &[]).unwrap();
     }
 
     pub fn contains_key(&self, key: T) -> bool {

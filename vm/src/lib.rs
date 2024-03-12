@@ -5,10 +5,7 @@ pub mod storage;
 use bytes::Bytes;
 
 use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
-use casper_storage::global_state::{
-    self,
-    state::{StateProvider, StateReader},
-};
+use casper_storage::global_state::{self, state::StateReader};
 use casper_types::{Key, StoredValue};
 use thiserror::Error;
 use vm_common::flags::ReturnFlags;

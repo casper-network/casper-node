@@ -743,6 +743,8 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::MessageTopic(_) => stored_value,
             StoredValue::Message(_) => stored_value,
             StoredValue::NamedKey(_) => stored_value,
+            StoredValue::RawBytes(_) => stored_value,
+            StoredValue::ContractV2(_) => stored_value,
         })
 }
 

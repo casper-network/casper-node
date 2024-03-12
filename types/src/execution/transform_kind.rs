@@ -183,6 +183,16 @@ impl TransformKind {
                     let found = "Message".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::RawBytes(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "RawBytes".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractV2(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractV2".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
             TransformKind::Failure(error) => Err(error),
         }

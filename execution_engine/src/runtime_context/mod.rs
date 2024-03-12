@@ -695,6 +695,8 @@ where
                 self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
                 self.validate_cl_value(named_key_value.get_name_as_cl_value())
             }
+            StoredValue::RawBytes(raw_bytes) => Ok(()),
+            StoredValue::ContractV2(contract) => Ok(()),
         }
     }
 
@@ -779,6 +781,7 @@ where
             | Key::ByteCode(..)
             | Key::Message(_)
             | Key::NamedKey(_) => true,
+            Key::State(_) => false,
         }
     }
 
@@ -815,6 +818,7 @@ where
             | Key::Package(_)
             | Key::ByteCode(..)
             | Key::Message(_) => false,
+            Key::State(_) => false,
         }
     }
 
@@ -847,7 +851,8 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::State(_) => false,
         }
     }
 
