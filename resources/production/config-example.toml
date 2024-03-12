@@ -253,7 +253,7 @@ blocklist_retain_duration = '10 minutes'
 [network.estimator_weights]
 consensus = 0
 block_gossip = 1
-deploy_gossip = 0
+transaction_gossip = 0
 finality_signature_gossip = 1
 address_gossip = 0
 finality_signature_broadcasts = 0
@@ -300,11 +300,26 @@ address = '0.0.0.0:7779'
 # Flag that enables the `AllValues` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_all_values = false
 
-# Flag that enables the `Trie` gewt request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
+# Flag that enables the `Trie` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
 
 # Flag that enables the `TrySpeculativeExec` request. Disabled by default.
 allow_request_speculative_exec = false
+
+# Maximum size of a request in bytes.
+max_request_size_bytes = 4_194_304
+
+# Maximum size of a response in bytes.
+max_response_size_bytes = 4_194_304
+
+# Maximum number of in-flight requests per client.
+client_request_limit = 3
+
+# Number of requests that can be buffered per client.
+client_request_buffer_size = 16
+
+# Maximum number of connections to the server.
+max_connections = 16
 
 # ==============================================
 # Configuration options for the REST HTTP server
