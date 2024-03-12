@@ -916,6 +916,9 @@ impl ActiveRoute {
     async fn serve(self, mut rpc_server: RpcServer) -> Result<(), RpcServerError> {
         while let Some(request) = rpc_server.next_request().await? {
             trace!(%request, "received incoming request");
+            let channel = request.channel();
+            let id = request.id();
+
             if let Err(err) = self
                 .ctx
                 .protocol_handler
@@ -928,9 +931,9 @@ impl ActiveRoute {
                     |dropped| warn!(%err, dropped, "error handling incoming request")
                 );
 
-                // TODO: Send a proper juliet error instead.
-                // TODO: Consider communicating this error upwards for better timeouts.
-                break;
+                // Send a string description of the error. This will also cause the connection to be
+                // torn down eventually, so we do not need to `break` here.
+                rpc_server.send_custom_error(channel, id, err.into());
             }
         }
 
