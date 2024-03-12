@@ -1,3 +1,4 @@
+pub(crate) mod detail;
 pub(crate) mod runtime_provider;
 pub(crate) mod storage_provider;
 pub(crate) mod system_provider;
@@ -54,6 +55,32 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         Ok(purse_uref)
     }
 
+    /// Burns native tokens.
+    fn burn(&mut self, purse: URef, amount: U512) -> Result<(), Error> {
+        let purse_key = Key::URef(purse);
+        self.validate_writeable(&purse_key)
+            .map_err(|_| Error::ForgedReference)?;
+        self.validate_key(&purse_key)
+            .map_err(|_| Error::ForgedReference)?;
+
+        let source_balance: U512 = match self.read_balance(purse)? {
+            Some(source_balance) => source_balance,
+            None => return Err(Error::PurseNotFound),
+        };
+
+        let new_balance = match source_balance.checked_sub(amount) {
+            Some(value) => value,
+            None => U512::zero(),
+        };
+
+        // source_balance is >= than new_balance
+        // this should block user from reducing totaly supply beyond what they own
+        let burned_amount = source_balance - new_balance;
+
+        self.write_balance(purse, new_balance)?;
+        detail::reduce_total_supply_unsafe(self, burned_amount)
+    }
+
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
     /// an error.
     fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error> {
@@ -63,29 +90,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 
-        if amount.is_zero() {
-            return Ok(()); // no change to supply
-        }
-
-        // get total supply or error
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
-            None => return Err(Error::MissingKey),
-        };
-        let total_supply: U512 = self
-            .read(total_supply_uref)?
-            .ok_or(Error::TotalSupplyNotFound)?;
-
-        // decrease total supply
-        let reduced_total_supply = total_supply
-            .checked_sub(amount)
-            .ok_or(Error::ArithmeticOverflow)?;
-
-        // update total supply
-        self.write(total_supply_uref, reduced_total_supply)?;
-
-        Ok(())
+        detail::reduce_total_supply_unsafe(self, amount)
     }
 
     /// Read balance of given `purse`.
