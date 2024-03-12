@@ -5,8 +5,7 @@ use crate::{
     EraId, PublicKey, URef, U512,
 };
 
-use crate::system::auction::bridge::Bridge;
-use crate::system::auction::BidAddr;
+use crate::system::auction::{bridge::Bridge, BidAddr};
 use alloc::{boxed::Box, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;

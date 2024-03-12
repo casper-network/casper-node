@@ -1,5 +1,7 @@
-use crate::bytesrepr::{FromBytes, ToBytes};
-use crate::{bytesrepr, CLType, CLTyped, EraId, PublicKey};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    CLType, CLTyped, EraId, PublicKey,
+};
 use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
