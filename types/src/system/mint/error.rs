@@ -214,7 +214,8 @@ impl TryFrom<u8> for Error {
             d if d == Error::UnapprovedSpendingAmount as u8 => Ok(Error::UnapprovedSpendingAmount),
             d if d == Error::DisabledUnrestrictedTransfers as u8 => {
                 Ok(Error::DisabledUnrestrictedTransfers)
-            }
+            },
+            d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             _ => Err(TryFromU8ForError(())),
         }
     }
