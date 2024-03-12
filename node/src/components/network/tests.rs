@@ -302,7 +302,6 @@ fn network_is_complete(
 
     for (node_id, node) in nodes {
         let net = &node.reactor().inner().net;
-        // TODO: Ensure the connections are symmetrical.
         let peers: HashSet<_> = net.peers().into_keys().collect();
 
         let mut missing = expected.difference(&peers);
