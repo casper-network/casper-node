@@ -777,7 +777,7 @@ where
             | Key::ByteCode(..)
             | Key::Message(_)
             | Key::NamedKey(_)
-            | Key::BlockMessageCount(_) => true,
+            | Key::BlockMessageCount => true,
         }
     }
 
@@ -814,7 +814,7 @@ where
             | Key::Package(_)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::BlockMessageCount(_) => false,
+            | Key::BlockMessageCount => false,
         }
     }
 
@@ -848,7 +848,7 @@ where
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::BlockMessageCount(_) => false,
+            | Key::BlockMessageCount => false,
         }
     }
 
@@ -965,8 +965,8 @@ where
         let message_key = message.message_key();
         let message_value = StoredValue::Message(message.checksum().map_err(ExecError::BytesRepr)?);
 
-        let block_message_count_key = Key::BlockMessageCount(block_time);
-        let block_message_count_value = StoredValue::CLValue(CLValue::from_t(block_message_count)?);
+        let block_message_count_value =
+            StoredValue::CLValue(CLValue::from_t((block_time, block_message_count))?);
 
         // Charge for amount as measured by serialized length
         let bytes_count = topic_value.serialized_length()
@@ -979,7 +979,6 @@ where
             topic_value,
             message_key,
             message_value,
-            block_message_count_key,
             block_message_count_value,
             message,
         );

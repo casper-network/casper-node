@@ -49,10 +49,10 @@ use casper_types::{
         handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
+    AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
+    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
-    HostFunctionCost, Key, KeyTag, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
+    HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
     StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
@@ -3500,22 +3500,19 @@ where
             prev_topic_summary.message_count()
         };
 
-        let block_message_index: u64 = match self
-            .context
-            .read_gs(&Key::BlockMessageCount(current_blocktime))?
-        {
+        let block_message_index: u64 = match self.context.read_gs(&Key::BlockMessageCount)? {
             Some(stored_value) => {
-                CLValue::into_t(CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?)
-                    .map_err(ExecError::CLValue)?
-            }
-            None => {
-                // Prune message count for older blocks
-                let prev_message_count_keys = self.context.get_keys(&KeyTag::BlockMessageCount)?;
-                for key in prev_message_count_keys {
-                    self.context.prune_gs_unsafe(key);
+                let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
+                    CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
+                )
+                .map_err(ExecError::CLValue)?;
+                if prev_block_time == current_blocktime {
+                    prev_count
+                } else {
+                    0
                 }
-                0
             }
+            None => 0,
         };
 
         let Some(topic_message_count) = topic_message_index.checked_add(1) else {

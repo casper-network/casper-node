@@ -709,7 +709,8 @@ fn should_charge_expected_gas_for_storage() {
     // check that the storage cost charged is invariable with message size that is emitted.
     let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
         + StoredValue::MessageTopic(default_topic_summary).serialized_length()
-        + StoredValue::CLValue(CLValue::from_t(0u64).unwrap()).serialized_length();
+        + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
+            .serialized_length();
 
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
@@ -965,12 +966,10 @@ fn should_produce_per_block_message_ordering() {
         };
     };
 
-    let query_message_count = |block_time: u64| -> Option<u64> {
-        let query_result = builder.borrow_mut().query(
-            None,
-            Key::BlockMessageCount(BlockTime::new(block_time)),
-            &[],
-        );
+    let query_message_count = || -> Option<(BlockTime, u64)> {
+        let query_result = builder
+            .borrow_mut()
+            .query(None, Key::BlockMessageCount, &[]);
 
         match query_result {
             Ok(StoredValue::CLValue(cl_value)) => Some(cl_value.into_t().unwrap()),
@@ -987,7 +986,10 @@ fn should_produce_per_block_message_ordering() {
         DEFAULT_BLOCK_TIME,
     );
     assert_last_message_block_index(0);
-    assert_eq!(query_message_count(DEFAULT_BLOCK_TIME), Some(1));
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
+    );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
     let expected_message_hash = crypto::blake2b(
@@ -1011,7 +1013,10 @@ fn should_produce_per_block_message_ordering() {
         DEFAULT_BLOCK_TIME,
     );
     assert_last_message_block_index(1);
-    assert_eq!(query_message_count(DEFAULT_BLOCK_TIME), Some(2));
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
+    );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
     let expected_message_hash = crypto::blake2b(
@@ -1055,7 +1060,10 @@ fn should_produce_per_block_message_ordering() {
         .expect_success()
         .commit();
     assert_last_message_block_index(2);
-    assert_eq!(query_message_count(DEFAULT_BLOCK_TIME), Some(3));
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
+    );
 
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
     let expected_message_hash = crypto::blake2b(
@@ -1080,8 +1088,10 @@ fn should_produce_per_block_message_ordering() {
         DEFAULT_BLOCK_TIME + 1,
     );
     assert_last_message_block_index(0);
-    assert_eq!(query_message_count(DEFAULT_BLOCK_TIME + 1), Some(1));
-    assert_eq!(query_message_count(DEFAULT_BLOCK_TIME), None);
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME + 1), 1))
+    );
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 3"));
     let expected_message_hash = crypto::blake2b(
         vec![

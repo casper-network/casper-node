@@ -391,13 +391,12 @@ where
         message_topic_summary: StoredValue,
         message_key: Key,
         message_value: StoredValue,
-        block_message_count_key: Key,
         block_message_count_value: StoredValue,
         message: Message,
     ) {
         self.write(message_key, message_value);
         self.write(message_topic_key, message_topic_summary);
-        self.write(block_message_count_key, block_message_count_value);
+        self.write(Key::BlockMessageCount, block_message_count_value);
         self.messages.push(message);
     }
 

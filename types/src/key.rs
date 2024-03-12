@@ -48,7 +48,7 @@ use crate::{
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    BlockTime, ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
+    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
     TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
@@ -98,6 +98,8 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
@@ -307,8 +309,8 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
-    /// A `Key` under which the total number of emitted messages in a block is stored.
-    BlockMessageCount(BlockTime),
+    /// A `Key` under which the total number of emitted messages in the last block is stored.
+    BlockMessageCount,
 }
 
 #[cfg(feature = "json-schema")]
@@ -489,7 +491,7 @@ impl Key {
             Key::ByteCode(..) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
-            Key::BlockMessageCount(_) => String::from("Key::BlockMessageCount"),
+            Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
         }
     }
 
@@ -589,8 +591,12 @@ impl Key {
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
             }
-            Key::BlockMessageCount(block_time) => {
-                format!("{}{}", BLOCK_MESSAGE_COUNT_PREFIX, block_time.value())
+            Key::BlockMessageCount => {
+                format!(
+                    "{}{}",
+                    BLOCK_MESSAGE_COUNT_PREFIX,
+                    base16::encode_lower(&PADDING_BYTES)
+                )
             }
         }
     }
@@ -787,13 +793,15 @@ impl Key {
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
         }
 
-        if let Some(block_time_str) = input.strip_prefix(BLOCK_MESSAGE_COUNT_PREFIX) {
-            let block_time = BlockTime::new(
-                block_time_str
-                    .parse::<u64>()
-                    .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?,
-            );
-            return Ok(Key::BlockMessageCount(block_time));
+        if let Some(message_count) = input.strip_prefix(BLOCK_MESSAGE_COUNT_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(message_count)
+                .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::SystemContractRegistry(
+                    "Failed to deserialize block message count key".to_string(),
+                )
+            })?;
+            return Ok(Key::BlockMessageCount);
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1132,8 +1140,12 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
-            Key::BlockMessageCount(block_time) => {
-                write!(f, "Key::BlockMessageCount({})", block_time.value())
+            Key::BlockMessageCount => {
+                write!(
+                    f,
+                    "Key::BlockMessageCount({})",
+                    base16::encode_lower(&PADDING_BYTES)
+                )
             }
         }
     }
@@ -1169,7 +1181,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
-            Key::BlockMessageCount(_) => KeyTag::BlockMessageCount,
+            Key::BlockMessageCount => KeyTag::BlockMessageCount,
         }
     }
 }
@@ -1284,9 +1296,7 @@ impl ToBytes for Key {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
             Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
-            Key::BlockMessageCount(block_time) => {
-                U8_SERIALIZED_LENGTH + block_time.serialized_length()
-            }
+            Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
         }
     }
 
@@ -1307,7 +1317,8 @@ impl ToBytes for Key {
             Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
-            | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            | Key::ChecksumRegistry
+            | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
             Key::BidAddr(bid_addr) => match bid_addr.tag() {
                 BidAddrTag::Unified => {
                     let bytes = bid_addr.to_bytes()?;
@@ -1321,7 +1332,6 @@ impl ToBytes for Key {
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
-            Key::BlockMessageCount(block_time) => block_time.write_bytes(writer),
         }
     }
 }
@@ -1415,8 +1425,8 @@ impl FromBytes for Key {
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
             KeyTag::BlockMessageCount => {
-                let (block_time, rem) = BlockTime::from_bytes(remainder)?;
-                Ok((Key::BlockMessageCount(block_time), rem))
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
+                Ok((Key::BlockMessageCount, rem))
             }
         }
     }
@@ -1448,7 +1458,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
-        Key::BlockMessageCount(_) => unimplemented!(),
+        Key::BlockMessageCount => unimplemented!(),
     }
 }
 
@@ -1477,7 +1487,7 @@ impl Distribution<Key> for Standard {
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
             20 => Key::NamedKey(rng.gen()),
-            21 => Key::BlockMessageCount(BlockTime::new(rng.gen())),
+            21 => Key::BlockMessageCount,
             _ => unreachable!(),
         }
     }
@@ -1510,7 +1520,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
-        BlockMessageCount(&'a BlockTime),
+        BlockMessageCount,
     }
 
     #[derive(Deserialize)]
@@ -1537,7 +1547,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
-        BlockMessageCount(BlockTime),
+        BlockMessageCount,
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1566,9 +1576,7 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
-                Key::BlockMessageCount(block_time) => {
-                    BinarySerHelper::BlockMessageCount(block_time)
-                }
+                Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
             }
         }
     }
@@ -1599,9 +1607,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
-                BinaryDeserHelper::BlockMessageCount(block_time) => {
-                    Key::BlockMessageCount(block_time)
-                }
+                BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
             }
         }
     }
@@ -1688,7 +1694,7 @@ mod tests {
         EntityAddr::new_contract_entity_addr([42; 32]),
         [43; 32],
     ));
-    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount(BlockTime::new(100));
+    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1897,7 +1903,10 @@ mod tests {
 
         assert_eq!(
             format!("{}", BLOCK_MESSAGE_COUNT),
-            format!("Key::BlockMessageCount(100)")
+            format!(
+                "Key::BlockMessageCount({})",
+                base16::encode_lower(&PADDING_BYTES)
+            )
         )
     }
 
@@ -2260,6 +2269,6 @@ mod tests {
             nines.into(),
             1,
         )));
-        round_trip(&Key::BlockMessageCount(BlockTime::new(0)));
+        round_trip(&Key::BlockMessageCount);
     }
 }
