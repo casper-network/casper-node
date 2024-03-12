@@ -19,10 +19,14 @@ use std::{
 };
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use casper_types::{PublicKey, TimeDiff};
 use datasize::DataSize;
 use futures::{TryFuture, TryFutureExt};
-use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
+use juliet::{
+    rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError},
+    ChannelId, Id,
+};
 use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use thiserror::Error;
@@ -849,8 +853,13 @@ impl OutgoingHandler {
             let now = Instant::now();
             if let Some(entry) = guard.is_still_banned(&peer_id, now) {
                 debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
-                // TODO: Send a proper error using RPC client/server here.
 
+                // Ensure an error is sent.
+                tokio::spawn(rpc_server.send_custom_error_and_shutdown(
+                    ChannelId::new(0),
+                    Id::new(0),
+                    Bytes::from(&b"disconnecting since you are banned"[..]),
+                ));
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
 
