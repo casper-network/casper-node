@@ -5,7 +5,7 @@
 # ###############################################################
 
 # Set here.
-export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+export NCTL="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/utils/nctl"
 
 # Set casper-node root.
 NCTL_CASPER_HOME="$( cd "$( dirname "${NCTL[0]}" )" && pwd )"
