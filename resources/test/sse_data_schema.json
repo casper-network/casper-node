@@ -4719,9 +4719,10 @@
       "description": "Message that was emitted by an addressable entity during execution.",
       "type": "object",
       "required": [
+        "block_index",
         "entity_addr",
-        "index",
         "message",
+        "topic_index",
         "topic_name",
         "topic_name_hash"
       ],
@@ -4754,10 +4755,16 @@
             }
           ]
         },
-        "index": {
+        "topic_index": {
           "description": "Message index in the topic.",
           "type": "integer",
           "format": "uint32",
+          "minimum": 0.0
+        },
+        "block_index": {
+          "description": "Message index in the block.",
+          "type": "integer",
+          "format": "uint64",
           "minimum": 0.0
         }
       }
