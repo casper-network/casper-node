@@ -264,6 +264,11 @@ enum PeerError {
 }
 
 impl PeerError {
+    /// Creates a peer error indicating a peer was banned.
+    ///
+    /// # Panics
+    ///
+    /// Will panic in debug targets if `now > until`.
     #[inline(always)]
     fn banned(now: Instant, until: Instant, justification: &BlocklistJustification) -> Self {
         debug_assert!(now <= until);
