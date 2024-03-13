@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display, Formatter},
@@ -87,8 +87,8 @@ pub enum TransactionV1ConfigFailure {
     ExceedsBlockGasLimit {
         /// Configured block gas limit.
         block_gas_limit: u64,
-        /// The payment amount received.
-        got: u64,
+        /// The transaction's calculated gas limit.
+        got: Box<U512>,
     },
 
     /// Missing a required runtime arg.
@@ -315,6 +315,9 @@ pub enum ErrorV1 {
 
     /// Error while decoding from JSON.
     DecodeFromJson(DecodeFromJsonErrorV1),
+
+    /// Unable to calculate payment.
+    InvalidPayment,
 }
 
 impl From<serde_json::Error> for ErrorV1 {
@@ -338,6 +341,7 @@ impl Display for ErrorV1 {
             ErrorV1::DecodeFromJson(error) => {
                 write!(formatter, "decoding from json: {}", error)
             }
+            ErrorV1::InvalidPayment => write!(formatter, "invalid payment"),
         }
     }
 }
@@ -348,6 +352,7 @@ impl StdError for ErrorV1 {
         match self {
             ErrorV1::EncodeToJson(error) => Some(error),
             ErrorV1::DecodeFromJson(error) => Some(error),
+            ErrorV1::InvalidPayment => None,
         }
     }
 }

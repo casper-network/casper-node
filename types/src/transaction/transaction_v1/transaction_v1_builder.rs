@@ -18,7 +18,10 @@ use crate::{
     PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, TransactionConfig, TransactionV1Approval, TransactionV1Hash};
+use crate::{
+    testing::TestRng, transaction::Approval, TransactionCategory, TransactionConfig,
+    TransactionV1Hash,
+};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
@@ -40,22 +43,23 @@ pub struct TransactionV1Builder<'a> {
     ttl: TimeDiff,
     body: TransactionV1Body,
     pricing_mode: PricingMode,
-    payment_amount: Option<u64>,
     initiator_addr: Option<InitiatorAddr>,
     #[cfg(not(any(feature = "testing", test)))]
     secret_key: Option<&'a SecretKey>,
     #[cfg(any(feature = "testing", test))]
     secret_key: Option<SecretKey>,
     #[cfg(any(feature = "testing", test))]
-    invalid_approvals: Vec<TransactionV1Approval>,
+    invalid_approvals: Vec<Approval>,
     _phantom_data: PhantomData<&'a ()>,
 }
 
 impl<'a> TransactionV1Builder<'a> {
     /// The default time-to-live for transactions, i.e. 30 minutes.
     pub const DEFAULT_TTL: TimeDiff = TimeDiff::from_millis(30 * 60 * 1_000);
-    /// The default pricing mode for transactions, i.e. multiplier of 1.
-    pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::GasPriceMultiplier(1);
+    /// The default pricing mode for v1 transactions, ie FIXED cost.
+    pub const DEFAULT_PRICING_MODE: PricingMode = PricingMode::Fixed {
+        gas_price_tolerance: 5,
+    };
     /// The default runtime for transactions, i.e. Casper Version 1 Virtual Machine.
     pub const DEFAULT_RUNTIME: TransactionRuntime = TransactionRuntime::VmCasperV1;
     /// The default scheduling for transactions, i.e. `Standard`.
@@ -68,7 +72,6 @@ impl<'a> TransactionV1Builder<'a> {
             ttl: Self::DEFAULT_TTL,
             body,
             pricing_mode: Self::DEFAULT_PRICING_MODE,
-            payment_amount: None,
             initiator_addr: None,
             secret_key: None,
             _phantom_data: PhantomData,
@@ -271,10 +274,43 @@ impl<'a> TransactionV1Builder<'a> {
             timestamp: Timestamp::random(rng),
             ttl: TimeDiff::from_millis(ttl_millis),
             body,
-            pricing_mode: PricingMode::random(rng),
-            payment_amount: Some(
-                rng.gen_range(2_500_000_000..=TransactionConfig::default().block_gas_limit),
-            ),
+            pricing_mode: PricingMode::Fixed {
+                gas_price_tolerance: 5,
+            },
+            initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
+            secret_key: Some(secret_key),
+            _phantom_data: PhantomData,
+            invalid_approvals: vec![],
+        }
+    }
+
+    /// Returns a new `TransactionV1Builder` which will build a random not expired transaction of
+    /// given category
+    ///
+    /// The transaction can be made invalid in the following ways:
+    ///   * unsigned by calling `with_no_secret_key`
+    ///   * given an invalid approval by calling `with_invalid_approval`
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_random_with_category_and_timestamp_and_ttl(
+        rng: &mut TestRng,
+        category: &TransactionCategory,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let secret_key = SecretKey::random(rng);
+        let ttl_millis = ttl.map_or(
+            rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
+            |ttl| ttl.millis(),
+        );
+        let body = TransactionV1Body::random_of_category(rng, category);
+        TransactionV1Builder {
+            chain_name: Some(rng.random_string(5..10)),
+            timestamp: timestamp.unwrap_or(Timestamp::now()),
+            ttl: TimeDiff::from_millis(ttl_millis),
+            body,
+            pricing_mode: PricingMode::Fixed {
+                gas_price_tolerance: 5,
+            },
             initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
             secret_key: Some(secret_key),
             _phantom_data: PhantomData,
@@ -311,14 +347,6 @@ impl<'a> TransactionV1Builder<'a> {
     /// If not provided, the pricing mode will be set to [`Self::DEFAULT_PRICING_MODE`].
     pub fn with_pricing_mode(mut self, pricing_mode: PricingMode) -> Self {
         self.pricing_mode = pricing_mode;
-        self
-    }
-
-    /// Sets the `payment_amount` in the transaction.
-    ///
-    /// If not provided, `payment_amount` will be set to `None`.
-    pub fn with_payment_amount(mut self, payment_amount: u64) -> Self {
-        self.payment_amount = Some(payment_amount);
         self
     }
 
@@ -410,8 +438,8 @@ impl<'a> TransactionV1Builder<'a> {
     #[cfg(any(feature = "testing", test))]
     pub fn with_invalid_approval(mut self, rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
-        let hash = TransactionV1Hash::random(rng);
-        let approval = TransactionV1Approval::create(&hash, &secret_key);
+        let hash = TransactionV1Hash::random(rng).into();
+        let approval = Approval::create(&hash, &secret_key);
         self.invalid_approvals.push(approval);
         self
     }
@@ -447,7 +475,6 @@ impl<'a> TransactionV1Builder<'a> {
             self.ttl,
             self.body,
             self.pricing_mode,
-            self.payment_amount,
             initiator_addr_and_secret_key,
         );
 
@@ -478,7 +505,6 @@ impl<'a> TransactionV1Builder<'a> {
             self.ttl,
             self.body,
             self.pricing_mode,
-            self.payment_amount,
             initiator_addr_and_secret_key,
         );
 

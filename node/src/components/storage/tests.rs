@@ -23,13 +23,12 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     generate_ed25519_keypair,
     testing::TestRng,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2,
-    BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash,
-    DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas,
-    InitiatorAddr, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, StoredValue,
-    TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionV1Hash, TransactionWithFinalizedApprovals, Transfer, TransferV2,
-    U512,
+    ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
+    Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key,
+    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, StoredValue, TestBlockBuilder,
+    TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer,
+    TransferV2, U512,
 };
 use tempfile::tempdir;
 
@@ -368,7 +367,17 @@ fn get_naive_transactions(
     assert!(harness.is_idle());
     response
         .into_iter()
-        .map(|opt_twfa| opt_twfa.map(TransactionWithFinalizedApprovals::into_naive))
+        .map(|opt_twfa| {
+            if let Some((transaction, maybe_approvals)) = opt_twfa {
+                let txn = match maybe_approvals {
+                    None => transaction,
+                    Some(approvals) => transaction.with_approvals(approvals),
+                };
+                Some(txn)
+            } else {
+                None
+            }
+        })
         .collect()
 }
 
@@ -2639,7 +2648,7 @@ static STORAGE_INFO_FILE_NAME: &str = "storage_info.json";
 struct Node1_5_2BlockInfo {
     height: u64,
     era: EraId,
-    approvals_hashes: Option<Vec<DeployApprovalsHash>>,
+    approvals_hashes: Option<Vec<ApprovalsHash>>,
     signatures: Option<BlockSignatures>,
     deploy_hashes: Vec<DeployHash>,
 }
@@ -2880,14 +2889,8 @@ fn check_block_operations_with_node_1_5_2_storage() {
 
         let approvals_hashes = get_approvals_hashes(&mut harness, &mut storage, *hash);
         if let Some(expected_approvals_hashes) = &block_info.approvals_hashes {
-            let stored_approvals_hashes = approvals_hashes.unwrap();
-            assert_eq!(
-                stored_approvals_hashes.approvals_hashes().to_vec(),
-                expected_approvals_hashes
-                    .iter()
-                    .map(|approvals_hash| TransactionApprovalsHash::Deploy(*approvals_hash))
-                    .collect::<Vec<_>>()
-            );
+            let stored_approvals_hashes = approvals_hashes.unwrap().approvals_hashes().to_vec();
+            assert_eq!(stored_approvals_hashes, expected_approvals_hashes.clone());
         }
 
         let transfers = get_block_transfers(&mut harness, &mut storage, *hash);

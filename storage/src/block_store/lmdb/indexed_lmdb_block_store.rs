@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{btree_map, hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
 };
 
 use super::{lmdb_block_store::LmdbBlockStore, lmdb_ext::LmdbExtError, temp_map::TempMap};
@@ -23,7 +23,7 @@ use crate::block_store::{
 use casper_types::{
     binary_port::{DbRawBytesSpec, RecordId},
     execution::ExecutionResult,
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId, FinalizedApprovals,
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId,
     ProtocolVersion, Transaction, TransactionHash, Transfer,
 };
 
@@ -844,10 +844,10 @@ impl<'s, 't> DataReader<TransactionHash, Transaction>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, FinalizedApprovals>
+impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
     for IndexedLmdbBlockStoreReadTransaction<'s, 't>
 {
-    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+    fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
             .block_store
             .finalized_transaction_approvals_dbs
@@ -1199,10 +1199,10 @@ impl<'s, 't> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWT
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, FinalizedApprovals>
+impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
     for IndexedLmdbBlockStoreRWTransaction<'s, 't>
 {
-    fn read(&self, query: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+    fn read(&self, query: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
             .finalized_transaction_approvals_dbs
             .get(&self.txn, &query)

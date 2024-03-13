@@ -6,15 +6,14 @@ use lmdb::{
 use serde::de::DeserializeOwned;
 #[cfg(test)]
 use serde::Serialize;
-use std::marker::PhantomData;
+use std::{collections::BTreeSet, marker::PhantomData};
 
 use casper_types::{
     binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
-    BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, Deploy, DeployHash, Digest, FinalizedApprovals, FinalizedDeployApprovals,
-    Transaction, TransactionHash, TransferV1,
+    Approval, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash, TransferV1,
 };
 
 use super::{
@@ -82,8 +81,8 @@ impl VersionedValue for ExecutionResult {
     type Legacy = DeployMetadataV1;
 }
 
-impl VersionedValue for FinalizedApprovals {
-    type Legacy = FinalizedDeployApprovals;
+impl VersionedValue for BTreeSet<Approval> {
+    type Legacy = BTreeSet<Approval>;
 }
 
 impl VersionedValue for BlockSignatures {

@@ -13,8 +13,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    AccessRights, EraId, Gas, Key, MintCosts, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
+    U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -172,7 +172,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         .transfer_and_commit(no_wasm_transfer_request)
         .expect_success();
 
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -544,7 +544,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 #[ignore]
 #[test]
 fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -668,7 +668,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
 #[ignore]
 #[test]
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -740,7 +740,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -854,7 +854,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
-    let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_wasmless_transfer_cost_value = MintCosts::default().transfer * 2;
     // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);

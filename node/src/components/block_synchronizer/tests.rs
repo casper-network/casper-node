@@ -1689,7 +1689,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         BlockAcquisitionState::HaveBlock(acquired_block, _, _) if acquired_block.hash() == block.hash()
     );
 
-    let approvals_hashes = ApprovalsHashes::new_v2(
+    let approvals_hashes = ApprovalsHashes::new(
         *block.hash(),
         txns.iter()
             .map(|txn| txn.compute_approvals_hash().unwrap())
@@ -2205,10 +2205,10 @@ async fn historical_sync_announces_meta_block() {
     match event {
         MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
             assert_eq!(meta_block.hash(), *block.hash());
-            // The deploy buffer is supposed to get notified
+            // The transaction buffer is supposed to get notified
             assert!(meta_block
                 .mut_state()
-                .register_as_sent_to_deploy_buffer()
+                .register_as_sent_to_transaction_buffer()
                 .was_updated());
         }
         other => panic!("Unexpected event: {:?}", other),
@@ -2647,7 +2647,7 @@ async fn historical_sync_no_legacy_block() {
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new_v2(
+            ApprovalsHashes::new(
                 *block.hash(),
                 vec![txn.compute_approvals_hash().unwrap()],
                 dummy_merkle_proof(),
@@ -3627,7 +3627,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     // Register approvals hashes. This would make the synchronizer switch to HaveApprovalsHashes and
     // continue asking for the deploys.
     {
-        let approvals_hashes = ApprovalsHashes::new_v2(
+        let approvals_hashes = ApprovalsHashes::new(
             *block.hash(),
             vec![txn.compute_approvals_hash().unwrap()],
             dummy_merkle_proof(),
@@ -3918,7 +3918,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new_v2(
+            ApprovalsHashes::new(
                 *block.hash(),
                 vec![
                     first_txn.compute_approvals_hash().unwrap(),

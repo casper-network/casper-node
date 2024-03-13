@@ -16,15 +16,22 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use super::TransactionCategory;
 #[cfg(doc)]
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TransactionSessionKind,
+};
+
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind, TransferTarget,
+    TransferTarget,
 };
 
 /// The body of a [`TransactionV1`].
@@ -86,6 +93,44 @@ impl TransactionV1Body {
     /// Returns the scheduling kind of the transaction.
     pub fn scheduling(&self) -> &TransactionScheduling {
         &self.scheduling
+    }
+
+    /// Returns true if this transaction is a native mint interaction.
+    pub fn is_native_mint(&self) -> bool {
+        TransactionTarget::Native == self.target
+            && TransactionEntryPoint::Transfer == self.entry_point
+    }
+
+    /// Returns true if this transaction is a native auction interaction.
+    pub fn is_native_auction(&self) -> bool {
+        if TransactionTarget::Native != self.target {
+            return false;
+        }
+        match self.entry_point {
+            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+            TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate => true,
+        }
+    }
+
+    /// Returns true if this transaction is a smart contract installer or upgrader.
+    pub fn is_install_or_upgrade(&self) -> bool {
+        match self.target() {
+            TransactionTarget::Native | TransactionTarget::Stored { .. } => false,
+            TransactionTarget::Session { kind, .. } => match kind {
+                TransactionSessionKind::Standard | TransactionSessionKind::Isolated => false,
+                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => true,
+            },
+        }
+    }
+
+    /// Returns true if this transaction goes into the misc / standard category.
+    pub fn is_standard(&self) -> bool {
+        !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
     }
 
     /// Consumes `self`, returning its constituent parts.
@@ -197,6 +242,76 @@ impl TransactionV1Body {
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_of_category(rng: &mut TestRng, category: &TransactionCategory) -> Self {
+        match category {
+            TransactionCategory::InstallUpgrade => Self::random_install_upgrade(rng),
+            TransactionCategory::Standard => Self::random_standard(rng),
+            TransactionCategory::Auction => Self::random_staking(rng),
+            TransactionCategory::Mint => Self::random_transfer(rng),
+        }
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    fn random_transfer(rng: &mut TestRng) -> Self {
+        let amount =
+            rng.gen_range(TransactionConfig::default().native_transfer_minimum_motes..=u64::MAX);
+        let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
+        let target = TransferTarget::random(rng);
+        let maybe_id = rng.gen::<bool>().then(|| rng.gen());
+        let args = arg_handling::new_transfer_args(amount, maybe_source, target, maybe_id).unwrap();
+        TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::Transfer,
+            TransactionScheduling::random(rng),
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    fn random_standard(rng: &mut TestRng) -> Self {
+        let target = TransactionTarget::Stored {
+            id: TransactionInvocationTarget::random(rng),
+            runtime: TransactionRuntime::VmCasperV1,
+        };
+        TransactionV1Body::new(
+            RuntimeArgs::random(rng),
+            target,
+            TransactionEntryPoint::Custom(rng.random_string(1..11)),
+            TransactionScheduling::random(rng),
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    fn random_install_upgrade(rng: &mut TestRng) -> Self {
+        let target = TransactionTarget::Session {
+            kind: TransactionSessionKind::Upgrader,
+            module_bytes: Bytes::from(rng.random_vec(0..100)),
+            runtime: TransactionRuntime::VmCasperV1,
+        };
+        TransactionV1Body::new(
+            RuntimeArgs::random(rng),
+            target,
+            TransactionEntryPoint::Custom(rng.random_string(1..11)),
+            TransactionScheduling::random(rng),
+        )
+    }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    fn random_staking(rng: &mut TestRng) -> Self {
+        let public_key = PublicKey::random(rng);
+        let delegation_rate = rng.gen();
+        let amount = rng.gen::<u64>();
+        let args = arg_handling::new_add_bid_args(public_key, delegation_rate, amount).unwrap();
+        TransactionV1Body::new(
+            args,
+            TransactionTarget::Native,
+            TransactionEntryPoint::AddBid,
+            TransactionScheduling::random(rng),
+        )
+    }
+
+    /// Returns a random `TransactionV1Body`.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => {
@@ -278,20 +393,9 @@ impl TransactionV1Body {
                     TransactionScheduling::random(rng),
                 )
             }
-            6 => {
-                let target = TransactionTarget::Stored {
-                    id: TransactionInvocationTarget::random(rng),
-                    runtime: TransactionRuntime::VmCasperV1,
-                };
-                TransactionV1Body::new(
-                    RuntimeArgs::random(rng),
-                    target,
-                    TransactionEntryPoint::Custom(rng.random_string(1..11)),
-                    TransactionScheduling::random(rng),
-                )
-            }
+            6 => Self::random_standard(rng),
             7 => {
-                let mut buffer = vec![0u8; rng.gen_range(0..100)];
+                let mut buffer = vec![0u8; rng.gen_range(1..100)];
                 rng.fill_bytes(buffer.as_mut());
                 let target = TransactionTarget::Session {
                     kind: TransactionSessionKind::random(rng),

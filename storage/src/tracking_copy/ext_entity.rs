@@ -81,6 +81,12 @@ pub trait TrackingCopyEntityExt<R> {
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
+    fn create_new_addressable_entity_on_transfer(
+        &mut self,
+        account_hash: AccountHash,
+        main_purse: URef,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(), Self::Error>;
 
     fn create_addressable_entity_from_account(
         &mut self,
@@ -330,6 +336,67 @@ where
             Some(_) => Err(Self::Error::UnexpectedStoredValueVariant),
             None => Err(Self::Error::AccountNotFound(key)),
         }
+    }
+
+    fn create_new_addressable_entity_on_transfer(
+        &mut self,
+        account_hash: AccountHash,
+        main_purse: URef,
+        protocol_version: ProtocolVersion,
+    ) -> Result<(), Self::Error> {
+        let mut generator = AddressGenerator::new(main_purse.addr().as_ref(), Phase::System);
+
+        let byte_code_hash = ByteCodeHash::default();
+        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let package_hash = PackageHash::new(generator.new_hash_address());
+
+        let entry_points = EntryPoints::new();
+
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+
+        let action_thresholds: ActionThresholds = Default::default();
+
+        let entity = AddressableEntity::new(
+            package_hash,
+            byte_code_hash,
+            entry_points,
+            protocol_version,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+            MessageTopics::default(),
+            EntityKind::Account(account_hash),
+        );
+
+        let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
+
+        let package = {
+            let mut package = Package::new(
+                access_key,
+                EntityVersions::default(),
+                BTreeSet::default(),
+                Groups::default(),
+                PackageStatus::Locked,
+            );
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
+            package
+        };
+
+        let entity_addr = EntityAddr::new_account(entity_hash.value());
+        let entity_key = Key::AddressableEntity(entity_addr);
+
+        self.write(entity_key, entity.into());
+        self.write(package_hash.into(), package.into());
+        let contract_by_account = match CLValue::from_t(entity_key) {
+            Ok(cl_value) => cl_value,
+            Err(err) => return Err(Self::Error::CLValue(err)),
+        };
+
+        self.write(
+            Key::Account(account_hash),
+            StoredValue::CLValue(contract_by_account),
+        );
+        Ok(())
     }
 
     fn create_addressable_entity_from_account(

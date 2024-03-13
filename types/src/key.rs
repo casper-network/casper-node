@@ -69,6 +69,7 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
+const BLOCK_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 const TXN_INFO_PREFIX: &str = "txn-";
 const TXN_INFO_DEPLOY_PREFIX: &str = "d-";
 const TXN_INFO_V1_PREFIX: &str = "v1-";
@@ -104,6 +105,8 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 const KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
@@ -151,14 +154,15 @@ pub enum KeyTag {
     ByteCode = 18,
     Message = 19,
     NamedKey = 20,
-    TransactionInfo = 21,
-    Transfer = 22,
+    BlockMessageCount = 21,
+    TransactionInfo = 22,
+    Transfer = 23,
 }
 
 impl KeyTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..23) {
+        match rng.gen_range(0..=23) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -180,8 +184,9 @@ impl KeyTag {
             18 => KeyTag::ByteCode,
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
-            21 => KeyTag::TransactionInfo,
-            22 => KeyTag::Transfer,
+            21 => KeyTag::BlockMessageCount,
+            22 => KeyTag::TransactionInfo,
+            23 => KeyTag::Transfer,
             _ => panic!(),
         }
     }
@@ -211,6 +216,7 @@ impl Display for KeyTag {
             KeyTag::ByteCode => write!(f, "ByteCode"),
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
+            KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
             KeyTag::TransactionInfo => write!(f, "TransactionInfo"),
             KeyTag::Transfer => write!(f, "Transfer"),
         }
@@ -259,6 +265,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
+            tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
             tag if tag == KeyTag::TransactionInfo as u8 => KeyTag::TransactionInfo,
             tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
             _ => return Err(Error::Formatting),
@@ -317,6 +324,8 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
+    /// A `Key` under which the total number of emitted messages in the last block is stored.
+    BlockMessageCount,
     /// A `Key` under which info about a transaction is stored.
     TransactionInfo(TransactionHash),
     /// A `Key` under which a versioned transfer is stored.
@@ -387,6 +396,8 @@ pub enum FromStrError {
     Message(contract_messages::FromStrError),
     /// Named key parse error.
     NamedKey(String),
+    /// BlockMessageCount key parse error.
+    BlockMessageCount(String),
     /// TransactionInfo parse error.
     TransactionInfo(String),
     /// Transfer parse error.
@@ -465,13 +476,16 @@ impl Display for FromStrError {
             FromStrError::NamedKey(error) => {
                 write!(f, "named-key from string error: {}", error)
             }
+            FromStrError::BlockMessageCount(error) => {
+                write!(f, "block-message-count-key form string error: {}", error)
+            }
             FromStrError::TransactionInfo(error) => {
                 write!(f, "transaction-info-key from string error: {}", error)
             }
-            FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
             FromStrError::Transfer(error) => {
                 write!(f, "transfer-key from string error: {}", error)
             }
+            FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
 }
@@ -502,6 +516,7 @@ impl Key {
             Key::ByteCode(_) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
+            Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
             Key::TransactionInfo(_) => String::from("Key::TransactionInfo"),
             Key::Transfer(_) => String::from("Key::Transfer"),
         }
@@ -608,6 +623,13 @@ impl Key {
             }
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
+            }
+            Key::BlockMessageCount => {
+                format!(
+                    "{}{}",
+                    BLOCK_MESSAGE_COUNT_PREFIX,
+                    base16::encode_lower(&PADDING_BYTES)
+                )
             }
             Key::TransactionInfo(txn_hash) => match txn_hash {
                 TransactionHash::Deploy(deploy_hash) => {
@@ -829,6 +851,17 @@ impl Key {
             Ok(named_key) => return Ok(Key::NamedKey(named_key)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
+        }
+
+        if let Some(message_count) = input.strip_prefix(BLOCK_MESSAGE_COUNT_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(message_count)
+                .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::SystemEntityRegistry(
+                    "Failed to deserialize block message count key".to_string(),
+                )
+            })?;
+            return Ok(Key::BlockMessageCount);
         }
 
         if let Some(txn_hash) = input.strip_prefix(TXN_INFO_PREFIX) {
@@ -1189,6 +1222,13 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
+            Key::BlockMessageCount => {
+                write!(
+                    f,
+                    "Key::BlockMessageCount({})",
+                    base16::encode_lower(&PADDING_BYTES)
+                )
+            }
             Key::TransactionInfo(TransactionHash::Deploy(deploy_hash)) => write!(
                 f,
                 "Key::TransactionInfo(deploy-{})",
@@ -1239,6 +1279,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
+            Key::BlockMessageCount => KeyTag::BlockMessageCount,
             Key::TransactionInfo(_) => KeyTag::TransactionInfo,
             Key::Transfer(_) => KeyTag::Transfer,
         }
@@ -1357,6 +1398,7 @@ impl ToBytes for Key {
             Key::NamedKey(named_key_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + named_key_addr.serialized_length()
             }
+            Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
             Key::TransactionInfo(txn_hash) => {
                 KEY_ID_SERIALIZED_LENGTH + txn_hash.serialized_length()
             }
@@ -1381,7 +1423,8 @@ impl ToBytes for Key {
             Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
-            | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            | Key::ChecksumRegistry
+            | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
             Key::BidAddr(bid_addr) => match bid_addr.tag() {
                 BidAddrTag::Unified => {
                     let bytes = bid_addr.to_bytes()?;
@@ -1489,6 +1532,10 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
+            KeyTag::BlockMessageCount => {
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
+                Ok((Key::BlockMessageCount, rem))
+            }
             KeyTag::TransactionInfo => {
                 let (txn_hash, rem) = TransactionHash::from_bytes(remainder)?;
                 Ok((Key::TransactionInfo(txn_hash), rem))
@@ -1527,6 +1574,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
+        Key::BlockMessageCount => unimplemented!(),
         Key::TransactionInfo(_) => unimplemented!(),
         Key::Transfer(_) => unimplemented!(),
     }
@@ -1535,7 +1583,7 @@ fn please_add_to_distribution_impl(key: Key) {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=22) {
+        match rng.gen_range(0..=23) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1557,12 +1605,13 @@ impl Distribution<Key> for Standard {
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
             20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
-            21 => Key::TransactionInfo(if rng.gen() {
+            21 => Key::BlockMessageCount,
+            22 => Key::TransactionInfo(if rng.gen() {
                 TransactionHash::Deploy(DeployHash::from_raw(rng.gen()))
             } else {
                 TransactionHash::V1(TransactionV1Hash::from_raw(rng.gen()))
             }),
-            22 => Key::Transfer(if rng.gen() {
+            23 => Key::Transfer(if rng.gen() {
                 TransferAddr::V1(TransferV1Addr::new(rng.gen()))
             } else {
                 TransferAddr::V2(TransferV2Addr::new(rng.gen()))
@@ -1599,6 +1648,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
+        BlockMessageCount,
         TransactionInfo(&'a TransactionHash),
         Transfer(&'a TransferAddr),
     }
@@ -1627,6 +1677,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
+        BlockMessageCount,
         TransactionInfo(TransactionHash),
         Transfer(TransferAddr),
     }
@@ -1659,6 +1710,7 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key_addr) => BinarySerHelper::NamedKey(named_key_addr),
+                Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
                 Key::TransactionInfo(txn_hash) => BinarySerHelper::TransactionInfo(txn_hash),
                 Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
             }
@@ -1693,6 +1745,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
+                BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
                 BinaryDeserHelper::TransactionInfo(txn_hash) => Key::TransactionInfo(txn_hash),
                 BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
             }
@@ -1781,6 +1834,7 @@ mod tests {
         EntityAddr::new_smart_contract([42; 32]),
         [43; 32],
     ));
+    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
     const TRANSACTION_INFO_DEPLOY_KEY: Key =
         Key::TransactionInfo(TransactionHash::Deploy(DeployHash::from_raw([42; 32])));
     const TRANSACTION_INFO_V1_KEY: Key =
@@ -1815,6 +1869,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        BLOCK_MESSAGE_COUNT,
         TRANSACTION_INFO_V1_KEY,
         TRANSFER_V1_KEY,
         TRANSFER_V2_KEY,
@@ -1991,6 +2046,13 @@ mod tests {
             format!(
                 "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
+            )
+        );
+        assert_eq!(
+            format!("{}", BLOCK_MESSAGE_COUNT),
+            format!(
+                "Key::BlockMessageCount({})",
+                base16::encode_lower(&PADDING_BYTES)
             )
         );
         assert_eq!(
@@ -2371,6 +2433,7 @@ mod tests {
             nines.into(),
             1,
         )));
+        round_trip(&Key::BlockMessageCount);
         round_trip(&Key::TransactionInfo(TransactionHash::Deploy(
             DeployHash::from_raw(zeros),
         )));

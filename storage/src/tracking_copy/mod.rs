@@ -384,16 +384,19 @@ where
     /// This function does not check the types for the key and the value so the caller should
     /// correctly set the type. The `message_topic_key` should be of the `Key::MessageTopic`
     /// variant and the `message_topic_summary` should be of the `StoredValue::Message` variant.
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_message(
         &mut self,
         message_topic_key: Key,
         message_topic_summary: StoredValue,
         message_key: Key,
         message_value: StoredValue,
+        block_message_count_value: StoredValue,
         message: Message,
     ) {
         self.write(message_key, message_value);
         self.write(message_topic_key, message_topic_summary);
+        self.write(Key::BlockMessageCount, block_message_count_value);
         self.messages.push(message);
     }
 

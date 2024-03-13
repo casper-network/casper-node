@@ -6,9 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_types::{
-    account::AccountHash, PublicKey, SecretKey, DEFAULT_WASMLESS_TRANSFER_COST, U512,
-};
+use casper_types::{account::AccountHash, MintCosts, PublicKey, SecretKey, U512};
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -55,8 +53,8 @@ fn should_transfer_to_account_with_correct_balances() {
         .expect("should get account 1");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
-    let default_expected_balance = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)
-        - (U512::one() + DEFAULT_WASMLESS_TRANSFER_COST);
+    let default_expected_balance =
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (U512::one() + MintCosts::default().transfer);
     assert_eq!(
         default_account_balance, default_expected_balance,
         "default account balance should reflect the transfer",
@@ -84,7 +82,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
     // We must first transfer the amount account 1 will transfer to account 2, along with the fee
     // account 1 will need to pay for that transfer.
     let transfer_request = TransferRequestBuilder::new(
-        *TRANSFER_AMOUNT + DEFAULT_WASMLESS_TRANSFER_COST,
+        *TRANSFER_AMOUNT + MintCosts::default().transfer,
         *ACCOUNT_1_ADDR,
     )
     .build();
@@ -126,7 +124,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
         .expect("should get account 2");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
-    let double_cost = DEFAULT_WASMLESS_TRANSFER_COST + DEFAULT_WASMLESS_TRANSFER_COST;
+    let double_cost = MintCosts::default().transfer + MintCosts::default().transfer;
     let default_expected_balance =
         U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - (MAX_PAYMENT_AMOUNT + (double_cost as u64));
     assert_eq!(

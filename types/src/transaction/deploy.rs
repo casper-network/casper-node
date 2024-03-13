@@ -1,14 +1,11 @@
-mod deploy_approval;
-mod deploy_approvals_hash;
 #[cfg(any(feature = "std", test))]
 mod deploy_builder;
-mod deploy_footprint;
+pub mod deploy_category;
 mod deploy_hash;
 mod deploy_header;
 mod deploy_id;
 mod error;
 mod executable_deploy_item;
-mod finalized_deploy_approvals;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -26,7 +23,7 @@ use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use rand::{Rng, RngCore};
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
@@ -36,7 +33,6 @@ use tracing::{debug, warn};
 
 #[cfg(any(feature = "std", test))]
 use super::{InitiatorAddr, InitiatorAddrAndSecretKey};
-
 #[cfg(any(
     all(feature = "std", feature = "testing"),
     feature = "json-schema",
@@ -46,29 +42,26 @@ use crate::runtime_args;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes,
-    system::{
-        auction::{
-            ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-            ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
-            METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-        },
-        mint::ARG_AMOUNT,
+    system::auction::{
+        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+        ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+        METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
     AddressableEntityHash, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
     DEFAULT_MIN_TRANSFER_MOTES, U512,
 };
-
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
+    crypto,
+    transaction::{Approval, ApprovalsHash},
+    Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
-
-pub use deploy_approval::DeployApproval;
-pub use deploy_approvals_hash::DeployApprovalsHash;
+#[cfg(any(feature = "std", test))]
+use crate::{system::auction::ARG_AMOUNT, Gas, Motes, SystemConfig};
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
-pub use deploy_footprint::DeployFootprint;
+pub use deploy_category::DeployCategory;
 pub use deploy_hash::DeployHash;
 pub use deploy_header::DeployHeader;
 pub use deploy_id::DeployId;
@@ -77,7 +70,6 @@ pub use error::{
     ExcessiveSizeError as DeployExcessiveSizeError,
 };
 pub use executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier};
-pub use finalized_deploy_approvals::FinalizedDeployApprovals;
 
 #[cfg(feature = "json-schema")]
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -111,7 +103,7 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     let hash = DeployHash::new(Digest::hash(serialized_header));
 
     let mut approvals = BTreeSet::new();
-    let approval = DeployApproval::create(&hash, secret_key);
+    let approval = Approval::create(&hash.into(), secret_key);
     approvals.insert(approval);
 
     Deploy {
@@ -144,7 +136,7 @@ pub struct Deploy {
     header: DeployHeader,
     payment: ExecutableDeployItem,
     session: ExecutableDeployItem,
-    approvals: BTreeSet<DeployApproval>,
+    approvals: BTreeSet<Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -302,7 +294,7 @@ impl Deploy {
     }
 
     /// Returns the `Approval`s for this deploy.
-    pub fn approvals(&self) -> &BTreeSet<DeployApproval> {
+    pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
     }
 
@@ -314,7 +306,7 @@ impl Deploy {
         DeployHeader,
         ExecutableDeployItem,
         ExecutableDeployItem,
-        BTreeSet<DeployApproval>,
+        BTreeSet<Approval>,
     ) {
         (
             self.hash,
@@ -327,13 +319,13 @@ impl Deploy {
 
     /// Adds a signature of this `Deploy`'s hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
-        let approval = DeployApproval::create(&self.hash, secret_key);
+        let approval = Approval::create(&self.hash.into(), secret_key);
         self.approvals.insert(approval);
     }
 
     /// Returns the `ApprovalsHash` of this `Deploy`'s approvals.
-    pub fn compute_approvals_hash(&self) -> Result<DeployApprovalsHash, bytesrepr::Error> {
-        DeployApprovalsHash::compute(&self.approvals)
+    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
+        ApprovalsHash::compute(&self.approvals)
     }
 
     /// Returns `true` if the serialized size of the deploy is not greater than
@@ -384,28 +376,43 @@ impl Deploy {
         validate_deploy(self)
     }
 
-    /// Returns the `DeployFootprint`.
-    pub fn footprint(&self) -> Result<DeployFootprint, DeployError> {
-        let header = self.header().clone();
-        let gas_estimate = match self.payment().payment_amount(header.gas_price()) {
-            Some(gas) => gas,
-            None => {
-                return Err(DeployError::InvalidPayment);
-            }
-        };
-        let size_estimate = self.serialized_length();
-        let is_transfer = self.session.is_transfer();
-        Ok(DeployFootprint {
-            header,
-            gas_estimate,
-            size_estimate,
-            is_transfer,
-        })
-    }
-
     /// Returns `true` if this deploy is a native transfer.
     pub fn is_transfer(&self) -> bool {
         self.session.is_transfer()
+    }
+
+    /// Gas limit.
+    #[cfg(any(feature = "std", test))]
+    pub fn gas_limit(
+        &self,
+        system_costs: &SystemConfig,
+        gas_price: Option<u64>,
+    ) -> Result<Gas, DeployConfigFailure> {
+        let user_specified_price = self.gas_price();
+        let actual_price = match gas_price {
+            Some(price) => price.max(user_specified_price),
+            None => user_specified_price,
+        };
+        let motes = {
+            if self.is_transfer() {
+                Motes::new(U512::from(system_costs.mint_costs().transfer))
+            } else {
+                let value = self
+                    .payment()
+                    .args()
+                    .get(ARG_AMOUNT)
+                    .ok_or(DeployConfigFailure::MissingPaymentAmount)?;
+                let payment_amount = value
+                    .clone()
+                    .into_t::<U512>()
+                    .map_err(|_| DeployConfigFailure::FailedToParsePaymentAmount)?;
+                Motes::new(payment_amount)
+            }
+        };
+        match Gas::from_motes(motes, actual_price) {
+            Some(gas) => Ok(gas),
+            None => Err(DeployConfigFailure::MissingPaymentAmount),
+        }
     }
 
     /// Returns `Ok` if and only if:
@@ -415,6 +422,7 @@ impl Deploy {
     pub fn is_config_compliant(
         &self,
         chain_name: &str,
+        cost_table: &SystemConfig,
         config: &TransactionConfig,
         max_associated_keys: u32,
         timestamp_leeway: TimeDiff,
@@ -451,30 +459,18 @@ impl Deploy {
             });
         }
 
-        // Transfers have a fixed cost and won't blow the block gas limit.
-        // Other deploys can, therefore, statically check the payment amount
-        // associated with the deploy.
-        if !self.session().is_transfer() {
-            let value = self
-                .payment()
-                .args()
-                .get(ARG_AMOUNT)
-                .ok_or(DeployConfigFailure::MissingPaymentAmount)?;
-            let payment_amount = value
-                .clone()
-                .into_t::<U512>()
-                .map_err(|_| DeployConfigFailure::FailedToParsePaymentAmount)?;
-            if payment_amount > U512::from(config.block_gas_limit) {
-                debug!(
-                    amount = %payment_amount,
-                    block_gas_limit = %config.block_gas_limit,
-                    "payment amount exceeds block gas limit"
-                );
-                return Err(DeployConfigFailure::ExceededBlockGasLimit {
-                    block_gas_limit: config.block_gas_limit,
-                    got: Box::new(payment_amount),
-                });
-            }
+        let gas_limit = self.gas_limit(cost_table, None)?;
+        let block_gas_limit = Gas::new(U512::from(config.block_gas_limit));
+        if gas_limit > block_gas_limit {
+            debug!(
+                payment_amount = %gas_limit,
+                %block_gas_limit,
+                    "transaction gas limit exceeds block gas limit"
+            );
+            return Err(DeployConfigFailure::ExceededBlockGasLimit {
+                block_gas_limit: config.block_gas_limit,
+                got: Box::new(gas_limit.value()),
+            });
         }
 
         let payment_args_length = self.payment().args().serialized_length();
@@ -540,7 +536,7 @@ impl Deploy {
     // It is required to allow finalized approvals to be injected after reading a `Deploy` from
     // storage.
     #[doc(hidden)]
-    pub fn with_approvals(mut self, approvals: BTreeSet<DeployApproval>) -> Self {
+    pub fn with_approvals(mut self, approvals: BTreeSet<Approval>) -> Self {
         self.approvals = approvals;
         self
     }
@@ -569,11 +565,7 @@ impl Deploy {
     ) -> Self {
         let gas_price = rng.gen_range(1..100);
 
-        let dependencies = vec![
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-            DeployHash::new(Digest::hash(rng.next_u64().to_le_bytes())),
-        ];
+        let dependencies = vec![];
         let chain_name = String::from("casper-example");
 
         // We need "amount" in order to be able to get correct info via `deploy_info()`.
@@ -1258,7 +1250,7 @@ impl FromBytes for Deploy {
         let (hash, remainder) = DeployHash::from_bytes(remainder)?;
         let (payment, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
         let (session, remainder) = ExecutableDeployItem::from_bytes(remainder)?;
-        let (approvals, remainder) = BTreeSet::<DeployApproval>::from_bytes(remainder)?;
+        let (approvals, remainder) = BTreeSet::<Approval>::from_bytes(remainder)?;
         let maybe_valid_deploy = Deploy {
             header,
             hash,
@@ -1510,6 +1502,7 @@ mod tests {
     fn is_acceptable() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let deploy = create_deploy(
@@ -1522,6 +1515,7 @@ mod tests {
         deploy
             .is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1535,6 +1529,7 @@ mod tests {
         let mut rng = TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let deploy = create_deploy(
@@ -1553,6 +1548,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 expected_chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1570,21 +1566,20 @@ mod tests {
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
         let deploy = create_deploy(&mut rng, config.max_ttl, dependency_count, chain_name);
 
-        let expected_error = DeployConfigFailure::ExcessiveDependencies {
-            max_dependencies: config.deploy_config.max_dependencies,
-            got: dependency_count,
-        };
+        let expected_error = DeployConfigFailure::DependenciesNoLongerSupported;
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1602,6 +1597,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let ttl = config.max_ttl + TimeDiff::from(Duration::from_secs(1));
@@ -1622,6 +1618,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1639,6 +1636,7 @@ mod tests {
     fn not_acceptable_due_to_timestamp_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let leeway = TimeDiff::from_seconds(2);
 
@@ -1659,6 +1657,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 leeway,
@@ -1676,6 +1675,7 @@ mod tests {
     fn acceptable_if_timestamp_slightly_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let leeway = TimeDiff::from_seconds(2);
 
@@ -1689,6 +1689,7 @@ mod tests {
         deploy
             .is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 leeway,
@@ -1701,6 +1702,7 @@ mod tests {
     fn not_acceptable_due_to_missing_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1730,6 +1732,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1747,6 +1750,7 @@ mod tests {
     fn not_acceptable_due_to_mangled_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1778,6 +1782,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1795,6 +1800,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let amount = U512::from(config.block_gas_limit + 1);
 
@@ -1832,6 +1838,7 @@ mod tests {
         assert_eq!(
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1850,6 +1857,7 @@ mod tests {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let amount = U512::from(config.block_gas_limit + 1);
 
@@ -1887,6 +1895,7 @@ mod tests {
             Ok(()),
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1899,6 +1908,7 @@ mod tests {
     fn not_acceptable_due_to_excessive_approvals() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let deploy = create_deploy(
             &mut rng,
@@ -1917,6 +1927,7 @@ mod tests {
             }),
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 max_associated_keys,
                 TimeDiff::default(),
@@ -1929,6 +1940,7 @@ mod tests {
     fn not_acceptable_due_to_missing_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let mut deploy = create_deploy(
             &mut rng,
@@ -1948,6 +1960,7 @@ mod tests {
             Err(DeployConfigFailure::MissingTransferAmount),
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1960,6 +1973,7 @@ mod tests {
     fn not_acceptable_due_to_mangled_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let mut deploy = create_deploy(
             &mut rng,
@@ -1983,6 +1997,7 @@ mod tests {
             Err(DeployConfigFailure::FailedToParseTransferAmount),
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),
@@ -1995,6 +2010,7 @@ mod tests {
     fn not_acceptable_due_to_insufficient_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
+        let cost_table = SystemConfig::default();
         let config = TransactionConfig::default();
         let mut deploy = create_deploy(
             &mut rng,
@@ -2024,6 +2040,7 @@ mod tests {
             }),
             deploy.is_config_compliant(
                 chain_name,
+                &cost_table,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
                 TimeDiff::default(),

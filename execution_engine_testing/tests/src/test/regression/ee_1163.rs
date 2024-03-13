@@ -5,11 +5,9 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error, WASMLESS_TRANSFER_FIXED_GAS_PRICE};
 use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
 use casper_types::{
-    account::AccountHash, system::handle_payment, Gas, Motes, RuntimeArgs,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    account::AccountHash, system::handle_payment, Gas, Motes, RuntimeArgs, SystemConfig, U512,
 };
 
-// const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
 // const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> LmdbWasmTestBuilder {
@@ -22,7 +20,7 @@ fn should_charge_for_user_error(
     builder: &mut LmdbWasmTestBuilder,
     request: TransferRequest,
 ) -> Error {
-    let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let transfer_cost = Gas::from(SystemConfig::default().mint_costs().transfer);
     let transfer_cost_motes =
         Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
 
@@ -73,7 +71,7 @@ fn should_charge_for_user_error(
 #[test]
 fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     // // implies 1:1 gas/motes conversion rate regardless of gas price
-    // let transfer_cost_motes = Motes::new(U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
+    // let transfer_cost_motes = Motes::new(U512::from(MintCosts::default().transfer));
     //
     // let transfer_amount = Motes::new(U512::one());
     //
@@ -110,7 +108,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     // let purse_balance_after = builder.get_purse_balance(main_purse);
     // let proposer_purse_balance_after = builder.get_proposer_purse_balance();
     //
-    // let transfer_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    // let transfer_cost = Gas::from(MintCosts::default().transfer);
     // let response = builder
     //     .get_exec_result_owned(0)
     //     .expect("should have result")

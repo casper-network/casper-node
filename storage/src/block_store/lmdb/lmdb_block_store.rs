@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -12,8 +12,8 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, FinalizedApprovals,
-    StoredValue, Transaction, TransactionHash, Transfer,
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue,
+    Transaction, TransactionHash, Transfer,
 };
 
 use super::{
@@ -80,7 +80,7 @@ pub struct LmdbBlockStore<'s> {
     state_store_db: Database,
     /// The finalized transaction approvals databases.
     pub(super) finalized_transaction_approvals_dbs:
-        VersionedDatabases<TransactionHash, FinalizedApprovals>,
+        VersionedDatabases<TransactionHash, BTreeSet<Approval>>,
 }
 
 impl<'s> LmdbBlockStore<'s> {
@@ -688,12 +688,12 @@ where
     }
 }
 
-impl<'s, 't, T> DataReader<TransactionHash, FinalizedApprovals>
+impl<'s, 't, T> DataReader<TransactionHash, BTreeSet<Approval>>
     for LmdbBlockStoreTransaction<'s, 't, T>
 where
     T: LmdbTransaction,
 {
-    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+    fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
             .finalized_transaction_approvals_dbs
             .get(&self.txn, &key)

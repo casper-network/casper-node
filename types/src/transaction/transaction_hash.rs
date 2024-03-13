@@ -86,6 +86,15 @@ impl Display for TransactionHash {
     }
 }
 
+impl AsRef<[u8]> for TransactionHash {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            TransactionHash::Deploy(hash) => hash.as_ref(),
+            TransactionHash::V1(hash) => hash.as_ref(),
+        }
+    }
+}
+
 impl ToBytes for TransactionHash {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {

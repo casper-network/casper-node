@@ -46,7 +46,7 @@ impl From<StoredValue> for TransformInstruction {
 
 /// Representation of a single transformation occurring during execution.
 ///
-/// Note that all arithmetic variants of [`TransformKind`] are commutative which means that a given
+/// Note that all arithmetic variants of `TransformKindV2` are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

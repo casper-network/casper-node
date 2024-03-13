@@ -13,7 +13,6 @@ use casper_types::{
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
 const ENTRY_POINT: &str = "call";
-const PAYMENT_AMOUNT: u64 = 100_000_000_000;
 const CHAIN_NAME: &str = "a";
 const STATE_HASH: Digest = Digest::from_raw([1; 32]);
 const BLOCK_TIME: BlockTime = BlockTime::new(10);
@@ -44,7 +43,6 @@ fn try_add_contract_version(kind: TransactionSessionKind, should_succeed: bool) 
     let txn = TransactionV1Builder::new_session(kind, module_bytes, ENTRY_POINT)
         .with_secret_key(&DEFAULT_ACCOUNT_SECRET_KEY)
         .with_chain_name(CHAIN_NAME)
-        .with_payment_amount(PAYMENT_AMOUNT)
         .build()
         .unwrap();
 

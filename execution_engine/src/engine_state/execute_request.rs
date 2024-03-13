@@ -4,10 +4,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    account::AccountHash, bytesrepr::Bytes, runtime_args, BlockTime, DeployHash, Digest,
-    ExecutableDeployItem, InitiatorAddr, PublicKey, RuntimeArgs, Transaction,
-    TransactionEntryPoint, TransactionHash, TransactionInvocationTarget, TransactionSessionKind,
-    TransactionTarget, TransactionV1Body, TransactionV1Hash, U512,
+    account::AccountHash, bytesrepr::Bytes, BlockTime, DeployHash, Digest, ExecutableDeployItem,
+    InitiatorAddr, PublicKey, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
+    TransactionInvocationTarget, TransactionSessionKind, TransactionTarget, TransactionV1Body,
+    TransactionV1Hash,
 };
 
 const DEFAULT_ENTRY_POINT: &str = "call";
@@ -290,37 +290,28 @@ impl ExecuteRequest {
         proposer: PublicKey,
     ) -> Result<Self, NewRequestError> {
         let transaction_hash = txn.hash();
-        let gas_price = txn.gas_price();
         let initiator_addr = txn.initiator_addr();
         let authorization_keys = txn.signers();
 
+        let gas_price: u64;
         let payment_info: PaymentInfo;
         let session_info: SessionInfo;
         match txn {
             Transaction::Deploy(deploy) => {
                 let (hash, _header, payment, session, _approvals) = deploy.destructure();
+                gas_price = _header.gas_price();
                 payment_info = PaymentInfo::try_from((payment, hash))?;
                 session_info = SessionInfo::try_from((session, hash))?;
             }
             Transaction::V1(v1_txn) => {
-                let (hash, header, body, _approvals) = v1_txn.destructure();
-                match header.payment_amount() {
-                    Some(amount) => {
-                        payment_info = PaymentInfo {
-                            payment: Payment::Standard,
-                            entry_point: DEFAULT_ENTRY_POINT.to_string(),
-                            args: runtime_args! { "amount" => U512::from(amount) },
-                        };
-                    }
-                    None => {
-                        // If the payment amount is `None`, the provided session will be invoked
-                        // during the payment and session phases.
-                        payment_info = PaymentInfo {
-                            payment: Payment::UseSession,
-                            entry_point: DEFAULT_ENTRY_POINT.to_string(),
-                            args: RuntimeArgs::new(),
-                        };
-                    }
+                let (hash, _header, body, _approvals) = v1_txn.destructure();
+                gas_price = 1;
+                // If the payment amount is `None`, the provided session will be invoked
+                // during the payment and session phases.
+                payment_info = PaymentInfo {
+                    payment: Payment::UseSession,
+                    entry_point: DEFAULT_ENTRY_POINT.to_string(),
+                    args: RuntimeArgs::new(),
                 };
                 session_info = SessionInfo::try_from((body, hash))?;
             }

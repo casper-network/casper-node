@@ -25,9 +25,9 @@ use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
-    BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
-    ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionApprovalsHash,
-    TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
+    ApprovalsHash, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2,
+    EraId, Gas, Key, ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionEntryPoint,
+    TransactionHash, TransactionHeader, U512,
 };
 
 use super::{
@@ -426,14 +426,14 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*executable_block.proposer).clone(),
-        executable_block.transfer,
-        executable_block.staking,
+        executable_block.mint,
+        executable_block.auction,
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
     ));
 
-    let approvals_hashes: Vec<TransactionApprovalsHash> =
+    let approvals_hashes: Vec<ApprovalsHash> =
         txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
     let proof_of_checksum_registry = match data_access_layer.tracking_copy(state_root_hash)? {
@@ -444,7 +444,7 @@ pub fn execute_finalized_block(
         None => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
     };
 
-    let approvals_hashes = Box::new(ApprovalsHashes::new_v2(
+    let approvals_hashes = Box::new(ApprovalsHashes::new(
         *block.hash(),
         approvals_hashes,
         proof_of_checksum_registry,
