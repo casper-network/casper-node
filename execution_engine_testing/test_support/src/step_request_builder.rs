@@ -1,12 +1,13 @@
-use casper_execution_engine::engine_state::{
-    step::{EvictItem, RewardItem, SlashItem},
-    StepRequest,
+use casper_storage::{
+    data_access_layer::{EvictItem, RewardItem, SlashItem, StepRequest},
+    system::runtime_native::{Config, TransferConfig},
 };
 use casper_types::{Digest, EraId, ProtocolVersion};
 
 /// Builder for creating a [`StepRequest`].
 #[derive(Debug, Clone)]
 pub struct StepRequestBuilder {
+    runtime_config: Config,
     parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
@@ -21,6 +22,18 @@ impl StepRequestBuilder {
     /// Returns a new `StepRequestBuilder`.
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Sets config.
+    pub fn with_runtime_config(mut self, runtime_config: Config) -> Self {
+        self.runtime_config = runtime_config;
+        self
+    }
+
+    /// Sets `transfer_config` to the imputed value.
+    pub fn with_transfer_config(mut self, transfer_config: TransferConfig) -> Self {
+        self.runtime_config = self.runtime_config.set_transfer_config(transfer_config);
+        self
     }
 
     /// Sets `parent_state_hash` to the given [`Digest`].
@@ -80,6 +93,7 @@ impl StepRequestBuilder {
     /// Consumes the [`StepRequestBuilder`] and returns a [`StepRequest`].
     pub fn build(self) -> StepRequest {
         StepRequest::new(
+            self.runtime_config,
             self.parent_state_hash,
             self.protocol_version,
             self.slash_items,
@@ -93,6 +107,7 @@ impl StepRequestBuilder {
 impl Default for StepRequestBuilder {
     fn default() -> Self {
         StepRequestBuilder {
+            runtime_config: Default::default(),
             parent_state_hash: Default::default(),
             protocol_version: Default::default(),
             slash_items: Default::default(),

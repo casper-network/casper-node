@@ -28,7 +28,7 @@ impl TransactionV1Config {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(feature = "std", test))]
 impl Default for TransactionV1Config {
     fn default() -> Self {
         TransactionV1Config {

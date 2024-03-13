@@ -21,14 +21,12 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_storage::{
-    data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult},
-    global_state::trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
+    global_state::TrieMerkleProof,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
     EraId, HashAddr, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,
@@ -772,8 +770,10 @@ impl reactor::Reactor for Reactor {
                     request: balance_request,
                     responder,
                 } => {
+                    let key = balance_request.identifier().as_key();
+
                     let proof = TrieMerkleProof::new(
-                        balance_request.purse_uref().into(),
+                        key,
                         StoredValue::CLValue(CLValue::from_t(()).expect("should get CLValue")),
                         VecDeque::new(),
                     );
@@ -1627,7 +1627,7 @@ async fn should_reject_deploy_with_missing_version_in_payment_contract_package_f
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))
@@ -1811,7 +1811,7 @@ async fn should_reject_deploy_with_missing_version_in_session_contract_package_f
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))
@@ -1828,7 +1828,7 @@ async fn should_reject_transaction_v1_with_missing_version_in_session_contract_p
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))
@@ -1918,7 +1918,7 @@ async fn should_reject_deploy_with_missing_version_in_payment_contract_package_f
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))
@@ -2095,7 +2095,7 @@ async fn should_reject_deploy_with_missing_version_in_session_contract_package_f
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))
@@ -2111,7 +2111,7 @@ async fn should_reject_transaction_v1_with_missing_version_in_session_contract_p
     assert!(matches!(
         result,
         Err(super::Error::Parameters {
-            failure: ParameterFailure::InvalidContractAtVersion { .. },
+            failure: ParameterFailure::MissingEntityAtVersion { .. },
             ..
         })
     ))

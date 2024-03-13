@@ -7,6 +7,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 const FEE_HANDLING_PROPOSER_TAG: u8 = 0;
 const FEE_HANDLING_ACCUMULATE_TAG: u8 = 1;
 const FEE_HANDLING_BURN_TAG: u8 = 2;
+const FEE_HANDLING_NONE_TAG: u8 = 3;
 
 /// Defines how fees are handled in the system.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +25,15 @@ pub enum FeeHandling {
     Accumulate,
     /// Burn the fees.
     Burn,
+    /// No fees.
+    None,
+}
+
+impl FeeHandling {
+    /// Is the Accumulate variant selected?
+    pub fn is_accumulate(&self) -> bool {
+        matches!(self, FeeHandling::Accumulate)
+    }
 }
 
 impl ToBytes for FeeHandling {
@@ -32,6 +42,7 @@ impl ToBytes for FeeHandling {
             FeeHandling::PayToProposer => Ok(vec![FEE_HANDLING_PROPOSER_TAG]),
             FeeHandling::Accumulate => Ok(vec![FEE_HANDLING_ACCUMULATE_TAG]),
             FeeHandling::Burn => Ok(vec![FEE_HANDLING_BURN_TAG]),
+            FeeHandling::None => Ok(vec![FEE_HANDLING_NONE_TAG]),
         }
     }
 
@@ -47,6 +58,7 @@ impl FromBytes for FeeHandling {
             FEE_HANDLING_PROPOSER_TAG => Ok((FeeHandling::PayToProposer, rem)),
             FEE_HANDLING_ACCUMULATE_TAG => Ok((FeeHandling::Accumulate, rem)),
             FEE_HANDLING_BURN_TAG => Ok((FeeHandling::Burn, rem)),
+            FEE_HANDLING_NONE_TAG => Ok((FeeHandling::None, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -54,6 +66,9 @@ impl FromBytes for FeeHandling {
 
 impl Default for FeeHandling {
     fn default() -> Self {
+        // in 2.x the default is None as there are no fees.
+        // FeeHandling::None
+        // in 1.x the (implicit) default was PayToProposer
         FeeHandling::PayToProposer
     }
 }

@@ -99,6 +99,7 @@ pub extern "C" fn call() {
         None,
         Some(CONTRACT_PACKAGE_KEY.to_string()),
         Some(ACCESS_KEY.to_string()),
+        None,
     );
 
     runtime::put_key(CONTRACT_KEY, Key::contract_entity_key(contract_hash));

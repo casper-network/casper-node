@@ -12,15 +12,15 @@ use casper_storage::system::handle_payment::{
     storage_provider::StorageProvider, HandlePayment,
 };
 
-use crate::{execution, runtime::Runtime};
+use crate::{execution::ExecError, runtime::Runtime};
 
-impl From<execution::Error> for Option<Error> {
-    fn from(exec_error: execution::Error) -> Self {
+impl From<ExecError> for Option<Error> {
+    fn from(exec_error: ExecError) -> Self {
         match exec_error {
-            // This is used to propagate [`execution::Error::GasLimit`] to make sure
+            // This is used to propagate [`ExecError::GasLimit`] to make sure
             // [`HandlePayment`] contract running natively supports propagating gas limit
             // errors without a panic.
-            execution::Error::GasLimit => Some(Error::GasLimit),
+            ExecError::GasLimit => Some(Error::GasLimit),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }

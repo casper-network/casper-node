@@ -10,6 +10,7 @@ pub mod genesis_config;
 mod global_state_update;
 mod highway_config;
 mod network_config;
+mod next_upgrade;
 mod protocol_config;
 mod refund_handling;
 mod transaction_config;
@@ -47,6 +48,7 @@ pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_RE
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
+pub use next_upgrade::NextUpgrade;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
@@ -71,16 +73,16 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
     DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STANDARD_TRANSACTION_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(PartialEq, Eq, Serialize, Debug)]
+#[derive(PartialEq, Eq, Serialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct Chainspec {

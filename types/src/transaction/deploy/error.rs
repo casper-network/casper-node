@@ -26,13 +26,8 @@ pub enum DeployConfigFailure {
         got: String,
     },
 
-    /// Too many dependencies.
-    ExcessiveDependencies {
-        /// The dependencies limit.
-        max_dependencies: u8,
-        /// The actual number of dependencies provided.
-        got: usize,
-    },
+    /// Deploy dependencies are no longer supported.
+    DependenciesNoLongerSupported,
 
     /// Deploy is too large.
     ExcessiveSize(ExcessiveSizeError),
@@ -135,15 +130,8 @@ impl Display for DeployConfigFailure {
                     expected, got
                 )
             }
-            DeployConfigFailure::ExcessiveDependencies {
-                max_dependencies,
-                got,
-            } => {
-                write!(
-                    formatter,
-                    "{} dependencies exceeds limit of {}",
-                    got, max_dependencies
-                )
+            DeployConfigFailure::DependenciesNoLongerSupported => {
+                write!(formatter, "dependencies no longer supported",)
             }
             DeployConfigFailure::ExcessiveSize(error) => {
                 write!(formatter, "deploy size too large: {}", error)
@@ -257,7 +245,7 @@ impl StdError for DeployConfigFailure {
         match self {
             DeployConfigFailure::InvalidApproval { error, .. } => Some(error),
             DeployConfigFailure::InvalidChainName { .. }
-            | DeployConfigFailure::ExcessiveDependencies { .. }
+            | DeployConfigFailure::DependenciesNoLongerSupported { .. }
             | DeployConfigFailure::ExcessiveSize(_)
             | DeployConfigFailure::ExcessiveTimeToLive { .. }
             | DeployConfigFailure::TimestampInFuture { .. }

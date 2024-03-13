@@ -13,12 +13,12 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_accumulator,
+        binary_port, block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, consensus, contract_runtime, diagnostics_port, event_stream_server,
         fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
+        rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
         transaction_buffer, upgrade_watcher,
     },
     effect::{
@@ -40,15 +40,16 @@ use crate::{
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest,
             MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
+            ReactorInfoRequest, RestRequest, SetNodeStopRequest, StorageRequest,
             SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
             UpgradeWatcherRequest,
         },
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
+    types::{BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 // Enforce an upper bound for the `MainEvent` size, which is already quite hefty.
 // 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
@@ -75,7 +76,7 @@ pub(crate) enum MainEvent {
     #[from]
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
-    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
+    BinaryPort(#[serde(skip_serializing)] binary_port::Event),
     #[from]
     RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
@@ -239,7 +240,7 @@ pub(crate) enum MainEvent {
     #[from]
     SetNodeStopRequest(SetNodeStopRequest),
     #[from]
-    MainReactorRequest(ReactorStatusRequest),
+    MainReactorRequest(ReactorInfoRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
     #[from]
@@ -270,7 +271,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::TransactionBuffer(_) => "TransactionBuffer",
             MainEvent::Storage(_) => "Storage",
-            MainEvent::RpcServer(_) => "RpcServer",
             MainEvent::RestServer(_) => "RestServer",
             MainEvent::EventStreamServer(_) => "EventStreamServer",
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
@@ -362,6 +362,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::GotBlockAfterUpgradeEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
+            MainEvent::BinaryPort(_) => "BinaryPort",
         }
     }
 }
@@ -374,7 +375,6 @@ impl Display for MainEvent {
             MainEvent::Network(event) => write!(f, "network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::TransactionBuffer(event) => write!(f, "transaction buffer: {}", event),
-            MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             MainEvent::RestServer(event) => write!(f, "rest server: {}", event),
             MainEvent::EventStreamServer(event) => {
                 write!(f, "event stream server: {}", event)
@@ -546,6 +546,7 @@ impl Display for MainEvent {
                     era_id
                 )
             }
+            MainEvent::BinaryPort(inner) => Display::fmt(inner, f),
         }
     }
 }
@@ -577,12 +578,6 @@ impl From<TrieAccumulatorEvent> for MainEvent {
         MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
             event.into(),
         ))
-    }
-}
-
-impl From<RpcRequest> for MainEvent {
-    fn from(request: RpcRequest) -> Self {
-        MainEvent::RpcServer(rpc_server::Event::RpcRequest(request))
     }
 }
 

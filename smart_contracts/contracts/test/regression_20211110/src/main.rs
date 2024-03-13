@@ -26,7 +26,7 @@ pub extern "C" fn call() {
     ));
 
     let (contract_hash, _contract_version) =
-        storage::new_locked_contract(entry_points, None, None, None);
+        storage::new_locked_contract(entry_points, None, None, None, None);
 
     runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }

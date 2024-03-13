@@ -1,3 +1,5 @@
+mod binary_port;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
@@ -18,21 +20,21 @@ use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult, QueryRequest, QueryResult::*},
+    data_access_layer::{BidsRequest, BidsResult, TotalSupplyRequest, TotalSupplyResult},
     global_state::state::{StateProvider, StateReader},
-    tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        mint, AUCTION,
+        AUCTION,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
-    EntityAddr, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
+    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -41,7 +43,6 @@ use crate::{
             self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
         },
         gossiper, network, storage,
-        upgrade_watcher::NextUpgrade,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -57,7 +58,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{AvailableBlockRange, BlockPayload, ExitCode, NodeId, SyncHandling},
+    types::{BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -293,6 +294,12 @@ impl TestFixture {
         fixture
     }
 
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
+    }
+
     /// Returns the highest complete block from node 0.
     ///
     /// Panics if there is no such block.
@@ -309,7 +316,7 @@ impl TestFixture {
             .expect("should have node 0")
             .main_reactor()
             .storage()
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .expect("should not error reading db")
             .expect("node 0 should have a complete block")
     }
@@ -328,7 +335,6 @@ impl TestFixture {
             .main_reactor()
             .storage()
             .read_switch_block_by_era_id(era)
-            .expect("should not error reading db")
             .and_then(|block| BlockV2::try_from(block).ok())
             .unwrap_or_else(|| panic!("node 0 should have a switch block V2 for {}", era))
     }
@@ -355,6 +361,12 @@ impl TestFixture {
         let mut cfg = Config {
             network: network_cfg,
             gossip: gossiper::Config::new_with_small_timeouts(),
+            binary_port_server: crate::BinaryPortConfig {
+                allow_request_get_all_values: true,
+                allow_request_get_trie: true,
+                allow_request_speculative_exec: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -455,7 +467,7 @@ impl TestFixture {
                     runner
                         .main_reactor()
                         .storage()
-                        .read_highest_complete_block()
+                        .get_highest_complete_block()
                         .expect("should not error reading db")
                         .map(|block| block.height())
                         == Some(block_height)
@@ -599,14 +611,13 @@ impl TestFixture {
             .main_reactor()
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .data_provider()
+            .data_access_layer()
             .bids(bids_request);
 
         if let BidsResult::Success { bids } = bids_result {
@@ -649,7 +660,6 @@ impl TestFixture {
         let highest_block = reactor
             .storage
             .read_highest_block()
-            .expect("should not have have storage error")
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
@@ -657,8 +667,7 @@ impl TestFixture {
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
-            .engine_state()
-            .get_state()
+            .data_access_layer()
             .checkout(*highest_block.state_root_hash())
             .expect("should checkout")
             .expect("should have view")
@@ -767,7 +776,7 @@ impl TestFixture {
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
-        // saturate the network with the deploy via just making them all store and accept it
+        // saturate the network with the transactions via just making them all store and accept it
         // they're all validators so one of them should propose it
         for runner in self.network.runners_mut() {
             runner
@@ -792,7 +801,7 @@ impl TestFixture {
     ///
     /// Panics if there is no such execution result, or if it is not a `Success` variant.
     #[track_caller]
-    fn successful_execution_transforms(&self, txn_hash: &TransactionHash) -> Vec<Transform> {
+    fn successful_execution_transforms(&self, txn_hash: &TransactionHash) -> Vec<TransformV2> {
         let node_0 = self
             .node_contexts
             .first()
@@ -823,6 +832,18 @@ impl TestFixture {
                 );
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
     }
 }
 
@@ -871,9 +892,7 @@ impl SwitchBlocks {
         for era_number in 0..era_count {
             let mut header_iter = nodes.values().map(|runner| {
                 let storage = runner.main_reactor().storage();
-                let maybe_block = storage
-                    .read_switch_block_by_era_id(EraId::from(era_number))
-                    .expect("failed to get switch block by era id");
+                let maybe_block = storage.read_switch_block_by_era_id(EraId::from(era_number));
                 maybe_block.expect("missing switch block").take_header()
             });
             let header = header_iter.next().unwrap();
@@ -912,8 +931,8 @@ impl SwitchBlocks {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = BidsRequest::new(state_root_hash);
-            let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            if let BidsResult::Success { bids } = engine_state.get_bids(request) {
+            let data_provider = runner.main_reactor().contract_runtime().data_access_layer();
+            if let BidsResult::Success { bids } = data_provider.bids(request) {
                 return bids;
             }
         }
@@ -1335,10 +1354,9 @@ async fn dont_upgrade_without_switch_block() {
         let header = runner
             .main_reactor()
             .storage()
-            .read_block_by_height(2)
+            .read_block_header_by_height(2, false)
             .expect("failed to read from storage")
-            .expect("missing switch block")
-            .take_header();
+            .expect("missing switch block");
         assert_eq!(ERA_ONE, header.era_id(), "era should be 1");
         assert!(header.is_switch_block(), "header should be switch block");
     }
@@ -1359,47 +1377,46 @@ async fn should_store_finalized_approvals() {
     // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-    // Submit a deploy.
-    let mut deploy_alice_bob = Transaction::from(
+    // Submit a transaction.
+    let mut transaction_alice_bob = Transaction::from(
         Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng),
     );
-    let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
-    let mut deploy_bob_alice = deploy_alice_bob.clone();
+    let mut transaction_alice_bob_charlie = transaction_alice_bob.clone();
+    let mut transaction_bob_alice = transaction_alice_bob.clone();
 
-    deploy_alice_bob.sign(&alice_secret_key);
-    deploy_alice_bob.sign(&bob_secret_key);
+    transaction_alice_bob.sign(&alice_secret_key);
+    transaction_alice_bob.sign(&bob_secret_key);
 
-    deploy_alice_bob_charlie.sign(&alice_secret_key);
-    deploy_alice_bob_charlie.sign(&bob_secret_key);
-    deploy_alice_bob_charlie.sign(&charlie_secret_key);
+    transaction_alice_bob_charlie.sign(&alice_secret_key);
+    transaction_alice_bob_charlie.sign(&bob_secret_key);
+    transaction_alice_bob_charlie.sign(&charlie_secret_key);
 
-    deploy_bob_alice.sign(&bob_secret_key);
-    deploy_bob_alice.sign(&alice_secret_key);
+    transaction_bob_alice.sign(&bob_secret_key);
+    transaction_bob_alice.sign(&alice_secret_key);
 
-    // We will be testing the correct sequence of approvals against the deploy signed by Bob and
-    // Alice.
-    // The deploy signed by Alice and Bob should give the same ordering of approvals.
-    let expected_approvals: Vec<_> = deploy_bob_alice.approvals().iter().cloned().collect();
+    // We will be testing the correct sequence of approvals against the transaction signed by Bob
+    // and Alice.
+    // The transaction signed by Alice and Bob should give the same ordering of approvals.
+    let expected_approvals: Vec<_> = transaction_bob_alice.approvals().iter().cloned().collect();
 
-    // We'll give the deploy signed by Alice, Bob and Charlie to Bob, so these will be his original
-    // approvals. Save these for checks later.
-    let bobs_original_approvals: Vec<_> = deploy_alice_bob_charlie
+    // We'll give the transaction signed by Alice, Bob and Charlie to Bob, so these will be his
+    // original approvals. Save these for checks later.
+    let bobs_original_approvals: Vec<_> = transaction_alice_bob_charlie
         .approvals()
         .iter()
         .cloned()
         .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    //    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
-    let deploy_hash = deploy_alice_bob.hash();
+    let transaction_hash = transaction_alice_bob.hash();
 
     for runner in fixture.network.runners_mut() {
         let transaction = if runner.main_reactor().consensus().public_key() == &alice_public_key {
-            // Alice will propose the deploy signed by Alice and Bob.
-            deploy_alice_bob.clone()
+            // Alice will propose the transaction signed by Alice and Bob.
+            transaction_alice_bob.clone()
         } else {
-            // Bob will receive the deploy signed by Alice, Bob and Charlie.
-            deploy_alice_bob_charlie.clone()
+            // Bob will receive the transaction signed by Alice, Bob and Charlie.
+            transaction_alice_bob_charlie.clone()
         };
         runner
             .process_injected_effects(|effect_builder| {
@@ -1417,13 +1434,13 @@ async fn should_store_finalized_approvals() {
             .await;
     }
 
-    // Run until the deploy gets executed.
+    // Run until the transaction gets executed.
     let has_stored_exec_results = |nodes: &Nodes| {
         nodes.values().all(|runner| {
             runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&deploy_hash)
+                .read_execution_result(&transaction_hash)
                 .is_some()
         })
     };
@@ -1434,14 +1451,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_transaction_with_finalized_approvals_by_hash(&deploy_hash);
+            .get_transaction_with_finalized_approvals_by_hash(&transaction_hash);
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
-            .and_then(|dwa| dwa.finalized_approvals())
-            .map(|fa| fa.inner().iter().cloned().collect());
+            .and_then(|dwa| dwa.1.clone())
+            .map(|fa| fa.iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
-            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
+            .map(|(transaction, _approvals)| transaction.approvals().iter().cloned().collect());
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(
@@ -1463,7 +1480,7 @@ async fn should_store_finalized_approvals() {
 }
 
 // This test exercises a scenario in which a proposed block contains invalid accusations.
-// Blocks containing no deploys or transfers used to be incorrectly marked as not needing
+// Blocks containing no transactions or transfers used to be incorrectly marked as not needing
 // validation even if they contained accusations, which opened up a security hole through which a
 // malicious validator could accuse whomever they wanted of equivocating and have these
 // accusations accepted by the other validators. This has been patched and the test asserts that
@@ -1507,10 +1524,7 @@ async fn empty_block_validation_regression() {
                     NewBlockPayload {
                         era_id,
                         block_payload: Arc::new(BlockPayload::new(
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
+                            BTreeMap::new(),
                             everyone_else.clone(),
                             Default::default(),
                             false,
@@ -1563,7 +1577,7 @@ async fn network_should_recover_from_stall() {
 
     // Expect node 0 can't produce more blocks, i.e. the network has stalled.
     fixture
-        .try_run_until_block_height(3, TEN_SECS)
+        .try_run_until_block_height(3, ONE_MIN)
         .await
         .expect_err("should time out");
 
@@ -1622,7 +1636,7 @@ async fn run_withdraw_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for bid");
@@ -1688,7 +1702,7 @@ async fn run_undelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
                 Key::from(bid_kind.bid_addr()) == bid_key
             }
             _ => false,
@@ -1723,7 +1737,7 @@ async fn run_undelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for undelegated bid");
@@ -1803,7 +1817,7 @@ async fn run_redelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+            TransformKindV2::Write(StoredValue::BidKind(bid_kind)) => {
                 Key::from(bid_kind.bid_addr()) == bid_key
             }
             _ => false,
@@ -1840,7 +1854,7 @@ async fn run_redelegate_bid_network() {
         .successful_execution_transforms(&txn_hash)
         .iter()
         .find(|transform| match transform.kind() {
-            TransformKind::Prune(prune_key) => prune_key == &bid_key,
+            TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
             _ => false,
         })
         .expect("should have a prune record for undelegated bid");
@@ -1894,9 +1908,9 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 30000; //milliseconds
-const MIN_HEIGHT: u64 = 10;
-const BLOCK_TIME: u64 = 3000; //milliseconds
+const ERA_DURATION: u64 = 20000; //milliseconds
+const MIN_HEIGHT: u64 = 6;
+const BLOCK_TIME: u64 = 2000; //milliseconds
 const TIME_OUT: u64 = 600; //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
@@ -1976,18 +1990,10 @@ async fn run_rewards_network_scenario(
             representative_storage
                 .read_block_by_height(i)
                 .expect("block not found")
-                .unwrap()
         })
         .collect();
 
-    // Recover history of total supply
-    let mint_hash: AddressableEntityHash = {
-        let any_state_hash = *switch_blocks.headers[0].state_root_hash();
-        representative_runtime
-            .engine_state()
-            .get_system_mint_hash(any_state_hash)
-            .expect("mint contract hash not found")
-    };
+    let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
 
     // Get total supply history
     let total_supply: Vec<U512> = (0..highest_completed_height + 1)
@@ -1997,31 +2003,16 @@ async fn run_rewards_network_scenario(
                 .expect("failure to read block header")
                 .unwrap()
                 .state_root_hash();
+            let total_supply_req = TotalSupplyRequest::new(state_hash, protocol_version);
+            let result = representative_runtime
+                .data_access_layer()
+                .total_supply(total_supply_req);
 
-            let request = QueryRequest::new(
-                state_hash,
-                Key::AddressableEntity(EntityAddr::System(mint_hash.value())),
-                vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
-            );
-
-            let result = representative_runtime.engine_state().run_query(request);
-
-            match result {
-                Success { value, proofs: _ } => value
-                    .as_cl_value()
-                    .expect("failure to recover total supply as CL value")
-                    .clone()
-                    .into_t::<U512>()
-                    .map_err(TrackingCopyError::CLValue),
-                ValueNotFound(_) => Err(TrackingCopyError::NamedKeyNotFound(
-                    mint::TOTAL_SUPPLY_KEY.to_owned(),
-                )),
-                RootNotFound => Err(TrackingCopyError::Storage(
-                    casper_storage::global_state::error::Error::RootNotFound,
-                )),
-                Failure(e) => Err(e),
+            if let TotalSupplyResult::Success { total_supply } = result {
+                total_supply
+            } else {
+                panic!("expected success, not: {:?}", result);
             }
-            .expect("failure to recover total supply")
         })
         .collect();
 
@@ -2053,7 +2044,7 @@ async fn run_rewards_network_scenario(
                 return (i, BTreeMap::new());
             }
             let mut recomputed_era_rewards = BTreeMap::new();
-            if !(switch_block.is_genesis()) {
+            if !switch_block.is_genesis() {
                 let supply_carryover = recomputed_total_supply
                     .get(&(i - 1))
                     .copied()
@@ -2241,7 +2232,7 @@ async fn run_rewards_network_scenario(
                     .expect("expected recalculated supply")),
                 "total supply does not match at height {}",
                 header.height()
-            )
+            );
         }
     });
 

@@ -1,6 +1,6 @@
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, AddressableEntityHash, Key,
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex, crypto, AddressableEntityHash, Key,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -114,6 +114,8 @@ const MESSAGE_PAYLOAD_TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 /// Tag for a message payload that contains a human readable string.
 pub const MESSAGE_PAYLOAD_STRING_TAG: u8 = 0;
+/// Tag for a message payload that contains raw bytes.
+pub const MESSAGE_PAYLOAD_BYTES_TAG: u8 = 1;
 
 /// The payload of the message emitted by an addressable entity during execution.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
@@ -122,6 +124,8 @@ pub const MESSAGE_PAYLOAD_STRING_TAG: u8 = 0;
 pub enum MessagePayload {
     /// Human readable string message.
     String(String),
+    /// Message represented as raw bytes.
+    Bytes(Bytes),
 }
 
 impl<T> From<T> for MessagePayload
@@ -133,6 +137,12 @@ where
     }
 }
 
+impl From<Bytes> for MessagePayload {
+    fn from(bytes: Bytes) -> Self {
+        Self::Bytes(bytes)
+    }
+}
+
 impl ToBytes for MessagePayload {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -140,6 +150,10 @@ impl ToBytes for MessagePayload {
             MessagePayload::String(message_string) => {
                 buffer.insert(0, MESSAGE_PAYLOAD_STRING_TAG);
                 buffer.extend(message_string.to_bytes()?);
+            }
+            MessagePayload::Bytes(message_bytes) => {
+                buffer.insert(0, MESSAGE_PAYLOAD_BYTES_TAG);
+                buffer.extend(message_bytes.to_bytes()?);
             }
         }
         Ok(buffer)
@@ -149,6 +163,7 @@ impl ToBytes for MessagePayload {
         MESSAGE_PAYLOAD_TAG_LENGTH
             + match self {
                 MessagePayload::String(message_string) => message_string.serialized_length(),
+                MessagePayload::Bytes(message_bytes) => message_bytes.serialized_length(),
             }
     }
 }
@@ -160,6 +175,10 @@ impl FromBytes for MessagePayload {
             MESSAGE_PAYLOAD_STRING_TAG => {
                 let (message, remainder): (String, _) = FromBytes::from_bytes(remainder)?;
                 Ok((Self::String(message), remainder))
+            }
+            MESSAGE_PAYLOAD_BYTES_TAG => {
+                let (message_bytes, remainder): (Bytes, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::Bytes(message_bytes), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -180,7 +199,9 @@ pub struct Message {
     /// The hash of the name of the topic.
     topic_name_hash: TopicNameHash,
     /// Message index in the topic.
-    index: u32,
+    topic_index: u32,
+    /// Message index in the block.
+    block_index: u64,
 }
 
 impl Message {
@@ -190,14 +211,16 @@ impl Message {
         message: MessagePayload,
         topic_name: String,
         topic_name_hash: TopicNameHash,
-        index: u32,
+        topic_index: u32,
+        block_index: u64,
     ) -> Self {
         Self {
             entity_addr: source,
             message,
             topic_name,
             topic_name_hash,
-            index,
+            topic_index,
+            block_index,
         }
     }
 
@@ -222,14 +245,19 @@ impl Message {
     }
 
     /// Returns the index of the message in the topic.
-    pub fn index(&self) -> u32 {
-        self.index
+    pub fn topic_index(&self) -> u32 {
+        self.topic_index
+    }
+
+    /// Returns the index of the message relative to other messages emitted in the block.
+    pub fn block_index(&self) -> u64 {
+        self.block_index
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the checksum record for the message in global state.
     pub fn message_key(&self) -> Key {
-        Key::message(self.entity_addr, self.topic_name_hash, self.index)
+        Key::message(self.entity_addr, self.topic_name_hash, self.topic_index)
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
@@ -237,6 +265,14 @@ impl Message {
     /// state.
     pub fn topic_key(&self) -> Key {
         Key::message_topic(self.entity_addr, self.topic_name_hash)
+    }
+
+    /// Returns the checksum of the message.
+    pub fn checksum(&self) -> Result<MessageChecksum, bytesrepr::Error> {
+        let input = (&self.block_index, &self.message).to_bytes()?;
+        let checksum = crypto::blake2b(input);
+
+        Ok(MessageChecksum(checksum))
     }
 }
 
@@ -247,7 +283,8 @@ impl ToBytes for Message {
         buffer.append(&mut self.message.to_bytes()?);
         buffer.append(&mut self.topic_name.to_bytes()?);
         buffer.append(&mut self.topic_name_hash.to_bytes()?);
-        buffer.append(&mut self.index.to_bytes()?);
+        buffer.append(&mut self.topic_index.to_bytes()?);
+        buffer.append(&mut self.block_index.to_bytes()?);
         Ok(buffer)
     }
 
@@ -256,7 +293,8 @@ impl ToBytes for Message {
             + self.message.serialized_length()
             + self.topic_name.serialized_length()
             + self.topic_name_hash.serialized_length()
-            + self.index.serialized_length()
+            + self.topic_index.serialized_length()
+            + self.block_index.serialized_length()
     }
 }
 
@@ -266,14 +304,16 @@ impl FromBytes for Message {
         let (message, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name_hash, rem) = FromBytes::from_bytes(rem)?;
-        let (index, rem) = FromBytes::from_bytes(rem)?;
+        let (topic_index, rem) = FromBytes::from_bytes(rem)?;
+        let (block_index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
                 entity_addr,
                 message,
                 topic_name,
                 topic_name_hash,
-                index,
+                topic_index,
+                block_index,
             },
             rem,
         ))
@@ -292,7 +332,8 @@ impl Distribution<Message> for Standard {
             message,
             topic_name,
             topic_name_hash,
-            index: rng.gen(),
+            topic_index: rng.gen(),
+            block_index: rng.gen(),
         }
     }
 }
@@ -308,7 +349,10 @@ mod tests {
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload = "message payload".into();
+        let message_payload: MessagePayload = "message payload".into();
+        bytesrepr::test_serialization_roundtrip(&message_payload);
+
+        let message_payload = MessagePayload::Bytes(vec![5u8; 128].into());
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(
@@ -317,7 +361,21 @@ mod tests {
             "test_topic".to_string(),
             TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
             10,
+            111,
         );
         bytesrepr::test_serialization_roundtrip(&message);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let message_payload: MessagePayload = "message payload".into();
+        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
+        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, message_payload);
+
+        let message_payload = MessagePayload::Bytes(vec![255u8; 32].into());
+        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
+        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, message_payload);
     }
 }

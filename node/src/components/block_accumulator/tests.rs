@@ -1697,8 +1697,7 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_1.hash())
-            .unwrap()
+            .read_block_by_hash(*block_1.hash())
             .unwrap();
         assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
@@ -1749,8 +1748,7 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_2.hash())
-            .unwrap()
+            .read_block_by_hash(*block_2.hash())
             .unwrap();
         assert_eq!(expected_block, block_2.clone().into());
         let expected_block_signatures = runner
@@ -1817,7 +1815,7 @@ async fn block_accumulator_reactor_flow() {
         assert!(runner
             .reactor()
             .storage
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .unwrap()
             .is_none());
     }
@@ -1887,7 +1885,7 @@ async fn block_accumulator_reactor_flow() {
             runner
                 .reactor()
                 .storage
-                .read_highest_complete_block()
+                .get_highest_complete_block()
                 .unwrap()
                 .unwrap()
                 .height(),
@@ -2109,8 +2107,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_1.hash())
-            .unwrap()
+            .read_block_by_hash(*block_1.hash())
             .unwrap();
         assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
@@ -2174,7 +2171,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_highest_complete_block()
+            .get_highest_complete_block()
             .unwrap()
             .unwrap();
         assert_eq!(expected_block.height(), block_1.height());

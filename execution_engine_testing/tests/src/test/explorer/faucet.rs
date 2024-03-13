@@ -1,6 +1,6 @@
 use num_rational::Ratio;
 
-use casper_execution_engine::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution::ExecError};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -858,7 +858,7 @@ fn should_allow_funding_by_an_authorized_account() {
     assert!(
         matches!(
             error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::User(
+            engine_state::Error::Exec(ExecError::Revert(ApiError::User(
                 FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET
             )))
         ),
@@ -935,10 +935,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_331_256_210;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_508_680;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_087_900;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_374_600;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_391_014_470;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_709_800;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_292_600;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_739_260;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);

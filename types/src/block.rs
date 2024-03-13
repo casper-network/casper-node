@@ -1,7 +1,11 @@
+mod available_block_range;
 mod block_body;
 mod block_hash;
+mod block_hash_and_height;
 mod block_header;
+mod block_identifier;
 mod block_signatures;
+mod block_sync_status;
 mod block_v1;
 mod block_v2;
 mod chain_name_digest;
@@ -11,6 +15,7 @@ mod finality_signature_id;
 mod json_compatibility;
 mod rewarded_signatures;
 mod rewards;
+mod signed_block;
 mod signed_block_header;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 mod test_block_builder;
@@ -33,12 +38,16 @@ use crate::{
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
+pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
 pub use block_hash::BlockHash;
+pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
+pub use block_identifier::{BlockIdentifier, ParseBlockIdentifierError};
 pub use block_signatures::{
     BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2,
 };
+pub use block_sync_status::{BlockSyncStatus, BlockSynchronizerStatus};
 pub use block_v1::BlockV1;
 pub use block_v2::BlockV2;
 pub use chain_name_digest::ChainNameDigest;
@@ -49,6 +58,7 @@ pub use finality_signature_id::FinalitySignatureId;
 pub use json_compatibility::JsonBlockWithSignatures;
 pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures};
 pub use rewards::Rewards;
+pub use signed_block::SignedBlock;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use test_block_builder::{TestBlockBuilder, TestBlockV1Builder};
@@ -290,6 +300,14 @@ impl Block {
         match self {
             Block::V1(v1) => BlockBody::V1(v1.body().clone()),
             Block::V2(v2) => BlockBody::V2(v2.body().clone()),
+        }
+    }
+
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBody {
+        match self {
+            Block::V1(v1) => BlockBody::V1(v1.take_body()),
+            Block::V2(v2) => BlockBody::V2(v2.take_body()),
         }
     }
 

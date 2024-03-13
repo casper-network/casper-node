@@ -18,15 +18,15 @@ use casper_types::{
 };
 
 use super::Runtime;
-use crate::execution;
+use crate::execution::ExecError;
 
-impl From<execution::Error> for Option<Error> {
-    fn from(exec_error: execution::Error) -> Self {
+impl From<ExecError> for Option<Error> {
+    fn from(exec_error: ExecError) -> Self {
         match exec_error {
-            // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Mint`]
+            // This is used to propagate [`ExecError::GasLimit`] to make sure [`Mint`]
             // contract running natively supports propagating gas limit errors without a panic.
-            execution::Error::GasLimit => Some(Error::GasLimit),
-            execution::Error::ForgedReference(_) => Some(Error::ForgedReference),
+            ExecError::GasLimit => Some(Error::GasLimit),
+            ExecError::ForgedReference(_) => Some(Error::ForgedReference),
             // There are possibly other exec errors happening but such translation would be lossy.
             _ => None,
         }

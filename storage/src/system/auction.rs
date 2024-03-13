@@ -1,4 +1,4 @@
-pub mod bidding;
+mod auction_native;
 pub mod detail;
 pub mod providers;
 
@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::system::auction::detail::{
     process_with_vesting_schedule, read_delegator_bid, read_delegator_bids, read_validator_bid,
@@ -206,7 +206,7 @@ pub trait Auction:
         delegator_public_key: PublicKey,
         validator_public_key: PublicKey,
         amount: U512,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
@@ -459,7 +459,7 @@ pub trait Auction:
         &mut self,
         era_end_timestamp_millis: u64,
         evicted_validators: Vec<PublicKey>,
-        max_delegators_per_validator: Option<u32>,
+        max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
     ) -> Result<(), ApiError> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
@@ -591,6 +591,7 @@ pub trait Auction:
     // totals of per-block rewards
     fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to auction distribute");
             return Err(Error::InvalidCaller);
         }
 

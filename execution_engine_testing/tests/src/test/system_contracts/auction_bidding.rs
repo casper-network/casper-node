@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 
 use casper_types::{
     account::AccountHash,
@@ -235,7 +235,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     assert!(
         matches!(
             error,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
         if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
@@ -290,7 +290,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     assert!(
         matches!(
             exec_result,
-            EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
+            EngineError::Exec(ExecError::Revert(ApiError::Mint(mint_error))
         )
         if *mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
@@ -575,7 +575,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
+    builder.upgrade(&mut upgrade_request);
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

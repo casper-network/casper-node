@@ -36,7 +36,7 @@ pub extern "C" fn call() {
     named_keys.insert("n-urefs".to_string(), Key::URef(storage::new_uref(n)));
 
     let (contract_hash, _contract_version) =
-        storage::new_locked_contract(entry_points, Some(named_keys), None, None);
+        storage::new_locked_contract(entry_points, Some(named_keys), None, None, None);
     runtime::put_key(
         "ordered-transforms-contract-hash",
         Key::contract_entity_key(contract_hash),

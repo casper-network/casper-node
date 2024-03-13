@@ -96,11 +96,11 @@ mod full_tries {
 
 #[cfg(debug_assertions)]
 mod keys_iterator {
-    use casper_types::{bytesrepr, Digest};
+    use casper_types::{bytesrepr, global_state::Pointer, Digest};
 
     use crate::global_state::{
         transaction_source::TransactionSource,
-        trie::{Pointer, Trie},
+        trie::Trie,
         trie_store::operations::{
             self,
             tests::{

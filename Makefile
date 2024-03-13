@@ -16,7 +16,8 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 # Rust Contracts
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-RUSTC_FLAGS      = "--remap-path-prefix=$$HOME=/home --remap-path-prefix=$$PWD=/dir"
+CARGO_HOME_REMAP = $(if $(CARGO_HOME),$(CARGO_HOME),$(HOME)/.cargo)
+RUSTC_FLAGS      = "--remap-path-prefix=$(CARGO_HOME_REMAP)=/home/cargo --remap-path-prefix=$$PWD=/dir"
 
 # AssemblyScript Contracts
 CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client     -mindepth 1 -maxdepth 1 -type d)
@@ -141,7 +142,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003
+	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003 --ignore RUSTSEC-2024-0019
 
 .PHONY: audit-as
 audit-as:

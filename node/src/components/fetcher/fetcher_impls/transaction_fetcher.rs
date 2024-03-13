@@ -11,7 +11,7 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{FinalizedApprovals, NodeId},
+    types::NodeId,
 };
 
 impl FetchItem for Transaction {
@@ -72,7 +72,7 @@ impl ItemFetcher<Transaction> for Fetcher<Transaction> {
                 // We can treat the incoming approvals as finalized and now try and store them.
                 if !is_new {
                     effect_builder
-                        .store_finalized_approvals(item.hash(), FinalizedApprovals::new(&item))
+                        .store_finalized_approvals(item.hash(), item.approvals())
                         .await;
                 }
             }

@@ -43,7 +43,8 @@ function _setup_asset_binaries()
     local PATH_TO_CLIENT=${3}
     local PATH_TO_NODE=${4}
     local PATH_TO_NODE_LAUNCHER=${5}
-    local PATH_TO_WASM=${6}
+    local PATH_TO_SIDECAR=${6}
+    local PATH_TO_WASM=${7}
 
     local PATH_TO_BIN
     local CONTRACT
@@ -54,6 +55,10 @@ function _setup_asset_binaries()
         cp "$PATH_TO_NODE_LAUNCHER" "$PATH_TO_BIN"
     fi
     cp "$PATH_TO_NODE" "$PATH_TO_BIN/$PROTOCOL_VERSION"
+
+    if [ -f "$PATH_TO_SIDECAR" ]; then
+        cp "$PATH_TO_SIDECAR" "$PATH_TO_BIN/$PROTOCOL_VERSION"
+    fi
 
     # Set client-side binary.
     PATH_TO_BIN="$(get_path_to_net)/bin"
@@ -160,11 +165,13 @@ function _setup_asset_node_configs()
     local NODE_ID=${1}
     local PROTOCOL_VERSION=${2}
     local PATH_TO_TEMPLATE=${3}
-    local IS_GENESIS=${4}
+    local PATH_TO_SIDECAR_TEMPLATE=${4}
+    local IS_GENESIS=${5}
 
     local PATH_TO_NET
     local PATH_TO_CONFIG
     local PATH_TO_CONFIG_FILE
+    local PATH_TO_SIDECAR_CONFIG_FILE
     local SPECULATIVE_EXEC_ADDR
     local SCRIPT
 
@@ -173,6 +180,7 @@ function _setup_asset_node_configs()
     # Set paths to node's config.
     PATH_TO_CONFIG="$(get_path_to_node "$NODE_ID")/config/$PROTOCOL_VERSION"
     PATH_TO_CONFIG_FILE="$PATH_TO_CONFIG/config.toml"
+    PATH_TO_SIDECAR_CONFIG_FILE="$PATH_TO_CONFIG/sidecar.toml"
 
     # Set node configuration.
     if [ "$IS_GENESIS" == true ]; then
@@ -193,19 +201,26 @@ function _setup_asset_node_configs()
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
         "cfg['storage']['path']='../../storage';"
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
-        "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+        "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$NODE_ID")';"
         "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
     )
-
-    if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
-        SCRIPT+=(
-            "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
-        )
-    fi
 
     SCRIPT+=(
         "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
     )
+
+    if [ -f "$PATH_TO_SIDECAR_TEMPLATE" ]; then
+        # Prepare the sidecar config file.
+        cp "$PATH_TO_SIDECAR_TEMPLATE" "$PATH_TO_SIDECAR_CONFIG_FILE"
+
+            SCRIPT+=(
+            "cfg=toml.load('$PATH_TO_SIDECAR_CONFIG_FILE');"
+            "cfg['rpc_server']['main_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+            "cfg['rpc_server']['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
+            "cfg['rpc_server']['node_client']['address']='0.0.0.0:$(get_node_port_binary "$NODE_ID")';"
+            "toml.dump(cfg, open('$PATH_TO_SIDECAR_CONFIG_FILE', 'w'));"
+        )
+    fi
 
     python3 -c "${SCRIPT[*]}"
 
@@ -347,6 +362,7 @@ function _main()
     local NODE_ID=${4}
     local CHAINSPEC_PATH=${5}
     local CONFIG_PATH=${6}
+    local SIDECAR_CONFIG_PATH=${7}
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
 
@@ -361,6 +377,10 @@ function _main()
         CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
     fi
 
+    if [ -z "$SIDECAR_CONFIG_PATH" ]; then
+        SIDECAR_CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/sidecar.toml"
+    fi
+
     if [ "$PROTOCOL_VERSION" != "" ]; then
         if [ "$VERBOSE" == true ]; then
             log "stage $STAGE_ID :: upgrade assets -> $PROTOCOL_VERSION @ era $ACTIVATION_POINT"
@@ -372,6 +392,7 @@ function _main()
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-sidecar" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
         _setup_asset_chainspec "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
@@ -380,6 +401,7 @@ function _main()
         _setup_asset_node_configs "$NODE_ID" \
                                  "$PROTOCOL_VERSION" \
                                  "$CONFIG_PATH" \
+                                 "$SIDECAR_CONFIG_PATH" \
                                  false
         if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "140" ]; then
             _setup_asset_global_state_toml "$NODE_ID" \
@@ -402,6 +424,7 @@ unset VERBOSE
 unset NODE_ID
 unset CHAINSPEC_PATH
 unset CONFIG_PATH
+unset SIDECAR_CONFIG_PATH
 
 for ARGUMENT in "$@"
 do
@@ -415,6 +438,7 @@ do
         node) NODE_ID=${VALUE} ;;
         chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
         config_path) CONFIG_PATH=${VALUE} ;;
+        sidecar_config_path) SIDECAR_CONFIG_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -432,4 +456,5 @@ _main "${STAGE_ID:-1}" \
       "${VERBOSE:-true}" \
       "${NODE_ID}" \
       "${CHAINSPEC_PATH}" \
-      "${CONFIG_PATH}"
+      "${CONFIG_PATH}" \
+      "${SIDECAR_CONFIG_PATH}"

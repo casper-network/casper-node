@@ -31,7 +31,7 @@ where
 }
 
 /// Configuration values associated with accounts.toml
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]

@@ -1,17 +1,18 @@
 //! Outcome of an `ExecutionRequest`.
 
 use std::collections::VecDeque;
+use tracing::{debug, trace};
 
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     bytesrepr::FromBytes,
     contract_messages::Messages,
-    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
+    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, TransformKindV2, TransformV2},
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
 use super::Error;
-use crate::execution::Error as ExecError;
+use crate::execution::ExecError;
 
 /// Represents the result of an execution specified by
 /// [`crate::engine_state::ExecuteRequest`].
@@ -41,19 +42,6 @@ pub enum ExecutionResult {
         /// Messages emitted during execution.
         messages: Messages,
     },
-}
-
-/// A type alias that represents multiple execution results.
-pub type ExecutionResults = VecDeque<ExecutionResult>;
-
-/// Indicates the outcome of a transfer payment check.
-pub enum ForcedTransferResult {
-    /// Payment code ran out of gas during execution
-    InsufficientPayment,
-    /// Gas conversion overflow
-    GasConversionOverflow,
-    /// Payment code execution resulted in an error
-    PaymentFailure,
 }
 
 impl ExecutionResult {
@@ -303,13 +291,13 @@ impl ExecutionResult {
         let new_balance_value =
             StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
         let mut effects = Effects::new();
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             account_main_purse_balance_key.normalize(),
-            TransformKind::Write(new_balance_value),
+            TransformKindV2::Write(new_balance_value),
         ));
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             proposer_main_purse_balance_key.normalize(),
-            TransformKind::AddUInt512(max_payment_cost.value()),
+            TransformKindV2::AddUInt512(max_payment_cost.value()),
         ));
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
@@ -361,6 +349,79 @@ impl ExecutionResult {
             }
         }
     }
+
+    /// Should charge for wasm errors?
+    pub(crate) fn should_charge_for_errors_in_wasm(&self) -> bool {
+        match self {
+            ExecutionResult::Failure {
+                error,
+                transfers: _,
+                cost: _,
+                effects: _,
+                messages: _,
+            } => match error {
+                Error::Exec(err) => matches!(
+                    err,
+                    ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart
+                ),
+                Error::WasmPreprocessing(_) | Error::WasmSerialization(_) => true,
+                _ => false,
+            },
+            ExecutionResult::Success { .. } => false,
+        }
+    }
+
+    /// Logs execution results.
+    pub fn log_execution_result(&self, preamble: &'static str) {
+        trace!("{}: {:?}", preamble, self);
+        match self {
+            ExecutionResult::Success {
+                transfers,
+                cost,
+                effects,
+                messages,
+            } => {
+                debug!(
+                    %cost,
+                    transfer_count = %transfers.len(),
+                    transforms_count = %effects.len(),
+                    messages_count = %messages.len(),
+                    "{}: execution success",
+                    preamble
+                );
+            }
+            ExecutionResult::Failure {
+                error,
+                transfers,
+                cost,
+                effects,
+                messages,
+            } => {
+                debug!(
+                    %error,
+                    %cost,
+                    transfer_count = %transfers.len(),
+                    transforms_count = %effects.len(),
+                    messages_count = %messages.len(),
+                    "{}: execution failure",
+                    preamble
+                );
+            }
+        }
+    }
+}
+
+/// A type alias that represents multiple execution results.
+pub type ExecutionResults = VecDeque<ExecutionResult>;
+
+/// Indicates the outcome of a transfer payment check.
+pub enum ForcedTransferResult {
+    /// Payment code ran out of gas during execution
+    InsufficientPayment,
+    /// Gas conversion overflow
+    GasConversionOverflow,
+    /// Payment code execution resulted in an error
+    PaymentFailure,
 }
 
 /// A versioned execution result and the messages produced by that execution.

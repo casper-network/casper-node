@@ -11,7 +11,7 @@ use alloc::{
 
 use proptest::{
     array, bits, bool,
-    collection::{self, SizeRange},
+    collection::{self, vec, SizeRange},
     option,
     prelude::*,
     result,
@@ -22,6 +22,7 @@ use crate::{
     addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     crypto::{self, gens::public_key_arb_no_system},
+    global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
@@ -29,9 +30,9 @@ use crate::{
     },
     transfer::TransferAddr,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256,
-    U512,
+    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
+    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
+    U256, U512,
 };
 
 use crate::{
@@ -743,4 +744,49 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Message(_) => stored_value,
             StoredValue::NamedKey(_) => stored_value,
         })
+}
+
+pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+    vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
+}
+
+pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
+    prop_oneof![
+        blake2b_hash_arb().prop_map(Pointer::LeafPointer),
+        blake2b_hash_arb().prop_map(Pointer::NodePointer)
+    ]
+}
+
+pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep> {
+    const POINTERS_SIZE: usize = 32;
+    const AFFIX_SIZE: usize = 6;
+
+    prop_oneof![
+        (
+            <u8>::arbitrary(),
+            vec((<u8>::arbitrary(), trie_pointer_arb()), POINTERS_SIZE)
+        )
+            .prop_map(|(hole_index, indexed_pointers_with_hole)| {
+                TrieMerkleProofStep::Node {
+                    hole_index,
+                    indexed_pointers_with_hole,
+                }
+            }),
+        vec(<u8>::arbitrary(), AFFIX_SIZE).prop_map(|affix| {
+            TrieMerkleProofStep::Extension {
+                affix: affix.into(),
+            }
+        })
+    ]
+}
+
+pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
+    const STEPS_SIZE: usize = 6;
+
+    (
+        key_arb(),
+        stored_value_arb(),
+        vec(trie_merkle_proof_step_arb(), STEPS_SIZE),
+    )
+        .prop_map(|(key, value, proof_steps)| TrieMerkleProof::new(key, value, proof_steps.into()))
 }

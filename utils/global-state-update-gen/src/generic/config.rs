@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{account::AccountHash, PublicKey, U512};
+use casper_types::{account::AccountHash, ProtocolVersion, PublicKey, U512};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -14,6 +14,8 @@ pub struct Config {
     pub only_listed_validators: bool,
     #[serde(default)]
     pub slash_instead_of_unbonding: bool,
+    #[serde(default)]
+    pub protocol_version: ProtocolVersion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory, U512,
 };
 
 use super::*;
@@ -21,14 +21,10 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{
-        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
-        TransactionHashWithApprovals,
-    },
+    types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
-
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -300,7 +296,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-          "amount" => U512::from(chainspec.system_costs_config.wasmless_transfer_cost()),
+          "amount" => U512::from(chainspec.system_costs_config.mint_costs().transfer),
         },
     };
 
@@ -327,17 +323,18 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     })
     .take(200)
     .collect();
-    let block_payload = BlockPayload::new(
-        txns.iter()
-            .map(TransactionHashWithApprovals::from)
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        Default::default(),
-        true,
-    );
+
+    let mut txn_set = BTreeMap::new();
+    let val = txns
+        .iter()
+        .map(|transaction| {
+            let hash = transaction.hash();
+            let approvals = transaction.approvals();
+            (hash, approvals)
+        })
+        .collect();
+    txn_set.insert(TransactionCategory::Mint, val);
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true);
     let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             block_payload,
@@ -377,19 +374,20 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .crank_until(rng, execution_completed, TEST_TIMEOUT)
         .await;
 
+    let actual = runner
+        .reactor()
+        .inner()
+        .contract_runtime
+        .execution_pre_state
+        .lock()
+        .unwrap()
+        .next_block_height();
+
+    let expected = next_block_height;
+
     // Check that the next block height expected by the contract runtime is `next_block_height` and
     // not 3.
-    assert_eq!(
-        runner
-            .reactor()
-            .inner()
-            .contract_runtime
-            .execution_pre_state
-            .lock()
-            .unwrap()
-            .next_block_height(),
-        next_block_height
-    );
+    assert_eq!(actual, expected);
 }
 
 #[cfg(test)]
@@ -397,13 +395,14 @@ mod trie_chunking_tests {
     use std::sync::Arc;
 
     use casper_storage::global_state::{
-        state::StateProvider,
-        trie::{Pointer, Trie},
+        state::{CommitProvider, StateProvider},
+        trie::Trie,
     };
     use casper_types::{
         account::AccountHash,
         bytesrepr,
-        execution::{Transform, TransformKind},
+        execution::{TransformKindV2, TransformV2},
+        global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
         ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
@@ -498,16 +497,17 @@ mod trie_chunking_tests {
             &Registry::default(),
         )
         .unwrap();
-        let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
+        let empty_state_root = contract_runtime.data_access_layer().empty_root();
         let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
-            effects.push(Transform::new(key, TransformKind::Write(value)));
+            effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         }
-        let post_state_hash = contract_runtime
-            .engine_state()
-            .commit_effects(empty_state_root, effects)
+        let post_state_hash = &contract_runtime
+            .data_access_layer()
+            .as_ref()
+            .commit(empty_state_root, effects)
             .expect("applying effects to succeed");
-        (contract_runtime, post_state_hash)
+        (contract_runtime, *post_state_hash)
     }
 
     fn read_trie(contract_runtime: &ContractRuntime, id: TrieOrChunkId) -> TrieOrChunk {

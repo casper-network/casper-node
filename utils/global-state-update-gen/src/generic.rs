@@ -45,7 +45,8 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
 }
 
 fn get_update<T: StateReader>(reader: T, config: Config) -> Update {
-    let mut state_tracker = StateTracker::new(reader);
+    let protocol_version = config.protocol_version;
+    let mut state_tracker = StateTracker::new(reader, protocol_version);
 
     process_transfers(&mut state_tracker, &config.transfers);
 

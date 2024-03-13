@@ -38,6 +38,7 @@ EOM
 # ------------------------------------------------------------------------
 for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
 do
+    PATH_NODE=$(get_path_to_node "$NODE_ID")
     PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
@@ -59,6 +60,24 @@ stderr_logfile=$PATH_NODE_LOGS/stderr.log ;
 stderr_logfile_backups=5 ;
 stderr_logfile_maxbytes=500MB ;
 stdout_logfile=$PATH_NODE_LOGS/stdout.log ;
+stdout_logfile_backups=5 ;
+stdout_logfile_maxbytes=500MB ;
+
+[program:casper-net-$NET_ID-sidecar-$NODE_ID]
+autostart=false
+autorestart=false
+command=$NCTL/sh/rpc-sidecar/start-latest.sh node_dir=$PATH_NODE
+environment=NODE_DIR="$PATH_NODE"
+numprocs=1
+numprocs_start=0
+startsecs=0
+stopsignal=TERM
+stopwaitsecs=5
+stopasgroup=true
+stderr_logfile=$PATH_NODE_LOGS/sidecar-stderr.log ;
+stderr_logfile_backups=5 ;
+stderr_logfile_maxbytes=500MB ;
+stdout_logfile=$PATH_NODE_LOGS/sidecar-stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
 EOM

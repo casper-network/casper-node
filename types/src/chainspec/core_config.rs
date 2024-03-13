@@ -22,6 +22,12 @@ use crate::{
 
 use super::{fee_handling::FeeHandling, refund_handling::RefundHandling};
 
+/// Default value for maximum associated keys configuration option.
+pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+
+/// Default value for maximum runtime call stack height configuration option.
+pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -230,6 +236,45 @@ impl CoreConfig {
     }
 }
 
+impl Default for CoreConfig {
+    fn default() -> Self {
+        Self {
+            era_duration: TimeDiff::from_seconds(41),
+            minimum_era_height: 5,
+            minimum_block_time: TimeDiff::from_millis(4096),
+            validator_slots: 7,
+            finality_threshold_fraction: Ratio::new(1, 3),
+            start_protocol_version_with_strict_finality_signatures_required:
+                ProtocolVersion::from_parts(1, 5, 0),
+            legacy_required_finality: LegacyRequiredFinality::Weak,
+            auction_delay: 1,
+            locked_funds_period: Default::default(),
+            vesting_schedule_period: Default::default(),
+            unbonding_delay: 7,
+            round_seigniorage_rate: Ratio::new(1, 4_200_000_000_000_000_000),
+            max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
+            max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+            minimum_delegation_amount: 500_000_000_000,
+            prune_batch_size: 0,
+            strict_argument_checking: false,
+            simultaneous_peer_requests: 5,
+            consensus_protocol: ConsensusProtocolName::Zug,
+            max_delegators_per_validator: 1200,
+            finders_fee: Ratio::new(1, 5),
+            finality_signature_proportion: Ratio::new(1, 2),
+            signature_rewards_max_delay: 3,
+            allow_auction_bids: true,
+            allow_unrestricted_transfers: true,
+            compute_rewards: true,
+            administrators: Default::default(),
+            refund_handling: RefundHandling::Refund {
+                refund_ratio: Ratio::new_raw(99, 100),
+            },
+            fee_handling: FeeHandling::PayToProposer,
+        }
+    }
+}
+
 impl ToBytes for CoreConfig {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -380,6 +425,12 @@ pub enum ConsensusProtocolName {
     Zug,
 }
 
+impl Default for ConsensusProtocolName {
+    fn default() -> Self {
+        ConsensusProtocolName::Zug
+    }
+}
+
 impl Serialize for ConsensusProtocolName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -466,6 +517,12 @@ impl Serialize for LegacyRequiredFinality {
             LegacyRequiredFinality::Any => "Any",
         }
         .serialize(serializer)
+    }
+}
+
+impl Default for LegacyRequiredFinality {
+    fn default() -> Self {
+        LegacyRequiredFinality::Any
     }
 }
 

@@ -1,12 +1,18 @@
 //! Functions for accessing and mutating local and global state.
 
-use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec,
+    vec::Vec,
+};
 use core::{convert::From, mem::MaybeUninit};
 
 use casper_types::{
     addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
+    contract_messages::MessageTopicOperation,
     package::EntityVersion,
     AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, HashAddr, Key, PackageHash,
     URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
@@ -106,8 +112,16 @@ pub fn new_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
+    message_topics: Option<BTreeMap<String, MessageTopicOperation>>,
 ) -> (AddressableEntityHash, EntityVersion) {
-    create_contract(entry_points, named_keys, hash_name, uref_name, false)
+    create_contract(
+        entry_points,
+        named_keys,
+        hash_name,
+        uref_name,
+        message_topics,
+        false,
+    )
 }
 
 /// Create a locked contract stored under a Key::Hash, which can never be upgraded. This is an
@@ -123,8 +137,16 @@ pub fn new_locked_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
+    message_topics: Option<BTreeMap<String, MessageTopicOperation>>,
 ) -> (AddressableEntityHash, EntityVersion) {
-    create_contract(entry_points, named_keys, hash_name, uref_name, true)
+    create_contract(
+        entry_points,
+        named_keys,
+        hash_name,
+        uref_name,
+        message_topics,
+        true,
+    )
 }
 
 // fn foo(entry_points: EntryPoints) {
@@ -140,6 +162,7 @@ fn create_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
+    message_topics: Option<BTreeMap<String, MessageTopicOperation>>,
     is_locked: bool,
 ) -> (AddressableEntityHash, EntityVersion) {
     let (contract_package_hash, access_uref) = create_contract_package(is_locked);
@@ -157,7 +180,17 @@ fn create_contract(
         None => NamedKeys::new(),
     };
 
-    add_contract_version(contract_package_hash, entry_points, named_keys)
+    let message_topics = match message_topics {
+        Some(message_topics) => message_topics,
+        None => BTreeMap::new(),
+    };
+
+    add_contract_version(
+        contract_package_hash,
+        entry_points,
+        named_keys,
+        message_topics,
+    )
 }
 
 /// Create a new (versioned) contract stored under a Key::Hash. Initially there
@@ -293,6 +326,7 @@ pub fn add_contract_version(
     package_hash: PackageHash,
     entry_points: EntryPoints,
     named_keys: NamedKeys,
+    message_topics: BTreeMap<String, MessageTopicOperation>,
 ) -> (AddressableEntityHash, EntityVersion) {
     // Retain the underscore as Wasm transpiliation requires it.
     let (package_hash_ptr, package_hash_size, _package_hash_bytes) =
@@ -300,6 +334,8 @@ pub fn add_contract_version(
     let (entry_points_ptr, entry_points_size, _entry_point_bytes) =
         contract_api::to_ptr(entry_points);
     let (named_keys_ptr, named_keys_size, _named_keys_bytes) = contract_api::to_ptr(named_keys);
+    let (message_topics_ptr, message_topics_size, _message_topics) =
+        contract_api::to_ptr(message_topics);
 
     let mut output_ptr = vec![0u8; 32];
     // let mut total_bytes: usize = 0;
@@ -315,6 +351,8 @@ pub fn add_contract_version(
             entry_points_size,
             named_keys_ptr,
             named_keys_size,
+            message_topics_ptr,
+            message_topics_size,
             output_ptr.as_mut_ptr(),
             output_ptr.len(),
             // &mut total_bytes as *mut usize,

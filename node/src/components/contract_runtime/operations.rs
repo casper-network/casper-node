@@ -6,23 +6,32 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::engine_state::{
     self,
     execution_result::{ExecutionResultAndMessages, ExecutionResults},
-    step::EvictItem,
-    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig,
-    PruneResult, StepError, StepRequest, StepSuccess,
+    DeployItem, ExecuteRequest, ExecutionEngineV1, ExecutionResult as EngineExecutionResult,
 };
 use casper_storage::{
+    block_store::types::ApprovalsHashes,
     data_access_layer::{
-        transfer::TransferConfig, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
-        TransferRequest,
+        AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
+        FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest, TransferResult,
     },
-    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider, StateReader},
+    global_state::{
+        error::Error as GlobalStateError,
+        state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
+            StateProvider, StateReader,
+        },
+    },
+    system::runtime_native::Config as NativeRuntimeConfig,
 };
 use casper_types::{
+    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
-    ProtocolVersion, PublicKey, Transaction, U512,
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    ApprovalsHash, BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2,
+    EraId, Key, ProtocolVersion, PublicKey, Transaction, U512,
 };
 
 use crate::{
@@ -35,7 +44,7 @@ use crate::{
         fetcher::FetchItem,
     },
     contract_runtime::utils::calculate_prune_eras,
-    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 use super::ExecutionArtifact;
@@ -43,15 +52,13 @@ use super::ExecutionArtifact;
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_finalized_block(
-    engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
     data_access_layer: &DataAccessLayer<LmdbGlobalState>,
+    execution_engine_v1: &ExecutionEngineV1,
+    chainspec: &Chainspec,
     metrics: Option<Arc<Metrics>>,
-    protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
-    activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
-    prune_batch_size: u64,
     current_gas_price: u8,
     next_era_gas_price: Option<u8>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
@@ -68,15 +75,18 @@ pub fn execute_finalized_block(
         });
     }
 
+    let protocol_version = chainspec.protocol_version();
+    let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
+    let prune_batch_size = chainspec.core_config.prune_batch_size;
+    let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
+
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
-    let next_block_height = execution_pre_state.next_block_height();
 
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: Vec<ExecutionArtifact> =
+    let mut execution_artifacts: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
-    // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
     let txn_ids = executable_block
@@ -86,20 +96,66 @@ pub fn execute_finalized_block(
         .collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
+    let approvals_hashes: Vec<ApprovalsHash> =
+        txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
-    // Create a new EngineState that reads from LMDB but only caches changes in memory.
-    let scratch_state = engine_state.get_scratch_engine_state();
-    // let scratch_state = data_access_layer.get_scratch_engine_state();
+    let scratch_state = data_access_layer.get_scratch_global_state();
+    let mut effects = Effects::new();
 
-    // Pay out block rewards
-    if let Some(rewards) = &executable_block.rewards {
-        state_root_hash = scratch_state.distribute_block_rewards(
+    // Pay out fees, if relevant.
+    {
+        let fee_req = FeeRequest::new(
+            native_runtime_config.clone(),
             state_root_hash,
             protocol_version,
-            rewards,
-            next_block_height,
             block_time,
-        )?;
+        );
+        match scratch_state.distribute_fees(fee_req) {
+            FeeResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
+            FeeResult::Success {
+                //transfers: fee_transfers,
+                post_state_hash,
+                ..
+            } => {
+                //transfers.extend(fee_transfers);
+                state_root_hash = post_state_hash;
+                // TODO: looks like effects & transfer records are associated with the
+                // ExecutionResult struct which assumes they were caused by a
+                // deploy. however, systemic operations produce effects and transfer
+                // records also.
+            }
+        }
+    }
+
+    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
+    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
+    // at one point, they were going to be paid out per block (and might be in the future)
+    // but it ended up settling on per era. the behavior is driven by Some / None as sent
+    // thus if in future calling logic passes rewards per block it should just work as is.
+    if let Some(rewards) = &executable_block.rewards {
+        let rewards_req = BlockRewardsRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+            rewards.clone(),
+        );
+        match scratch_state.distribute_block_rewards(rewards_req) {
+            BlockRewardsResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            BlockRewardsResult::Failure(bre) => {
+                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+            }
+            BlockRewardsResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
+        }
     }
 
     for transaction in executable_block.transactions {
@@ -117,55 +173,115 @@ pub fn execute_finalized_block(
 
         This happens here before any engagement of the virtual machine.
         */
+        let transaction_hash = transaction.hash();
+        if transaction.is_native_mint() {
+            // native transfers are routed to the data provider
+            let authorization_keys = transaction.authorization_keys();
+            let transfer_req = TransferRequest::with_runtime_args(
+                native_runtime_config.clone(),
+                state_root_hash,
+                block_time,
+                protocol_version,
+                transaction_hash,
+                transaction.initiator_addr().account_hash(),
+                authorization_keys,
+                transaction.session_args().clone(),
+                U512::zero(), /* <-- this should be from chainspec cost table */
+            );
+            //NOTE: native mint interactions auto-commit
+            let transfer_result = scratch_state.transfer(transfer_req);
+            trace!(
+                ?transaction_hash,
+                ?transfer_result,
+                "native transfer result"
+            );
+            match transfer_result {
+                TransferResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                TransferResult::Failure(transfer_error) => {
+                    let artifact = ExecutionArtifact::new(
+                        transaction_hash,
+                        transaction.header(),
+                        ExecutionResult::V2(ExecutionResultV2::Failure {
+                            effects: Effects::new(),
+                            cost: U512::zero(),
+                            transfers: vec![],
+                            error_message: format!("{:?}", transfer_error),
+                        }),
+                        Messages::default(),
+                    );
+                    execution_artifacts.push(artifact);
+                    debug!(%transfer_error);
+                    // a failure does not auto commit
+                    continue;
+                }
+                TransferResult::Success {
+                    effects: transfer_effects,
+                    transfers,
+                    ..
+                } => {
+                    effects.append(transfer_effects.clone());
+                    let artifact = ExecutionArtifact::new(
+                        transaction_hash,
+                        transaction.header(),
+                        ExecutionResult::V2(ExecutionResultV2::Success {
+                            effects: transfer_effects,
+                            cost: U512::zero(),
+                            transfers,
+                        }),
+                        Messages::default(),
+                    );
+                    execution_artifacts.push(artifact);
+                }
+            }
+            continue;
+        }
+        if transaction.is_native_auction() {
+            let args = transaction.session_args();
+            let entry_point = transaction.entry_point();
+            let auction_method = match AuctionMethod::from_parts(entry_point, args, chainspec) {
+                Ok(auction_method) => auction_method,
+                Err(_) => {
+                    error!(%transaction_hash, "failed to resolve auction method");
+                    continue; // skip to next record
+                }
+            };
+            let authorization_keys = transaction.authorization_keys();
+            let bidding_req = BiddingRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                block_time,
+                protocol_version,
+                transaction_hash,
+                transaction.initiator_addr().account_hash(),
+                authorization_keys,
+                auction_method,
+            );
+
+            //NOTE: native mint interactions auto-commit
+            let bidding_result = scratch_state.bidding(bidding_req);
+            trace!(?transaction_hash, ?bidding_result, "native auction result");
+            match bidding_result {
+                BiddingResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                }
+                BiddingResult::Success {
+                    post_state_hash, ..
+                } => {
+                    // we need a way to capture the effects from this without double committing
+                    state_root_hash = post_state_hash;
+                }
+                BiddingResult::Failure(tce) => {
+                    debug!(%tce);
+                    continue;
+                }
+            }
+        }
+
         let (deploy_hash, deploy) = match transaction {
             Transaction::Deploy(deploy) => {
                 let deploy_hash = *deploy.hash();
-                if deploy.is_transfer() {
-                    // native transfers are routed to the data provider
-                    let authorization_keys = deploy
-                        .approvals()
-                        .iter()
-                        .map(|approval| approval.signer().to_account_hash())
-                        .collect();
-                    let transfer_req = TransferRequest::with_runtime_args(
-                        TransferConfig::Unadministered, /* TODO: check chainspec & handle
-                                                         * administered possibility */
-                        state_root_hash,
-                        block_time,
-                        protocol_version,
-                        PublicKey::clone(&executable_block.proposer),
-                        deploy_hash.into(),
-                        deploy.header().account().to_account_hash(),
-                        authorization_keys,
-                        deploy.session().args().clone(),
-                        U512::zero(), /* <-- this should be the native transfer cost from the
-                                       * chainspec */
-                    );
-                    // native transfer auto-commits
-                    let transfer_result = data_access_layer.transfer(transfer_req);
-                    trace!(?deploy_hash, ?transfer_result, "native transfer result");
-                    match EngineExecutionResult::from_transfer_result(
-                        transfer_result,
-                        Gas::new(U512::zero()),
-                    ) {
-                        Err(_) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
-                        Ok(exec_result) => {
-                            let ExecutionResultAndMessages {
-                                execution_result,
-                                messages,
-                            } = ExecutionResultAndMessages::from(exec_result);
-                            let versioned_execution_result =
-                                ExecutionResult::from(execution_result);
-                            execution_results.push(ExecutionArtifact::new(
-                                deploy_hash,
-                                deploy.header().clone(),
-                                versioned_execution_result,
-                                messages,
-                            ));
-                        }
-                    }
-                    continue;
-                }
                 (deploy_hash, deploy)
             }
             Transaction::V1(_) => continue,
@@ -180,19 +296,23 @@ pub fn execute_finalized_block(
             PublicKey::clone(&executable_block.proposer),
         );
 
-        let result = execute(&scratch_state, metrics.clone(), execute_request)?;
+        let exec_result = execute(
+            &scratch_state,
+            execution_engine_v1,
+            metrics.clone(),
+            execute_request,
+        )?;
 
-        trace!(?deploy_hash, ?result, "deploy execution result");
+        trace!(?deploy_hash, ?exec_result, "transaction execution result");
         // As for now a given state is expected to exist.
         let (state_hash, execution_result, messages) = commit_execution_results(
             &scratch_state,
-            // data_access_layer,
             metrics.clone(),
             state_root_hash,
             deploy_hash,
-            result,
+            exec_result,
         )?;
-        execution_results.push(ExecutionArtifact::new(
+        execution_artifacts.push(ExecutionArtifact::deploy(
             deploy_hash,
             deploy_header,
             execution_result,
@@ -201,26 +321,33 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    // Write the deploy approvals' and execution results' checksums to global state.
-    let execution_results_checksum = compute_execution_results_checksum(
-        execution_results
-            .iter()
-            .map(|artifact| &artifact.execution_result),
-    )?;
+    // handle checksum registry
+    let approvals_hashes = {
+        let mut checksum_registry = ChecksumRegistry::new();
 
-    let mut checksum_registry = ChecksumRegistry::new();
-    checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
-    checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    let mut effects = Effects::new();
-    effects.push(Transform::new(
-        Key::ChecksumRegistry,
-        TransformKind::Write(
-            CLValue::from_t(checksum_registry)
-                .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
-                .into(),
-        ),
-    ));
-    scratch_state.commit_effects(state_root_hash, effects)?;
+        checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+
+        // Write the deploy approvals' and execution results' checksums to global state.
+        let execution_results_checksum = compute_execution_results_checksum(
+            execution_artifacts
+                .iter()
+                .map(|artifact| &artifact.execution_result),
+        )?;
+        checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
+
+        effects.push(TransformV2::new(
+            Key::ChecksumRegistry,
+            TransformKindV2::Write(
+                CLValue::from_t(checksum_registry)
+                    .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
+                    .into(),
+            ),
+        ));
+
+        approvals_hashes
+    };
+
+    scratch_state.commit(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -231,23 +358,24 @@ pub fn execute_finalized_block(
     let maybe_step_effects_and_upcoming_era_validators = if let Some(era_report) =
         &executable_block.era_report
     {
-        let StepSuccess {
-            post_state_hash: _, // ignore the post-state-hash returned from scratch
-            effects: step_effects,
-        } = commit_step(
-            &scratch_state, // engine_state
+        let step_effects = match commit_step(
+            native_runtime_config,
+            &scratch_state,
             metrics,
             protocol_version,
             state_root_hash,
             era_report.clone(),
             executable_block.timestamp.millis(),
             executable_block.era_id.successor(),
-        )?;
+        ) {
+            StepResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
+            StepResult::Success { effects, .. } => effects,
+        };
 
-        state_root_hash =
-            engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
-
-        // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+        state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
 
         let era_validators_req = EraValidatorsRequest::new(state_root_hash, protocol_version);
         let era_validators_result = data_access_layer.era_validators(era_validators_req);
@@ -275,14 +403,17 @@ pub fn execute_finalized_block(
     } else {
         // Finally, the new state-root-hash from the cumulative changes to global state is
         // returned when they are written to LMDB.
-        state_root_hash =
-            engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
-        // state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
+        state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
         None
     };
 
     // Flush once, after all deploys have been executed.
-    engine_state.flush_environment()?;
+    let flush_req = FlushRequest::new();
+    let flush_result = data_access_layer.flush(flush_req);
+    if let Err(gse) = flush_result.as_error() {
+        error!("failed to flush lmdb");
+        return Err(BlockExecutionError::Lmdb(gse));
+    }
 
     // Pruning
     if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
@@ -302,9 +433,9 @@ pub fn execute_finalized_block(
                 last_key=?last_key,
                 "commit prune: preparing prune config"
             );
-            let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-            match engine_state.commit_prune(prune_config) {
-                Ok(PruneResult::RootNotFound) => {
+            let request = PruneRequest::new(state_root_hash, keys_to_prune);
+            match data_access_layer.prune(request) {
+                PruneResult::RootNotFound => {
                     error!(
                         previous_block_height,
                         %state_root_hash,
@@ -315,16 +446,16 @@ pub fn execute_finalized_block(
                         state_root_hash
                     );
                 }
-                Ok(PruneResult::DoesNotExist) => {
+                PruneResult::MissingKey => {
                     warn!(
                         previous_block_height,
                         %state_root_hash,
                         "commit prune: key does not exist"
                     );
                 }
-                Ok(PruneResult::Success {
+                PruneResult::Success {
                     post_state_hash, ..
-                }) => {
+                } => {
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,
@@ -336,14 +467,9 @@ pub fn execute_finalized_block(
                     );
                     state_root_hash = post_state_hash;
                 }
-                Err(error) => {
-                    error!(
-                        previous_block_height,
-                        %key_block_height_for_activation_point,
-                        %error,
-                        "commit prune: commit prune error"
-                    );
-                    return Err(error.into());
+                PruneResult::Failure(tce) => {
+                    error!(?tce, "commit prune: failure");
+                    return Err(tce.into());
                 }
             }
         }
@@ -384,10 +510,22 @@ pub fn execute_finalized_block(
             next_era_gas_price,
         )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
+            if maybe_era_report.is_none() {
+                error!(
+                    "era_end {}: maybe_era_report is none",
+                    executable_block.era_id
+                );
+            }
+            if maybe_next_era_validator_weights.is_none() {
+                error!(
+                    "era_end {}: maybe_next_era_validator_weights is none",
+                    executable_block.era_id
+                );
+            }
             return Err(BlockExecutionError::FailedToCreateEraEnd {
                 maybe_era_report,
                 maybe_next_era_validator_weights,
-            })
+            });
         }
     };
 
@@ -402,58 +540,50 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*executable_block.proposer).clone(),
-        executable_block.transfer,
-        executable_block.staking,
+        executable_block.mint,
+        executable_block.auction,
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
         current_gas_price,
     ));
 
-    let approvals_hashes = txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
-
-    let proof_of_checksum_registry = match data_access_layer.tracking_copy(state_root_hash)? {
-        Some(tc) => match tc.reader().read_with_proof(&Key::ChecksumRegistry)? {
-            Some(proof) => proof,
-            None => {
-                return Err(BlockExecutionError::EngineState(
-                    engine_state::Error::MissingChecksumRegistry,
-                ))
-            }
-        },
-        None => {
-            return Err(BlockExecutionError::EngineState(
-                engine_state::Error::RootNotFound(state_root_hash),
-            ))
-        }
+    let tc = match data_access_layer.tracking_copy(state_root_hash) {
+        Ok(Some(tc)) => tc,
+        Ok(None) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
+        Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
     };
 
-    let approvals_hashes = Box::new(ApprovalsHashes::new_v2(
-        *block.hash(),
-        approvals_hashes,
-        proof_of_checksum_registry,
-    ));
+    let approvals_hashes = {
+        let proof_of_checksum_registry = match tc.reader().read_with_proof(&Key::ChecksumRegistry) {
+            Ok(Some(proof)) => proof,
+            Ok(None) => return Err(BlockExecutionError::MissingChecksumRegistry),
+            Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
+        };
+
+        Box::new(ApprovalsHashes::new(
+            *block.hash(),
+            approvals_hashes,
+            proof_of_checksum_registry,
+        ))
+    };
 
     Ok(BlockAndExecutionResults {
         block,
         approvals_hashes,
-        execution_results,
+        execution_results: execution_artifacts,
         maybe_step_effects_and_upcoming_era_validators,
     })
 }
 
 /// Commits the execution results.
-fn commit_execution_results<S>(
-    engine_state: &EngineState<S>,
-    // data_access_layer: &DataAccessLayer<S>,
+fn commit_execution_results(
+    scratch_state: &ScratchGlobalState,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
-where
-    S: StateProvider + CommitProvider,
-{
+) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError> {
     let ee_execution_result = execution_results
         .into_iter()
         .exactly_one()
@@ -479,9 +609,7 @@ where
             effects.clone()
         }
     };
-    let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
-    // let new_state_root = commit_transforms(data_access_layer, metrics, state_root_hash,
-    // effects)?;
+    let new_state_root = commit_transforms(scratch_state, metrics, state_root_hash, effects)?;
     let ExecutionResultAndMessages {
         execution_result,
         messages,
@@ -490,27 +618,20 @@ where
     Ok((new_state_root, versioned_execution_result, messages))
 }
 
-fn commit_transforms<S>(
-    engine_state: &EngineState<S>,
-    // data_access_layer: &DataAccessLayer<S>,
+fn commit_transforms(
+    scratch_state: &ScratchGlobalState,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
     effects: Effects,
-) -> Result<Digest, engine_state::Error>
-// ) -> Result<Digest, GlobalStateError>
-where
-    S: StateProvider + CommitProvider,
-{
+) -> Result<Digest, GlobalStateError> {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
-    let result = engine_state.commit_effects(state_root_hash, effects);
-    // let result = data_access_layer.commit(state_root_hash, effects);
+    let result = scratch_state.commit(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
     trace!(?result, "commit result");
-    result.map(Digest::from)
-    // result
+    result
 }
 
 /// Execute the transaction without committing the effects.
@@ -518,12 +639,13 @@ where
 ///
 /// Returns effects of the execution.
 pub fn speculatively_execute<S>(
-    engine_state: &EngineState<S>,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+) -> Result<SpeculativeExecutionResult, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     let SpeculativeExecutionState {
         state_root_hash,
@@ -538,7 +660,7 @@ where
         protocol_version,
         PublicKey::System,
     );
-    let results = execute(engine_state, None, execute_request);
+    let results = execute(state_provider, execution_engine_v1, None, execute_request);
     results.map(|mut execution_results| {
         let len = execution_results.len();
         if len != 1 {
@@ -546,35 +668,36 @@ where
                 ?deploy_hash,
                 "got more ({}) execution results from a single transaction", len
             );
-            None
+            SpeculativeExecutionResult::new(None)
         } else {
             // We know it must be 1, we could unwrap and then wrap
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(|result| {
+            SpeculativeExecutionResult::new(execution_results.pop_front().map(|result| {
                 let ExecutionResultAndMessages {
                     execution_result,
                     messages,
                 } = result.into();
 
                 (execution_result, messages)
-            })
+            }))
         }
     })
 }
 
 fn execute<S>(
-    engine_state: &EngineState<S>,
+    state_provider: &S,
+    execution_engine_v1: &ExecutionEngineV1,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
 ) -> Result<ExecutionResults, engine_state::Error>
 where
-    S: StateProvider + CommitProvider,
+    S: StateProvider,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
-    let result = engine_state.run_execute(execute_request);
+    let result = execution_engine_v1.exec(state_provider, execute_request);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());
     }
@@ -582,21 +705,20 @@ where
     result
 }
 
-fn commit_step<S>(
-    engine_state: &EngineState<S>,
+#[allow(clippy::too_many_arguments)]
+fn commit_step(
+    native_runtime_config: NativeRuntimeConfig,
+    scratch_state: &ScratchGlobalState,
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
-    pre_state_root_hash: Digest,
+    state_hash: Digest,
     InternalEraReport {
         equivocators,
         inactive_validators,
     }: InternalEraReport,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
-) -> Result<StepSuccess, StepError>
-where
-    S: StateProvider + CommitProvider,
-{
+) -> StepResult {
     // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
         .into_iter()
@@ -604,19 +726,20 @@ where
         .map(EvictItem::new)
         .collect();
 
-    let step_request = StepRequest {
-        pre_state_hash: pre_state_root_hash,
+    let step_request = StepRequest::new(
+        native_runtime_config,
+        state_hash,
         protocol_version,
-        // Note: The Casper Network does not slash, but another network could
-        slash_items: vec![],
+        vec![], // <-- casper mainnet currently does not slash
         evict_items,
         next_era_id,
         era_end_timestamp_millis,
-    };
+    );
 
-    // Have the EE commit the step.
+    // Commit the step.
     let start = Instant::now();
-    let result = engine_state.commit_step(step_request);
+    let result = scratch_state.step(step_request);
+    debug_assert!(result.is_success(), "{:?}", result);
     if let Some(metrics) = maybe_metrics {
         let elapsed = start.elapsed().as_secs_f64();
         metrics.commit_step.observe(elapsed);

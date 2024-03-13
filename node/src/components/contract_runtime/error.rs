@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{Error as EngineStateError, StepError};
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
-    global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
+    data_access_layer::{BlockRewardsError, FeeError, StepError},
+    global_state::error::Error as GlobalStateError,
+    tracking_copy::TrackingCopyError,
 };
 use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
@@ -75,6 +77,18 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         StepError,
     ),
+    #[error(transparent)]
+    DistributeFees(
+        #[from]
+        #[serde(skip_serializing)]
+        FeeError,
+    ),
+    #[error(transparent)]
+    DistributeBlockRewards(
+        #[from]
+        #[serde(skip_serializing)]
+        BlockRewardsError,
+    ),
     /// Failed to compute the approvals checksum.
     #[error("failed to compute approvals checksum: {0}")]
     FailedToComputeApprovalsChecksum(bytesrepr::Error),
@@ -115,6 +129,9 @@ pub enum BlockExecutionError {
     /// A root state hash was not found.
     #[error("Root state hash not found in global state.")]
     RootNotFound(Digest),
+    /// Missing checksum registry.
+    #[error("Missing checksum registry")]
+    MissingChecksumRegistry,
     #[error("Failed to get new era gas price when executing switch block")]
     FailedToGetNewEraGasPrice { era_id: EraId },
 }

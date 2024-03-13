@@ -10,8 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tempfile::TempDir;
 
-use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::EngineConfig;
+use casper_engine_test_support::{ChainspecConfig, LmdbWasmTestBuilder};
 use casper_storage::data_access_layer::GenesisRequest;
 #[cfg(test)]
 use casper_types::{AccessRights, Key, URef};
@@ -88,7 +87,7 @@ pub fn builder_from_global_state_fixture(
     (
         LmdbWasmTestBuilder::open(
             &path_to_gs,
-            EngineConfig::default(),
+            ChainspecConfig::default(),
             lmdb_fixture_state.post_state_hash,
         ),
         lmdb_fixture_state,
@@ -120,8 +119,8 @@ pub fn generate_fixture(
         return Ok(());
     }
 
-    let engine_config = EngineConfig::default();
-    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
+    let chainspec = ChainspecConfig::default();
+    let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, chainspec);
 
     builder.run_genesis(genesis_request.clone());
 

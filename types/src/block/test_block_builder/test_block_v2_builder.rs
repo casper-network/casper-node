@@ -188,13 +188,16 @@ impl TestBlockV2Builder {
                 }
                 Transaction::V1(v1_txn) => match v1_txn.target() {
                     TransactionTarget::Native => match v1_txn.entry_point() {
+                        TransactionEntryPoint::Custom(_) => {
+                            panic!("custom entry point not supported for native target")
+                        }
                         TransactionEntryPoint::Transfer => transfer_hashes.push(txn_hash),
-                        TransactionEntryPoint::Custom(_)
-                        | TransactionEntryPoint::AddBid
+                        TransactionEntryPoint::AddBid
                         | TransactionEntryPoint::WithdrawBid
                         | TransactionEntryPoint::Delegate
                         | TransactionEntryPoint::Undelegate
-                        | TransactionEntryPoint::Redelegate => staking_hashes.push(txn_hash),
+                        | TransactionEntryPoint::Redelegate
+                        | TransactionEntryPoint::ActivateBid => staking_hashes.push(txn_hash),
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
                     TransactionTarget::Session { kind, .. } => match kind {

@@ -6,6 +6,7 @@ use super::super::TransactionV1ConfigFailure;
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    system::auction::ARG_VALIDATOR_PUBLIC_KEY,
     CLTyped, CLValue, CLValueError, PublicKey, RuntimeArgs, URef, U512,
 };
 
@@ -34,6 +35,9 @@ const REDELEGATE_ARG_DELEGATOR: RequiredArg<PublicKey> = RequiredArg::new("deleg
 const REDELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("validator");
 const REDELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
 const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("new_validator");
+
+const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> =
+    RequiredArg::new(ARG_VALIDATOR_PUBLIC_KEY);
 
 struct RequiredArg<T> {
     name: &'static str,
@@ -277,6 +281,14 @@ pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
     let _validator = REDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = REDELEGATE_ARG_AMOUNT.get(args)?;
     let _new_validator = REDELEGATE_ARG_NEW_VALIDATOR.get(args)?;
+    Ok(())
+}
+
+/// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
+pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
+    args: &RuntimeArgs,
+) -> Result<(), TransactionV1ConfigFailure> {
+    let _validator = ACTIVATE_BID_ARG_VALIDATOR.get(args)?;
     Ok(())
 }
 

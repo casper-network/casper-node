@@ -1,15 +1,16 @@
 mod addressable_entity_identifier;
+mod approval;
+mod approvals_hash;
 mod deploy;
+mod execution_info;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
 mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
-mod transaction_approval;
-mod transaction_approvals_hash;
+mod transaction_category;
 mod transaction_entry_point;
-mod transaction_footprint;
 mod transaction_hash;
 mod transaction_header;
 mod transaction_id;
@@ -47,23 +48,23 @@ use crate::{
 #[cfg(feature = "json-schema")]
 use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
+pub use approval::Approval;
+pub use approvals_hash::ApprovalsHash;
 pub use deploy::{
-    Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    Deploy, DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use execution_info::ExecutionInfo;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
-pub use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
+use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
-pub use transaction_approval::TransactionApproval;
-pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_entry_point::TransactionEntryPoint;
-pub use transaction_footprint::TransactionFootprint;
 pub use transaction_hash::TransactionHash;
 pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
@@ -73,10 +74,9 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1Category, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Footprint, TransactionV1Hash,
-    TransactionV1Header,
+    TransactionCategory, TransactionV1, TransactionV1Body, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -192,48 +192,33 @@ impl Transaction {
         }
     }
 
-    /// Returns the `TransactionFootprint`.
-    pub fn footprint(
-        &self,
-        wasmless_transfer_cost: u32,
-        native_staking_cost: u32,
-        install_upgrade_cost: u64,
-        standard_transaction_cost: u64,
-    ) -> Result<TransactionFootprint, TransactionError> {
-        Ok(match self {
-            Transaction::Deploy(deploy) => deploy.footprint()?.into(),
-            Transaction::V1(v1) => v1
-                .footprint(
-                    wasmless_transfer_cost,
-                    native_staking_cost,
-                    install_upgrade_cost,
-                    standard_transaction_cost,
-                )?
-                .into(),
-        })
+    /// Returns the `Approval`s for this transaction.
+    pub fn approvals(&self) -> BTreeSet<Approval> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.approvals().clone(),
+            Transaction::V1(v1) => v1.approvals().clone(),
+        }
     }
 
-    /// Returns the `Approval`s for this transaction.
-    pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
+    /// Returns the header.
+    pub fn header(&self) -> TransactionHeader {
         match self {
-            Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
-            Transaction::V1(v1) => v1.approvals().iter().map(Into::into).collect(),
+            Transaction::Deploy(deploy) => TransactionHeader::Deploy(deploy.header().clone()),
+            Transaction::V1(transaction) => TransactionHeader::V1(transaction.header().clone()),
         }
     }
 
     /// Returns the computed approvals hash identifying this transaction's approvals.
-    pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
+    pub fn compute_approvals_hash(&self) -> Result<ApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
-            Transaction::Deploy(deploy) => {
-                TransactionApprovalsHash::Deploy(deploy.compute_approvals_hash()?)
-            }
-            Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
+            Transaction::Deploy(deploy) => deploy.compute_approvals_hash()?,
+            Transaction::V1(txn) => txn.compute_approvals_hash()?,
         };
         Ok(approvals_hash)
     }
 
-    /// Turns `self` into an invalid `Deploy` by clearing the `chain_name`, invalidating the deploy
-    /// hash.
+    /// Turns `self` into an invalid `Transaction` by clearing the `chain_name`, invalidating the
+    /// transaction hash.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn invalidate(&mut self) {
         match self {
@@ -250,17 +235,17 @@ impl Transaction {
                 let deploy_hash = *deploy.hash();
                 let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
                     error!(%error, "failed to serialize deploy approvals");
-                    DeployApprovalsHash::from(Digest::default())
+                    ApprovalsHash::from(Digest::default())
                 });
-                TransactionId::new_deploy(deploy_hash, approvals_hash)
+                TransactionId::new(TransactionHash::Deploy(deploy_hash), approvals_hash)
             }
             Transaction::V1(txn) => {
                 let txn_hash = *txn.hash();
                 let approvals_hash = txn.compute_approvals_hash().unwrap_or_else(|error| {
                     error!(%error, "failed to serialize transaction approvals");
-                    TransactionV1ApprovalsHash::from(Digest::default())
+                    ApprovalsHash::from(Digest::default())
                 });
-                TransactionId::new_v1(txn_hash, approvals_hash)
+                TransactionId::new(TransactionHash::V1(txn_hash), approvals_hash)
             }
         }
     }
@@ -302,6 +287,84 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+        }
+    }
+
+    // This method is not intended to be used by third party crates.
+    //
+    // It is required to allow finalized approvals to be injected after reading a `Deploy` from
+    // storage.
+    #[doc(hidden)]
+    pub fn with_approvals(self, approvals: BTreeSet<Approval>) -> Self {
+        match self {
+            Transaction::Deploy(deploy) => Transaction::Deploy(deploy.with_approvals(approvals)),
+            Transaction::V1(transaction_v1) => {
+                Transaction::V1(transaction_v1.with_approvals(approvals))
+            }
+        }
+    }
+
+    /// Is this a native mint transaction.
+    pub fn is_native_mint(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_transfer(),
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => {
+                    &TransactionEntryPoint::Transfer == transaction_v1.entry_point()
+                }
+            },
+        }
+    }
+
+    /// Is this a native auction transaction.
+    pub fn is_native_auction(&self) -> bool {
+        match self {
+            Transaction::Deploy(_) => false,
+            Transaction::V1(transaction_v1) => match transaction_v1.target() {
+                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
+                TransactionTarget::Native => match transaction_v1.entry_point() {
+                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+                    TransactionEntryPoint::AddBid
+                    | TransactionEntryPoint::WithdrawBid
+                    | TransactionEntryPoint::Delegate
+                    | TransactionEntryPoint::Undelegate
+                    | TransactionEntryPoint::Redelegate
+                    | TransactionEntryPoint::ActivateBid => true,
+                },
+            },
+        }
+    }
+
+    /// Authorization keys.
+    pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(transaction_v1) => transaction_v1
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+        }
+    }
+
+    /// The session args.
+    pub fn session_args(&self) -> &RuntimeArgs {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().args(),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+        }
+    }
+
+    /// The entry point.
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().into(),
+            Transaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
         }
     }
 
@@ -386,33 +449,6 @@ impl Display for Transaction {
         match self {
             Transaction::Deploy(deploy) => Display::fmt(deploy, formatter),
             Transaction::V1(txn) => Display::fmt(txn, formatter),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum TransactionError {
-    Deploy(DeployError),
-    V1(TransactionV1Error),
-}
-
-impl From<TransactionV1Error> for TransactionError {
-    fn from(value: TransactionV1Error) -> Self {
-        Self::V1(value)
-    }
-}
-
-impl From<DeployError> for TransactionError {
-    fn from(value: DeployError) -> Self {
-        Self::Deploy(value)
-    }
-}
-
-impl Display for TransactionError {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            TransactionError::Deploy(deploy) => write!(formatter, "{}", deploy),
-            TransactionError::V1(v1) => write!(formatter, "{}", v1),
         }
     }
 }

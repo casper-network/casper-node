@@ -13,14 +13,12 @@ use derive_more::From;
 use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_storage::{
-    data_access_layer::ExecutionResultsChecksumResult,
-    global_state::trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::data_access_layer::ExecutionResultsChecksumResult;
 use casper_types::{
-    testing::TestRng, AccessRights, BlockV2, CLValue, ChainNameDigest, Chainspec, Deploy, EraId,
-    FinalitySignatureV2, Key, LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TestBlockBuilder, TestBlockV1Builder, TimeDiff, URef, U512,
+    global_state::TrieMerkleProof, testing::TestRng, AccessRights, BlockV2, CLValue,
+    ChainNameDigest, Chainspec, Deploy, Digest, EraId, FinalitySignatureV2, Key,
+    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
+    TestBlockV1Builder, TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -1691,7 +1689,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         BlockAcquisitionState::HaveBlock(acquired_block, _, _) if acquired_block.hash() == block.hash()
     );
 
-    let approvals_hashes = ApprovalsHashes::new_v2(
+    let approvals_hashes = ApprovalsHashes::new(
         *block.hash(),
         txns.iter()
             .map(|txn| txn.compute_approvals_hash().unwrap())
@@ -2649,7 +2647,7 @@ async fn historical_sync_no_legacy_block() {
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new_v2(
+            ApprovalsHashes::new(
                 *block.hash(),
                 vec![txn.compute_approvals_hash().unwrap()],
                 dummy_merkle_proof(),
@@ -3629,7 +3627,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     // Register approvals hashes. This would make the synchronizer switch to HaveApprovalsHashes and
     // continue asking for the deploys.
     {
-        let approvals_hashes = ApprovalsHashes::new_v2(
+        let approvals_hashes = ApprovalsHashes::new(
             *block.hash(),
             vec![txn.compute_approvals_hash().unwrap()],
             dummy_merkle_proof(),
@@ -3920,7 +3918,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new_v2(
+            ApprovalsHashes::new(
                 *block.hash(),
                 vec![
                     first_txn.compute_approvals_hash().unwrap(),

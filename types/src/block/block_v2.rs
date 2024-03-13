@@ -104,8 +104,8 @@ impl BlockV2 {
         height: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        transfer: Vec<TransactionHash>,
-        staking: Vec<TransactionHash>,
+        mint: Vec<TransactionHash>,
+        auction: Vec<TransactionHash>,
         install_upgrade: Vec<TransactionHash>,
         standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
@@ -113,8 +113,8 @@ impl BlockV2 {
     ) -> Self {
         let body = BlockBodyV2::new(
             proposer,
-            transfer,
-            staking,
+            mint,
+            auction,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -164,6 +164,11 @@ impl BlockV2 {
     /// Returns the block's body.
     pub fn body(&self) -> &BlockBodyV2 {
         &self.body
+    }
+
+    /// Returns the block's body, consuming `self`.
+    pub fn take_body(self) -> BlockBodyV2 {
+        self.body
     }
 
     /// Returns the parent block's hash.
@@ -238,12 +243,12 @@ impl BlockV2 {
 
     /// Returns the hashes of the transfer transactions within the block.
     pub fn transfer(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.body.transfer()
+        self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
     pub fn staking(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.body.staking()
+        self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.

@@ -16,15 +16,21 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, TransactionTarget};
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use super::TransactionCategory;
 #[cfg(doc)]
 use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TransactionSessionKind,
+};
+
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind, TransactionV1Category,
 };
 
 /// The body of a [`TransactionV1`].
@@ -73,12 +79,6 @@ impl TransactionV1Body {
         &self.target
     }
 
-    #[cfg(any(feature = "std", test))]
-    /// Sets target for transaction.
-    pub fn set_target(&mut self, target: TransactionTarget) {
-        self.target = target;
-    }
-
     /// Returns the entry point of the transaction.
     pub fn entry_point(&self) -> &TransactionEntryPoint {
         &self.entry_point
@@ -87,6 +87,44 @@ impl TransactionV1Body {
     /// Returns the scheduling kind of the transaction.
     pub fn scheduling(&self) -> &TransactionScheduling {
         &self.scheduling
+    }
+
+    /// This transaction is a native mint interaction.
+    pub fn is_native_mint(&self) -> bool {
+        TransactionTarget::Native == self.target
+            && TransactionEntryPoint::Transfer == self.entry_point
+    }
+
+    /// This transaction is a native auction interaction.
+    pub fn is_native_auction(&self) -> bool {
+        if TransactionTarget::Native != self.target {
+            return false;
+        }
+        match self.entry_point {
+            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+            TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::ActivateBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate => true,
+        }
+    }
+
+    /// This transaction is a smart contract installer or upgrader.
+    pub fn is_install_or_upgrade(&self) -> bool {
+        match self.target() {
+            TransactionTarget::Native | TransactionTarget::Stored { .. } => false,
+            TransactionTarget::Session { kind, .. } => match kind {
+                TransactionSessionKind::Standard | TransactionSessionKind::Isolated => false,
+                TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => true,
+            },
+        }
+    }
+
+    /// This transaction goes into the misc / standard category.
+    pub fn is_standard(&self) -> bool {
+        !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
     }
 
     #[cfg(any(feature = "std", test))]
@@ -135,6 +173,9 @@ impl TransactionV1Body {
                 TransactionEntryPoint::Redelegate => {
                     arg_handling::has_valid_redelegate_args(&self.args)
                 }
+                TransactionEntryPoint::ActivateBid => {
+                    arg_handling::has_valid_activate_bid_args(&self.args)
+                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -143,7 +184,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => {
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
@@ -166,7 +208,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::WithdrawBid
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
-                | TransactionEntryPoint::Redelegate => {
+                | TransactionEntryPoint::Redelegate
+                | TransactionEntryPoint::ActivateBid => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction with session code must have custom entry point"
@@ -181,12 +224,12 @@ impl TransactionV1Body {
 
     /// Returns a random `TransactionV1Body`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_of_category(rng: &mut TestRng, category: &TransactionV1Category) -> Self {
+    pub fn random_of_category(rng: &mut TestRng, category: &TransactionCategory) -> Self {
         match category {
-            TransactionV1Category::InstallUpgrade => Self::random_install_upgrade(rng),
-            TransactionV1Category::Standard => Self::random_standard(rng),
-            TransactionV1Category::Staking => Self::random_staking(rng),
-            TransactionV1Category::Transfer => Self::random_transfer(rng),
+            TransactionCategory::InstallUpgrade => Self::random_install_upgrade(rng),
+            TransactionCategory::Standard => Self::random_standard(rng),
+            TransactionCategory::Auction => Self::random_staking(rng),
+            TransactionCategory::Mint => Self::random_transfer(rng),
         }
     }
 
@@ -327,7 +370,7 @@ impl TransactionV1Body {
             }
             6 => Self::random_standard(rng),
             7 => {
-                let mut buffer = vec![0u8; rng.gen_range(0..100)];
+                let mut buffer = vec![0u8; rng.gen_range(1..100)];
                 rng.fill_bytes(buffer.as_mut());
                 let target = TransactionTarget::Session {
                     kind: TransactionSessionKind::random(rng),

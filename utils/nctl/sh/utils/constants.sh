@@ -24,6 +24,9 @@ export NCTL_BASE_PORT_NETWORK=22000
 # Base speculative execution RPC server port number.
 export NCTL_BASE_PORT_SPEC_EXEC=25000
 
+# Base speculative execution RPC server port number.
+export NCTL_BASE_PORT_BINARY=28000
+
 # Set of client side auction contracts.
 export NCTL_CONTRACTS_CLIENT_AUCTION=(
     "activate_bid.wasm"

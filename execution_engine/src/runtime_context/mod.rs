@@ -26,9 +26,7 @@ use casper_types::{
         NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
-    },
+    contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
     execution::Effects,
     handle_stored_dictionary_value,
     system::auction::EraInfo,
@@ -39,7 +37,7 @@ use casper_types::{
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
-use crate::{engine_state::EngineConfig, execution::Error};
+use crate::{engine_state::EngineConfig, execution::ExecError};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -235,11 +233,11 @@ where
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_entity(&mut self, entity_key: Key, name: &str) -> Result<(), Error> {
+    fn remove_key_from_entity(&mut self, entity_key: Key, name: &str) -> Result<(), ExecError> {
         let entity_addr = if let Key::AddressableEntity(addr) = entity_key {
             addr
         } else {
-            return Err(Error::UnexpectedKeyVariant(entity_key));
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
         };
 
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
@@ -253,7 +251,7 @@ where
     /// It removes both from the ephemeral map (RuntimeContext::named_keys) but
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
-    pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
+    pub fn remove_key(&mut self, name: &str) -> Result<(), ExecError> {
         let entity_key = self.get_entity_key();
         self.named_keys.remove(name);
         self.remove_key_from_entity(entity_key, name)
@@ -339,17 +337,17 @@ where
     }
 
     /// Generates new deterministic hash for uses as an address.
-    pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], Error> {
+    pub fn new_hash_address(&mut self) -> Result<[u8; KEY_HASH_LENGTH], ExecError> {
         Ok(self.address_generator.borrow_mut().new_hash_address())
     }
 
     /// Returns 32 pseudo random bytes.
-    pub fn random_bytes(&mut self) -> Result<[u8; RANDOM_BYTES_COUNT], Error> {
+    pub fn random_bytes(&mut self) -> Result<[u8; RANDOM_BYTES_COUNT], ExecError> {
         Ok(self.address_generator.borrow_mut().create_address())
     }
 
     /// Creates new [`URef`] instance.
-    pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
+    pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, ExecError> {
         let uref = self
             .address_generator
             .borrow_mut()
@@ -360,24 +358,24 @@ where
     }
 
     /// Creates a new URef where the value it stores is CLType::Unit.
-    pub(crate) fn new_unit_uref(&mut self) -> Result<URef, Error> {
+    pub(crate) fn new_unit_uref(&mut self) -> Result<URef, ExecError> {
         self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
     /// Creates a new transfer address using a transfer address generator.
-    pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, Error> {
+    pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, ExecError> {
         let transfer_addr = self.address_generator.borrow_mut().create_address();
         Ok(TransferAddr::new(transfer_addr))
     }
 
     /// Puts `key` to the map of named keys of current context.
-    pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
+    pub fn put_key(&mut self, name: String, key: Key) -> Result<(), ExecError> {
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
             entity_addr
         } else {
-            return Err(Error::InvalidContext);
+            return Err(ExecError::InvalidContext);
         };
         let named_key_value =
             StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
@@ -392,7 +390,7 @@ where
         &mut self,
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         for (name, key) in named_keys.iter() {
             let named_key_value =
                 StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
@@ -403,11 +401,11 @@ where
         Ok(())
     }
 
-    pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, Error> {
+    pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, ExecError> {
         let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
             entity_addr
         } else {
-            return Err(Error::UnexpectedKeyVariant(entity_key));
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
         };
 
         self.tracking_copy
@@ -425,14 +423,19 @@ where
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     #[cfg(test)]
-    pub(crate) fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+    pub(crate) fn read_purse_uref(
+        &mut self,
+        purse_uref: &URef,
+    ) -> Result<Option<CLValue>, ExecError> {
         match self
             .tracking_copy
             .borrow_mut()
             .read(&Key::Hash(purse_uref.addr()))
-            .map_err(Error::TrackingCopy)?
+            .map_err(ExecError::TrackingCopy)?
         {
-            Some(stored_value) => Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?)),
+            Some(stored_value) => Ok(Some(
+                stored_value.try_into().map_err(ExecError::TypeMismatch)?,
+            )),
             None => Ok(None),
         }
     }
@@ -442,12 +445,12 @@ where
         &mut self,
         purse_uref: URef,
         cl_value: CLValue,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
     }
 
     /// Read a stored value under a [`Key`].
-    pub fn read_gs(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
+    pub fn read_gs(&mut self, key: &Key) -> Result<Option<StoredValue>, ExecError> {
         self.validate_readable(key)?;
         self.validate_key(key)?;
 
@@ -467,7 +470,7 @@ where
     ///
     /// DO NOT EXPOSE THIS VIA THE FFI - This function bypasses security checks and should be used
     /// with caution.
-    pub fn read_gs_direct(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
+    pub fn read_gs_direct(&mut self, key: &Key) -> Result<Option<StoredValue>, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .read(key)
@@ -478,18 +481,18 @@ where
     /// `StoredValue` stored in the global state in a type safe manner.
     ///
     /// This is useful if you want to get the exact type from global state.
-    pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, Error>
+    pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, ExecError>
     where
         T: TryFrom<StoredValue>,
         T::Error: Debug,
     {
         let value = match self.read_gs(key)? {
-            None => return Err(Error::KeyNotFound(*key)),
+            None => return Err(ExecError::KeyNotFound(*key)),
             Some(value) => value,
         };
 
         value.try_into().map_err(|error| {
-            Error::FunctionNotFound(format!(
+            ExecError::FunctionNotFound(format!(
                 "Type mismatch for value under {:?}: {:?}",
                 key, error
             ))
@@ -497,7 +500,7 @@ where
     }
 
     /// Returns all keys based on the tag prefix.
-    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .get_keys(key_tag)
@@ -505,7 +508,7 @@ where
     }
 
     /// Returns all key's that start with prefix, if any.
-    pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
+    pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .reader()
@@ -538,14 +541,14 @@ where
     }
 
     /// Creates validated instance of `StoredValue` from `account`.
-    fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
+    fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, ExecError> {
         let value = StoredValue::Account(account);
         self.validate_value(&value)?;
         Ok(value)
     }
 
     /// Write an account to the global state.
-    pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
+    pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), ExecError> {
         if let Key::Account(_) = key {
             self.validate_key(&key)?;
             let account_value = self.account_to_validated_value(account)?;
@@ -557,7 +560,7 @@ where
     }
 
     /// Read an account from the global state.
-    pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
+    pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, ExecError> {
         if let Key::Account(_) = key {
             self.validate_key(key)?;
             self.tracking_copy
@@ -627,7 +630,7 @@ where
         &mut self.transfers
     }
 
-    fn validate_cl_value(&self, cl_value: &CLValue) -> Result<(), Error> {
+    fn validate_cl_value(&self, cl_value: &CLValue) -> Result<(), ExecError> {
         match cl_value.cl_type() {
             CLType::Bool
             | CLType::I32
@@ -666,7 +669,7 @@ where
     }
 
     /// Validates whether keys used in the `value` are not forged.
-    fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
+    fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(_) => Ok(()),
@@ -697,7 +700,7 @@ where
     /// `named_keys`) and whether the version of a key that contract wants
     /// to use, has access rights that are less powerful than access rights'
     /// of the key in the `named_keys`.
-    pub(crate) fn validate_key(&self, key: &Key) -> Result<(), Error> {
+    pub(crate) fn validate_key(&self, key: &Key) -> Result<(), ExecError> {
         let uref = match key {
             Key::URef(uref) => uref,
             _ => return Ok(()),
@@ -709,42 +712,42 @@ where
     ///
     /// Returns unit if [`URef`]s address exists in the context, and has correct access rights bit
     /// set.
-    pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), Error> {
+    pub(crate) fn validate_uref(&self, uref: &URef) -> Result<(), ExecError> {
         if self.access_rights.has_access_rights_to_uref(uref) {
             Ok(())
         } else {
-            Err(Error::ForgedReference(*uref))
+            Err(ExecError::ForgedReference(*uref))
         }
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a read bit set.
-    fn validate_readable(&self, key: &Key) -> Result<(), Error> {
+    fn validate_readable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_readable(key) {
             Ok(())
         } else {
-            Err(Error::InvalidAccess {
+            Err(ExecError::InvalidAccess {
                 required: AccessRights::READ,
             })
         }
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a add bit set.
-    fn validate_addable(&self, key: &Key) -> Result<(), Error> {
+    fn validate_addable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_addable(key) {
             Ok(())
         } else {
-            Err(Error::InvalidAccess {
+            Err(ExecError::InvalidAccess {
                 required: AccessRights::ADD,
             })
         }
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
-    fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
+    fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_writeable(key) {
             Ok(())
         } else {
-            Err(Error::InvalidAccess {
+            Err(ExecError::InvalidAccess {
                 required: AccessRights::WRITE,
             })
         }
@@ -773,7 +776,8 @@ where
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
             | Key::Message(_)
-            | Key::NamedKey(_) => true,
+            | Key::NamedKey(_)
+            | Key::BlockMessageCount => true,
         }
     }
 
@@ -809,7 +813,8 @@ where
             | Key::BidAddr(_)
             | Key::Package(_)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::BlockMessageCount => false,
         }
     }
 
@@ -842,7 +847,8 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::BlockMessageCount => false,
         }
     }
 
@@ -851,7 +857,7 @@ where
     /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
     /// Intuition about the return value sense is to answer the question 'are we
     /// allowed to continue?'
-    pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), Error> {
+    pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), ExecError> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         let is_system = self.entity_kind.is_system();
@@ -860,11 +866,11 @@ where
         match prev.checked_add(gas.cost(is_system)) {
             None => {
                 self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
+                Err(ExecError::GasLimit)
             }
             Some(val) if val > gas_limit => {
                 self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
+                Err(ExecError::GasLimit)
             }
             Some(val) => {
                 self.set_gas_counter(val);
@@ -877,14 +883,14 @@ where
     pub(crate) fn is_system_addressable_entity(
         &self,
         contract_hash: &AddressableEntityHash,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, ExecError> {
         Ok(self
             .system_contract_registry()?
             .has_contract_hash(contract_hash))
     }
 
     /// Charges gas for specified amount of bytes used.
-    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
+    fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), ExecError> {
         if let Some(base_key) = self.get_entity_key().into_entity_hash_addr() {
             let entity_hash = AddressableEntityHash::new(base_key);
             if self.is_system_addressable_entity(&entity_hash)? {
@@ -901,7 +907,7 @@ where
     }
 
     /// Charges gas for using a host system contract's entrypoint.
-    pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), Error>
+    pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), ExecError>
     where
         T: Into<Gas>,
     {
@@ -924,7 +930,11 @@ where
     ///
     /// Use with caution - there is no validation done as the key is assumed to be validated
     /// already.
-    pub(crate) fn metered_write_gs_unsafe<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    pub(crate) fn metered_write_gs_unsafe<K, V>(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> Result<(), ExecError>
     where
         K: Into<Key>,
         V: Into<StoredValue>,
@@ -945,16 +955,23 @@ where
     pub(crate) fn metered_emit_message(
         &mut self,
         topic_key: Key,
-        topic_value: MessageTopicSummary,
-        message_key: Key,
-        message_value: MessageChecksum,
+        block_time: BlockTime,
+        block_message_count: u64,
+        topic_message_count: u32,
         message: Message,
-    ) -> Result<(), Error> {
-        let topic_value = StoredValue::MessageTopic(topic_value);
-        let message_value = StoredValue::Message(message_value);
+    ) -> Result<(), ExecError> {
+        let topic_value =
+            StoredValue::MessageTopic(MessageTopicSummary::new(topic_message_count, block_time));
+        let message_key = message.message_key();
+        let message_value = StoredValue::Message(message.checksum().map_err(ExecError::BytesRepr)?);
+
+        let block_message_count_value =
+            StoredValue::CLValue(CLValue::from_t((block_time, block_message_count))?);
 
         // Charge for amount as measured by serialized length
-        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        let bytes_count = topic_value.serialized_length()
+            + message_value.serialized_length()
+            + block_message_count_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
         self.tracking_copy.borrow_mut().emit_message(
@@ -962,6 +979,7 @@ where
             topic_value,
             message_key,
             message_value,
+            block_message_count_value,
             message,
         );
         Ok(())
@@ -970,7 +988,7 @@ where
     /// Writes data to a global state and charges for bytes stored.
     ///
     /// This method performs full validation of the key to be written.
-    pub(crate) fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), Error>
+    pub(crate) fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), ExecError>
     where
         T: Into<StoredValue>,
     {
@@ -988,17 +1006,19 @@ where
         &mut self,
         key: Key,
         value: StoredValue,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 
         match self.tracking_copy.borrow_mut().add(key, value) {
             Err(storage_error) => Err(storage_error.into()),
             Ok(AddResult::Success) => Ok(()),
-            Ok(AddResult::KeyNotFound(key)) => Err(Error::KeyNotFound(key)),
-            Ok(AddResult::TypeMismatch(type_mismatch)) => Err(Error::TypeMismatch(type_mismatch)),
-            Ok(AddResult::Serialization(error)) => Err(Error::BytesRepr(error)),
-            Ok(AddResult::Transform(error)) => Err(Error::Transform(error)),
+            Ok(AddResult::KeyNotFound(key)) => Err(ExecError::KeyNotFound(key)),
+            Ok(AddResult::TypeMismatch(type_mismatch)) => {
+                Err(ExecError::TypeMismatch(type_mismatch))
+            }
+            Ok(AddResult::Serialization(error)) => Err(ExecError::BytesRepr(error)),
+            Ok(AddResult::Transform(error)) => Err(ExecError::Transform(error)),
         }
     }
 
@@ -1007,7 +1027,7 @@ where
     /// values can't be added, either because they're not a Monoid or if the
     /// value stored under `key` has different type, then `TypeMismatch`
     /// errors is returned.
-    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), ExecError>
     where
         K: Into<Key>,
         V: Into<StoredValue>,
@@ -1025,7 +1045,7 @@ where
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let entity_key = match self.entry_point_type {
             EntryPointType::AddressableEntity => self.entity_key,
             EntryPointType::Session | EntryPointType::Factory => {
@@ -1048,13 +1068,13 @@ where
 
             if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
-                return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
+                return Err(ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
             }
 
             // Exit early in case of error without updating global state
             entity
                 .add_associated_key(account_hash, weight)
-                .map_err(Error::from)?;
+                .map_err(ExecError::from)?;
             entity
         };
 
@@ -1066,7 +1086,10 @@ where
     }
 
     /// Remove associated key.
-    pub(crate) fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
+    pub(crate) fn remove_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), ExecError> {
         let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
@@ -1089,7 +1112,7 @@ where
         // Exit early in case of error without updating global state
         entity
             .remove_associated_key(account_hash)
-            .map_err(Error::from)?;
+            .map_err(ExecError::from)?;
 
         let account_value = self.addressable_entity_to_validated_value(entity)?;
 
@@ -1103,7 +1126,7 @@ where
         &mut self,
         account_hash: AccountHash,
         weight: Weight,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
@@ -1126,7 +1149,7 @@ where
         // Exit early in case of error without updating global state
         entity
             .update_associated_key(account_hash, weight)
-            .map_err(Error::from)?;
+            .map_err(ExecError::from)?;
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
@@ -1148,7 +1171,7 @@ where
         &mut self,
         action_type: ActionType,
         threshold: Weight,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let entity_key = match self.entry_point_type {
             EntryPointType::AddressableEntity => self.entity_key,
             EntryPointType::Session | EntryPointType::Factory => {
@@ -1172,7 +1195,7 @@ where
         } else {
             entity.set_action_threshold(action_type, threshold)
         }
-        .map_err(Error::from)?;
+        .map_err(ExecError::from)?;
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
@@ -1184,7 +1207,7 @@ where
     fn addressable_entity_to_validated_value(
         &self,
         entity: AddressableEntity,
-    ) -> Result<StoredValue, Error> {
+    ) -> Result<StoredValue, ExecError> {
         let value = StoredValue::AddressableEntity(entity);
         self.validate_value(&value)?;
         Ok(value)
@@ -1193,27 +1216,27 @@ where
     pub(crate) fn get_entity_address_for_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Key, Error> {
+    ) -> Result<Key, ExecError> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
-        CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
+        CLValue::into_t::<Key>(cl_value).map_err(ExecError::CLValue)
     }
 
     pub(crate) fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, Error> {
+    ) -> Result<Option<AddressableEntity>, ExecError> {
         match self.read_gs(&Key::Account(account_hash))? {
             Some(StoredValue::CLValue(cl_value)) => {
-                let key: Key = cl_value.into_t().map_err(Error::CLValue)?;
+                let key: Key = cl_value.into_t().map_err(ExecError::CLValue)?;
                 match self.read_gs(&key)? {
                     Some(StoredValue::AddressableEntity(addressable_entity)) => {
                         Ok(Some(addressable_entity))
                     }
-                    Some(_other_variant_2) => Err(Error::UnexpectedStoredValueVariant),
+                    Some(_other_variant_2) => Err(ExecError::UnexpectedStoredValueVariant),
                     None => Ok(None),
                 }
             }
-            Some(_other_variant_1) => Err(Error::UnexpectedStoredValueVariant),
+            Some(_other_variant_1) => Err(ExecError::UnexpectedStoredValueVariant),
             None => Ok(None),
         }
     }
@@ -1224,7 +1247,7 @@ where
     }
 
     /// Gets main purse id
-    pub fn get_main_purse(&mut self) -> Result<URef, Error> {
+    pub fn get_main_purse(&mut self) -> Result<URef, ExecError> {
         let main_purse = self.entity().main_purse();
         Ok(main_purse)
     }
@@ -1238,7 +1261,7 @@ where
     pub(crate) fn get_validated_package(
         &mut self,
         package_hash: PackageHash,
-    ) -> Result<Package, Error> {
+    ) -> Result<Package, ExecError> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;
@@ -1248,7 +1271,7 @@ where
         Ok(contract_package)
     }
 
-    pub(crate) fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Error> {
+    pub(crate) fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .get_package(package_hash)
@@ -1258,11 +1281,11 @@ where
     pub(crate) fn get_contract_entity(
         &mut self,
         entity_key: Key,
-    ) -> Result<(AddressableEntity, bool), Error> {
+    ) -> Result<(AddressableEntity, bool), ExecError> {
         let entity_hash = if let Some(entity_hash) = entity_key.into_entity_hash() {
             entity_hash
         } else {
-            return Err(Error::UnexpectedKeyVariant(entity_key));
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
         };
 
         let mut tc = self.tracking_copy.borrow_mut();
@@ -1270,13 +1293,13 @@ where
         let key = Key::contract_entity_key(entity_hash);
         match tc.read(&key)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok((entity, false)),
-            Some(other) => Err(Error::TypeMismatch(StoredValueTypeMismatch::new(
+            Some(other) => Err(ExecError::TypeMismatch(StoredValueTypeMismatch::new(
                 "AddressableEntity".to_string(),
                 other.type_name(),
             ))),
             None => match tc.read(&Key::Hash(entity_hash.value()))? {
                 Some(StoredValue::Contract(contract)) => Ok((contract.into(), true)),
-                Some(other) => Err(Error::TypeMismatch(StoredValueTypeMismatch::new(
+                Some(other) => Err(ExecError::TypeMismatch(StoredValueTypeMismatch::new(
                     "Contract".to_string(),
                     other.type_name(),
                 ))),
@@ -1290,13 +1313,13 @@ where
         &mut self,
         uref: URef,
         dictionary_item_key: &str,
-    ) -> Result<Option<CLValue>, Error> {
+    ) -> Result<Option<CLValue>, ExecError> {
         self.validate_readable(&uref.into())?;
         self.validate_key(&uref.into())?;
         let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
 
         if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Err(Error::DictionaryItemKeyExceedsLength);
+            return Err(ExecError::DictionaryItemKeyExceedsLength);
         }
 
         let dictionary_key = Key::dictionary(uref, dictionary_item_key_bytes);
@@ -1307,16 +1330,16 @@ where
     pub(crate) fn dictionary_read(
         &mut self,
         dictionary_key: Key,
-    ) -> Result<Option<CLValue>, Error> {
+    ) -> Result<Option<CLValue>, ExecError> {
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
             .read(&dictionary_key)
-            .map_err(Into::<Error>::into)?;
+            .map_err(Into::<ExecError>::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
             let stored_value = handle_stored_dictionary_value(dictionary_key, stored_value)?;
-            let cl_value = CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?;
+            let cl_value = CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?;
             Ok(Some(cl_value))
         } else {
             Ok(None)
@@ -1329,11 +1352,11 @@ where
         seed_uref: URef,
         dictionary_item_key: &str,
         cl_value: CLValue,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ExecError> {
         let dictionary_item_key_bytes = dictionary_item_key.as_bytes();
 
         if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Err(Error::DictionaryItemKeyExceedsLength);
+            return Err(ExecError::DictionaryItemKeyExceedsLength);
         }
 
         self.validate_writeable(&seed_uref.into())?;
@@ -1347,7 +1370,7 @@ where
                 seed_uref.addr().to_vec(),
                 dictionary_item_key_bytes.to_vec(),
             );
-            CLValue::from_t(dictionary_value).map_err(Error::from)?
+            CLValue::from_t(dictionary_value).map_err(ExecError::from)?
         };
 
         let dictionary_key = Key::dictionary(seed_uref, dictionary_item_key_bytes);
@@ -1356,16 +1379,19 @@ where
     }
 
     /// Gets system contract by name.
-    pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {
+    pub(crate) fn get_system_contract(
+        &self,
+        name: &str,
+    ) -> Result<AddressableEntityHash, ExecError> {
         let registry = self.system_contract_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);
-            Error::MissingSystemContractHash(name.to_string())
+            ExecError::MissingSystemContractHash(name.to_string())
         })?;
         Ok(*hash)
     }
 
-    pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, Error> {
+    pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, ExecError> {
         let system_entity_hash = self.get_system_contract(name)?;
         Ok(Key::addressable_entity_key(
             EntityKindTag::System,
@@ -1374,13 +1400,13 @@ where
     }
 
     /// Returns system contract registry by querying the global state.
-    pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, Error> {
+    pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|err| {
                 error!("Missing system contract registry");
-                Error::TrackingCopy(err)
+                ExecError::TrackingCopy(err)
             })
     }
 
@@ -1416,9 +1442,11 @@ where
         &mut self,
         topic_name: &str,
         topic_name_hash: TopicNameHash,
-    ) -> Result<Result<(), MessageTopicError>, Error> {
+    ) -> Result<Result<(), MessageTopicError>, ExecError> {
         let entity_key: Key = self.get_entity_key();
-        let entity_addr = entity_key.into_entity_hash().ok_or(Error::InvalidContext)?;
+        let entity_addr = entity_key
+            .into_entity_hash()
+            .ok_or(ExecError::InvalidContext)?;
 
         // Take the addressable entity out of the global state
         let entity = {
