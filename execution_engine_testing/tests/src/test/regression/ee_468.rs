@@ -2,7 +2,8 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::RuntimeArgs;
+use casper_execution_engine::core::{engine_state, execution};
+use casper_types::{bytesrepr, RuntimeArgs};
 
 const CONTRACT_DESERIALIZE_ERROR: &str = "deserialize_error.wasm";
 
@@ -15,11 +16,20 @@ fn should_not_fail_deserializing() {
         RuntimeArgs::new(),
     )
     .build();
-    let is_error = InMemoryWasmTestBuilder::default()
+    let error = InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request)
         .commit()
-        .is_error();
+        .get_error();
 
-    assert!(is_error);
+    assert!(
+        matches!(
+            error,
+            Some(engine_state::Error::Exec(execution::Error::BytesRepr(
+                bytesrepr::Error::EarlyEndOfStream
+            )))
+        ),
+        "{:?}",
+        error
+    );
 }

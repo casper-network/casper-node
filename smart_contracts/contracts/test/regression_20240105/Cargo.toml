@@ -1,0 +1,15 @@
+[package]
+name = "regression_20240105"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+casper-contract = { path = "../../../contract", features = ["test-support"] }
+casper-types = { path = "../../../../types" }
+
+[[bin]]
+name = "regression_20240105"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false

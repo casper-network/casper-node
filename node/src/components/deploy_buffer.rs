@@ -5,7 +5,7 @@ mod metrics;
 mod tests;
 
 use std::{
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryInto,
     iter::FromIterator,
     mem,
@@ -18,6 +18,7 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
+use casper_hashing::Digest;
 use casper_types::Timestamp;
 
 use crate::{
@@ -326,13 +327,65 @@ impl DeployBuffer {
             .collect()
     }
 
+    fn buckets(&mut self) -> HashMap<Digest, Vec<(DeployHashWithApprovals, DeployFootprint)>> {
+        let proposable = self.proposable();
+
+        let mut buckets: HashMap<Digest, Vec<(DeployHashWithApprovals, DeployFootprint)>> =
+            HashMap::new();
+
+        for (with_approvals, footprint) in proposable {
+            let body_hash = *footprint.header.body_hash();
+            buckets
+                .entry(body_hash)
+                .and_modify(|vec| vec.push((with_approvals.clone(), footprint.clone())))
+                .or_insert(vec![(with_approvals, footprint)]);
+        }
+        buckets
+    }
+
     /// Returns a right-sized payload of deploys that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
+    fn appendable_block(
+        &mut self,
+        timestamp: Timestamp,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
+        if Timestamp::now() >= request_expiry {
+            return ret;
+        }
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
         let mut have_hit_deploy_limit = false;
-        for (with_approvals, footprint) in self.proposable() {
+
+        let mut buckets = self.buckets();
+        let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
+
+        #[cfg(test)]
+        let mut iter_counter = 0;
+        #[cfg(test)]
+        let iter_limit = self.buffer.len() * 4;
+
+        while let Some(body_hash) = body_hashes_queue.pop_front() {
+            if Timestamp::now() > request_expiry {
+                break;
+            }
+            #[cfg(test)]
+            {
+                iter_counter += 1;
+                assert!(
+                    iter_counter < iter_limit,
+                    "the number of iterations shouldn't be too large"
+                );
+            }
+
+            let Some((with_approvals, footprint)) =
+                buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+            else {
+                continue;
+            };
+            // bucket wasn't empty - push the hash back into the queue to be processed again on the
+            // next pass
+            body_hashes_queue.push_back(body_hash);
             if footprint.is_transfer && have_hit_transfer_limit {
                 continue;
             }
@@ -550,8 +603,11 @@ where
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
                     timestamp,
+                    request_expiry,
                     responder,
-                }) => responder.respond(self.appendable_block(timestamp)).ignore(),
+                }) => responder
+                    .respond(self.appendable_block(timestamp, request_expiry))
+                    .ignore(),
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
                     Effects::new()

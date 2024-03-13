@@ -303,10 +303,9 @@ fn upsert_acceptor() {
 
     accumulator.register_local_tip(0, EraId::new(0));
 
-    let max_block_count =
-        PEER_RATE_LIMIT_MULTIPLIER * ((config.purge_interval / block_time) as usize);
+    let target_block_count = 10;
 
-    for _ in 0..max_block_count {
+    for _ in 0..target_block_count {
         accumulator.upsert_acceptor(
             BlockHash::random(&mut rng),
             Some(era0),
@@ -314,23 +313,18 @@ fn upsert_acceptor() {
         );
     }
 
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count);
+    assert_eq!(accumulator.block_acceptors.len(), target_block_count);
 
     let block_hash = BlockHash::random(&mut rng);
 
-    // Alice has sent us too many blocks; we don't register this one.
-    accumulator.upsert_acceptor(block_hash, Some(era0), Some(*ALICE_NODE_ID));
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count);
-    assert!(!accumulator.block_acceptors.contains_key(&block_hash));
-
     // Bob hasn't sent us anything yet. But we don't insert without an era ID.
     accumulator.upsert_acceptor(block_hash, None, Some(*BOB_NODE_ID));
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count);
+    assert_eq!(accumulator.block_acceptors.len(), target_block_count);
     assert!(!accumulator.block_acceptors.contains_key(&block_hash));
 
     // With an era ID he's allowed to tell us about this one.
     accumulator.upsert_acceptor(block_hash, Some(era0), Some(*BOB_NODE_ID));
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count + 1);
+    assert_eq!(accumulator.block_acceptors.len(), target_block_count + 1);
     assert!(accumulator.block_acceptors.contains_key(&block_hash));
 
     // And if Alice tells us about it _now_, we'll register her as a peer.
@@ -353,14 +347,14 @@ fn upsert_acceptor() {
     };
     // This should lead to a purge of said acceptor, therefore enabling us to
     // add another one for Alice.
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count + 1);
+    assert_eq!(accumulator.block_acceptors.len(), target_block_count + 1);
     accumulator.upsert_acceptor(
         BlockHash::random(&mut rng),
         Some(era0),
         Some(*ALICE_NODE_ID),
     );
     // Acceptor was added.
-    assert_eq!(accumulator.block_acceptors.len(), max_block_count + 2);
+    assert_eq!(accumulator.block_acceptors.len(), target_block_count + 2);
     // The timestamp was purged.
     assert_ne!(
         accumulator
@@ -957,7 +951,7 @@ fn accumulator_should_leap() {
     }
 
     let upgrade_attempt_execution_threshold = attempt_execution_threshold * 2;
-    block_accumulator.register_activation_point(ActivationPoint::EraId(era_id.successor()));
+    block_accumulator.register_activation_point(Some(ActivationPoint::EraId(era_id.successor())));
     let offset = centurion.saturating_sub(upgrade_attempt_execution_threshold);
     for height in offset..centurion {
         expected_leap_instruction(

@@ -9,6 +9,21 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 7.0.1
+
+### Changed
+* Change the cost of `wasm.storage_costs.gas_per_byte` and `shared::storage_costs::DEFAULT_GAS_PER_BYTE_COST` from `630_000` to `1_117_587`.
+* Change the cost of the host function `casper_add_associated_key` from `9_000` to `1_200_000`.
+* Change the cost of the argument `entry_points_size` of host function `casper_add_contract_version` from `0` to `120_000`.
+* Change the cost of the host function `casper_blake2b`and its argument `in_size` from `200` and `0` respectively to `1_200_000` to `120_000`.
+* Change the cost of the host function `casper_call_contract` and its arguments `entry_point_name_size` and `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
+* Change the cost of the host function `casper_call_versioned_contract` and the arguments `entry_point_name_size` and `runtime_args_size` from `4_500`, `0` and `420` respectively to `300_000_000`, `120_000` and `120_000`.
+* Change the cost of the host function `casper_get_balance` from `3_800` to `3_000_000`.
+* Change the cost of arguments `name_size` and `dest_size` of host function `casper_get_named_arg` from `0` to `120_000`.
+* Change the cost of the host function `casper_put_key` and its arguments `name_size` and `key_size` from `38_000`, `1_100` and `0` respectively to `100_000_000`, `120_000` and `120_000`.
+* Change the cost of the host function `casper_read_value` and its argument `key_size` from `6_000` and `0` respectively to `60_000` and `120_000`.
+* Change the cost of the argument `urefs_size` of host function `casper_remove_contract_user_group_urefs` from `0` to `120_000`.
+* Change the cost of the host function `casper_transfer_from_purse_to_purse` from `82_000` to `82_000_000`.
 
 
 

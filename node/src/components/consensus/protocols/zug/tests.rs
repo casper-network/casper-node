@@ -252,7 +252,7 @@ fn remove_targeted_messages(
 fn remove_create_new_block(outcomes: &mut ProtocolOutcomes<ClContext>) -> BlockContext<ClContext> {
     let mut result = None;
     outcomes.retain(|outcome| match outcome {
-        ProtocolOutcome::CreateNewBlock(block_context) => {
+        ProtocolOutcome::CreateNewBlock(block_context, _) => {
             if let Some(other_context) = result.replace(block_context.clone()) {
                 panic!(
                     "got multiple CreateNewBlock outcomes: {:?}, {:?}",
@@ -294,8 +294,11 @@ fn expect_no_gossip_block_finalized(outcomes: ProtocolOutcomes<ClContext>) {
             ProtocolOutcome::CreatedGossipMessage(msg) => {
                 panic!("unexpected gossip message {:?}", msg);
             }
-            ProtocolOutcome::CreateNewBlock(block_context) => {
-                panic!("unexpected CreateNewBlock: {:?}", block_context);
+            ProtocolOutcome::CreateNewBlock(block_context, expiry) => {
+                panic!(
+                    "unexpected CreateNewBlock: {:?} exp. {}",
+                    block_context, expiry
+                );
             }
             _ => {}
         }
