@@ -34,8 +34,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
-        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
-        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
+        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE);
+        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_1_PUBLIC_KEY.clone(),
             account_1_balance,
@@ -46,8 +46,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         )
     };
     let account_2 = {
-        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
-        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
+        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE);
+        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_2_PUBLIC_KEY.clone(),
             account_2_balance,

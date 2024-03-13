@@ -32,12 +32,12 @@ static ACCOUNTS_WITH_GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|
     vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             None,
         ),
         GenesisAccount::account(
             DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(*DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE),
                 15,

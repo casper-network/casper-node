@@ -257,17 +257,17 @@ fn delegate_and_undelegate_have_expected_costs() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
         let validator_2 = GenesisAccount::account(
             VALIDATOR_2.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -401,17 +401,17 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
         let validator_2 = GenesisAccount::account(
             VALIDATOR_2.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );

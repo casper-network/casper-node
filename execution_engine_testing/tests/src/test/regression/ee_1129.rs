@@ -48,9 +48,9 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -113,7 +113,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             None,
         );
 

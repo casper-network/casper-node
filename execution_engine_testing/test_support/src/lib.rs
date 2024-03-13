@@ -114,13 +114,13 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
     ret.push(genesis_account);
     let proposer_account = GenesisAccount::account(
         DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
     ret.push(proposer_account);

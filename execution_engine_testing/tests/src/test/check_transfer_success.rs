@@ -23,7 +23,7 @@ fn test_check_transfer_success_with_source_only() {
     // create a genesis account.
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -72,7 +72,7 @@ fn test_check_transfer_success_with_source_only() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
@@ -85,7 +85,7 @@ fn test_check_transfer_success_with_source_only() {
 fn test_check_transfer_success_with_source_only_errors() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -133,7 +133,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
@@ -146,7 +146,7 @@ fn test_check_transfer_success_with_source_only_errors() {
 fn test_check_transfer_success_with_source_and_target() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -191,7 +191,7 @@ fn test_check_transfer_success_with_source_and_target() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));

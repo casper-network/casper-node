@@ -310,7 +310,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
             account_1_public_key.clone(),
             Motes::new(account_1_balance),
             Some(GenesisValidator::new(
-                Motes::new(GENESIS_VALIDATOR_STAKE.into()),
+                Motes::new(GENESIS_VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );

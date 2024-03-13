@@ -97,17 +97,14 @@ static PRIVATE_CHAIN_GENESIS_VALIDATORS: Lazy<BTreeMap<PublicKey, GenesisValidat
 static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut default_accounts = Vec::new();
 
-    let proposer_account = GenesisAccount::account(
-        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        Motes::new(U512::zero()),
-        None,
-    );
+    let proposer_account =
+        GenesisAccount::account(DEFAULT_PROPOSER_PUBLIC_KEY.clone(), Motes::zero(), None);
     default_accounts.push(proposer_account);
 
     // One normal account that starts at genesis
     default_accounts.push(GenesisAccount::account(
         ACCOUNT_1_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     ));
 
@@ -119,7 +116,7 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
             public_key,
             // Genesis validators for a private network doesn't have balances, but they are part of
             // fixed set of validators
-            balance: Motes::new(U512::zero()),
+            balance: Motes::zero(),
             validator: Some(genesis_validator),
         });
     }

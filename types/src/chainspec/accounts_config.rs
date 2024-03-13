@@ -102,7 +102,7 @@ impl AccountsConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         use rand::Rng;
 
-        use crate::{Motes, U512};
+        use crate::Motes;
 
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
@@ -120,7 +120,7 @@ impl AccountsConfig {
         let admin_balance: u32 = rng.gen();
         let administrators = vec![AdministratorAccount::new(
             PublicKey::random(rng),
-            Motes::new(U512::from(admin_balance)),
+            Motes::new(admin_balance),
         )];
 
         AccountsConfig {

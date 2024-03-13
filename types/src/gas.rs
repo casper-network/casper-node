@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn should_support_checked_div_from_motes() {
-        let motes = Motes::new(U512::zero());
+        let motes = Motes::zero();
         let conv_rate = 0;
         let maybe = Gas::from_motes(motes, conv_rate);
         assert!(maybe.is_none(), "should be none due to divide by zero");

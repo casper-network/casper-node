@@ -12,7 +12,7 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, AccessRights,
     AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
-    StoredValue, U512,
+    StoredValue,
 };
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
@@ -514,7 +514,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
 fn should_query_dictionary_items_with_test_builder() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 

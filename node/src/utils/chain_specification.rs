@@ -152,7 +152,7 @@ mod tests {
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
         MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
+        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig,
     };
 
     use super::*;
@@ -562,10 +562,10 @@ mod tests {
             };
 
             for (index, account_config) in accounts.into_iter().enumerate() {
-                assert_eq!(account_config.balance(), Motes::new(U512::from(index + 1)),);
+                assert_eq!(account_config.balance(), Motes::new(index + 1),);
                 assert_eq!(
                     account_config.bonded_amount(),
-                    Motes::new(U512::from((index as u64 + 1) * 10))
+                    Motes::new((index as u64 + 1) * 10)
                 );
             }
         } else {
@@ -616,7 +616,7 @@ mod tests {
 
         assert_eq!(
             spec.transaction_config.deploy_config.max_payment_cost,
-            Motes::new(U512::from(9))
+            Motes::new(9)
         );
         assert_eq!(
             spec.transaction_config.max_ttl,

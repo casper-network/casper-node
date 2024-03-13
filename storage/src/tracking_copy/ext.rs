@@ -4,7 +4,7 @@ use crate::global_state::{error::Error as GlobalStateError, state::StateReader};
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof, ByteCode,
     ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package,
-    PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, U512,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -82,7 +82,7 @@ where
         let cl_value: CLValue = stored_value
             .try_into()
             .map_err(TrackingCopyError::TypeMismatch)?;
-        let balance = Motes::new(cl_value.into_t()?);
+        let balance = Motes::new(cl_value.into_t::<U512>()?);
         Ok(balance)
     }
 
@@ -117,7 +117,7 @@ where
             .to_owned()
             .try_into()
             .map_err(TrackingCopyError::TypeMismatch)?;
-        let balance = Motes::new(cl_value.into_t()?);
+        let balance = Motes::new(cl_value.into_t::<U512>()?);
         Ok((balance, proof))
     }
 

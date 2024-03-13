@@ -901,13 +901,12 @@ mod tests {
         let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key: PublicKey = PublicKey::from(&secret_key);
 
-        let genesis_account_1 =
-            GenesisAccount::account(public_key.clone(), Motes::new(U512::from(100)), None);
+        let genesis_account_1 = GenesisAccount::account(public_key.clone(), Motes::new(100), None);
 
         bytesrepr::test_serialization_roundtrip(&genesis_account_1);
 
         let genesis_account_2 =
-            GenesisAccount::account(public_key, Motes::new(U512::from(100)), Some(rng.gen()));
+            GenesisAccount::account(public_key, Motes::new(100), Some(rng.gen()));
 
         bytesrepr::test_serialization_roundtrip(&genesis_account_2);
     }
@@ -928,7 +927,7 @@ mod tests {
         let genesis_account = GenesisAccount::delegator(
             validator_public_key,
             delegator_public_key,
-            Motes::new(U512::from(100)),
+            Motes::new(100),
             Motes::zero(),
         );
 

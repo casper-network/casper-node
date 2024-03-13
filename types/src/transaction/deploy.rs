@@ -49,7 +49,7 @@ use crate::{
     },
     testing::TestRng,
     AddressableEntityHash, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
-    DEFAULT_MIN_TRANSFER_MOTES, U512,
+    DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -58,7 +58,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{system::auction::ARG_AMOUNT, Gas, Motes, SystemConfig};
+use crate::{system::auction::ARG_AMOUNT, Gas, Motes, SystemConfig, U512};
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_category::DeployCategory;
@@ -395,7 +395,7 @@ impl Deploy {
         };
         let motes = {
             if self.is_transfer() {
-                Motes::new(U512::from(system_costs.mint_costs().transfer))
+                Motes::new(system_costs.mint_costs().transfer)
             } else {
                 let value = self
                     .payment()

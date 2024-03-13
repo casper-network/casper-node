@@ -241,7 +241,7 @@ impl TransactionV1 {
                     }
                     None => *user_specified_price,
                 };
-                let motes = Motes::new(U512::from(*payment_amount));
+                let motes = Motes::new(*payment_amount);
                 Gas::from_motes(motes, actual_price)
             }
             PricingMode::Fixed { .. } => {
@@ -277,11 +277,11 @@ impl TransactionV1 {
                         costs.standard_transaction_limit()
                     }
                 };
-                Gas::from_motes(Motes::new(U512::from(cost)), gas_price)
+                Gas::from_motes(Motes::new(cost), gas_price)
             }
             PricingMode::Reserved { paid_amount, .. } => {
                 // prepaid, if receipt is legit (future use, not currently implemented)
-                Gas::from_motes(Motes::new(U512::from(paid_amount)), 1)
+                Gas::from_motes(Motes::new(paid_amount), 1)
             }
         }
     }

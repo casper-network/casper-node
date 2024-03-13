@@ -60,9 +60,9 @@ static GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     for (index, public_key) in GENESIS_VALIDATOR_PUBLIC_KEYS.iter().enumerate() {
         let account = GenesisAccount::account(
             public_key.clone(),
-            Motes::new(U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE)),
+            Motes::new(MINIMUM_ACCOUNT_CREATION_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(U512::from(index + 1) * 1_000),
+                Motes::new((index + 1) * 1_000),
                 DelegationRate::zero(),
             )),
         );
@@ -86,7 +86,7 @@ static LOWEST_STAKE_VALIDATOR: Lazy<PublicKey> = Lazy::new(|| {
 
     assert_eq!(
         genesis_account.staked_amount(),
-        Motes::new(U512::from(MINIMUM_BONDED_AMOUNT))
+        Motes::new(MINIMUM_BONDED_AMOUNT)
     );
 
     genesis_account.public_key()
