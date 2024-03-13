@@ -210,7 +210,6 @@ pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
         /// Responder to be called with all connected peers.
-        /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Get up to `count` fully-connected peers in random order.
