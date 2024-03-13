@@ -55,7 +55,7 @@ impl Default for Config {
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
-            send_buffer_size: PerChannel::init_with(|_| None), // TODO: Adjust after testing.
+            send_buffer_size: PerChannel::init_with(|_| None),
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
