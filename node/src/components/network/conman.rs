@@ -250,7 +250,7 @@ pub(crate) struct ProtocolHandshakeOutcome {
 /// An error communicated back to a peer.
 #[derive(Debug, Deserialize, Error, Serialize)]
 enum PeerError {
-    /// The peer told use we are banned.
+    /// The peer told us we are banned.
     #[error("you are blocked")]
     YouAreBanned {
         /// How long until the ban is lifted.
