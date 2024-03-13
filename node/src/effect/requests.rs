@@ -210,7 +210,6 @@ pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
         /// Responder to be called with all connected peers.
-        /// Responds with a map from [NodeId]s to a socket address, represented as a string.
         responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Get up to `count` fully-connected peers in random order.
@@ -673,6 +672,7 @@ impl Display for MarkBlockCompletedRequest {
 pub(crate) enum DeployBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
+        request_expiry: Timestamp,
         responder: Responder<AppendableBlock>,
     },
 }
@@ -680,11 +680,15 @@ pub(crate) enum DeployBufferRequest {
 impl Display for DeployBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::GetAppendableBlock { timestamp, .. } => {
+            DeployBufferRequest::GetAppendableBlock {
+                timestamp,
+                request_expiry,
+                ..
+            } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {}",
-                    timestamp
+                    "request for appendable block at instant {} (expires at {})",
+                    timestamp, request_expiry,
                 )
             }
         }

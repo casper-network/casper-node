@@ -17,6 +17,8 @@ pub const ARG_ROUND_SEIGNIORAGE_RATE: &str = "round_seigniorage_rate";
 pub const METHOD_MINT: &str = "mint";
 /// Named constant for method `reduce_total_supply`.
 pub const METHOD_REDUCE_TOTAL_SUPPLY: &str = "reduce_total_supply";
+/// Named constant for method `burn`.
+pub const METHOD_BURN: &str = "burn";
 /// Named constant for (synthetic) method `create`
 pub const METHOD_CREATE: &str = "create";
 /// Named constant for method `balance`.

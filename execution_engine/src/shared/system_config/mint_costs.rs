@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_MINT_COST: u32 = 2_500_000_000;
 /// Default cost of the `reduce_total_supply` mint entry point.
 pub const DEFAULT_REDUCE_TOTAL_SUPPLY_COST: u32 = 10_000;
+/// Default cost of the `burn` mint entry point.
+pub const DEFAULT_BURN_COST: u32 = 10_000;
 /// Default cost of the `create` mint entry point.
 pub const DEFAULT_CREATE_COST: u32 = 2_500_000_000;
 /// Default cost of the `balance` mint entry point.
@@ -27,6 +29,8 @@ pub struct MintCosts {
     pub mint: u32,
     /// Cost of calling the `reduce_total_supply` entry point.
     pub reduce_total_supply: u32,
+    /// Cost of calling the `burn` entry point.
+    pub burn: u32,
     /// Cost of calling the `create` entry point.
     pub create: u32,
     /// Cost of calling the `balance` entry point.
@@ -44,6 +48,7 @@ impl Default for MintCosts {
         Self {
             mint: DEFAULT_MINT_COST,
             reduce_total_supply: DEFAULT_REDUCE_TOTAL_SUPPLY_COST,
+            burn: DEFAULT_BURN_COST,
             create: DEFAULT_CREATE_COST,
             balance: DEFAULT_BALANCE_COST,
             transfer: DEFAULT_TRANSFER_COST,
@@ -60,6 +65,7 @@ impl ToBytes for MintCosts {
         let Self {
             mint,
             reduce_total_supply,
+            burn,
             create,
             balance,
             transfer,
@@ -74,6 +80,7 @@ impl ToBytes for MintCosts {
         ret.append(&mut transfer.to_bytes()?);
         ret.append(&mut read_base_round_reward.to_bytes()?);
         ret.append(&mut mint_into_existing_purse.to_bytes()?);
+        ret.append(&mut burn.to_bytes()?);
 
         Ok(ret)
     }
@@ -82,6 +89,7 @@ impl ToBytes for MintCosts {
         let Self {
             mint,
             reduce_total_supply,
+            burn,
             create,
             balance,
             transfer,
@@ -91,6 +99,7 @@ impl ToBytes for MintCosts {
 
         mint.serialized_length()
             + reduce_total_supply.serialized_length()
+            + burn.serialized_length()
             + create.serialized_length()
             + balance.serialized_length()
             + transfer.serialized_length()
@@ -108,11 +117,13 @@ impl FromBytes for MintCosts {
         let (transfer, rem) = FromBytes::from_bytes(rem)?;
         let (read_base_round_reward, rem) = FromBytes::from_bytes(rem)?;
         let (mint_into_existing_purse, rem) = FromBytes::from_bytes(rem)?;
+        let (burn, rem) = FromBytes::from_bytes(rem)?;
 
         Ok((
             Self {
                 mint,
                 reduce_total_supply,
+                burn,
                 create,
                 balance,
                 transfer,
@@ -128,6 +139,7 @@ impl Distribution<MintCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MintCosts {
         MintCosts {
             mint: rng.gen(),
+            burn: rng.gen(),
             reduce_total_supply: rng.gen(),
             create: rng.gen(),
             balance: rng.gen(),
@@ -149,6 +161,7 @@ pub mod gens {
         pub fn mint_costs_arb()(
             mint in num::u32::ANY,
             reduce_total_supply in num::u32::ANY,
+            burn in num::u32::ANY,
             create in num::u32::ANY,
             balance in num::u32::ANY,
             transfer in num::u32::ANY,
@@ -158,6 +171,7 @@ pub mod gens {
             MintCosts {
                 mint,
                 reduce_total_supply,
+                burn,
                 create,
                 balance,
                 transfer,

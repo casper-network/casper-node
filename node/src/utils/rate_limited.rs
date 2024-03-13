@@ -24,7 +24,7 @@ pub(crate) const DEFAULT_REFRESH_COUNT: usize = 100;
 /// Every rate limiter needs a unique identifier, which is used to create a static variable holding
 /// the count and time of last update.
 ///
-/// Every call of this macro will result, on average, in the load of twp atomics in the success
+/// Every call of this macro will result, on average, in the load of two atomics in the success
 /// path, three in the failure case, with the latter potentially doing additional work. Overall, it
 /// is fairly cheap to call.
 ///

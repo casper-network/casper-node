@@ -333,19 +333,14 @@ impl<T: GossipItem> Display for GossiperAnnouncement<T> {
     }
 }
 
-/// A chainspec loader announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum UpgradeWatcherAnnouncement {
-    /// New upgrade recognized.
-    UpgradeActivationPointRead(NextUpgrade),
-}
+pub(crate) struct UpgradeWatcherAnnouncement(pub(crate) Option<NextUpgrade>);
 
 impl Display for UpgradeWatcherAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade) => {
-                write!(f, "read {}", next_upgrade)
-            }
+        match &self.0 {
+            Some(next_upgrade) => write!(f, "read {}", next_upgrade),
+            None => write!(f, "no upgrade staged"),
         }
     }
 }

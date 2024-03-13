@@ -16,7 +16,7 @@ use casper_types::{
 use super::{args::Args, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
-    shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+    shared::host_function_costs::{Cost, HostFunction},
     storage::global_state::StateReader,
 };
 
@@ -562,6 +562,9 @@ where
                     existing_urefs_size,
                     output_size_ptr,
                 ) = Args::parse(args)?;
+
+                // TODO - use `num_new_urefs` * costs for unit uref, assuming these aren't
+                // already charged.
                 self.charge_host_function_call(
                     &host_function_costs.create_contract_user_group,
                     [
@@ -837,6 +840,7 @@ where
                 // args(4) = output of size value of host bytes data
                 let (package_ptr, package_size, label_ptr, label_size, value_size_ptr) =
                     Args::parse(args)?;
+                // TODO - add cost for 1x unit uref, assuming this isn't already charged
                 self.charge_host_function_call(
                     &host_function_costs.provision_contract_user_group_uref,
                     [
@@ -954,10 +958,9 @@ where
                 // args(0) = pointer to output size (output param)
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
-                self.charge_host_function_call(
-                    &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-                    [output_size_ptr],
-                )?;
+                // TODO - dynamically calculate the size of the new data.  Currently using
+                //        hard-coded 33 which is correct as of now.
+                self.charge_host_function_call(&host_function_costs.new_uref, [0, 0, 33])?;
                 let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }

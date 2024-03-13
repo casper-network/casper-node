@@ -1,7 +1,7 @@
 nctl
 ===============
 
-CLI application to setup & control multiple local Casper networks.
+CLI application to setup & control multiple local Casper networks.  It is NOT intended for use in production networks.  It is for TESTING ONLY
 
 What is nctl ?
 --------------------------------------
