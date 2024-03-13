@@ -1904,7 +1904,7 @@ where
             .metered_write_gs_unsafe(package_hash, package)?;
 
         for (_, topic_hash) in previous_message_topics.iter() {
-            let topic_key = Key::message_topic(entity_hash.into(), *topic_hash);
+            let topic_key = Key::message_topic(entity_addr, *topic_hash);
             let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
                 0,
                 self.context.get_blocktime(),
@@ -3477,7 +3477,7 @@ where
         let entity_addr = self
             .context
             .get_entity_key()
-            .into_entity_hash()
+            .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
         let topic_name_hash = crypto::blake2b(topic_name).into();
