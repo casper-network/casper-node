@@ -287,7 +287,7 @@ impl PeerError {
         bincode::Options::deserialize(super::bincode_config(), raw).ok()
     }
 
-    /// Creates a peer error from a anything string-adjacent.
+    /// Creates a peer error from anything string-adjacent.
     #[inline(always)]
     fn other<E: ToString>(err: E) -> Self {
         Self::Other(err.to_string())
