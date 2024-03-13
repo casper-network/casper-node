@@ -91,7 +91,11 @@ test: test-rs-no-default-features test-rs test-as
 
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
-	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored --skip repeated_ffi_call_should_gas_out_quickly
+
+.PHONY: test-contracts-timings
+test-contracts-timings: build-contracts-rs
+	$(DISABLE_LOGGING) $(CARGO) test --release $(filter-out --release, $(CARGO_FLAGS)) -p casper-engine-tests -- --ignored --test-threads=1 repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as

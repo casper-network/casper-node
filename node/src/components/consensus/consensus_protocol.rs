@@ -200,7 +200,7 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
-    CreateNewBlock(BlockContext<C>),
+    CreateNewBlock(BlockContext<C>, Timestamp),
     /// A block was finalized.
     FinalizedBlock(FinalizedBlock<C>),
     /// Request validation of the consensus value, contained in a message received from the given

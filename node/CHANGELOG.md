@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.  The format
 ### Remove
 * The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.
 
+## 1.5.6
+
+### Changed
+* The node will recognise if a pending upgrade is unstaged and will avoid shutting down for upgrade in this case.
+* If an upgrade with the same activation point as the current one is detected on startup, the node will immediately shut down for upgrade.
+* Reduce chainspec setting `deploys.max_ttl` from 18 hours to 2 hours.
+
 
 
 ## 1.5.5

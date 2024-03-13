@@ -30,7 +30,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 5);
+    ProtocolVersion::from_parts(1, 5, 6);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 

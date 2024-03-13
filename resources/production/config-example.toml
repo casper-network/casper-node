@@ -36,6 +36,17 @@ shutdown_for_upgrade_timeout = '2 minutes'
 # Maximum time a node will wait for an upgrade to commit.
 upgrade_timeout = '30 seconds'
 
+# The node detects when it should do a controlled shutdown when it is in a detectably bad state
+# in order to avoid potentially catastrophic uncontrolled crashes. Generally, a node should be
+# allowed to shutdown, and if restarted that node will generally recover gracefully and resume
+# normal operation. However, actively validating nodes have subjective state in memory that is
+# lost on shutdown / restart and must be reacquired from other validating nodes on restart.
+# If all validating nodes shutdown in the middle of an era, social consensus is required to restart
+# the network. As a mitigation for that, the following config can be set to true on some validator
+# nodes to cause nodes that are supposed to be validators in the current era to ignore controlled
+# shutdown events and stay up. This allows them to act as sentinels for the consensus data for
+# other restarting nodes. This config is inert on non-validating nodes.
+prevent_validator_shutdown = false
 
 # =================================
 # Configuration options for logging

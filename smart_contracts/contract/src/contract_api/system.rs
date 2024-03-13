@@ -107,7 +107,7 @@ pub fn get_purse_balance(purse: URef) -> Option<U512> {
     Some(value)
 }
 
-/// Returns the balance in motes of a purse.
+/// Returns the balance in motes of the account's main purse.
 pub fn get_balance() -> Option<U512> {
     get_purse_balance(account::get_main_purse())
 }

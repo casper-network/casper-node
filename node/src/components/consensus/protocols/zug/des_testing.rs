@@ -134,7 +134,9 @@ impl From<ProtocolOutcome<TestContext>> for ZugMessage {
                 ZugMessage::Timer(timestamp, timer_id)
             }
             ProtocolOutcome::QueueAction(action_id) => ZugMessage::QueueAction(action_id),
-            ProtocolOutcome::CreateNewBlock(block_ctx) => ZugMessage::RequestNewBlock(block_ctx),
+            ProtocolOutcome::CreateNewBlock(block_ctx, _expiry) => {
+                ZugMessage::RequestNewBlock(block_ctx)
+            }
             ProtocolOutcome::FinalizedBlock(finalized_block) => {
                 ZugMessage::FinalizedBlock(finalized_block)
             }
