@@ -170,7 +170,7 @@ impl Payload for Message {
 /// Runs a single network.
 #[derive(Debug)]
 struct TestReactor {
-    net: Network<Event, Message>,
+    net: Network<Message>,
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
 }
 
@@ -204,7 +204,7 @@ impl Reactor for TestReactor {
             registry,
         )?;
 
-        net.start_initialization();
+        <Network<Message> as InitializedComponent<Self::Event>>::start_initialization(&mut net);
         let effects = smallvec![async { smallvec![Event::Net(NetworkEvent::Initialize)] }.boxed()];
 
         Ok((

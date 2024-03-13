@@ -1,7 +1,7 @@
 use thiserror::Error;
 use tracing::error;
 
-#[derive(Error, Debug)]
+#[derive(Clone, Copy, Error, Debug)]
 pub(crate) enum MergeMismatchError {
     #[error("block mismatch when merging meta blocks")]
     Block,

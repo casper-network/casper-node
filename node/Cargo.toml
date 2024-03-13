@@ -41,7 +41,7 @@ http = "0.2.1"
 humantime = "2.1.0"
 hyper = "0.14.26"
 itertools = "0.10.0"
-juliet = { version = "0.2.0", features = ["tracing"] }
+juliet = { git = "https://github.com/casper-network/juliet", rev = "67ff4778c670bf96ebf86fa28575e708b9997765", features = ["tracing"] }
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
 lmdb-rkv = "0.14"
@@ -77,7 +77,7 @@ strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 sys-info = "0.8.0"
 tempfile = "3.4.0"
 thiserror = "1"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time", "parking_lot"] }
 tokio-openssl = "0.6.1"
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec", "compat"] }

@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use datasize::DataSize;
 use futures::future::BoxFuture;
 use juliet::ChannelId;
 use serde::{
@@ -38,6 +39,7 @@ fn default_protocol_version() -> ProtocolVersion {
 #[strum_discriminants(derive(strum::EnumIter))]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
+    // TODO: Remove.
     Handshake {
         /// Network we are connected to.
         network_name: String,
@@ -86,9 +88,19 @@ impl<P: Payload> Message<P> {
 }
 
 /// A pair of secret keys used by consensus.
+#[derive(Clone, DataSize)]
 pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
+}
+
+impl Debug for NodeKeyPair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeKeyPair")
+            .field("secret_key", &"..")
+            .field("public_key", &self.public_key)
+            .finish()
+    }
 }
 
 impl NodeKeyPair {

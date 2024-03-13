@@ -4,7 +4,6 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use casper_hashing::Digest;
 use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
@@ -16,7 +15,7 @@ use crate::{
 };
 
 /// Reasons why a peer was blocked.
-#[derive(DataSize, Debug, Serialize)]
+#[derive(Clone, DataSize, Debug, Serialize)]
 pub(crate) enum BlocklistJustification {
     /// Peer sent incorrect item.
     SentBadItem { tag: Tag },
@@ -45,18 +44,6 @@ pub(crate) enum BlocklistJustification {
     },
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
-    /// Peer is on the wrong network.
-    WrongNetwork {
-        /// The network name reported by the peer.
-        peer_network_name: String,
-    },
-    /// Peer presented the wrong chainspec hash.
-    WrongChainspecHash {
-        /// The chainspec hash reported by the peer.
-        peer_chainspec_hash: Digest,
-    },
-    /// Peer did not present a chainspec hash.
-    MissingChainspecHash,
     /// Peer is considered dishonest.
     DishonestPeer,
     /// Peer sent too many finality signatures.
@@ -87,21 +74,6 @@ impl Display for BlocklistJustification {
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")
-            }
-            BlocklistJustification::WrongNetwork { peer_network_name } => write!(
-                f,
-                "reported to be on the wrong network ({:?})",
-                peer_network_name
-            ),
-            BlocklistJustification::WrongChainspecHash {
-                peer_chainspec_hash,
-            } => write!(
-                f,
-                "reported a mismatched chainspec hash ({})",
-                peer_chainspec_hash
-            ),
-            BlocklistJustification::MissingChainspecHash => {
-                f.write_str("sent handshake without chainspec hash")
             }
             BlocklistJustification::SentBadBlock { error } => {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)

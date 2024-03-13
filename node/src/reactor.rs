@@ -500,7 +500,7 @@ where
             rng,
         )?;
 
-        info!(
+        trace!(
             "Reactor: with_metrics has: {} initial_effects",
             initial_effects.len()
         );

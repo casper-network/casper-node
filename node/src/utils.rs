@@ -8,6 +8,7 @@ mod external;
 pub(crate) mod fmt_limit;
 mod fuse;
 pub(crate) mod opt_display;
+pub(crate) mod rate_limited;
 pub(crate) mod registered_metric;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
@@ -23,10 +24,10 @@ use std::{
     fs::File,
     io::{self, Write},
     net::{SocketAddr, ToSocketAddrs},
-    ops::{Add, BitXorAssign, Div},
+    ops::{Add, Div},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{Duration, Instant, SystemTime},
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -34,7 +35,6 @@ use fs2::FileExt;
 use futures::future::Either;
 use hyper::server::{conn::AddrIncoming, Builder, Server};
 
-use prometheus::{self, IntGauge};
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
@@ -160,33 +160,6 @@ pub(crate) fn start_listening(address: &str) -> Result<Builder<AddrIncoming>, Li
 #[inline]
 pub(crate) fn leak<T>(value: T) -> &'static T {
     Box::leak(Box::new(value))
-}
-
-/// An "unlimited semaphore".
-///
-/// Upon construction, `TokenizedCount` increases a given `IntGauge` by one for metrics purposed.
-///
-/// Once it is dropped, the underlying gauge will be decreased by one.
-#[derive(Debug)]
-pub(crate) struct TokenizedCount {
-    /// The gauge modified on construction/drop.
-    gauge: Option<IntGauge>,
-}
-
-impl TokenizedCount {
-    /// Create a new tokenized count, increasing the given gauge.
-    pub(crate) fn new(gauge: IntGauge) -> Self {
-        gauge.inc();
-        TokenizedCount { gauge: Some(gauge) }
-    }
-}
-
-impl Drop for TokenizedCount {
-    fn drop(&mut self) {
-        if let Some(gauge) = self.gauge.take() {
-            gauge.dec();
-        }
-    }
 }
 
 /// A display-helper that shows iterators display joined by ",".
@@ -334,20 +307,6 @@ where
     (numerator + denominator / T::from(2)) / denominator
 }
 
-/// XORs two byte sequences.
-///
-/// # Panics
-///
-/// Panics if `lhs` and `rhs` are not of equal length.
-#[inline]
-pub(crate) fn xor(lhs: &mut [u8], rhs: &[u8]) {
-    // Implementing SIMD support is left as an exercise for the reader.
-    assert_eq!(lhs.len(), rhs.len(), "xor inputs should have equal length");
-    lhs.iter_mut()
-        .zip(rhs.iter())
-        .for_each(|(sb, &cb)| sb.bitxor_assign(cb));
-}
-
 /// Wait until all strong references for a particular arc have been dropped.
 ///
 /// Downgrades and immediately drops the `Arc`, keeping only a weak reference. The reference will
@@ -428,37 +387,6 @@ impl LockedLineWriter {
     }
 }
 
-/// An anchor for converting an `Instant` into a wall-clock (`SystemTime`) time.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct TimeAnchor {
-    /// The reference instant used for conversion.
-    now: Instant,
-    /// The reference wall-clock timestamp used for conversion.
-    wall_clock_now: SystemTime,
-}
-
-impl TimeAnchor {
-    /// Creates a new time anchor.
-    ///
-    /// Will take a sample of the monotonic clock and the current time and store it in the anchor.
-    pub(crate) fn now() -> Self {
-        TimeAnchor {
-            now: Instant::now(),
-            wall_clock_now: SystemTime::now(),
-        }
-    }
-
-    /// Converts a point in time from the monotonic clock to wall clock time, using this anchor.
-    #[inline]
-    pub(crate) fn convert(&self, then: Instant) -> SystemTime {
-        if then > self.now {
-            self.wall_clock_now + then.duration_since(self.now)
-        } else {
-            self.wall_clock_now - self.now.duration_since(then)
-        }
-    }
-}
-
 /// Discard secondary data from a value.
 pub(crate) trait Peel {
     /// What is left after discarding the wrapping.
@@ -483,11 +411,9 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
 mod tests {
     use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
-    use prometheus::IntGauge;
-
     use crate::utils::resolve_address;
 
-    use super::{wait_for_arc_drop, xor, TokenizedCount};
+    use super::wait_for_arc_drop;
 
     /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
 
@@ -504,26 +430,6 @@ mod tests {
                 }
             })
             .collect()
-    }
-
-    #[test]
-    fn xor_works() {
-        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
-        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11, 0x12, 0x23];
-        let xor_result = [0x47, 0x58, 0xae, 0x8e, 0x46, 0x61, 0xe9, 0xd7];
-
-        xor(&mut lhs, &rhs);
-
-        assert_eq!(lhs, xor_result);
-    }
-
-    #[test]
-    #[should_panic(expected = "equal length")]
-    fn xor_panics_on_uneven_inputs() {
-        let mut lhs = [0x43, 0x53, 0xf2, 0x2f, 0xa9, 0x70, 0xfb, 0xf4];
-        let rhs = [0x04, 0x0b, 0x5c, 0xa1, 0xef, 0x11];
-
-        xor(&mut lhs, &rhs);
     }
 
     #[tokio::test]
@@ -559,25 +465,6 @@ mod tests {
         // Immedetialy after, we should not be able to obtain a strong reference anymore.
         // This test fails only if we have a race condition, so false positive tests are possible.
         assert!(weak.upgrade().is_none());
-    }
-
-    #[test]
-    fn tokenized_count_sanity_check() {
-        let gauge = IntGauge::new("sanity_gauge", "tokenized count test gauge")
-            .expect("failed to construct IntGauge in test");
-
-        gauge.inc();
-        gauge.inc();
-        assert_eq!(gauge.get(), 2);
-
-        let ticket1 = TokenizedCount::new(gauge.clone());
-        let ticket2 = TokenizedCount::new(gauge.clone());
-
-        assert_eq!(gauge.get(), 4);
-        drop(ticket2);
-        assert_eq!(gauge.get(), 3);
-        drop(ticket1);
-        assert_eq!(gauge.get(), 2);
     }
 
     #[test]

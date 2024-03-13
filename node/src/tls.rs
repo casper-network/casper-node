@@ -217,6 +217,7 @@ impl TlsCert {
     }
 
     /// Returns the public key fingerprint.
+    #[inline(always)]
     pub(crate) fn public_key_fingerprint(&self) -> KeyFingerprint {
         self.key_fingerprint
     }

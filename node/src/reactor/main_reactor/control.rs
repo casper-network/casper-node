@@ -60,7 +60,7 @@ impl MainReactor {
                 match self.initialize_next_component(effect_builder) {
                     Some(effects) => (initialization_logic_default_delay.into(), effects),
                     None => {
-                        if false == self.net.has_sufficient_fully_connected_peers() {
+                        if false == self.net.has_sufficient_connected_peers() {
                             info!("Initialize: awaiting sufficient fully-connected peers");
                             return (initialization_logic_default_delay.into(), Effects::new());
                         }

@@ -21,6 +21,8 @@ name = 'casper-example'
 # The maximum size of an acceptable handshake message in bytes. Any handshake larger than this will
 # be rejected at the networking level.
 maximum_handshake_message_size = 1_048_576
+# The maximum frame size for network transport.
+maximum_frame_size = 4096
 
 [network.networking_config]
 network = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }

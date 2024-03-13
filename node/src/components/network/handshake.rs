@@ -6,30 +6,31 @@
 //! This module contains an implementation for a minimal framing format based on 32-bit fixed size
 //! big endian length prefixes.
 
-use std::{net::SocketAddr, time::Duration};
+use std::net::SocketAddr;
 
 use casper_types::PublicKey;
-use rand::Rng;
+
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::{debug, info};
+use tracing::debug;
 
 use super::{
+    chain_info::ChainInfo,
     connection_id::ConnectionId,
     error::{ConnectionError, RawFrameIoError},
-    tasks::NetworkContext,
-    Message, Payload, Transport,
+    message::NodeKeyPair,
+    Message, Transport,
 };
 
 /// The outcome of the handshake process.
-pub(super) struct HandshakeOutcome {
+pub(crate) struct HandshakeOutcome {
     /// A framed transport for peer.
-    pub(super) transport: Transport,
+    pub(crate) transport: Transport,
     /// Public address advertised by the peer.
-    pub(super) public_addr: SocketAddr,
+    pub(crate) public_addr: SocketAddr,
     /// The public key the peer is validating with, if any.
-    pub(super) peer_consensus_public_key: Option<Box<PublicKey>>,
+    pub(crate) peer_consensus_public_key: Option<Box<PublicKey>>,
 }
 
 /// Reads a 32 byte big endian integer prefix, followed by an actual raw message.
@@ -103,139 +104,132 @@ where
     rmp_serde::from_slice(raw)
 }
 
-/// Negotiates a handshake between two peers.
-pub(super) async fn negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
-    transport: Transport,
-    connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
-    tokio::time::timeout(
-        context.handshake_timeout.into(),
-        do_negotiate_handshake::<P, REv>(context, transport, connection_id),
-    )
-    .await
-    .unwrap_or_else(|_elapsed| Err(ConnectionError::HandshakeTimeout))
+/// Data necessary to perform a handshake.
+#[derive(Debug)]
+pub(crate) struct HandshakeConfiguration {
+    /// Chain info extract from chainspec.
+    chain_info: ChainInfo,
+    /// Optional set of signing keys, to identify as a node during handshake.
+    node_key_pair: Option<NodeKeyPair>,
+    /// Our own public listening address.
+    public_addr: SocketAddr,
 }
 
-/// Performs a handshake.
-///
-/// This function is cancellation safe.
-async fn do_negotiate_handshake<P, REv>(
-    context: &NetworkContext<REv>,
-    transport: Transport,
-    connection_id: ConnectionId,
-) -> Result<HandshakeOutcome, ConnectionError>
-where
-    P: Payload,
-{
-    // Manually encode a handshake.
-    let handshake_message = context.chain_info().create_handshake::<P>(
-        context
-            .public_addr()
-            .expect("did not expect public listening address to be missing"),
-        context.node_key_pair(),
-        connection_id,
-    );
-
-    let serialized_handshake_message =
-        serialize(&handshake_message).map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
-
-    // To ensure we are not dead-locking, we split the transport here and send the handshake in a
-    // background task before awaiting one ourselves. This ensures we can make progress regardless
-    // of the size of the outgoing handshake.
-    let (mut read_half, mut write_half) = tokio::io::split(transport);
-
-    let handshake_send = tokio::spawn(async move {
-        write_length_prefixed_frame(&mut write_half, &serialized_handshake_message).await?;
-        Ok::<_, RawFrameIoError>(write_half)
-    });
-
-    // The remote's message should be a handshake, but can technically be any message. We receive,
-    // deserialize and check it.
-    let remote_message_raw = read_length_prefixed_frame(
-        context.chain_info().maximum_handshake_message_size,
-        &mut read_half,
-    )
-    .await
-    .map_err(ConnectionError::HandshakeRecv)?;
-
-    // Ensure the handshake was sent correctly.
-    let write_half = handshake_send
-        .await
-        .map_err(ConnectionError::HandshakeSenderCrashed)?
-        .map_err(ConnectionError::HandshakeSend)?;
-
-    let remote_message: Message<P> =
-        deserialize(&remote_message_raw).map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
-
-    if let Message::Handshake {
-        network_name,
-        public_addr,
-        protocol_version,
-        consensus_certificate,
-        chainspec_hash,
-    } = remote_message
-    {
-        debug!(%protocol_version, "handshake received");
-
-        // The handshake was valid, we can check the network name.
-        if network_name != context.chain_info().network_name {
-            return Err(ConnectionError::WrongNetwork(network_name));
-        }
-
-        // If there is a version mismatch, we treat it as a connection error. We do not ban peers
-        // for this error, but instead rely on exponential backoff, as bans would result in issues
-        // during upgrades where nodes may have a legitimate reason for differing versions.
-        //
-        // Since we are not using SemVer for versioning, we cannot make any assumptions about
-        // compatibility, so we allow only exact version matches.
-        if protocol_version != context.chain_info().protocol_version {
-            if let Some(threshold) = context.tarpit_version_threshold() {
-                if protocol_version <= threshold {
-                    let mut rng = crate::new_rng();
-
-                    if rng.gen_bool(context.tarpit_chance() as f64) {
-                        // If tarpitting is enabled, we hold open the connection for a specific
-                        // amount of time, to reduce load on other nodes and keep them from
-                        // reconnecting.
-                        info!(duration=?context.tarpit_duration(), "randomly tarpitting node");
-                        tokio::time::sleep(Duration::from(context.tarpit_duration())).await;
-                    } else {
-                        debug!(p = context.tarpit_chance(), "randomly not tarpitting node");
-                    }
-                }
-            }
-            return Err(ConnectionError::IncompatibleVersion(protocol_version));
-        }
-
-        // We check the chainspec hash to ensure peer is using the same chainspec as us.
-        // The remote message should always have a chainspec hash at this point since
-        // we checked the protocol version previously.
-        let peer_chainspec_hash = chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
-        if peer_chainspec_hash != context.chain_info().chainspec_hash {
-            return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
-        }
-
-        let peer_consensus_public_key = consensus_certificate
-            .map(|cert| {
-                cert.validate(connection_id)
-                    .map_err(ConnectionError::InvalidConsensusCertificate)
-            })
-            .transpose()?
-            .map(Box::new);
-
-        let transport = read_half.unsplit(write_half);
-
-        Ok(HandshakeOutcome {
-            transport,
+impl HandshakeConfiguration {
+    /// Creates a new handshake configuration.
+    pub(crate) fn new(
+        chain_info: ChainInfo,
+        node_key_pair: Option<NodeKeyPair>,
+        public_addr: SocketAddr,
+    ) -> Self {
+        Self {
+            chain_info,
+            node_key_pair,
             public_addr,
-            peer_consensus_public_key,
-        })
-    } else {
-        // Received a non-handshake, this is an error.
-        Err(ConnectionError::DidNotSendHandshake)
+        }
+    }
+
+    /// Performs a handshake.
+    ///
+    /// This function is cancellation safe.
+    pub(crate) async fn negotiate_handshake(
+        &self,
+        transport: Transport,
+    ) -> Result<HandshakeOutcome, ConnectionError> {
+        let connection_id = ConnectionId::from_connection(transport.ssl());
+
+        // Manually encode a handshake.
+        let handshake_message = self.chain_info.create_handshake(
+            self.public_addr,
+            self.node_key_pair.as_ref(),
+            connection_id,
+        );
+
+        let serialized_handshake_message =
+            serialize(&handshake_message).map_err(ConnectionError::CouldNotEncodeOurHandshake)?;
+
+        // To ensure we are not dead-locking, we split the transport here and send the handshake in
+        // a background task before awaiting one ourselves. This ensures we can make progress
+        // regardless of the size of the outgoing handshake.
+        let (mut read_half, mut write_half) = tokio::io::split(transport);
+
+        // TODO: This need not be spawned, but could be a local futures unordered.
+        let handshake_send = tokio::spawn(async move {
+            write_length_prefixed_frame(&mut write_half, &serialized_handshake_message).await?;
+            Ok::<_, RawFrameIoError>(write_half)
+        });
+
+        // The remote's message should be a handshake, but can technically be any message. We
+        // receive, deserialize and check it.
+        let remote_message_raw = read_length_prefixed_frame(
+            self.chain_info.maximum_handshake_message_size,
+            &mut read_half,
+        )
+        .await
+        .map_err(ConnectionError::HandshakeRecv)?;
+
+        // Ensure the handshake was sent correctly.
+        let write_half = handshake_send
+            .await
+            .map_err(ConnectionError::HandshakeSenderCrashed)?
+            .map_err(ConnectionError::HandshakeSend)?;
+
+        let remote_message: Message<()> = deserialize(&remote_message_raw)
+            .map_err(ConnectionError::InvalidRemoteHandshakeMessage)?;
+
+        if let Message::<()>::Handshake {
+            network_name,
+            public_addr,
+            protocol_version,
+            consensus_certificate,
+            chainspec_hash,
+        } = remote_message
+        {
+            debug!(%protocol_version, "handshake received");
+
+            // The handshake was valid, we can check the network name.
+            if network_name != self.chain_info.network_name {
+                return Err(ConnectionError::WrongNetwork(network_name));
+            }
+
+            // If there is a version mismatch, we treat it as a connection error. We do not ban
+            // peers for this error, but instead rely on exponential backoff, as bans would result
+            // in issues during upgrades where nodes may have a legitimate reason for differing
+            // versions.
+            //
+            // Since we are not using SemVer for versioning, we cannot make any assumptions about
+            // compatibility, so we allow only exact version matches.
+            if protocol_version != self.chain_info.protocol_version {
+                return Err(ConnectionError::IncompatibleVersion(protocol_version));
+            }
+
+            // We check the chainspec hash to ensure peer is using the same chainspec as us.
+            // The remote message should always have a chainspec hash at this point since
+            // we checked the protocol version previously.
+            let peer_chainspec_hash =
+                chainspec_hash.ok_or(ConnectionError::MissingChainspecHash)?;
+            if peer_chainspec_hash != self.chain_info.chainspec_hash {
+                return Err(ConnectionError::WrongChainspecHash(peer_chainspec_hash));
+            }
+
+            let peer_consensus_public_key = consensus_certificate
+                .map(|cert| {
+                    cert.validate(connection_id)
+                        .map_err(ConnectionError::InvalidConsensusCertificate)
+                })
+                .transpose()?
+                .map(Box::new);
+
+            let transport = read_half.unsplit(write_half);
+
+            Ok(HandshakeOutcome {
+                transport,
+                public_addr,
+                peer_consensus_public_key,
+            })
+        } else {
+            // Received a non-handshake, this is an error.
+            Err(ConnectionError::DidNotSendHandshake)
+        }
     }
 }

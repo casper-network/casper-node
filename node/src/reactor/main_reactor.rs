@@ -145,7 +145,7 @@ pub(crate) struct MainReactor {
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
     shutdown_trigger: ShutdownTrigger,
-    net: Network<MainEvent, Message>,
+    net: Network<Message>,
     consensus: EraSupervisor,
 
     // block handling

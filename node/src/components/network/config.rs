@@ -6,7 +6,7 @@ use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::PerChannel;
+use super::{conman::Config as ConmanConfig, PerChannel};
 
 /// Default binding address.
 ///
@@ -32,6 +32,12 @@ const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
 /// Default timeout during which the handshake needs to be completed.
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
+/// Default value for timeout bubbling.
+const DEFAULT_BUBBLE_TIMEOUTS: bool = true;
+
+/// Default value for error timeout.
+const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -53,6 +59,9 @@ impl Default for Config {
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
+            conman: Default::default(),
+            bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
+            error_timeout: DEFAULT_ERROR_TIMEOUT,
         }
     }
 }
@@ -120,6 +129,13 @@ pub struct Config {
     /// An identity will be automatically generated when starting up a node if this option is
     /// unspecified.
     pub identity: Option<IdentityConfig>,
+    /// Configuration for the connection manager.
+    pub conman: ConmanConfig,
+    /// Whether or not to consider a connection stuck after a single request times out, causing a
+    /// termination and reconnection.
+    pub bubble_timeouts: bool,
+    /// The maximum time a peer is allowed to take to receive a fatal error.
+    pub error_timeout: TimeDiff,
 }
 
 #[cfg(test)]

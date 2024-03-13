@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     mem,
+    net::SocketAddr,
     sync::Arc,
 };
 
@@ -171,6 +172,19 @@ impl<P> NetworkRequest<P> {
             },
         }
     }
+
+    /// Returns the message's payload.
+    ///
+    /// This is typically used for filtering payloads in tests.
+    #[cfg(test)]
+    #[inline(always)]
+    pub(crate) fn payload(&self) -> &P {
+        match self {
+            NetworkRequest::SendMessage { payload, .. } => payload,
+            NetworkRequest::ValidatorBroadcast { payload, .. } => payload,
+            NetworkRequest::Gossip { payload, .. } => payload,
+        }
+    }
 }
 
 impl<P> Display for NetworkRequest<P>
@@ -196,8 +210,7 @@ pub(crate) enum NetworkInfoRequest {
     /// Get incoming and outgoing peers.
     Peers {
         /// Responder to be called with all connected peers.
-        /// Responds with a map from [NodeId]s to a socket address, represented as a string.
-        responder: Responder<BTreeMap<NodeId, String>>,
+        responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Get up to `count` fully-connected peers in random order.
     FullyConnectedPeers {
@@ -745,7 +758,7 @@ pub(crate) enum RpcRequest {
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
-        responder: Responder<BTreeMap<NodeId, String>>,
+        responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     /// Return string formatted status or `None` if an error occurred.
     GetStatus {

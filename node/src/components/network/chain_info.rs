@@ -19,13 +19,15 @@ use crate::types::{chainspec::JulietConfig, Chainspec};
 /// Data retained from the chainspec by the networking component.
 ///
 /// Typically this information is used for creating handshakes.
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainInfo {
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     pub(super) network_name: String,
     /// The maximum handshake message size, as supplied from the chainspec.
     pub(super) maximum_handshake_message_size: u32,
+    /// The maximum frame size for network transport, as supplied from the chainspec.
+    pub maximum_frame_size: u32,
     /// The protocol version.
     pub(super) protocol_version: ProtocolVersion,
     /// The hash of the chainspec.
@@ -45,17 +47,18 @@ impl ChainInfo {
             protocol_version: ProtocolVersion::V1_0_0,
             chainspec_hash: Digest::hash(format!("{}-chainspec", network_name)),
             networking_config: Default::default(),
+            maximum_frame_size: 4096,
         }
     }
 
     /// Create a handshake based on chain identification data.
-    pub(super) fn create_handshake<P>(
+    pub(super) fn create_handshake(
         &self,
         public_addr: SocketAddr,
         consensus_keys: Option<&NodeKeyPair>,
         connection_id: ConnectionId,
-    ) -> Message<P> {
-        Message::Handshake {
+    ) -> Message<()> {
+        Message::<()>::Handshake {
             network_name: self.network_name.clone(),
             public_addr,
             protocol_version: self.protocol_version,
@@ -74,6 +77,7 @@ impl From<&Chainspec> for ChainInfo {
             protocol_version: chainspec.protocol_version(),
             chainspec_hash: chainspec.hash(),
             networking_config: chainspec.network_config.networking_config,
+            maximum_frame_size: chainspec.network_config.maximum_frame_size,
         }
     }
 }

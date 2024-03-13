@@ -6,23 +6,21 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
-    time::SystemTime,
+    sync::Arc,
+    time::Instant,
 };
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{EraId, PublicKey, TimeDiff};
 use serde::Serialize;
 
-use crate::{
-    types::NodeId,
-    utils::{opt_display::OptDisplay, DisplayIter, TimeAnchor},
-};
+use crate::{types::NodeId, utils::opt_display::OptDisplay};
 
 use super::{
-    error::ConnectionError, outgoing::OutgoingState, symmetry::ConnectionSymmetry, Network,
-    OutgoingHandle, Payload,
+    blocklist::BlocklistJustification,
+    conman::{Direction, Route, Sentence},
+    Network, Payload,
 };
 
 /// A collection of insights into the active networking component.
@@ -35,246 +33,191 @@ pub(crate) struct NetworkInsights {
     /// The public address of the node.
     public_addr: Option<SocketAddr>,
     /// The fingerprint of a consensus key installed.
-    node_key_pair: Option<PublicKey>,
+    consensus_public_key: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
-    /// Map of outgoing connections, along with their current state.
-    outgoing_connections: Vec<(SocketAddr, OutgoingInsight)>,
-    /// Map of incoming connections.
-    connection_symmetries: Vec<(NodeId, ConnectionSymmetryInsight)>,
+    /// Addresses for which an outgoing task is currently running.
+    address_book: Vec<SocketAddr>,
+    /// Blocked addresses.
+    do_not_call_list: Vec<DoNotCallInsight>,
+    /// All active routes.
+    active_routes: Vec<RouteInsight>,
+    /// Bans currently active.
+    blocked: Vec<SentenceInsight>,
 }
 
-/// Insight into an outgoing connection.
+/// Information about existing routes.
 #[derive(Debug, Serialize)]
-struct OutgoingInsight {
-    /// Whether or not the address is marked unforgettable.
-    unforgettable: bool,
-    /// The current connection state.
-    state: OutgoingStateInsight,
+pub(crate) struct RouteInsight {
+    /// Node ID of the peer.
+    pub(crate) peer: NodeId,
+    /// The remote address of the peer.
+    pub(crate) remote_addr: SocketAddr,
+    /// Incoming or outgoing?
+    pub(crate) direction: Direction,
+    /// The consensus key provided by the peer during handshake.
+    pub(crate) consensus_key: Option<Arc<PublicKey>>,
+    /// Duration since this route was established.
+    pub(crate) since: TimeDiff,
 }
 
-/// The state of an outgoing connection, reduced to exportable insights.
+/// Information about an existing ban.
 #[derive(Debug, Serialize)]
-enum OutgoingStateInsight {
-    Connecting {
-        failures_so_far: u8,
-        since: SystemTime,
-    },
-    Waiting {
-        failures_so_far: u8,
-        error: Option<String>,
-        last_failure: SystemTime,
-    },
-    Connected {
-        peer_id: NodeId,
-        peer_addr: SocketAddr,
-    },
-    Blocked {
-        since: SystemTime,
-        justification: String,
-    },
-    Loopback,
+pub(crate) struct SentenceInsight {
+    /// The peer banned.
+    pub(crate) peer: NodeId,
+    /// Time until the ban is lifted.
+    pub(crate) remaining: Option<TimeDiff>,
+    /// Justification for the ban.
+    pub(crate) justification: BlocklistJustification,
 }
 
-fn time_delta(now: SystemTime, then: SystemTime) -> impl Display {
-    OptDisplay::new(
-        now.duration_since(then)
-            .map(humantime::format_duration)
-            .ok(),
-        "err",
-    )
+/// Information about an entry of the do-not-call list.
+#[derive(Debug, Serialize)]
+pub(crate) struct DoNotCallInsight {
+    /// Address not to be called.
+    pub(crate) addr: SocketAddr,
+    /// How long not to call the address.
+    pub(crate) remaining: Option<TimeDiff>,
 }
 
-impl OutgoingStateInsight {
-    /// Constructs a new outgoing state insight from a given outgoing state.
-    fn from_outgoing_state(
-        anchor: &TimeAnchor,
-        state: &OutgoingState<OutgoingHandle, ConnectionError>,
-    ) -> Self {
-        match state {
-            OutgoingState::Connecting {
-                failures_so_far,
-                since,
-            } => OutgoingStateInsight::Connecting {
-                failures_so_far: *failures_so_far,
-                since: anchor.convert(*since),
-            },
-            OutgoingState::Waiting {
-                failures_so_far,
-                error,
-                last_failure,
-            } => OutgoingStateInsight::Waiting {
-                failures_so_far: *failures_so_far,
-                error: error.as_ref().map(ToString::to_string),
-                last_failure: anchor.convert(*last_failure),
-            },
-            OutgoingState::Connected { peer_id, handle } => OutgoingStateInsight::Connected {
-                peer_id: *peer_id,
-                peer_addr: handle.peer_addr,
-            },
-            OutgoingState::Blocked {
-                since,
-                justification,
-            } => OutgoingStateInsight::Blocked {
-                since: anchor.convert(*since),
-                justification: justification.to_string(),
-            },
-            OutgoingState::Loopback => OutgoingStateInsight::Loopback,
-        }
-    }
-
-    /// Formats the outgoing state insight with times relative to a given timestamp.
-    fn fmt_time_relative(&self, now: SystemTime, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            OutgoingStateInsight::Connecting {
-                failures_so_far,
-                since,
-            } => write!(
-                f,
-                "connecting (fails: {}), since {}",
-                failures_so_far,
-                time_delta(now, *since)
-            ),
-            OutgoingStateInsight::Waiting {
-                failures_so_far,
-                error,
-                last_failure,
-            } => write!(
-                f,
-                "waiting (fails: {}, last error: {}), since {}",
-                failures_so_far,
-                OptDisplay::new(error.as_ref(), "none"),
-                time_delta(now, *last_failure)
-            ),
-            OutgoingStateInsight::Connected { peer_id, peer_addr } => {
-                write!(f, "connected -> {} @ {}", peer_id, peer_addr,)
-            }
-            OutgoingStateInsight::Blocked {
-                since,
-                justification,
-            } => {
-                write!(
-                    f,
-                    "blocked since {}: {}",
-                    time_delta(now, *since),
-                    justification
-                )
-            }
-            OutgoingStateInsight::Loopback => f.write_str("loopback"),
+impl SentenceInsight {
+    /// Creates a new instance from an existing `Route`.
+    fn collect_from_sentence(now: Instant, peer: NodeId, sentence: &Sentence) -> Self {
+        let remaining = if sentence.until > now {
+            Some(sentence.until.duration_since(now).into())
+        } else {
+            None
+        };
+        Self {
+            peer,
+            remaining,
+            justification: sentence.justification.clone(),
         }
     }
 }
 
-/// Describes whether a connection is uni- or bi-directional.
-#[derive(Debug, Serialize)]
-pub(super) enum ConnectionSymmetryInsight {
-    IncomingOnly {
-        since: SystemTime,
-        peer_addrs: BTreeSet<SocketAddr>,
-    },
-    OutgoingOnly {
-        since: SystemTime,
-    },
-    Symmetric {
-        peer_addrs: BTreeSet<SocketAddr>,
-    },
-    Gone,
-}
-
-impl ConnectionSymmetryInsight {
-    /// Creates a new insight from a given connection symmetry.
-    fn from_connection_symmetry(anchor: &TimeAnchor, sym: &ConnectionSymmetry) -> Self {
-        match sym {
-            ConnectionSymmetry::IncomingOnly { since, peer_addrs } => {
-                ConnectionSymmetryInsight::IncomingOnly {
-                    since: anchor.convert(*since),
-                    peer_addrs: peer_addrs.clone(),
-                }
-            }
-            ConnectionSymmetry::OutgoingOnly { since } => ConnectionSymmetryInsight::OutgoingOnly {
-                since: anchor.convert(*since),
-            },
-            ConnectionSymmetry::Symmetric { peer_addrs } => ConnectionSymmetryInsight::Symmetric {
-                peer_addrs: peer_addrs.clone(),
-            },
-            ConnectionSymmetry::Gone => ConnectionSymmetryInsight::Gone,
+impl RouteInsight {
+    /// Creates a new instance from an existing `Route`.
+    fn collect_from_route(now: Instant, route: &Route) -> Self {
+        Self {
+            peer: route.peer,
+            remote_addr: route.remote_addr,
+            direction: route.direction,
+            consensus_key: route.consensus_key.clone(),
+            since: now.duration_since(route.since).into(),
         }
     }
+}
 
-    /// Formats the connection symmetry insight with times relative to a given timestamp.
-    fn fmt_time_relative(&self, now: SystemTime, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ConnectionSymmetryInsight::IncomingOnly { since, peer_addrs } => write!(
-                f,
-                "<- {} (since {})",
-                DisplayIter::new(peer_addrs.iter()),
-                time_delta(now, *since)
-            ),
-            ConnectionSymmetryInsight::OutgoingOnly { since } => {
-                write!(f, "-> (since {})", time_delta(now, *since))
-            }
-            ConnectionSymmetryInsight::Symmetric { peer_addrs } => {
-                write!(f, "<> {}", DisplayIter::new(peer_addrs.iter()))
-            }
-            ConnectionSymmetryInsight::Gone => f.write_str("gone"),
-        }
+impl DoNotCallInsight {
+    /// Creates a new instance from an existing entry on the do-not-call list.
+    fn collect_from_dnc(now: Instant, addr: SocketAddr, until: Instant) -> Self {
+        let remaining = if until > now {
+            Some(until.duration_since(now).into())
+        } else {
+            None
+        };
+
+        DoNotCallInsight { addr, remaining }
     }
 }
 
 impl NetworkInsights {
     /// Collect networking insights from a given networking component.
-    pub(super) fn collect_from_component<REv, P>(net: &Network<REv, P>) -> Self
+    pub(super) fn collect_from_component<P>(net: &Network<P>) -> Self
     where
         P: Payload,
     {
-        let anchor = TimeAnchor::now();
+        let mut address_book = Vec::new();
+        let mut do_not_call_list = Vec::new();
+        let mut active_routes = Vec::new();
+        let mut blocked = Vec::new();
 
-        let outgoing_connections = net
-            .outgoing_manager
-            .outgoing
-            .iter()
-            .map(|(addr, outgoing)| {
-                let state = OutgoingStateInsight::from_outgoing_state(&anchor, &outgoing.state);
-                (
-                    *addr,
-                    OutgoingInsight {
-                        unforgettable: outgoing.is_unforgettable,
-                        state,
-                    },
-                )
-            })
-            .collect();
+        if let Some(ref conman) = net.conman {
+            // Acquire lock only long enough to copy routing table.
+            let guard = conman.read_state();
+            let now = Instant::now();
+            address_book = guard.address_book().iter().cloned().collect();
 
-        let connection_symmetries = net
-            .connection_symmetries
-            .iter()
-            .map(|(id, sym)| {
-                (
-                    *id,
-                    ConnectionSymmetryInsight::from_connection_symmetry(&anchor, sym),
-                )
-            })
-            .collect();
+            active_routes.extend(
+                guard
+                    .routing_table()
+                    .values()
+                    .map(|route| RouteInsight::collect_from_route(now, route)),
+            );
+            do_not_call_list.extend(
+                guard
+                    .do_not_call()
+                    .iter()
+                    .map(|(&addr, &until)| DoNotCallInsight::collect_from_dnc(now, addr, until)),
+            );
+            blocked.extend(guard.banlist().iter().map(|(&peer, sentence)| {
+                SentenceInsight::collect_from_sentence(now, peer, sentence)
+            }));
+        }
+
+        // Sort only after releasing lock.
+        address_book.sort();
+        do_not_call_list.sort_by_key(|dnc| dnc.addr);
+        active_routes.sort_by_key(|route_insight| route_insight.peer);
+        blocked.sort_by_key(|sentence_insight| sentence_insight.peer);
 
         NetworkInsights {
-            our_id: net.context.our_id(),
-            network_ca: net.context.network_ca().is_some(),
-            public_addr: net.context.public_addr(),
-            node_key_pair: net
-                .context
-                .node_key_pair()
-                .map(|kp| kp.public_key().clone()),
+            our_id: net.our_id,
+            network_ca: net.identity.network_ca.is_some(),
+            public_addr: net.public_addr,
+            consensus_public_key: net.node_key_pair.as_ref().map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
-            outgoing_connections,
-            connection_symmetries,
+            address_book,
+            do_not_call_list,
+            active_routes,
+            blocked,
         }
+    }
+}
+
+impl Display for DoNotCallInsight {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} for another {} ",
+            self.addr,
+            OptDisplay::new(self.remaining.as_ref(), "(expired)"),
+        )
+    }
+}
+
+impl Display for RouteInsight {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} @ {} [{}] {}, since {}",
+            self.peer,
+            self.remote_addr,
+            self.direction,
+            OptDisplay::new(self.consensus_key.as_ref(), "no key provided"),
+            self.since,
+        )
+    }
+}
+
+impl Display for SentenceInsight {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} for another {}: {}",
+            self.peer,
+            OptDisplay::new(self.remaining.as_ref(), "(expired)"),
+            self.justification
+        )
     }
 }
 
 impl Display for NetworkInsights {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let now = SystemTime::now();
-
         if !self.network_ca {
             f.write_str("Public ")?;
         } else {
@@ -287,20 +230,35 @@ impl Display for NetworkInsights {
             OptDisplay::new(self.public_addr, "no listen addr")
         )?;
 
-        f.write_str("outgoing connections:\n")?;
-        writeln!(f, "address                  uf     state")?;
-        for (addr, outgoing) in &self.outgoing_connections {
-            write!(f, "{:23}  {:5}  ", addr, outgoing.unforgettable,)?;
-            outgoing.state.fmt_time_relative(now, f)?;
-            f.write_str("\n")?;
+        write!(f, "in {} (according to networking), ", self.net_active_era)?;
+
+        match self.consensus_public_key.as_ref() {
+            Some(pub_key) => writeln!(f, "consensus pubkey {}", pub_key)?,
+            None => f.write_str("no consensus key\n")?,
         }
 
-        f.write_str("connection symmetries:\n")?;
-        writeln!(f, "peer ID         symmetry")?;
-        for (peer_id, symmetry) in &self.connection_symmetries {
-            write!(f, "{:10}  ", peer_id)?;
-            symmetry.fmt_time_relative(now, f)?;
-            f.write_str("\n")?;
+        f.write_str("\naddress book:\n")?;
+
+        for addr in &self.address_book {
+            write!(f, "{} ", addr)?;
+        }
+
+        f.write_str("\n\ndo-not-call:\n")?;
+
+        for dnc in &self.do_not_call_list {
+            writeln!(f, "{}", dnc)?;
+        }
+
+        f.write_str("\nroutes:\n")?;
+
+        for route in &self.active_routes {
+            writeln!(f, "{}", route)?;
+        }
+
+        f.write_str("\nblocklist:\n")?;
+
+        for sentence in &self.blocked {
+            writeln!(f, "{}", sentence)?;
         }
 
         Ok(())

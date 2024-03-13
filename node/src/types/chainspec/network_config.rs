@@ -19,6 +19,8 @@ pub struct NetworkConfig {
     pub name: String,
     /// The maximum size of an accepted handshake network message, in bytes.
     pub maximum_handshake_message_size: u32,
+    /// The maximum frame size for network transport.
+    pub maximum_frame_size: u32,
     /// Validator accounts specified in the chainspec.
     // Note: `accounts_config` must be the last field on this struct due to issues in the TOML
     // crate - see <https://github.com/alexcrichton/toml-rs/search?q=ValueAfterTable&type=issues>.
@@ -55,6 +57,7 @@ impl NetworkConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let maximum_handshake_message_size = 4 + rng.gen_range(0..4);
+        let maximum_frame_size = 16 + rng.gen_range(0..16);
         let accounts_config = AccountsConfig::random(rng);
         let networking_config = PerChannel::init_with(|_| JulietConfig::random(rng));
 
@@ -63,6 +66,7 @@ impl NetworkConfig {
             maximum_handshake_message_size,
             accounts_config,
             networking_config,
+            maximum_frame_size,
         }
     }
 }
@@ -74,14 +78,15 @@ impl ToBytes for NetworkConfig {
             name,
             maximum_handshake_message_size,
             accounts_config,
-
             networking_config,
+            maximum_frame_size,
         } = self;
 
         buffer.extend(name.to_bytes()?);
         buffer.extend(maximum_handshake_message_size.to_bytes()?);
         buffer.extend(accounts_config.to_bytes()?);
         buffer.extend(networking_config.to_bytes()?);
+        buffer.extend(maximum_frame_size.to_bytes()?);
         Ok(buffer)
     }
 
@@ -91,12 +96,14 @@ impl ToBytes for NetworkConfig {
             maximum_handshake_message_size,
             accounts_config,
             networking_config,
+            maximum_frame_size,
         } = self;
 
         name.serialized_length()
             + maximum_handshake_message_size.serialized_length()
             + accounts_config.serialized_length()
             + networking_config.serialized_length()
+            + maximum_frame_size.serialized_length()
     }
 }
 
@@ -106,12 +113,14 @@ impl FromBytes for NetworkConfig {
         let (maximum_handshake_message_size, remainder) = FromBytes::from_bytes(remainder)?;
         let (accounts_config, remainder) = FromBytes::from_bytes(remainder)?;
         let (networking_config, remainder) = FromBytes::from_bytes(remainder)?;
+        let (maximum_frame_size, remainder) = FromBytes::from_bytes(remainder)?;
 
         let config = NetworkConfig {
             name,
             maximum_handshake_message_size,
             accounts_config,
             networking_config,
+            maximum_frame_size,
         };
         Ok((config, remainder))
     }

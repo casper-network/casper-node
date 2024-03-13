@@ -41,7 +41,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let node_id = NodeId::doc_example();
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
-    peers.insert(*node_id, socket_addr.to_string());
+    peers.insert(*node_id, socket_addr);
     let status_feed = StatusFeed {
         last_added_block: Some(Block::doc_example().clone()),
         peers,
@@ -88,7 +88,7 @@ pub struct StatusFeed {
     /// The last block added to the chain.
     pub last_added_block: Option<Block>,
     /// The peer nodes which are connected to this node.
-    pub peers: BTreeMap<NodeId, String>,
+    pub peers: BTreeMap<NodeId, SocketAddr>,
     /// The chainspec info for this node.
     pub chainspec_info: ChainspecInfo,
     /// Our public signing key.
@@ -115,7 +115,7 @@ impl StatusFeed {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         last_added_block: Option<Block>,
-        peers: BTreeMap<NodeId, String>,
+        peers: BTreeMap<NodeId, SocketAddr>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
         node_uptime: Duration,

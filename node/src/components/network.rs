@@ -14,11 +14,7 @@
 //! # Connection
 //!
 //! Every node has an ID and a public listening address. The objective of each node is to constantly
-//! maintain an outgoing connection to each other node (and thus have an incoming connection from
-//! these nodes as well).
-//!
-//! Any incoming connection is, after a handshake process, strictly read from, while any outgoing
-//! connection is strictly used for sending messages, also after a handshake.
+//! maintain a connection to each other node, see the [`conman`] module for details.
 //!
 //! Nodes gossip their public listening addresses periodically, and will try to establish and
 //! maintain an outgoing connection to any new address learned.
@@ -26,6 +22,7 @@
 pub(crate) mod blocklist;
 mod chain_info;
 mod config;
+mod conman;
 mod connection_id;
 mod error;
 mod event;
@@ -35,24 +32,19 @@ mod identity;
 mod insights;
 mod message;
 mod metrics;
-mod outgoing;
 mod per_channel;
-mod symmetry;
-pub(crate) mod tasks;
+
 #[cfg(test)]
 mod tests;
 mod transport;
 
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    collections::{BTreeMap, HashSet},
+    fmt::Debug,
     fs::OpenOptions,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Weak,
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -62,7 +54,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 
-use juliet::rpc::{JulietRpcClient, JulietRpcServer, RequestGuard, RpcBuilder};
+use juliet::rpc::{JulietRpcClient, RequestGuard};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -70,26 +62,19 @@ use rand::{
 };
 use serde::Serialize;
 use strum::EnumCount;
-use tokio::{
-    io::{ReadHalf, WriteHalf},
-    net::TcpStream,
-    task::JoinHandle,
-};
+use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
-use tracing::{debug, error, info, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, warn, Span};
 
 use casper_types::{EraId, PublicKey, SecretKey};
 
 use self::{
-    blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::{ConnectionError, MessageReceiverError, MessageSenderError},
-    event::{IncomingConnection, OutgoingConnection},
+    conman::{ConMan, ConManState},
+    handshake::HandshakeConfiguration,
     message::NodeKeyPair,
     metrics::Metrics,
-    outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
-    symmetry::ConnectionSymmetry,
-    tasks::NetworkContext,
+    transport::TransportHandler,
 };
 pub(crate) use self::{
     config::Config,
@@ -115,206 +100,140 @@ use crate::{
     tls,
     types::{NodeId, ValidatorMatrix},
     utils::{
-        self, display_error, DropSwitch, Fuse, LockedLineWriter, ObservableFuse, Source,
-        TokenizedCount,
+        self, display_error, rate_limited::rate_limited, DropSwitch, Fuse, LockedLineWriter,
+        ObservableFuse, Source,
     },
     NodeRng,
 };
 
 use super::ValidatorBoundComponent;
 
+/// The name of this component.
 const COMPONENT_NAME: &str = "network";
 
+/// How often to attempt to drop metrics, so that they can be re-registered.
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
+
+/// Delays in between dropping metrics.
 const DROP_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-/// How often to keep attempting to reconnect to a node before giving up. Note that reconnection
-/// delays increase exponentially!
-const RECONNECTION_ATTEMPTS: u8 = 8;
+/// How often metrics are synced.
+const METRICS_UPDATE_RATE: Duration = Duration::from_secs(1);
 
-/// Basic reconnection timeout.
-///
-/// The first reconnection attempt will be made after 2x this timeout.
-const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
-
-/// Interval during which to perform outgoing manager housekeeping.
-const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
-
-#[derive(Clone, DataSize, Debug)]
-pub(crate) struct OutgoingHandle {
-    #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    rpc_client: JulietRpcClient<{ Channel::COUNT }>,
-    peer_addr: SocketAddr,
-}
-
-impl Display for OutgoingHandle {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "outgoing handle to {}", self.peer_addr)
-    }
-}
-
-#[derive(DataSize)]
-pub(crate) struct Network<REv, P>
+#[derive(DataSize, Debug)]
+pub(crate) struct Network<P>
 where
-    REv: 'static,
     P: Payload,
 {
     /// Initial configuration values.
-    cfg: Config,
-    /// Read-only networking information shared across tasks.
-    context: Arc<NetworkContext<REv>>,
+    config: Config,
+    /// The network address the component is listening on.
+    ///
+    /// Will be initialized late.
+    public_addr: Option<SocketAddr>,
+    /// Chain information used by networking.
+    ///
+    /// Only available during initialization.
+    chain_info: ChainInfo,
+    /// Consensus keys, used for handshaking.
+    ///
+    /// Only available during initialization.
+    node_key_pair: Option<NodeKeyPair>,
+    /// Node's network identify.
+    identity: Identity,
+    /// Our node identity. Derived from `identity`, cached here.
+    our_id: NodeId,
+    /// The set of known addresses that are eternally kept.
+    known_addresses: HashSet<SocketAddr>,
     /// A reference to the global validator matrix.
     validator_matrix: ValidatorMatrix,
-
-    /// Outgoing connections manager.
-    outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
-    /// Incoming validator map.
-    ///
-    /// Tracks which incoming connections are from validators. The atomic bool is shared with the
-    /// receiver tasks to determine queue position.
-    incoming_validator_status: HashMap<PublicKey, Weak<AtomicBool>>,
-    /// Tracks whether a connection is symmetric or not.
-    connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
-
+    /// Connection manager for incoming and outgoing connections.
+    #[data_size(skip)] // Skipped, to reduce lock contention.
+    conman: Option<ConMan>,
     /// Fuse signaling a shutdown of the small network.
     shutdown_fuse: DropSwitch<ObservableFuse>,
-
-    /// Join handle for the server thread.
-    #[data_size(skip)]
-    server_join_handle: Option<JoinHandle<()>>,
-
-    /// Builder for new node-to-node RPC instances.
-    #[data_size(skip)]
-    rpc_builder: RpcBuilder<{ Channel::COUNT }>,
-
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<Metrics>,
-
     /// The era that is considered the active era by the network component.
     active_era: EraId,
-
     /// The state of this component.
     state: ComponentState,
-
     /// Marker for what kind of payload this small network instance supports.
     _payload: PhantomData<P>,
 }
 
-impl<REv, P> Network<REv, P>
+impl<P> Network<P>
 where
     P: Payload,
-    REv: ReactorEvent
-        + From<Event<P>>
-        + FromIncoming<P>
-        + From<StorageRequest>
-        + From<NetworkRequest<P>>
-        + From<PeerBehaviorAnnouncement>
-        + From<BeginGossipRequest<GossipedAddress>>,
 {
     /// Creates a new network component instance.
     #[allow(clippy::type_complexity)]
     pub(crate) fn new<C: Into<ChainInfo>>(
-        cfg: Config,
-        our_identity: Identity,
+        config: Config,
+        identity: Identity,
         node_key_pair: Option<(Arc<SecretKey>, PublicKey)>,
         registry: &Registry,
         chain_info_source: C,
         validator_matrix: ValidatorMatrix,
-    ) -> Result<Network<REv, P>, Error> {
+    ) -> Result<Network<P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
-        let chain_info = chain_info_source.into();
+        let node_key_pair = node_key_pair.map(NodeKeyPair::new);
+        let our_id = identity.node_id();
 
-        let outgoing_manager = OutgoingManager::with_metrics(
-            OutgoingConfig {
-                retry_attempts: RECONNECTION_ATTEMPTS,
-                base_timeout: BASE_RECONNECTION_TIMEOUT,
-                unblock_after: cfg.blocklist_retain_duration.into(),
-                sweep_timeout: cfg.max_addr_pending_time.into(),
-            },
-            net_metrics.create_outgoing_metrics(),
-        );
-
-        let keylog = match cfg.keylog_path {
-            Some(ref path) => {
-                let keylog = OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .write(true)
-                    .open(path)
-                    .map_err(Error::CannotAppendToKeylog)?;
-                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
-                Some(LockedLineWriter::new(keylog))
-            }
-            None => None,
-        };
-
-        let rpc_builder = transport::create_rpc_builder(
-            chain_info.networking_config,
-            cfg.send_buffer_size,
-            cfg.ack_timeout,
-        );
-
-        let context = Arc::new(NetworkContext::new(
-            cfg.clone(),
-            our_identity,
-            keylog,
-            node_key_pair.map(NodeKeyPair::new),
-            chain_info,
-            &net_metrics,
-        ));
-
-        let component = Network {
-            cfg,
-            context,
+        Ok(Network {
+            config,
+            known_addresses: Default::default(),
+            public_addr: None,
+            chain_info: chain_info_source.into(),
+            node_key_pair: node_key_pair,
+            identity,
+            our_id,
             validator_matrix,
-            outgoing_manager,
-            incoming_validator_status: Default::default(),
-            connection_symmetries: HashMap::new(),
+            conman: None,
             net_metrics,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
-            server_join_handle: None,
-            rpc_builder,
-            _payload: PhantomData,
-        };
 
-        Ok(component)
+            _payload: PhantomData,
+        })
     }
 
-    fn initialize(
+    /// Initializes the networking component.
+    fn initialize<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-    ) -> Result<Effects<Event<P>>, Error> {
-        let mut known_addresses = HashSet::new();
-        for address in &self.cfg.known_addresses {
-            match utils::resolve_address(address) {
-                Ok(known_address) => {
-                    if !known_addresses.insert(known_address) {
-                        warn!(%address, resolved=%known_address, "ignoring duplicated known address");
-                    };
-                }
-                Err(ref err) => {
-                    warn!(%address, err=display_error(err), "failed to resolve known address");
-                }
-            }
-        }
+    ) -> Result<Effects<Event<P>>, Error>
+    where
+        REv: ReactorEvent
+            + From<Event<P>>
+            + From<BeginGossipRequest<GossipedAddress>>
+            + FromIncoming<P>
+            + From<StorageRequest>
+            + From<NetworkRequest<P>>
+            + From<PeerBehaviorAnnouncement>,
+        P: Payload,
+    {
+        // Start by resolving all known addresses.
+        let known_addresses =
+            resolve_addresses(self.config.known_addresses.iter().map(String::as_str));
 
         // Assert we have at least one known address in the config.
         if known_addresses.is_empty() {
             warn!("no known addresses provided via config or all failed DNS resolution");
             return Err(Error::EmptyKnownHosts);
         }
+        self.known_addresses = known_addresses;
 
         let mut public_addr =
-            utils::resolve_address(&self.cfg.public_address).map_err(Error::ResolveAddr)?;
+            utils::resolve_address(&self.config.public_address).map_err(Error::ResolveAddr)?;
 
         // We can now create a listener.
         let bind_address =
-            utils::resolve_address(&self.cfg.bind_address).map_err(Error::ResolveAddr)?;
+            utils::resolve_address(&self.config.bind_address).map_err(Error::ResolveAddr)?;
         let listener = TcpListener::bind(bind_address)
             .map_err(|error| Error::ListenerCreation(error, bind_address))?;
         // We must set non-blocking to `true` or else the tokio task hangs forever.
@@ -328,150 +247,190 @@ where
         if public_addr.port() == 0 {
             public_addr.set_port(local_addr.port());
         }
+        self.public_addr = Some(public_addr);
 
-        Arc::get_mut(&mut self.context)
-            .expect("should be no other pointers")
-            .initialize(public_addr, effect_builder.into_inner());
-
-        let protocol_version = self.context.chain_info().protocol_version;
-        // Run the server task.
-        // We spawn it ourselves instead of through an effect to get a hold of the join handle,
-        // which we need to shutdown cleanly later on.
-        info!(%local_addr, %public_addr, %protocol_version, "starting server background task");
-
-        let context = self.context.clone();
-        self.server_join_handle = Some(tokio::spawn(
-            tasks::server(
-                context,
-                tokio::net::TcpListener::from_std(listener).map_err(Error::ListenerConversion)?,
-                self.shutdown_fuse.inner().clone(),
-            )
-            .in_current_span(),
-        ));
-
-        // Learn all known addresses and mark them as unforgettable.
-        let now = Instant::now();
-        let dial_requests: Vec<_> = known_addresses
-            .into_iter()
-            .filter_map(|addr| self.outgoing_manager.learn_addr(addr, true, now))
-            .collect();
-
-        let mut effects = self.process_dial_requests(dial_requests);
+        let mut effects = Effects::new();
 
         // Start broadcasting our public listening address.
         effects.extend(
             effect_builder
-                .set_timeout(self.cfg.initial_gossip_delay.into())
+                .set_timeout(self.config.initial_gossip_delay.into())
                 .event(|_| Event::GossipOurAddress),
         );
 
-        // Start regular housekeeping of the outgoing connections.
-        effects.extend(
-            effect_builder
-                .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
-                .event(|_| Event::SweepOutgoing),
+        effects.extend(effect_builder.immediately().event(|_| Event::SyncMetrics));
+
+        let keylog = match self.config.keylog_path {
+            Some(ref path) => {
+                let keylog = OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .write(true)
+                    .open(path)
+                    .map_err(Error::CannotAppendToKeylog)?;
+                warn!(%path, "keylog enabled, if you are not debugging turn this off in your configuration (`network.keylog_path`)");
+                Some(LockedLineWriter::new(keylog))
+            }
+            None => None,
+        };
+
+        // Start connection manager.
+        let rpc_builder = transport::create_rpc_builder(
+            &self.chain_info.networking_config,
+            &self.config,
+            &self.chain_info,
         );
 
+        // Setup connection manager, then learn all known addresses.
+        let handshake_configuration = HandshakeConfiguration::new(
+            self.chain_info.clone(),
+            self.node_key_pair.clone(),
+            public_addr,
+        );
+
+        let protocol_handler = TransportHandler::new(
+            effect_builder.into_inner(),
+            self.identity.clone(),
+            handshake_configuration,
+            keylog,
+        );
+
+        let conman = ConMan::new(
+            tokio::net::TcpListener::from_std(listener).expect("not in tokio runtime"),
+            public_addr,
+            self.our_id,
+            Box::new(protocol_handler),
+            rpc_builder,
+            self.config.conman,
+        );
+        self.conman = Some(conman);
+        self.learn_known_addresses();
+
+        // Done, set initialized state.
         <Self as InitializedComponent<REv>>::set_state(self, ComponentState::Initialized);
+
         Ok(effects)
     }
 
+    /// Submits all known addresses to the connection manager.
+    fn learn_known_addresses(&self) {
+        let Some(ref conman) = self.conman else {
+            error!("cannot learn known addresses, component not initialized");
+            return;
+        };
+
+        for known_address in &self.known_addresses {
+            conman.learn_addr(*known_address);
+        }
+    }
+
     /// Queues a message to be sent to validator nodes in the given era.
-    fn broadcast_message_to_validators(&self, msg: Arc<Message<P>>, era_id: EraId) {
+    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, _era_id: EraId) {
+        let Some(ref conman) = self.conman else {
+            error!(
+                "cannot broadcast message to validators on non-initialized networking component"
+            );
+            return;
+        };
+
         self.net_metrics.broadcast_requests.inc();
 
-        let mut total_connected_validators_in_era = 0;
-        let mut total_outgoing_manager_connected_peers = 0;
+        let state = conman.read_state();
 
-        for peer_id in self.outgoing_manager.connected_peers() {
-            total_outgoing_manager_connected_peers += 1;
-
+        for &peer_id in state.routing_table().keys() {
+            // TODO: Filter by validator state.
             if true {
-                total_connected_validators_in_era += 1;
-                self.send_message(peer_id, msg.clone(), None)
+                self.send_message(&*state, peer_id, channel, payload.clone(), None)
             }
         }
-
-        debug!(
-            msg = %msg,
-            era = era_id.value(),
-            total_connected_validators_in_era,
-            total_outgoing_manager_connected_peers,
-            "broadcast_message_to_validators"
-        );
     }
 
     /// Queues a message to `count` random nodes on the network.
+    ///
+    /// Returns the IDs of the nodes the message has been gossiped to.
     fn gossip_message(
         &self,
         rng: &mut NodeRng,
-        msg: Arc<Message<P>>,
+        channel: Channel,
+        payload: Bytes,
         _gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
         // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
         //       See #4247.
-        let is_validator_in_era = |_, _: &_| true;
-        let gossip_target = GossipTarget::All;
+        // let is_validator_in_era = |_, _: &_| true;
+        // let gossip_target = GossipTarget::All;
 
-        let peer_ids = choose_gossip_peers(
-            rng,
-            gossip_target,
-            count,
-            exclude.clone(),
-            self.outgoing_manager.connected_peers(),
-            is_validator_in_era,
-        );
+        // let peer_ids = choose_gossip_peers(
+        //     rng,
+        //     gossip_target,
+        //     count,
+        //     exclude.clone(),
+        //     self.outgoing_manager.connected_peers(),
+        //     is_validator_in_era,
+        // );
 
-        // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
+        // // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
 
-        if peer_ids.len() != count {
-            let not_excluded = self
-                .outgoing_manager
-                .connected_peers()
-                .filter(|peer_id| !exclude.contains(peer_id))
-                .count();
-            if not_excluded > 0 {
-                let connected = self.outgoing_manager.connected_peers().count();
-                debug!(
-                    our_id=%self.context.our_id(),
-                    %gossip_target,
-                    wanted = count,
-                    connected,
-                    not_excluded,
-                    selected = peer_ids.len(),
-                    "could not select enough random nodes for gossiping"
-                );
-            }
+        // if peer_ids.len() != count {
+        //     let not_excluded = self
+        //         .outgoing_manager
+        //         .connected_peers()
+        //         .filter(|peer_id| !exclude.contains(peer_id))
+        //         .count();
+        //     if not_excluded > 0 {
+        //         let connected = self.outgoing_manager.connected_peers().count();
+        //         debug!(
+        //             our_id=%self.context.our_id(),
+        //             %gossip_target,
+        //             wanted = count,
+        //             connected,
+        //             not_excluded,
+        //             selected = peer_ids.len(),
+        //             "could not select enough random nodes for gossiping"
+        //         );
+        //     }
+        // }
+
+        // for &peer_id in &peer_ids {
+        //     self.send_message(peer_id, msg.clone(), None);
+        // }
+
+        // peer_ids.into_iter().collect()
+
+        let Some(ref conman) = self.conman else {
+            error!("cannot gossip on non-initialized networking component");
+            return Default::default();
+        };
+
+        let mut selected = HashSet::new();
+        let state = conman.read_state();
+        for route in state
+            .routing_table()
+            .values()
+            .filter(move |route| !exclude.contains(&route.peer))
+            .choose_multiple(rng, count)
+        {
+            self.send_message(&*state, route.peer, channel, payload.clone(), None);
+
+            selected.insert(route.peer);
         }
 
-        for &peer_id in &peer_ids {
-            self.send_message(peer_id, msg.clone(), None);
-        }
-
-        peer_ids.into_iter().collect()
+        selected
     }
 
     /// Queues a message to be sent to a specific node.
     fn send_message(
         &self,
+        state: &ConManState,
         dest: NodeId,
-        msg: Arc<Message<P>>,
+        channel: Channel,
+        payload: Bytes,
         message_queued_responder: Option<AutoClosingResponder<()>>,
     ) {
         // Try to send the message.
-        if let Some(connection) = self.outgoing_manager.get_route(dest) {
-            let channel = msg.get_channel();
-
-            let payload = if let Some(payload) = serialize_network_message(&msg) {
-                payload
-            } else {
-                // No need to log, `serialize_network_message` already logs the failure.
-                return;
-            };
-            trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
-
+        if let Some(route) = state.routing_table().get(&dest) {
             /// Build the request.
             ///
             /// Internal helper function to ensure requests are always built the same way.
@@ -487,8 +446,7 @@ where
                     .create_request(channel.into_channel_id())
                     .with_payload(payload)
             }
-
-            let request = mk_request(&connection.rpc_client, channel, payload);
+            let request = mk_request(&route.client, channel, payload);
 
             // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
             match request.try_queue_for_sending() {
@@ -509,7 +467,7 @@ where
 
                     if let Some(responder) = message_queued_responder {
                         // Reconstruct the client.
-                        let client = connection.rpc_client.clone();
+                        let client = route.client.clone();
 
                         // Technically, the queueing future should be spawned by the reactor, but
                         // since the networking component usually controls its own futures, we are
@@ -526,14 +484,12 @@ where
                         });
                     } else {
                         // We had to drop the message, since we hit the buffer limit.
-                        debug!(%channel, "node is sending at too high a rate, message dropped");
-
                         match deserialize_network_message::<P>(&payload) {
                             Ok(reconstructed_message) => {
-                                debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                                debug!(our_id=%self.our_id, %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
                             }
                             Err(err) => {
-                                error!(our_id=%self.context.our_id(),
+                                error!(our_id=%self.our_id,
                                        %dest,
                                        reconstruction_error=%err,
                                        ?payload,
@@ -541,361 +497,24 @@ where
                                 );
                             }
                         }
+
+                        rate_limited!(
+                            MESSAGE_RATE_EXCEEDED,
+                            1,
+                            Duration::from_secs(5),
+                            |dropped| warn!(%channel, payload_len=payload.len(), dropped, "node is sending at too high a rate, message dropped")
+                        );
                     }
                 }
             }
-
-            let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
-            // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
         } else {
-            // We are not connected, so the reconnection is likely already in progress.
-            debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
+            rate_limited!(
+                LOST_MESSAGE,
+                5,
+                Duration::from_secs(30),
+                |dropped| warn!(%channel, %dest, size=payload.len(), dropped, "discarding message to peer, no longer connected")
+            );
         }
-    }
-
-    fn handle_incoming_connection(
-        &mut self,
-        incoming: Box<IncomingConnection>,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        span.clone().in_scope(|| match *incoming {
-            IncomingConnection::FailedEarly {
-                peer_addr: _,
-                ref error,
-            } => {
-                // Failed without much info, there is little we can do about this.
-                debug!(err=%display_error(error), "incoming connection failed early");
-                Effects::new()
-            }
-            IncomingConnection::Failed {
-                peer_addr: _,
-                peer_id: _,
-                ref error,
-            } => {
-                // TODO: At this point, we could consider blocking peers by [`PeerID`], but this
-                //       feature is not implemented yet.
-                debug!(
-                    err = display_error(error),
-                    "incoming connection failed after TLS setup"
-                );
-                Effects::new()
-            }
-            IncomingConnection::Loopback => {
-                // Loopback connections are closed immediately, but will be marked as such by the
-                // outgoing manager. We still record that it succeeded in the log, but this should
-                // be the only time per component instantiation that this happens.
-                info!("successful incoming loopback connection, will be dropped");
-                Effects::new()
-            }
-            IncomingConnection::Established {
-                peer_addr,
-                public_addr,
-                peer_id,
-                peer_consensus_public_key,
-                transport,
-            } => {
-                if self.cfg.max_incoming_peer_connections != 0 {
-                    if let Some(symmetries) = self.connection_symmetries.get(&peer_id) {
-                        let incoming_count = symmetries
-                            .incoming_addrs()
-                            .map(|addrs| addrs.len())
-                            .unwrap_or_default();
-
-                        if incoming_count >= self.cfg.max_incoming_peer_connections as usize {
-                            info!(%public_addr,
-                                  %peer_id,
-                                  count=incoming_count,
-                                  limit=self.cfg.max_incoming_peer_connections,
-                                  "rejecting new incoming connection, limit for peer exceeded"
-                            );
-                            return Effects::new();
-                        }
-                    }
-                }
-
-                info!(%public_addr, "new incoming connection established");
-
-                // Learn the address the peer gave us.
-                let dial_requests =
-                    self.outgoing_manager
-                        .learn_addr(public_addr, false, Instant::now());
-                let mut effects = self.process_dial_requests(dial_requests);
-
-                // Update connection symmetries.
-                if self
-                    .connection_symmetries
-                    .entry(peer_id)
-                    .or_default()
-                    .add_incoming(peer_addr, Instant::now())
-                {
-                    self.connection_completed(peer_id);
-
-                    // We should NOT update the syncing set when we receive an incoming connection,
-                    // because the `message_sender` which is handling the corresponding outgoing
-                    // connection will not receive the update of the syncing state of the remote
-                    // peer.
-                    //
-                    // Such desync may cause the node to try to send "unsafe" requests to the
-                    // syncing node, because the outgoing connection may outlive the
-                    // incoming one, i.e. it may take some time to drop "our" outgoing
-                    // connection after a peer has closed the corresponding incoming connection.
-                }
-
-                // If given a key, determine validator status.
-                let validator_status = peer_consensus_public_key
-                    .as_ref()
-                    .map(|public_key| {
-                        let status = self
-                            .validator_matrix
-                            .is_active_or_upcoming_validator(public_key);
-
-                        // Find the shared `Arc` that holds validator status for this specific key.
-                        match self.incoming_validator_status.entry((**public_key).clone()) {
-                            // TODO: Use `Arc` for public key-key.
-                            Entry::Occupied(mut occupied) => {
-                                match occupied.get().upgrade() {
-                                    Some(arc) => {
-                                        arc.store(status, Ordering::Relaxed);
-                                        arc
-                                    }
-                                    None => {
-                                        // Failed to ugprade, the weak pointer is just a leftover
-                                        // that has not been cleaned up yet. We can replace it.
-                                        let arc = Arc::new(AtomicBool::new(status));
-                                        occupied.insert(Arc::downgrade(&arc));
-                                        arc
-                                    }
-                                }
-                            }
-                            Entry::Vacant(vacant) => {
-                                let arc = Arc::new(AtomicBool::new(status));
-                                vacant.insert(Arc::downgrade(&arc));
-                                arc
-                            }
-                        }
-                    })
-                    .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
-
-                // Now we can start the message reader.
-                let boxed_span = Box::new(span.clone());
-                effects.extend(
-                    tasks::message_receiver(
-                        self.context.clone(),
-                        validator_status,
-                        rpc_server,
-                        self.shutdown_fuse.inner().clone(),
-                        peer_id,
-                        span.clone(),
-                    )
-                    .instrument(span)
-                    .event(move |result| {
-                        // By moving the `rpc_client` into this closure to drop it, we ensure it
-                        // does not get dropped until after `tasks::message_receiver` has returned.
-                        // This is important because dropping `rpc_client` is one of the ways to
-                        // trigger a connection shutdown from our end.
-                        drop(rpc_client);
-
-                        Event::IncomingClosed {
-                            result: result.map_err(Box::new),
-                            peer_id: Box::new(peer_id),
-                            peer_addr,
-                            peer_consensus_public_key,
-                            span: boxed_span,
-                        }
-                    }),
-                );
-
-                effects
-            }
-        })
-    }
-
-    fn handle_incoming_closed(
-        &mut self,
-        result: Result<(), Box<MessageReceiverError>>,
-        peer_id: Box<NodeId>,
-        peer_addr: SocketAddr,
-        peer_consensus_public_key: Option<Box<PublicKey>>,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        span.in_scope(|| {
-            // Log the outcome.
-            match result {
-                Ok(()) => {
-                    info!("regular connection closing")
-                }
-                Err(ref err) => {
-                    warn!(err = display_error(err), "connection dropped")
-                }
-            }
-
-            // Update the connection symmetries and cleanup if necessary.
-            if !self
-                .connection_symmetries
-                .entry(*peer_id)
-                .or_default() // Should never occur.
-                .remove_incoming(peer_addr, Instant::now())
-            {
-                if let Some(ref public_key) = peer_consensus_public_key {
-                    self.incoming_validator_status.remove(public_key);
-                }
-
-                self.connection_symmetries.remove(&peer_id);
-            }
-
-            Effects::new()
-        })
-    }
-
-    /// Determines whether an outgoing peer should be blocked based on the connection error.
-    fn is_blockable_offense_for_outgoing(
-        &self,
-        error: &ConnectionError,
-    ) -> Option<BlocklistJustification> {
-        match error {
-            // Potentially transient failures.
-            //
-            // Note that incompatible versions need to be considered transient, since they occur
-            // during regular upgrades.
-            ConnectionError::TlsInitialization(_)
-            | ConnectionError::TcpConnection(_)
-            | ConnectionError::TcpConnectionTimeout
-            | ConnectionError::TcpNoDelay(_)
-            | ConnectionError::TlsHandshake(_)
-            | ConnectionError::HandshakeSend(_)
-            | ConnectionError::HandshakeRecv(_)
-            | ConnectionError::IncompatibleVersion(_)
-            | ConnectionError::HandshakeTimeout => None,
-
-            // These errors are potential bugs on our side.
-            ConnectionError::HandshakeSenderCrashed(_)
-            | ConnectionError::CouldNotEncodeOurHandshake(_) => None,
-
-            // These could be candidates for blocking, but for now we decided not to.
-            ConnectionError::NoPeerCertificate
-            | ConnectionError::PeerCertificateInvalid(_)
-            | ConnectionError::DidNotSendHandshake
-            | ConnectionError::InvalidRemoteHandshakeMessage(_)
-            | ConnectionError::InvalidConsensusCertificate(_) => None,
-
-            // Definitely something we want to avoid.
-            ConnectionError::WrongNetwork(peer_network_name) => {
-                Some(BlocklistJustification::WrongNetwork {
-                    peer_network_name: peer_network_name.clone(),
-                })
-            }
-            ConnectionError::WrongChainspecHash(peer_chainspec_hash) => {
-                Some(BlocklistJustification::WrongChainspecHash {
-                    peer_chainspec_hash: *peer_chainspec_hash,
-                })
-            }
-            ConnectionError::MissingChainspecHash => {
-                Some(BlocklistJustification::MissingChainspecHash)
-            }
-        }
-    }
-
-    /// Sets up an established outgoing connection.
-    ///
-    /// Initiates sending of the handshake as soon as the connection is established.
-    #[allow(clippy::redundant_clone)]
-    fn handle_outgoing_connection(
-        &mut self,
-        outgoing: OutgoingConnection,
-        span: Span,
-    ) -> Effects<Event<P>> {
-        let now = Instant::now();
-        span.clone().in_scope(|| match outgoing {
-            OutgoingConnection::FailedEarly { peer_addr, error }
-            | OutgoingConnection::Failed {
-                peer_addr,
-                peer_id: _,
-                error,
-            } => {
-                debug!(err=%display_error(&error), "outgoing connection failed");
-                // We perform blocking first, to not trigger a reconnection before blocking.
-                let mut requests = Vec::new();
-
-                if let Some(justification) = self.is_blockable_offense_for_outgoing(&error) {
-                    requests.extend(self.outgoing_manager.block_addr(
-                        peer_addr,
-                        now,
-                        justification,
-                    ));
-                }
-
-                // Now we can proceed with the regular updates.
-                requests.extend(
-                    self.outgoing_manager
-                        .handle_dial_outcome(DialOutcome::Failed {
-                            addr: peer_addr,
-                            error,
-                            when: now,
-                        }),
-                );
-
-                self.process_dial_requests(requests)
-            }
-            OutgoingConnection::Loopback { peer_addr } => {
-                // Loopback connections are marked, but closed.
-                info!("successful outgoing loopback connection, will be dropped");
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Loopback { addr: peer_addr });
-                self.process_dial_requests(request)
-            }
-            OutgoingConnection::Established {
-                peer_addr,
-                peer_id,
-                peer_consensus_public_key: _, // TODO: Use for limiting or remove. See also #4247.
-                transport,
-            } => {
-                info!("new outgoing connection established");
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
-
-                let handle = OutgoingHandle {
-                    rpc_client,
-                    peer_addr,
-                };
-
-                let request = self
-                    .outgoing_manager
-                    .handle_dial_outcome(DialOutcome::Successful {
-                        addr: peer_addr,
-                        handle,
-                        node_id: peer_id,
-                    });
-
-                let mut effects = self.process_dial_requests(request);
-
-                // Update connection symmetries.
-                if self
-                    .connection_symmetries
-                    .entry(peer_id)
-                    .or_default()
-                    .mark_outgoing(now)
-                {
-                    self.connection_completed(peer_id);
-                }
-
-                effects.extend(tasks::rpc_sender_loop(rpc_server).instrument(span).event(
-                    move |result| Event::OutgoingDropped {
-                        peer_id: Box::new(peer_id),
-                        peer_addr,
-                        opt_err: result.err().map(Box::new),
-                    },
-                ));
-
-                effects
-            }
-        })
     }
 
     fn handle_network_request(
@@ -909,15 +528,28 @@ where
                 payload,
                 message_queued_responder,
             } => {
-                // We're given a message to send. Pass on the responder so that confirmation
-                // can later be given once the message has actually been buffered.
+                let Some(ref conman) = self.conman else {
+                    error!("cannot send message on non-initialized network component");
+
+                    return Effects::new();
+                };
+
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
                 self.net_metrics.direct_message_requests.inc();
 
+                // We're given a message to send. Pass on the responder so that confirmation
+                // can later be given once the message has actually been buffered.
                 self.send_message(
+                    &*conman.read_state(),
                     *dest,
-                    Arc::new(Message::Payload(*payload)),
+                    channel,
+                    payload,
                     message_queued_responder,
                 );
+
                 Effects::new()
             }
             NetworkRequest::ValidatorBroadcast {
@@ -926,7 +558,12 @@ where
                 auto_closing_responder,
             } => {
                 // We're given a message to broadcast.
-                self.broadcast_message_to_validators(Arc::new(Message::Payload(*payload)), era_id);
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
+                self.broadcast_message_to_validators(channel, payload, era_id);
+
                 auto_closing_responder.respond(()).ignore()
             }
             NetworkRequest::Gossip {
@@ -937,74 +574,20 @@ where
                 auto_closing_responder,
             } => {
                 // We're given a message to gossip.
-                let sent_to = self.gossip_message(
-                    rng,
-                    Arc::new(Message::Payload(*payload)),
-                    gossip_target,
-                    count,
-                    exclude,
-                );
+                let Some((channel, payload)) = stuff_into_envelope(*payload) else {
+                    return Effects::new();
+                };
+
+                let sent_to =
+                    self.gossip_message(rng, channel, payload, gossip_target, count, exclude);
+
                 auto_closing_responder.respond(sent_to).ignore()
             }
         }
     }
 
-    fn handle_outgoing_dropped(
-        &mut self,
-        peer_id: NodeId,
-        peer_addr: SocketAddr,
-        opt_err: Option<Box<MessageSenderError>>,
-    ) -> Effects<Event<P>> {
-        if let Some(ref err) = opt_err {
-            debug!(err=%display_error(err), %peer_id, %peer_addr, "outgoing connection dropped due to error");
-        } else {
-            debug!(%peer_id, %peer_addr, "outgoing connection was dropped without error (i.e. closed by peer)")
-        }
-
-        let requests = self
-            .outgoing_manager
-            .handle_connection_drop(peer_addr, Instant::now());
-
-        self.connection_symmetries
-            .entry(peer_id)
-            .or_default()
-            .unmark_outgoing(Instant::now());
-
-        self.process_dial_requests(requests)
-    }
-
-    /// Processes a set of `DialRequest`s, updating the component and emitting needed effects.
-    fn process_dial_requests<T>(&mut self, requests: T) -> Effects<Event<P>>
-    where
-        T: IntoIterator<Item = DialRequest<OutgoingHandle>>,
-    {
-        let mut effects = Effects::new();
-
-        for request in requests.into_iter() {
-            trace!(%request, "processing dial request");
-            match request {
-                DialRequest::Dial { addr, span } => effects.extend(
-                    tasks::connect_outgoing::<P, _>(self.context.clone(), addr)
-                        .instrument(span.clone())
-                        .event(|outgoing| Event::OutgoingConnection {
-                            outgoing: Box::new(outgoing),
-                            span,
-                        }),
-                ),
-                DialRequest::Disconnect { handle: _, span } => {
-                    // Dropping the `handle` is enough to signal the connection to shutdown.
-                    span.in_scope(|| {
-                        debug!("dropping connection, as requested");
-                    })
-                }
-            }
-        }
-
-        effects
-    }
-
     /// Handles a received message.
-    fn handle_incoming_message(
+    fn handle_incoming_message<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         peer_id: NodeId,
@@ -1013,7 +596,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: FromIncoming<P> + From<NetworkRequest<P>> + From<PeerBehaviorAnnouncement>,
+        REv: FromIncoming<P> + From<NetworkRequest<P>> + From<PeerBehaviorAnnouncement> + Send,
     {
         // Note: For non-payload channels, we drop the `Ticket` implicitly at end of scope.
         span.in_scope(|| match msg {
@@ -1030,80 +613,72 @@ where
         })
     }
 
-    /// Emits an announcement that a connection has been completed.
-    fn connection_completed(&self, peer_id: NodeId) {
-        trace!(num_peers = self.peers().len(), new_peer=%peer_id, "connection complete");
-        self.net_metrics.peers.set(self.peers().len() as i64);
-    }
-
     /// Returns the set of connected nodes.
-    pub(crate) fn peers(&self) -> BTreeMap<NodeId, String> {
-        let mut ret = BTreeMap::new();
-        for node_id in self.outgoing_manager.connected_peers() {
-            if let Some(connection) = self.outgoing_manager.get_route(node_id) {
-                ret.insert(node_id, connection.peer_addr.to_string());
-            } else {
-                // This should never happen unless the state of `OutgoingManager` is corrupt.
-                warn!(%node_id, "route disappeared unexpectedly")
-            }
-        }
+    pub(crate) fn peers(&self) -> BTreeMap<NodeId, SocketAddr> {
+        let Some(ref conman) = self.conman else {
+            // Not initialized means no peers.
+            return Default::default();
+        };
 
-        for (node_id, sym) in &self.connection_symmetries {
-            if let Some(addrs) = sym.incoming_addrs() {
-                for addr in addrs {
-                    ret.entry(*node_id).or_insert_with(|| addr.to_string());
-                }
-            }
-        }
-
-        ret
+        conman
+            .read_state()
+            .routing_table()
+            .values()
+            .map(|route| (route.peer, route.remote_addr))
+            .collect()
     }
 
-    pub(crate) fn fully_connected_peers_random(
-        &self,
-        rng: &mut NodeRng,
-        count: usize,
-    ) -> Vec<NodeId> {
-        self.connection_symmetries
-            .iter()
-            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-            .map(|(node_id, _)| *node_id)
-            .choose_multiple(rng, count)
+    /// Get a randomly sampled subset of connected peers
+    pub(crate) fn connected_peers_random(&self, rng: &mut NodeRng, count: usize) -> Vec<NodeId> {
+        let Some(ref conman) = self.conman else {
+            // If we are not initialized, return an empty set.
+            return Vec::new();
+        };
+
+        // Note: This is not ideal, since it os O(n) (n = number of peers), whereas for a slice it
+        //       would be O(k) (k = number of items). If this proves to be a bottleneck, add an
+        //       unstable `Vec` (allows O(1) random removal) to `ConMan` that stores a list of
+        //       currently connected nodes.
+
+        let mut subset = conman
+            .read_state()
+            .routing_table()
+            .values()
+            .map(|route| route.peer)
+            .choose_multiple(rng, count);
+
+        // Documentation says result must be shuffled to be truly random.
+        subset.shuffle(rng);
+
+        subset
     }
 
-    pub(crate) fn has_sufficient_fully_connected_peers(&self) -> bool {
-        self.connection_symmetries
-            .iter()
-            .filter(|(_node_id, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
-            .count()
-            >= self.cfg.min_peers_for_initialization as usize
+    /// Returns whether or not the threshold has been crossed for the component to consider itself
+    /// sufficiently connected.
+    pub(crate) fn has_sufficient_connected_peers(&self) -> bool {
+        let Some(ref conman) = self.conman else {
+            // If we are not initialized, we do not have any fully connected peers.
+            return false;
+        };
+
+        let connection_count = conman.read_state().routing_table().len();
+        connection_count >= self.config.min_peers_for_initialization as usize
     }
 
     #[cfg(test)]
     /// Returns the node id of this network node.
     pub(crate) fn node_id(&self) -> NodeId {
-        self.context.our_id()
+        self.our_id
     }
 }
 
-impl<REv, P> Finalize for Network<REv, P>
+impl<P> Finalize for Network<P>
 where
-    REv: Send + 'static,
     P: Payload,
 {
-    fn finalize(mut self) -> BoxFuture<'static, ()> {
+    fn finalize(self) -> BoxFuture<'static, ()> {
         async move {
             self.shutdown_fuse.inner().set();
-
-            // Wait for the server to exit cleanly.
-            if let Some(join_handle) = self.server_join_handle.take() {
-                match join_handle.await {
-                    Ok(_) => debug!(our_id=%self.context.our_id(), "server exited cleanly"),
-                    Err(ref err) => {
-                        error!(our_id=%self.context.our_id(), err=display_error(err), "could not join server task cleanly")
-                    }
-                }
-            }
 
             // Ensure there are no ongoing metrics updates.
             utils::wait_for_arc_drop(
@@ -1115,6 +690,23 @@ where
         }
         .boxed()
     }
+}
+
+fn resolve_addresses<'a>(addresses: impl Iterator<Item = &'a str>) -> HashSet<SocketAddr> {
+    let mut resolved = HashSet::new();
+    for address in addresses {
+        match utils::resolve_address(address) {
+            Ok(addr) => {
+                if !resolved.insert(addr) {
+                    warn!(%address, resolved=%addr, "ignoring duplicated address");
+                };
+            }
+            Err(ref err) => {
+                warn!(%address, err=display_error(err), "failed to resolve address");
+            }
+        }
+    }
+    resolved
 }
 
 fn choose_gossip_peers<F>(
@@ -1154,7 +746,7 @@ where
     }
 }
 
-impl<REv, P> Component<REv> for Network<REv, P>
+impl<REv, P> Component<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1203,16 +795,12 @@ where
                         Effects::new()
                     }
                 },
-                Event::IncomingConnection { .. }
-                | Event::IncomingMessage { .. }
-                | Event::IncomingClosed { .. }
-                | Event::OutgoingConnection { .. }
-                | Event::OutgoingDropped { .. }
+                Event::IncomingMessage { .. }
                 | Event::NetworkRequest { .. }
                 | Event::NetworkInfoRequest { .. }
                 | Event::GossipOurAddress
+                | Event::SyncMetrics
                 | Event::PeerAddressReceived(_)
-                | Event::SweepOutgoing
                 | Event::BlocklistAnnouncement(_) => {
                     warn!(
                         ?event,
@@ -1231,36 +819,12 @@ where
                     );
                     Effects::new()
                 }
-                Event::IncomingConnection { incoming, span } => {
-                    self.handle_incoming_connection(incoming, span)
-                }
                 Event::IncomingMessage {
                     peer_id,
                     msg,
                     span,
                     ticket,
                 } => self.handle_incoming_message(effect_builder, *peer_id, *msg, ticket, span),
-                Event::IncomingClosed {
-                    result,
-                    peer_id,
-                    peer_addr,
-                    peer_consensus_public_key,
-                    span,
-                } => self.handle_incoming_closed(
-                    result,
-                    peer_id,
-                    peer_addr,
-                    peer_consensus_public_key,
-                    *span,
-                ),
-                Event::OutgoingConnection { outgoing, span } => {
-                    self.handle_outgoing_connection(*outgoing, span)
-                }
-                Event::OutgoingDropped {
-                    peer_id,
-                    peer_addr,
-                    opt_err,
-                } => self.handle_outgoing_dropped(*peer_id, peer_addr, opt_err),
                 Event::NetworkRequest { req: request } => {
                     self.handle_network_request(*request, rng)
                 }
@@ -1269,71 +833,84 @@ where
                         responder.respond(self.peers()).ignore()
                     }
                     NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
-                        .respond(self.fully_connected_peers_random(rng, count))
+                        .respond(self.connected_peers_random(rng, count))
                         .ignore(),
                     NetworkInfoRequest::Insight { responder } => responder
                         .respond(NetworkInsights::collect_from_component(self))
                         .ignore(),
                 },
                 Event::GossipOurAddress => {
-                    let our_address = GossipedAddress::new(
-                        self.context
-                            .public_addr()
-                            .expect("component not initialized properly"),
-                    );
-
                     let mut effects = effect_builder
-                        .begin_gossip(our_address, Source::Ourself, our_address.gossip_target())
-                        .ignore();
-                    effects.extend(
-                        effect_builder
-                            .set_timeout(self.cfg.gossip_interval.into())
-                            .event(|_| Event::GossipOurAddress),
+                        .set_timeout(self.config.gossip_interval.into())
+                        .event(|_| Event::GossipOurAddress);
+
+                    if let Some(public_address) = self.public_addr {
+                        let our_address = GossipedAddress::new(public_address);
+                        debug!( %our_address, "gossiping our addresses" );
+                        effects.extend(
+                            effect_builder
+                                .begin_gossip(
+                                    our_address,
+                                    Source::Ourself,
+                                    our_address.gossip_target(),
+                                )
+                                .ignore(),
+                        );
+                    } else {
+                        // The address should have been set before we first trigger the gossiping,
+                        // thus we should never end up here.
+                        error!("cannot gossip our address, it is missing");
+                    };
+
+                    // We also ensure we know our known addresses still.
+                    debug!(
+                        address_count = self.known_addresses.len(),
+                        "learning known addresses"
                     );
+                    self.learn_known_addresses();
+
                     effects
+                }
+                Event::SyncMetrics => {
+                    // Update the `peers` metric.
+                    // TODO: Add additional metrics for bans, do-not-calls, etc.
+                    let peers = if let Some(ref conman) = self.conman {
+                        conman.read_state().routing_table().len()
+                    } else {
+                        0
+                    };
+                    self.net_metrics.peers.set(peers as i64);
+                    effect_builder
+                        .set_timeout(METRICS_UPDATE_RATE)
+                        .event(|_| Event::SyncMetrics)
                 }
                 Event::PeerAddressReceived(gossiped_address) => {
-                    let requests = self.outgoing_manager.learn_addr(
-                        gossiped_address.into(),
-                        false,
-                        Instant::now(),
-                    );
-                    self.process_dial_requests(requests)
-                }
-                Event::SweepOutgoing => {
-                    let now = Instant::now();
-                    let requests = self.outgoing_manager.perform_housekeeping(now);
+                    if let Some(ref conman) = self.conman {
+                        conman.learn_addr(gossiped_address.into());
+                    } else {
+                        error!("received gossiped address while component was not initialized");
+                    }
 
-                    let mut effects = self.process_dial_requests(requests);
-
-                    effects.extend(
-                        effect_builder
-                            .set_timeout(OUTGOING_MANAGER_SWEEP_INTERVAL)
-                            .event(|_| Event::SweepOutgoing),
-                    );
-
-                    effects
+                    Effects::new()
                 }
                 Event::BlocklistAnnouncement(announcement) => match announcement {
                     PeerBehaviorAnnouncement::OffenseCommitted {
                         offender,
                         justification,
                     } => {
-                        // TODO: We do not have a proper by-node-ID blocklist, but rather only block
-                        // the current outgoing address of a peer.
-                        info!(%offender, %justification, "adding peer to blocklist after transgression");
+                        if let Some(ref conman) = self.conman {
+                            let now = Instant::now();
+                            let until = now
+                                + Duration::from_millis(
+                                    self.config.blocklist_retain_duration.millis(),
+                                );
 
-                        if let Some(addr) = self.outgoing_manager.get_addr(*offender) {
-                            let requests = self.outgoing_manager.block_addr(
-                                addr,
-                                Instant::now(),
-                                *justification,
-                            );
-                            self.process_dial_requests(requests)
+                            conman.ban_peer(*offender, *justification, until);
                         } else {
-                            // Peer got away with it, no longer an outgoing connection.
-                            Effects::new()
-                        }
+                            error!("cannot ban, component not initialized");
+                        };
+
+                        Effects::new()
                     }
                 },
             },
@@ -1345,7 +922,7 @@ where
     }
 }
 
-impl<REv, P> InitializedComponent<REv> for Network<REv, P>
+impl<REv, P> InitializedComponent<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1371,7 +948,7 @@ where
     }
 }
 
-impl<REv, P> ValidatorBoundComponent<REv> for Network<REv, P>
+impl<REv, P> ValidatorBoundComponent<REv> for Network<P>
 where
     REv: ReactorEvent
         + From<Event<P>>
@@ -1390,19 +967,20 @@ where
         // If we receive an updated set of validators, recalculate validator status for every
         // existing connection.
 
-        let active_validators = self.validator_matrix.active_or_upcoming_validators();
+        let _active_validators = self.validator_matrix.active_or_upcoming_validators();
 
         // Update the validator status for every connection.
-        for (public_key, status) in self.incoming_validator_status.iter_mut() {
-            // If there is only a `Weak` ref, we lost the connection to the validator, but the
-            // disconnection has not reached us yet.
-            if let Some(arc) = status.upgrade() {
-                arc.store(
-                    active_validators.contains(public_key),
-                    std::sync::atomic::Ordering::Relaxed,
-                )
-            }
-        }
+        // for (public_key, status) in self.incoming_validator_status.iter_mut() {
+        //     // If there is only a `Weak` ref, we lost the connection to the validator, but the
+        //     // disconnection has not reached us yet.
+        //     if let Some(arc) = status.upgrade() {
+        //         arc.store(
+        //             active_validators.contains(public_key),
+        //             std::sync::atomic::Ordering::Relaxed,
+        //         )
+        //     }
+        // }
+        // TODO: Restore functionality.
 
         Effects::default()
     }
@@ -1410,13 +988,6 @@ where
 
 /// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
-
-/// Transport-level RPC server.
-type RpcServer = JulietRpcServer<
-    { Channel::COUNT },
-    ReadHalf<SslStream<TcpStream>>,
-    WriteHalf<SslStream<TcpStream>>,
->;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
@@ -1445,27 +1016,22 @@ where
         .ok()
 }
 
+/// Given a message payload, puts it into a proper message envelope and returns the serialized
+/// envelope along with the channel it should be sent on.
+#[inline(always)]
+fn stuff_into_envelope<P: Payload>(payload: P) -> Option<(Channel, Bytes)> {
+    let msg = Message::Payload(payload);
+    let channel = msg.get_channel();
+    let byte_payload = serialize_network_message(&msg)?;
+    Some((channel, byte_payload))
+}
+
 /// Deserializes a networking message from the protocol specified encoding.
 fn deserialize_network_message<P>(bytes: &[u8]) -> Result<Message<P>, bincode::Error>
 where
     P: Payload,
 {
     bincode_config().deserialize(bytes)
-}
-
-impl<R, P> Debug for Network<R, P>
-where
-    P: Payload,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // We output only the most important fields of the component, as it gets unwieldy quite fast
-        // otherwise.
-        f.debug_struct("Network")
-            .field("our_id", &self.context.our_id())
-            .field("state", &self.state)
-            .field("public_addr", &self.context.public_addr())
-            .finish()
-    }
 }
 
 /// Processes a request guard obtained by making a request to a peer through Juliet RPC.
@@ -1479,7 +1045,12 @@ fn process_request_guard(channel: Channel, guard: RequestGuard) {
             // We got an incredibly quick round-trip, lucky us! Nothing to do.
         }
         Ok(Err(err)) => {
-            debug!(%channel, %err, "failed to send message");
+            rate_limited!(
+                MESSAGE_SENDING_FAILURE,
+                5,
+                Duration::from_secs(60),
+                |dropped| warn!(%channel, %err, dropped, "failed to send message")
+            );
         }
         Err(guard) => {
             // No ACK received yet, forget, so we don't cancel.
