@@ -357,6 +357,7 @@ impl<C: Context> ActiveValidator<C> {
             warn!("Creator knows it's faulty. Won't create a message.");
             return vec![];
         }
+
         self.new_unit(panorama, timestamp, Some(value), state, instance_id)
             .map(|proposal_unit| Effect::NewVertex(ValidVertex(Vertex::Unit(proposal_unit))))
             .into_iter()

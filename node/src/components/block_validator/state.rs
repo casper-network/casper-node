@@ -7,18 +7,15 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, warn};
 
-#[cfg(test)]
-use casper_types::DeployHash;
 use casper_types::{
-    Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, FinalitySignatureId, Timestamp,
+    Approval, ApprovalsHash, Chainspec, FinalitySignatureId, Timestamp, TransactionConfig,
+    TransactionHash,
 };
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
-    types::{
-        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
-    },
+    types::{appendable_block::AppendableBlock, NodeId, TransactionFootprint},
 };
 
 /// The state of a peer which claims to be a holder of the deploys.
@@ -50,12 +47,12 @@ pub(super) enum MaybeStartFetching {
     /// Should start a new round of fetches.
     Start {
         holder: NodeId,
-        missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+        missing_transactions: HashMap<TransactionHash, ApprovalsHash>,
         missing_signatures: HashSet<FinalitySignatureId>,
     },
     /// No new round of fetches should be started as one is already in progress.
     Ongoing,
-    /// We still have missing deploys, but all holders have failed.
+    /// We still have missing transactions, but all holders have failed.
     Unable,
     /// Validation has succeeded already.
     ValidationSucceeded,
@@ -65,12 +62,12 @@ pub(super) enum MaybeStartFetching {
 
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(super) struct ApprovalInfo {
-    approvals: BTreeSet<DeployApproval>,
-    approvals_hash: DeployApprovalsHash,
+    approvals: BTreeSet<Approval>,
+    approvals_hash: ApprovalsHash,
 }
 
 impl ApprovalInfo {
-    fn new(approvals: BTreeSet<DeployApproval>, approvals_hash: DeployApprovalsHash) -> Self {
+    fn new(approvals: BTreeSet<Approval>, approvals_hash: ApprovalsHash) -> Self {
         ApprovalInfo {
             approvals,
             approvals_hash,
@@ -80,19 +77,20 @@ impl ApprovalInfo {
 
 /// State of the current process of block validation.
 ///
-/// Tracks whether or not there are deploys still missing and who is interested in the final result.
+/// Tracks whether or not there are transactions still missing and who is interested in the final
+/// result.
 #[derive(DataSize, Debug)]
 pub(super) enum BlockValidationState {
     /// The validity is not yet decided.
     InProgress {
-        /// Appendable block ensuring that the deploys satisfy the validity conditions.
+        /// Appendable block ensuring that the transactions satisfy the validity conditions.
         appendable_block: AppendableBlock,
-        /// The set of approvals contains approvals from deploys that would be finalized with the
-        /// block.
-        missing_deploys: HashMap<DeployOrTransferHash, ApprovalInfo>,
+        /// The set of approvals contains approvals from transactions that would be finalized with
+        /// the block.
+        missing_transactions: HashMap<TransactionHash, ApprovalInfo>,
         /// The set of finality signatures for past blocks cited in this block.
         missing_signatures: HashSet<FinalitySignatureId>,
-        /// The set of peers which each claim to hold all the deploys.
+        /// The set of peers which each claim to hold all the transactions.
         holders: HashMap<NodeId, HolderState>,
         /// A list of responders that are awaiting an answer.
         responders: Vec<Responder<bool>>,
@@ -114,68 +112,93 @@ impl BlockValidationState {
     /// If the new state is `Valid` or `Invalid`, the provided responder is also returned so it can
     /// be actioned.
     pub(super) fn new(
-        block: &ProposedBlock<ClContext>,
+        proposed_block: &ProposedBlock<ClContext>,
         missing_signatures: HashSet<FinalitySignatureId>,
         sender: NodeId,
         responder: Responder<bool>,
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
-        let deploy_count = block.deploys().len() + block.transfers().len();
-        if deploy_count == 0 {
-            let state = BlockValidationState::Valid(block.timestamp());
+        let transaction_count = proposed_block.transaction_count();
+        if transaction_count == 0 && missing_signatures.is_empty() {
+            let state = BlockValidationState::Valid(proposed_block.timestamp());
             return (state, Some(responder));
         }
 
-        if block.deploys().len() > chainspec.transaction_config.block_max_standard_count as usize {
-            warn!("too many non-transfer deploys");
-            let state = BlockValidationState::Invalid(block.timestamp());
-            return (state, Some(responder));
-        }
-        if block.transfers().len() > chainspec.transaction_config.block_max_transfer_count as usize
+        if Self::validate_transaction_category_counts(proposed_block, &chainspec.transaction_config)
+            .is_err()
         {
-            warn!("too many transfers");
-            let state = BlockValidationState::Invalid(block.timestamp());
+            let state = BlockValidationState::Invalid(proposed_block.timestamp());
             return (state, Some(responder));
         }
 
         let appendable_block =
-            AppendableBlock::new(chainspec.transaction_config, block.timestamp());
+            AppendableBlock::new(chainspec.transaction_config, proposed_block.timestamp());
 
-        let mut missing_deploys = HashMap::new();
-        let deploys_iter = block.deploys().into_iter().map(|dhwa| {
-            let dt_hash = DeployOrTransferHash::Deploy(*dhwa.deploy_hash());
-            (dt_hash, dhwa.approvals().clone())
-        });
-        let transfers_iter = block.transfers().into_iter().map(|dhwa| {
-            let dt_hash = DeployOrTransferHash::Transfer(*dhwa.deploy_hash());
-            (dt_hash, dhwa.approvals().clone())
-        });
-        for (dt_hash, approvals) in deploys_iter.chain(transfers_iter) {
-            let approval_info = match DeployApprovalsHash::compute(&approvals) {
-                Ok(approvals_hash) => ApprovalInfo::new(approvals, approvals_hash),
-                Err(error) => {
-                    warn!(%dt_hash, %error, "could not compute approvals hash");
-                    let state = BlockValidationState::Invalid(block.timestamp());
-                    return (state, Some(responder));
-                }
+        let mut missing_transactions = HashMap::new();
+
+        for (transaction_hash, approvals) in proposed_block.all_transactions() {
+            let approval_info: ApprovalInfo = match transaction_hash {
+                TransactionHash::Deploy(_) => match ApprovalsHash::compute(approvals) {
+                    Ok(approvals_hash) => ApprovalInfo::new(approvals.clone(), approvals_hash),
+                    Err(error) => {
+                        warn!(%transaction_hash, %error, "could not compute approvals hash");
+                        let state = BlockValidationState::Invalid(proposed_block.timestamp());
+                        return (state, Some(responder));
+                    }
+                },
+                TransactionHash::V1(_) => match ApprovalsHash::compute(approvals) {
+                    Ok(approvals_hash) => ApprovalInfo::new(approvals.clone(), approvals_hash),
+                    Err(error) => {
+                        warn!(%transaction_hash, %error, "could not compute approvals hash");
+                        let state = BlockValidationState::Invalid(proposed_block.timestamp());
+                        return (state, Some(responder));
+                    }
+                },
             };
 
-            if missing_deploys.insert(dt_hash, approval_info).is_some() {
-                warn!(%dt_hash, "duplicated deploy in proposed block");
-                let state = BlockValidationState::Invalid(block.timestamp());
+            if missing_transactions
+                .insert(*transaction_hash, approval_info)
+                .is_some()
+            {
+                warn!(%transaction_hash, "duplicated transaction in proposed block");
+                let state = BlockValidationState::Invalid(proposed_block.timestamp());
                 return (state, Some(responder));
             }
         }
 
         let state = BlockValidationState::InProgress {
             appendable_block,
-            missing_deploys,
+            missing_transactions,
             missing_signatures,
             holders: iter::once((sender, HolderState::Unasked)).collect(),
             responders: vec![responder],
         };
 
         (state, None)
+    }
+
+    fn validate_transaction_category_counts(
+        block: &ProposedBlock<ClContext>,
+        config: &TransactionConfig,
+    ) -> Result<(), ()> {
+        if block.standard_count() > config.block_max_standard_count as usize {
+            warn!("too many standard transactions");
+            return Err(());
+        }
+        if block.auction_count() > config.block_max_auction_count as usize {
+            warn!("too many auction transactions");
+            return Err(());
+        }
+        if block.install_upgrade_count() > config.block_max_install_upgrade_count as usize {
+            warn!("too many install_upgrade transactions");
+            return Err(());
+        }
+        if block.mint_count() > config.block_max_mint_count as usize {
+            warn!("too many mint transactions");
+            return Err(());
+        }
+
+        Ok(())
     }
 
     /// Adds the given responder to the collection if the current state is `InProgress` and returns
@@ -247,14 +270,14 @@ impl BlockValidationState {
     pub(super) fn start_fetching(&mut self) -> MaybeStartFetching {
         match self {
             BlockValidationState::InProgress {
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
                 holders,
                 ..
             } => {
-                if missing_deploys.is_empty() && missing_signatures.is_empty() {
+                if missing_transactions.is_empty() && missing_signatures.is_empty() {
                     error!(
-                        "should always have missing deploys or signatures while in state \
+                        "should always have missing transactions or signatures while in state \
                         `InProgress`"
                     );
                     debug_assert!(false, "invalid state");
@@ -277,14 +300,14 @@ impl BlockValidationState {
                 };
                 // Mark the holder as `Asked`.  Safe to `expect` as we just found the entry above.
                 *holders.get_mut(&holder).expect("must be in set") = HolderState::Asked;
-                let missing_deploys = missing_deploys
+                let missing_transactions = missing_transactions
                     .iter()
                     .map(|(dt_hash, infos)| (*dt_hash, infos.approvals_hash))
                     .collect();
                 let missing_signatures = missing_signatures.clone();
                 MaybeStartFetching::Start {
                     holder,
-                    missing_deploys,
+                    missing_transactions,
                     missing_signatures,
                 }
             }
@@ -302,20 +325,20 @@ impl BlockValidationState {
 
     /// If the current state is `InProgress` and `dt_hash` is present, tries to add the footprint to
     /// the appendable block to continue validation of the proposed block.
-    pub(super) fn try_add_deploy_footprint(
+    pub(super) fn try_add_transaction_footprint(
         &mut self,
-        dt_hash: &DeployOrTransferHash,
-        footprint: &DeployFootprint,
+        transaction_hash: &TransactionHash,
+        footprint: &TransactionFootprint,
     ) -> Vec<Responder<bool>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
                 responders,
                 ..
             } => {
-                let approvals_info = match missing_deploys.remove(dt_hash) {
+                let approvals_info = match missing_transactions.remove(transaction_hash) {
                     Some(info) => info,
                     None => {
                         // If this deploy is not present, just return.
@@ -324,36 +347,29 @@ impl BlockValidationState {
                 };
                 // Try adding the footprint to the appendable block to see if the block remains
                 // valid.
-                let dhwa =
-                    DeployHashWithApprovals::new((*dt_hash).into(), approvals_info.approvals);
-                let add_result = match dt_hash {
-                    DeployOrTransferHash::Deploy(_) => appendable_block.add_deploy(dhwa, footprint),
-                    DeployOrTransferHash::Transfer(_) => {
-                        appendable_block.add_transfer(dhwa, footprint)
-                    }
-                };
-                match add_result {
-                    Ok(()) => {
-                        if !missing_deploys.is_empty() || !missing_signatures.is_empty() {
+                let approvals = approvals_info.approvals;
+                let footprint = footprint.clone().with_approvals(approvals);
+                match appendable_block.add_transaction(footprint.clone()) {
+                    Ok(_) => {
+                        if !missing_transactions.is_empty() || !missing_signatures.is_empty() {
                             // The appendable block is still valid, but we still have missing
-                            // deploys or signatures - nothing further to do here.
+                            // transactions - nothing further to do here.
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
-                                missing_deploys_len = missing_deploys.len(),
-                                missing_signatures_len = missing_signatures.len(),
-                                "still missing deploys or signatures - block validation incomplete"
+                                missing_transactions_len = missing_transactions.len(),
+                                "still missing transactions - block validation incomplete"
                             );
                             return vec![];
                         }
                         debug!(
                             block_timestamp = %appendable_block.timestamp(),
-                            "no further missing deploys or signatures - block validation complete"
+                            "no further missing transactions - block validation complete"
                         );
                         let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
                     }
                     Err(error) => {
-                        warn!(%dt_hash, ?footprint, %error, "block invalid");
+                        warn!(%transaction_hash, ?footprint, %error, "block invalid");
                         let new_state = BlockValidationState::Invalid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
                     }
@@ -374,25 +390,25 @@ impl BlockValidationState {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
                 responders,
                 ..
             } => {
                 missing_signatures.remove(finality_signature_id);
-                if missing_signatures.is_empty() && missing_deploys.is_empty() {
+                if missing_signatures.is_empty() && missing_transactions.is_empty() {
                     debug!(
                         block_timestamp = %appendable_block.timestamp(),
-                        "no further missing deploys or signatures - block validation complete"
+                        "no further missing transactions or signatures - block validation complete"
                     );
                     let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                     (new_state, mem::take(responders))
                 } else {
                     debug!(
                         block_timestamp = %appendable_block.timestamp(),
-                        missing_deploys_len = missing_deploys.len(),
+                        missing_transactions_len = missing_transactions.len(),
                         missing_signatures_len = missing_signatures.len(),
-                        "still missing deploys or signatures - block validation incomplete"
+                        "still missing transactions or signatures - block validation incomplete"
                     );
                     return vec![];
                 }
@@ -407,16 +423,16 @@ impl BlockValidationState {
     /// and returns the responders.
     pub(super) fn try_mark_invalid(
         &mut self,
-        dt_hash: &DeployOrTransferHash,
+        transaction_hash: &TransactionHash,
     ) -> Vec<Responder<bool>> {
         let (timestamp, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions,
                 responders,
                 ..
             } => {
-                if !missing_deploys.contains_key(dt_hash) {
+                if !missing_transactions.contains_key(transaction_hash) {
                     return vec![];
                 }
                 (appendable_block.timestamp(), mem::take(responders))
@@ -461,14 +477,12 @@ impl BlockValidationState {
     }
 
     #[cfg(test)]
-    pub(super) fn missing_hashes(&self) -> Vec<DeployHash> {
+    pub(super) fn missing_hashes(&self) -> Vec<TransactionHash> {
         match self {
             BlockValidationState::InProgress {
-                missing_deploys, ..
-            } => missing_deploys
-                .keys()
-                .map(|dt_hash| *dt_hash.deploy_hash())
-                .collect(),
+                missing_transactions,
+                ..
+            } => missing_transactions.keys().copied().collect(),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
         }
     }
@@ -500,17 +514,17 @@ impl Display for BlockValidationState {
         match self {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
                 holders,
                 responders,
             } => {
                 write!(
                     formatter,
-                    "BlockValidationState::InProgress({}, {} missing deploys, \
+                    "BlockValidationState::InProgress({}, {} missing transactions, \
                     {} missing signatures, {} holders, {} responders)",
                     appendable_block,
-                    missing_deploys.len(),
+                    missing_transactions.len(),
                     missing_signatures.len(),
                     holders.len(),
                     responders.len()
@@ -531,102 +545,110 @@ mod tests {
     use futures::channel::oneshot;
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, ChainspecRawBytes, Deploy, TimeDiff};
+    use casper_types::{
+        testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash,
+    };
 
     use super::{super::tests::*, *};
-    use crate::{types::TransactionHashWithApprovals, utils::Loadable};
+    use crate::{types::TransactionExt, utils::Loadable};
 
-    struct Fixture {
-        rng: TestRng,
-        deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
+    struct Fixture<'a> {
+        rng: &'a mut TestRng,
+        transactions: Vec<Transaction>,
         chainspec: Chainspec,
     }
 
-    impl Fixture {
-        fn new() -> Self {
+    impl<'a> Fixture<'a> {
+        fn new(rng: &'a mut TestRng) -> Self {
             let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
             Fixture {
-                rng: TestRng::new(),
-                deploys: vec![],
-                transfers: vec![],
+                rng,
+                transactions: vec![],
                 chainspec,
             }
         }
 
-        /// Returns a new `BlockValidationState` with the specified number of deploys and transfers
-        /// added to any pre-existing ones in the fixture.
+        fn footprints(&self) -> Vec<(TransactionHash, TransactionFootprint)> {
+            self.transactions
+                .iter()
+                .map(|transaction| {
+                    (
+                        transaction.hash(),
+                        transaction
+                            .footprint(&self.chainspec)
+                            .expect("must create footprint"),
+                    )
+                })
+                .collect()
+        }
+
         fn new_state(
             &mut self,
-            deploy_count: u64,
-            transfer_count: u64,
+            mint_count: u64,
+            auction_count: u64,
+            install_upgrade_count: u64,
+            standard_count: u64,
         ) -> (BlockValidationState, Option<Responder<bool>>) {
+            let total_non_transfer_count = standard_count + auction_count + install_upgrade_count;
             let ttl = TimeDiff::from_seconds(10);
-            let deploys: Vec<_> = (0..deploy_count)
-                .map(|index| new_deploy(&mut self.rng, Timestamp::from(1000 + index), ttl))
-                .collect();
-            self.deploys.extend(deploys);
-            let transfers: Vec<_> = (0..transfer_count)
-                .map(|index| {
-                    new_transfer(
-                        &mut self.rng,
-                        Timestamp::from(1000 + deploy_count + index),
-                        ttl,
-                    )
-                })
-                .collect();
-            self.transfers.extend(transfers);
+            let timestamp = Timestamp::from(1000 + total_non_transfer_count + mint_count);
 
-            let deploys_for_block = self
-                .deploys
-                .iter()
-                .map(|deploy| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *deploy.hash(),
-                        deploy.approvals().clone(),
-                    )
-                })
-                .collect();
-            let transfers_for_block = self
-                .transfers
-                .iter()
-                .map(|deploy| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *deploy.hash(),
-                        deploy.approvals().clone(),
-                    )
-                })
-                .collect();
+            let mint_for_block = {
+                let mut ret = vec![];
+                for _ in 0..mint_count {
+                    let txn = new_mint(self.rng, timestamp, ttl);
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
+                }
+
+                ret
+            };
+
+            let auction_for_block = {
+                let mut ret = vec![];
+                for _ in 0..auction_count {
+                    let txn = new_auction(self.rng, timestamp, ttl);
+                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
+                    self.transactions.push(Transaction::V1(txn));
+                }
+                ret
+            };
+
+            let install_upgrade_for_block = {
+                let mut ret = vec![];
+                for _ in 0..install_upgrade_count {
+                    let txn = new_install_upgrade(self.rng, timestamp, ttl);
+                    ret.push((TransactionHash::V1(*txn.hash()), txn.approvals().clone()));
+                    self.transactions.push(Transaction::V1(txn));
+                }
+                ret
+            };
+
+            let standard_for_block = {
+                let mut ret = vec![];
+                for _ in 0..standard_count {
+                    let txn = new_standard(self.rng, timestamp, ttl);
+                    ret.push((txn.hash(), txn.approvals().clone()));
+                    self.transactions.push(txn);
+                }
+                ret
+            };
 
             let proposed_block = new_proposed_block(
-                Timestamp::from(1000 + deploy_count + transfer_count),
-                transfers_for_block,
-                vec![],
-                vec![],
-                deploys_for_block,
+                timestamp,
+                mint_for_block,
+                auction_for_block,
+                install_upgrade_for_block,
+                standard_for_block,
             );
 
             BlockValidationState::new(
                 &proposed_block,
                 HashSet::new(),
-                NodeId::random(&mut self.rng),
+                NodeId::random(self.rng),
                 new_responder(),
                 &self.chainspec,
             )
-        }
-
-        fn footprints(&self) -> Vec<(DeployOrTransferHash, DeployFootprint)> {
-            self.deploys
-                .iter()
-                .map(|deploy| {
-                    let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash());
-                    (dt_hash, deploy.footprint().unwrap())
-                })
-                .chain(self.transfers.iter().map(|transfer| {
-                    let dt_hash = DeployOrTransferHash::Transfer(*transfer.hash());
-                    (dt_hash, transfer.footprint().unwrap())
-                }))
-                .collect()
         }
     }
 
@@ -635,62 +657,211 @@ mod tests {
         Responder::without_shutdown(sender)
     }
 
-    #[test]
-    fn new_state_should_be_valid_with_no_deploys() {
-        let mut fixture = Fixture::new();
-        let (state, maybe_responder) = fixture.new_state(0, 0);
-        assert!(matches!(state, BlockValidationState::Valid(_)));
-        assert!(maybe_responder.is_some());
+    // Please note: values in the following test cases must much the production chainspec.
+    const MAX_STANDARD_COUNT: u64 = 100;
+    const MAX_AUCTION_COUNT: u64 = 200;
+    const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
+    const MAX_MINT_COUNT: u64 = 1000;
+
+    struct TestCase {
+        mint_count: u64,
+        auction_count: u64,
+        install_upgrade_count: u64,
+        standard_count: u64,
+        state_validator: fn((BlockValidationState, Option<Responder<bool>>)) -> bool,
+    }
+
+    const NO_TRANSACTIONS: TestCase = TestCase {
+        mint_count: 0,
+        auction_count: 0,
+        install_upgrade_count: 0,
+        standard_count: 0,
+        state_validator: |(state, responder)| {
+            responder.is_some() && matches!(state, BlockValidationState::Valid(_))
+        },
+    };
+
+    const FULL_AUCTION: TestCase = TestCase {
+        mint_count: 0,
+        auction_count: MAX_AUCTION_COUNT,
+        install_upgrade_count: 0,
+        standard_count: 0,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+    };
+
+    const LESS_THAN_MAX_AUCTION: TestCase = TestCase {
+        auction_count: FULL_AUCTION.auction_count - 1,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+        ..FULL_AUCTION
+    };
+
+    const TOO_MANY_AUCTION: TestCase = TestCase {
+        auction_count: FULL_AUCTION.auction_count + 1,
+        state_validator: |(state, responder)| {
+            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+        },
+        ..FULL_AUCTION
+    };
+
+    const FULL_INSTALL_UPGRADE: TestCase = TestCase {
+        mint_count: 0,
+        auction_count: 0,
+        install_upgrade_count: MAX_INSTALL_UPGRADE_COUNT,
+        standard_count: 0,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+    };
+
+    const LESS_THAN_MAX_INSTALL_UPGRADE: TestCase = TestCase {
+        install_upgrade_count: FULL_INSTALL_UPGRADE.install_upgrade_count - 1,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+        ..FULL_INSTALL_UPGRADE
+    };
+
+    const TOO_MANY_INSTALL_UPGRADE: TestCase = TestCase {
+        install_upgrade_count: FULL_INSTALL_UPGRADE.install_upgrade_count + 1,
+        state_validator: |(state, responder)| {
+            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+        },
+        ..FULL_INSTALL_UPGRADE
+    };
+
+    const FULL_STANDARD: TestCase = TestCase {
+        mint_count: 0,
+        auction_count: 0,
+        install_upgrade_count: 0,
+        standard_count: MAX_STANDARD_COUNT,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+    };
+
+    const LESS_THAN_MAX_STANDARD: TestCase = TestCase {
+        standard_count: FULL_STANDARD.standard_count - 1,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+        ..FULL_STANDARD
+    };
+
+    const TOO_MANY_STANDARD: TestCase = TestCase {
+        standard_count: FULL_STANDARD.standard_count + 1,
+        state_validator: |(state, responder)| {
+            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+        },
+        ..FULL_STANDARD
+    };
+
+    const FULL_MINT: TestCase = TestCase {
+        mint_count: MAX_MINT_COUNT,
+        auction_count: 0,
+        install_upgrade_count: 0,
+        standard_count: 0,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+    };
+
+    const LESS_THAN_MAX_MINT: TestCase = TestCase {
+        mint_count: FULL_MINT.mint_count - 1,
+        state_validator: |(state, responder)| {
+            responder.is_none() && matches!(state, BlockValidationState::InProgress { .. })
+        },
+        ..FULL_MINT
+    };
+
+    const TOO_MANY_MINT: TestCase = TestCase {
+        mint_count: FULL_MINT.mint_count + 1,
+        state_validator: |(state, responder)| {
+            responder.is_some() && matches!(state, BlockValidationState::Invalid(_))
+        },
+        ..FULL_MINT
+    };
+
+    fn run_test_case(
+        TestCase {
+            mint_count,
+            auction_count,
+            install_upgrade_count,
+            standard_count,
+            state_validator,
+        }: TestCase,
+        rng: &mut TestRng,
+    ) {
+        let mut fixture = Fixture::new(rng);
+        let state = fixture.new_state(
+            mint_count,
+            auction_count,
+            install_upgrade_count,
+            standard_count,
+        );
+        assert!(state_validator(state));
     }
 
     #[test]
-    fn new_state_should_be_invalid_with_too_many_deploys() {
-        let mut fixture = Fixture::new();
-        let deploy_count = 5_u64;
-        fixture
-            .chainspec
-            .transaction_config
-            .block_max_standard_count = deploy_count as u32 - 1;
-        let (state, maybe_responder) = fixture.new_state(deploy_count, 0);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
-        assert!(maybe_responder.is_some());
+    fn new_state_should_be_valid_with_no_transactions() {
+        let mut rng = TestRng::new();
+        run_test_case(NO_TRANSACTIONS, &mut rng);
     }
 
     #[test]
-    fn new_state_should_be_invalid_with_too_many_transfers() {
-        let mut fixture = Fixture::new();
-        let transfer_count = 5_u64;
-        fixture
-            .chainspec
-            .transaction_config
-            .block_max_transfer_count = transfer_count as u32 - 1;
-        let (state, maybe_responder) = fixture.new_state(0, transfer_count);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
-        assert!(maybe_responder.is_some());
+    fn new_state_should_respect_auction_limits() {
+        let mut rng = TestRng::new();
+        run_test_case(TOO_MANY_AUCTION, &mut rng);
+        run_test_case(FULL_AUCTION, &mut rng);
+        run_test_case(LESS_THAN_MAX_AUCTION, &mut rng);
     }
 
     #[test]
-    fn new_state_should_be_invalid_with_duplicated_deploy() {
-        let mut fixture = Fixture::new();
+    fn new_state_should_respect_install_upgrade_limits() {
+        let mut rng = TestRng::new();
+        run_test_case(TOO_MANY_INSTALL_UPGRADE, &mut rng);
+        run_test_case(FULL_INSTALL_UPGRADE, &mut rng);
+        run_test_case(LESS_THAN_MAX_INSTALL_UPGRADE, &mut rng);
+    }
+
+    #[test]
+    fn new_state_should_respect_standard_limits() {
+        let mut rng = TestRng::new();
+        run_test_case(TOO_MANY_STANDARD, &mut rng);
+        run_test_case(FULL_STANDARD, &mut rng);
+        run_test_case(LESS_THAN_MAX_STANDARD, &mut rng);
+    }
+
+    #[test]
+    fn new_state_should_respect_mint_limits() {
+        let mut rng = TestRng::new();
+        run_test_case(TOO_MANY_MINT, &mut rng);
+        run_test_case(FULL_MINT, &mut rng);
+        run_test_case(LESS_THAN_MAX_MINT, &mut rng);
+    }
+
+    #[test]
+    fn new_state_should_be_invalid_with_duplicated_transaction() {
+        let mut rng = TestRng::new();
+        let fixture = Fixture::new(&mut rng);
 
         let timestamp = Timestamp::from(1000);
-        let transfers =
-            vec![new_transfer(&mut fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
+        let mint = vec![new_mint(fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
-        let transfers_for_block = transfers
+        let mint_for_block: Vec<(TransactionHash, BTreeSet<Approval>)> = mint
             .iter()
-            .map(|deploy| {
-                TransactionHashWithApprovals::new_deploy(*deploy.hash(), deploy.approvals().clone())
-            })
+            .map(|transaction| (transaction.hash(), transaction.approvals()))
             .collect();
 
-        let proposed_block =
-            new_proposed_block(timestamp, transfers_for_block, vec![], vec![], vec![]);
+        let proposed_block = new_proposed_block(timestamp, mint_for_block, vec![], vec![], vec![]);
 
         let (state, maybe_responder) = BlockValidationState::new(
             &proposed_block,
             HashSet::new(),
-            NodeId::random(&mut fixture.rng),
+            NodeId::random(fixture.rng),
             new_responder(),
             &fixture.chainspec,
         );
@@ -700,20 +871,44 @@ mod tests {
     }
 
     #[test]
-    fn new_state_should_be_in_progress_with_some_deploys() {
-        let mut fixture = Fixture::new();
-        let deploy_count = fixture.rng.gen_range(1..10);
-        let transfer_count = fixture.rng.gen_range(0..10);
-        let (state, maybe_responder) = fixture.new_state(deploy_count, transfer_count);
+    fn new_state_should_be_in_progress_with_some_transactions() {
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+
+        // This test must generate number of transactions within the limits as per the chainspec.
+        let (transfer_count, auction_count, install_upgrade_count, standard_count) = loop {
+            let transfer_count = fixture.rng.gen_range(0..10);
+            let auction_count = fixture.rng.gen_range(0..20);
+            let install_upgrade_count = fixture.rng.gen_range(0..2);
+            let standard_count = fixture.rng.gen_range(0..10);
+            // Ensure at least one transaction is generated. Otherwise the state will be Valid.
+            if transfer_count + auction_count + install_upgrade_count + standard_count > 0 {
+                break (
+                    transfer_count,
+                    auction_count,
+                    install_upgrade_count,
+                    standard_count,
+                );
+            }
+        };
+        let (state, maybe_responder) = fixture.new_state(
+            transfer_count,
+            auction_count,
+            install_upgrade_count,
+            standard_count,
+        );
 
         match state {
             BlockValidationState::InProgress {
-                missing_deploys,
+                missing_transactions,
                 holders,
                 responders,
                 ..
             } => {
-                assert_eq!(missing_deploys.len() as u64, deploy_count + transfer_count);
+                assert_eq!(
+                    missing_transactions.len() as u64,
+                    standard_count + transfer_count + install_upgrade_count + auction_count
+                );
                 assert_eq!(holders.len(), 1);
                 assert_eq!(holders.values().next().unwrap(), &HolderState::Unasked);
                 assert_eq!(responders.len(), 1);
@@ -727,8 +922,9 @@ mod tests {
 
     #[test]
     fn should_add_responder_if_in_progress() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         assert_eq!(state.responder_count(), 1);
 
@@ -767,12 +963,13 @@ mod tests {
 
     #[test]
     fn should_add_new_holder_if_in_progress() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         assert_eq!(state.holders_mut().unwrap().len(), 1);
 
-        let new_holder = NodeId::random(&mut fixture.rng);
+        let new_holder = NodeId::random(fixture.rng);
         state.add_holder(new_holder);
         assert_eq!(state.holders_mut().unwrap().len(), 2);
         assert_eq!(
@@ -783,8 +980,9 @@ mod tests {
 
     #[test]
     fn should_not_change_holder_state() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         let (holder, holder_state) = state
             .holders_mut()
@@ -805,8 +1003,9 @@ mod tests {
 
     #[test]
     fn should_start_fetching() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
         let (holder, holder_state) = state
             .holders_mut()
@@ -823,18 +1022,18 @@ mod tests {
             state
                 .holders_mut()
                 .unwrap()
-                .insert(NodeId::random(&mut fixture.rng), HolderState::Failed);
+                .insert(NodeId::random(fixture.rng), HolderState::Failed);
         }
 
         let maybe_start_fetching = state.start_fetching();
         match maybe_start_fetching {
             MaybeStartFetching::Start {
                 holder,
-                missing_deploys,
+                missing_transactions,
                 ..
             } => {
                 assert_eq!(holder, original_holder);
-                assert_eq!(missing_deploys.len(), 4);
+                assert_eq!(missing_transactions.len(), 8);
             }
             _ => panic!("unexpected return value"),
         }
@@ -846,8 +1045,9 @@ mod tests {
 
     #[test]
     fn start_fetching_should_return_ongoing_if_any_holder_in_asked_state() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // Change the current (only) holder's state to `Asked`.
@@ -866,14 +1066,14 @@ mod tests {
             state
                 .holders_mut()
                 .unwrap()
-                .insert(NodeId::random(&mut fixture.rng), HolderState::Unasked);
+                .insert(NodeId::random(fixture.rng), HolderState::Unasked);
         }
         let failed_count = fixture.rng.gen_range(0..3);
         for _ in 0..failed_count {
             state
                 .holders_mut()
                 .unwrap()
-                .insert(NodeId::random(&mut fixture.rng), HolderState::Failed);
+                .insert(NodeId::random(fixture.rng), HolderState::Failed);
         }
 
         // Clone the holders collection before calling `start_fetching` as it should be unmodified
@@ -890,8 +1090,9 @@ mod tests {
 
     #[test]
     fn start_fetching_should_return_unable_if_all_holders_in_failed_state() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
         // Set the original holder's state to `Failed` and add some more failed.
@@ -907,7 +1108,7 @@ mod tests {
             state
                 .holders_mut()
                 .unwrap()
-                .insert(NodeId::random(&mut fixture.rng), HolderState::Failed);
+                .insert(NodeId::random(fixture.rng), HolderState::Failed);
         }
 
         // Clone the holders collection before calling `start_fetching` as it should be unmodified
@@ -941,16 +1142,17 @@ mod tests {
 
     #[test]
     fn state_should_change_to_validation_succeeded() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
 
-        // While there is still at least one missing deploy, `try_add_deploy_footprint` should keep
-        // the state `InProgress` and never return responders.
+        // While there is still at least one missing transaction, `try_add_transaction_footprint`
+        // should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
         while footprints.len() > 1 {
-            let (dt_hash, footprint) = footprints.pop().unwrap();
-            let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+            let (transaction_hash, footprint) = footprints.pop().unwrap();
+            let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
             assert!(responders.is_empty());
             assert!(matches!(
                 state,
@@ -959,27 +1161,28 @@ mod tests {
             ));
         }
 
-        // The final deploy should cause the state to go to `Valid` and the responders to be
+        // The final transaction should cause the state to go to `Valid` and the responders to be
         // returned.
         let (dt_hash, footprint) = footprints.pop().unwrap();
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Valid(_)));
     }
 
     #[test]
-    fn unrelated_deploy_added_should_not_change_state() {
-        let mut fixture = Fixture::new();
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
-        let (appendable_block_before, missing_deploys_before, holders_before) = match &state {
+    fn unrelated_transaction_added_should_not_change_state() {
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
+        let (appendable_block_before, missing_transactions_before, holders_before) = match &state {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions,
                 holders,
                 ..
             } => (
                 appendable_block.clone(),
-                missing_deploys.clone(),
+                missing_transactions.clone(),
                 holders.clone(),
             ),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
@@ -987,23 +1190,27 @@ mod tests {
             }
         };
 
-        // Create a new, random deploy.
-        let deploy = new_deploy(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
-        let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash());
-        let footprint = deploy.footprint().unwrap();
+        // Create a new, random transaction.
+        let transaction = new_standard(fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
+        let transaction_hash = match &transaction {
+            Transaction::Deploy(deploy) => TransactionHash::Deploy(*deploy.hash()),
+            Transaction::V1(v1) => TransactionHash::V1(*v1.hash()),
+        };
+        let chainspec = Chainspec::default();
+        let footprint = transaction.footprint(&chainspec).unwrap();
 
         // Ensure trying to add it doesn't change the state.
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert!(responders.is_empty());
         match &state {
             BlockValidationState::InProgress {
                 appendable_block,
-                missing_deploys,
+                missing_transactions: missing_deploys,
                 holders,
                 ..
             } => {
                 assert_eq!(&appendable_block_before, appendable_block);
-                assert_eq!(&missing_deploys_before, missing_deploys);
+                assert_eq!(&missing_transactions_before, missing_deploys);
                 assert_eq!(&holders_before, holders);
             }
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
@@ -1014,30 +1221,44 @@ mod tests {
 
     #[test]
     fn state_should_change_to_validation_failed() {
-        let mut fixture = Fixture::new();
-        // Add an invalid (future-dated) deploy to the fixture.
-        let invalid_deploy =
-            new_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
-        fixture.deploys.push(invalid_deploy.clone());
-        let (mut state, _maybe_responder) = fixture.new_state(2, 2);
+        let mut rng = TestRng::new();
+        let mut fixture = Fixture::new(&mut rng);
+        // Add an invalid (future-dated) transaction to the fixture.
+        let invalid_transaction =
+            new_standard(fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
+        let invalid_transaction_hash = invalid_transaction.hash();
+        fixture.transactions.push(invalid_transaction.clone());
+        let (mut state, _maybe_responder) = fixture.new_state(2, 2, 2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
+        if let BlockValidationState::InProgress {
+            ref mut missing_transactions,
+            ..
+        } = state
+        {
+            let approvals = invalid_transaction.approvals();
+            let approvals_hash =
+                ApprovalsHash::compute(&approvals).expect("must get approvals hash");
+            let info = ApprovalInfo::new(approvals, approvals_hash);
+            missing_transactions.insert(invalid_transaction_hash, info);
+        };
 
         // Add some valid deploys, should keep the state `InProgress` and never return responders.
         let mut footprints = fixture.footprints();
         while footprints.len() > 3 {
             let (dt_hash, footprint) = footprints.pop().unwrap();
-            if dt_hash.deploy_hash() == invalid_deploy.hash() {
+            if dt_hash == invalid_transaction_hash {
                 continue;
             }
-            let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+            let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
             assert!(responders.is_empty());
         }
 
-        // The invalid deploy should cause the state to go to `Invalid` and the responders to be
-        // returned.
-        let dt_hash = DeployOrTransferHash::Deploy(*invalid_deploy.hash());
-        let footprint = invalid_deploy.footprint().unwrap();
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let transaction_hash = invalid_transaction.hash();
+        // The invalid transaction should cause the state to go to `Invalid` and the responders to
+        // be returned.
+        let chainspec = Chainspec::default();
+        let footprint = invalid_transaction.footprint(&chainspec).unwrap();
+        let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));
     }

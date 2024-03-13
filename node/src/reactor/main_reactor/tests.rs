@@ -34,7 +34,7 @@ use casper_types::{
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
     ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
     Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionWithFinalizedApprovals, ValidatorConfig, U512,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -58,7 +58,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeId, SyncHandling},
+    types::{BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -651,7 +651,7 @@ impl TestFixture {
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
-        // saturate the network with the deploy via just making them all store and accept it
+        // saturate the network with the transactions via just making them all store and accept it
         // they're all validators so one of them should propose it
         for runner in self.network.runners_mut() {
             runner
@@ -1252,71 +1252,70 @@ async fn should_store_finalized_approvals() {
     // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
-    // Submit a deploy.
-    let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng);
-    let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
-    let mut deploy_bob_alice = deploy_alice_bob.clone();
+    // Submit a transaction.
+    let mut transaction_alice_bob = Transaction::from(
+        Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng),
+    );
+    let mut transaction_alice_bob_charlie = transaction_alice_bob.clone();
+    let mut transaction_bob_alice = transaction_alice_bob.clone();
 
-    deploy_alice_bob.sign(&alice_secret_key);
-    deploy_alice_bob.sign(&bob_secret_key);
+    transaction_alice_bob.sign(&alice_secret_key);
+    transaction_alice_bob.sign(&bob_secret_key);
 
-    deploy_alice_bob_charlie.sign(&alice_secret_key);
-    deploy_alice_bob_charlie.sign(&bob_secret_key);
-    deploy_alice_bob_charlie.sign(&charlie_secret_key);
+    transaction_alice_bob_charlie.sign(&alice_secret_key);
+    transaction_alice_bob_charlie.sign(&bob_secret_key);
+    transaction_alice_bob_charlie.sign(&charlie_secret_key);
 
-    deploy_bob_alice.sign(&bob_secret_key);
-    deploy_bob_alice.sign(&alice_secret_key);
+    transaction_bob_alice.sign(&bob_secret_key);
+    transaction_bob_alice.sign(&alice_secret_key);
 
-    // We will be testing the correct sequence of approvals against the deploy signed by Bob and
-    // Alice.
-    // The deploy signed by Alice and Bob should give the same ordering of approvals.
-    let expected_approvals: Vec<_> = deploy_bob_alice.approvals().iter().cloned().collect();
+    // We will be testing the correct sequence of approvals against the transaction signed by Bob
+    // and Alice.
+    // The transaction signed by Alice and Bob should give the same ordering of approvals.
+    let expected_approvals: Vec<_> = transaction_bob_alice.approvals().iter().cloned().collect();
 
-    // We'll give the deploy signed by Alice, Bob and Charlie to Bob, so these will be his original
-    // approvals. Save these for checks later.
-    let bobs_original_approvals: Vec<_> = deploy_alice_bob_charlie
+    // We'll give the transaction signed by Alice, Bob and Charlie to Bob, so these will be his
+    // original approvals. Save these for checks later.
+    let bobs_original_approvals: Vec<_> = transaction_alice_bob_charlie
         .approvals()
         .iter()
         .cloned()
         .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
+    let transaction_hash = transaction_alice_bob.hash();
 
     for runner in fixture.network.runners_mut() {
-        let deploy = if runner.main_reactor().consensus().public_key() == &alice_public_key {
-            // Alice will propose the deploy signed by Alice and Bob.
-            deploy_alice_bob.clone()
+        let transaction = if runner.main_reactor().consensus().public_key() == &alice_public_key {
+            // Alice will propose the transaction signed by Alice and Bob.
+            transaction_alice_bob.clone()
         } else {
-            // Bob will receive the deploy signed by Alice, Bob and Charlie.
-            deploy_alice_bob_charlie.clone()
+            // Bob will receive the transaction signed by Alice, Bob and Charlie.
+            transaction_alice_bob_charlie.clone()
         };
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
+                    .put_transaction_to_storage(transaction.clone())
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_transaction_accepted(
-                        Arc::new(Transaction::from(deploy)),
-                        Source::Client,
-                    )
+                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client)
                     .ignore()
             })
             .await;
     }
 
-    // Run until the deploy gets executed.
+    // Run until the transaction gets executed.
     let has_stored_exec_results = |nodes: &Nodes| {
         nodes.values().all(|runner| {
             runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&TransactionHash::Deploy(deploy_hash))
+                .read_execution_result(&transaction_hash)
                 .is_some()
         })
     };
@@ -1327,21 +1326,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
-            .map(|transaction_wfa| match transaction_wfa {
-                TransactionWithFinalizedApprovals::Deploy {
-                    deploy,
-                    finalized_approvals,
-                } => (deploy, finalized_approvals),
-                _ => panic!("should receive deploy with finalized approvals"),
-            });
+            .get_transaction_with_finalized_approvals_by_hash(&transaction_hash);
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
-            .and_then(|(_, approvals)| approvals.as_ref())
-            .map(|fa| fa.inner().iter().cloned().collect());
+            .and_then(|dwa| dwa.1.clone())
+            .map(|fa| fa.iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
-            .map(|(deploy, _)| deploy.approvals().iter().cloned().collect());
+            .map(|(transaction, _approvals)| transaction.approvals().iter().cloned().collect());
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(
@@ -1363,7 +1355,7 @@ async fn should_store_finalized_approvals() {
 }
 
 // This test exercises a scenario in which a proposed block contains invalid accusations.
-// Blocks containing no deploys or transfers used to be incorrectly marked as not needing
+// Blocks containing no transactions or transfers used to be incorrectly marked as not needing
 // validation even if they contained accusations, which opened up a security hole through which a
 // malicious validator could accuse whomever they wanted of equivocating and have these
 // accusations accepted by the other validators. This has been patched and the test asserts that
@@ -1407,10 +1399,7 @@ async fn empty_block_validation_regression() {
                     NewBlockPayload {
                         era_id,
                         block_payload: Arc::new(BlockPayload::new(
-                            vec![],
-                            vec![],
-                            vec![],
-                            vec![],
+                            BTreeMap::new(),
                             everyone_else.clone(),
                             Default::default(),
                             false,

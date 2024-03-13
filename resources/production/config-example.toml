@@ -566,11 +566,11 @@ timestamp_leeway = '2 seconds'
 
 
 # ===========================================
-# Configuration options for the deploy buffer
+# Configuration options for the transaction buffer
 # ===========================================
-[deploy_buffer]
+[transaction_buffer]
 
-# The interval of checking for expired deploys.
+# The interval of checking for expired transactions.
 expiry_check_interval = '1 minute'
 
 

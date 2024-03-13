@@ -759,12 +759,12 @@
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
+        "auction",
         "install_upgrade",
+        "mint",
         "proposer",
         "rewarded_signatures",
-        "staking",
-        "standard",
-        "transfer"
+        "standard"
       ],
       "properties": {
         "proposer": {
@@ -775,15 +775,15 @@
             }
           ]
         },
-        "transfer": {
-          "description": "The hashes of the transfer transactions within the block.",
+        "mint": {
+          "description": "The hashes of the mint transactions within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransactionHash"
           }
         },
-        "staking": {
-          "description": "The hashes of the non-transfer, native transactions within the block.",
+        "auction": {
+          "description": "The hashes of the auction transactions within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransactionHash"
@@ -925,7 +925,7 @@
         "approvals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployApproval"
+            "$ref": "#/definitions/Approval"
           },
           "uniqueItems": true
         }
@@ -1528,8 +1528,8 @@
       "description": "The hex-encoded address of the Package.",
       "type": "string"
     },
-    "DeployApproval": {
-      "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
+    "Approval": {
+      "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
       "type": "object",
       "required": [
         "signature",
@@ -1571,7 +1571,7 @@
         "approvals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/TransactionV1Approval"
+            "$ref": "#/definitions/Approval"
           },
           "uniqueItems": true
         }
@@ -1605,14 +1605,6 @@
         "pricing_mode": {
           "$ref": "#/definitions/PricingMode"
         },
-        "payment_amount": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
         "initiator_addr": {
           "$ref": "#/definitions/InitiatorAddr"
         }
@@ -1623,33 +1615,97 @@
       "description": "Pricing mode of a Transaction.",
       "oneOf": [
         {
-          "description": "Multiplies the gas used by the given amount.\n\nThis is the same behaviour as for the `Deploy::gas_price`.",
+          "description": "The original payment model, where the creator of the transaction specifies how much they will pay, at what gas price.",
           "type": "object",
           "required": [
-            "GasPriceMultiplier"
+            "Classic"
           ],
           "properties": {
-            "GasPriceMultiplier": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+            "Classic": {
+              "type": "object",
+              "required": [
+                "gas_price",
+                "payment_amount"
+              ],
+              "properties": {
+                "payment_amount": {
+                  "description": "User-specified payment amount.",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "gas_price": {
+                  "description": "User-specified gas_price tolerance (minimum 1).",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "First-in-first-out handling of transactions, i.e. pricing mode is irrelevant to ordering.",
-          "type": "string",
-          "enum": [
+          "description": "The cost of the transaction is determined by the cost table, per the transaction kind.",
+          "type": "object",
+          "required": [
             "Fixed"
-          ]
+          ],
+          "properties": {
+            "Fixed": {
+              "type": "object",
+              "required": [
+                "gas_price_tolerance"
+              ],
+              "properties": {
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         },
         {
-          "description": "The payment for this transaction was previously reserved.",
-          "type": "string",
-          "enum": [
+          "description": "The payment for this transaction was previously reserved, as proven by the receipt hash (this is for future use, not currently implemented).",
+          "type": "object",
+          "required": [
             "Reserved"
-          ]
+          ],
+          "properties": {
+            "Reserved": {
+              "type": "object",
+              "required": [
+                "paid_amount",
+                "receipt"
+              ],
+              "properties": {
+                "receipt": {
+                  "description": "Pre-paid receipt.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Digest"
+                    }
+                  ]
+                },
+                "paid_amount": {
+                  "description": "Price paid in the past to reserve space in a future block.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -2050,23 +2106,6 @@
           "additionalProperties": false
         }
       ]
-    },
-    "TransactionV1Approval": {
-      "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
-      "type": "object",
-      "required": [
-        "signature",
-        "signer"
-      ],
-      "properties": {
-        "signer": {
-          "$ref": "#/definitions/PublicKey"
-        },
-        "signature": {
-          "$ref": "#/definitions/Signature"
-        }
-      },
-      "additionalProperties": false
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",
