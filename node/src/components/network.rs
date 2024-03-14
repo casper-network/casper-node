@@ -905,7 +905,7 @@ where
                                     self.config.blocklist_retain_duration.millis(),
                                 );
 
-                            conman.ban_peer(*offender, *justification, until);
+                            conman.ban_peer(*offender, *justification, now, until);
                         } else {
                             error!("cannot ban, component not initialized");
                         };

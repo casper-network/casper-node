@@ -19,10 +19,15 @@ use std::{
 };
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use casper_types::{PublicKey, TimeDiff};
 use datasize::DataSize;
 use futures::{TryFuture, TryFutureExt};
-use juliet::rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError};
+use juliet::{
+    header::ErrorKind,
+    rpc::{IncomingRequest, JulietRpcClient, JulietRpcServer, RpcBuilder, RpcServerError},
+    ChannelId, Id,
+};
 use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use thiserror::Error;
@@ -242,6 +247,66 @@ pub(crate) struct ProtocolHandshakeOutcome {
     pub(crate) handshake_outcome: HandshakeOutcome,
 }
 
+/// An error communicated back to a peer.
+#[derive(Debug, Deserialize, Error, Serialize)]
+enum PeerError {
+    /// The peer told us we are banned.
+    #[error("you are banned by a peer: {justification}, left: {time_left:?}")]
+    YouAreBanned {
+        /// How long until the ban is lifted.
+        time_left: Duration,
+        /// Justification for the ban.
+        justification: String,
+    },
+    /// Banned for another reason.
+    #[error("other: {0}")]
+    Other(String),
+}
+
+impl PeerError {
+    /// Creates a peer error indicating a peer was banned.
+    ///
+    /// # Panics
+    ///
+    /// Will panic in debug targets if `now > until`.
+    #[inline(always)]
+    fn banned(now: Instant, until: Instant, justification: &BlocklistJustification) -> Self {
+        debug_assert!(now <= until);
+
+        let time_left = until.checked_duration_since(now).unwrap_or_default();
+
+        Self::YouAreBanned {
+            time_left,
+            justification: justification.to_string(),
+        }
+    }
+
+    /// Attempt to deserialize a [`PeerError`] from given bytes.
+    #[inline(always)]
+    fn deserialize(raw: &[u8]) -> Option<Self> {
+        bincode::Options::deserialize(super::bincode_config(), raw).ok()
+    }
+
+    /// Creates a peer error from anything string-adjacent.
+    #[inline(always)]
+    fn other<E: ToString>(err: E) -> Self {
+        Self::Other(err.to_string())
+    }
+
+    /// Serializes the error.
+    #[inline(always)]
+    fn serialize(&self) -> Bytes {
+        bincode::Options::serialize(super::bincode_config(), self)
+            .map(Bytes::from)
+            .map_err(|err| {
+                error!(%err, "serialization failure when encoding outgoing peer_error");
+                err
+            })
+            .ok()
+            .unwrap_or_else(|| Bytes::from(&b"serialization failure"[..]))
+    }
+}
+
 impl ProtocolHandshakeOutcome {
     /// Registers the handshake outcome on the tracing span, to give context to logs.
     ///
@@ -361,6 +426,7 @@ impl ConMan {
         &self,
         peer_id: NodeId,
         justification: BlocklistJustification,
+        now: Instant,
         until: Instant,
     ) {
         {
@@ -370,6 +436,9 @@ impl ConMan {
                 BANNING_PEER,
                 |dropped| warn!(%peer_id, %justification, dropped, "banning peer")
             );
+
+            let peer_error = PeerError::banned(now, until, &justification);
+
             match guard.banlist.entry(peer_id) {
                 Entry::Occupied(mut occupied) => {
                     if occupied.get().until > until {
@@ -391,10 +460,15 @@ impl ConMan {
                     });
                 }
             }
-        }
 
-        // TODO: We still need to implement the connection closing part.
-        error!("missing implementation for banned peer connection shutdown");
+            if let Some(route) = guard.routing_table().get(&peer_id) {
+                route.client.send_custom_error(
+                    ChannelId::new(0),
+                    Id::new(0),
+                    peer_error.serialize(),
+                );
+            }
+        }
     }
 
     /// Returns a read lock onto the state of this connection manager.
@@ -587,8 +661,13 @@ async fn handle_incoming(
                 |dropped| info!(until=?entry.until, justification=%entry.justification, dropped, "peer is still banned")
             );
 
-            // TODO: Send a proper error using RPC client/server here (requires appropriate
-            //       Juliet API). This would allow the peer to update its backoff timer.
+            let peer_error = PeerError::banned(now, entry.until, &entry.justification);
+            tokio::spawn(rpc_server.send_custom_error_and_shutdown(
+                ChannelId::new(0),
+                Id::new(0),
+                peer_error.serialize(),
+            ));
+
             return;
         }
 
@@ -765,8 +844,9 @@ impl OutgoingHandler {
                         RPC_ERROR_ON_OUTGOING,
                         |dropped| warn!(%err, dropped, "encountered juliet RPC error")
                     );
-                    // TODO: If there was a user error, try to extract a reconnection hint.
-                    break Instant::now() + ctx.cfg.significant_error_backoff.into();
+
+                    let delay = reconnect_delay_from_rpc_server_error(&ctx.cfg, &err);
+                    break Instant::now() + delay;
                 }
                 Err(OutgoingError::ShouldBeIncoming) => {
                     // This is "our bad", but the peer has been informed of our address now.
@@ -848,8 +928,14 @@ impl OutgoingHandler {
             let now = Instant::now();
             if let Some(entry) = guard.is_still_banned(&peer_id, now) {
                 debug!(until=?entry.until, justification=%entry.justification, "outgoing connection reached banned peer");
-                // TODO: Send a proper error using RPC client/server here.
 
+                // Ensure an error is sent.
+                let message = PeerError::banned(now, entry.until, &entry.justification);
+                tokio::spawn(rpc_server.send_custom_error_and_shutdown(
+                    ChannelId::new(0),
+                    Id::new(0),
+                    message.serialize(),
+                ));
                 return Err(OutgoingError::EncounteredBannedPeer(entry.until));
             }
 
@@ -915,6 +1001,9 @@ impl ActiveRoute {
     async fn serve(self, mut rpc_server: RpcServer) -> Result<(), RpcServerError> {
         while let Some(request) = rpc_server.next_request().await? {
             trace!(%request, "received incoming request");
+            let channel = request.channel();
+            let id = request.id();
+
             if let Err(err) = self
                 .ctx
                 .protocol_handler
@@ -927,9 +1016,9 @@ impl ActiveRoute {
                     |dropped| warn!(%err, dropped, "error handling incoming request")
                 );
 
-                // TODO: Send a proper juliet error instead.
-                // TODO: Consider communicating this error upwards for better timeouts.
-                break;
+                // Send a string description of the error. This will also cause the connection to be
+                // torn down eventually, so we do not need to `break` here.
+                rpc_server.send_custom_error(channel, id, PeerError::other(err).serialize());
             }
         }
 
@@ -1003,6 +1092,33 @@ where
                 tokio::time::sleep(backoff).await;
             }
         }
+    }
+}
+
+/// Calculates a sensible do-not-call-timeout from a given error.
+fn reconnect_delay_from_rpc_server_error(cfg: &Config, err: &RpcServerError) -> Duration {
+    let Some((header, raw)) = err.as_remote_other_err() else {
+        return cfg.significant_error_backoff.into();
+    };
+
+    if !header.is_error() || header.error_kind() != ErrorKind::Other {
+        return cfg.significant_error_backoff.into();
+    }
+
+    // It's a valid user error with a payload.
+    let Some(peer_err) = PeerError::deserialize(raw) else {
+        rate_limited!(RPC_ERROR_OTHER_INVALID_MESSAGE, |dropped| warn!(
+            dropped,
+            "failed to deserialize a custom error message"
+        ));
+        return cfg.significant_error_backoff.into();
+    };
+
+    match peer_err {
+        PeerError::YouAreBanned { time_left, .. } => {
+            time_left.min(cfg.permanent_error_backoff.into())
+        }
+        PeerError::Other(_) => cfg.significant_error_backoff.into(),
     }
 }
 
