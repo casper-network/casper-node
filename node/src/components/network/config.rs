@@ -2,7 +2,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
-use casper_types::{ProtocolVersion, TimeDiff};
+use casper_types::TimeDiff;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
