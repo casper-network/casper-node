@@ -83,9 +83,7 @@ pub(crate) use self::{
     gossiped_address::GossipedAddress,
     identity::Identity,
     insights::NetworkInsights,
-    message::{
-        generate_largest_serialized_message, Channel, FromIncoming, Message, MessageKind, Payload,
-    },
+    message::{Channel, FromIncoming, Message, MessageKind, Payload},
     per_channel::PerChannel,
     transport::Ticket,
 };

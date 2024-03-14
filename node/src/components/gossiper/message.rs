@@ -45,39 +45,3 @@ impl<T: GossipItem> Display for Message<T> {
         }
     }
 }
-
-mod specimen_support {
-    use crate::{
-        components::gossiper::GossipItem,
-        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
-    };
-
-    use super::{Message, MessageDiscriminants};
-
-    impl<T> LargestSpecimen for Message<T>
-    where
-        T: GossipItem + LargestSpecimen,
-        <T as GossipItem>::Id: LargestSpecimen,
-    {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, MessageDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    MessageDiscriminants::Gossip => {
-                        Message::Gossip(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    MessageDiscriminants::GossipResponse => Message::GossipResponse {
-                        item_id: LargestSpecimen::largest_specimen(estimator, cache),
-                        is_already_held: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::GetItem => {
-                        Message::GetItem(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    MessageDiscriminants::Item => {
-                        Message::Item(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                },
-            )
-        }
-    }
-}

@@ -214,49 +214,6 @@ impl Debug for Message {
         }
     }
 }
-mod specimen_support {
-    use crate::utils::specimen::{
-        largest_get_request, largest_get_response, largest_variant, Cache, LargestSpecimen,
-        SizeEstimator,
-    };
-
-    use super::{Message, MessageDiscriminants};
-
-    impl LargestSpecimen for Message {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, MessageDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    MessageDiscriminants::Consensus => {
-                        Message::Consensus(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    MessageDiscriminants::ConsensusRequest => Message::ConsensusRequest(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                    MessageDiscriminants::BlockGossiper => {
-                        Message::BlockGossiper(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    MessageDiscriminants::DeployGossiper => {
-                        Message::DeployGossiper(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    MessageDiscriminants::FinalitySignatureGossiper => {
-                        Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
-                            estimator, cache,
-                        ))
-                    }
-                    MessageDiscriminants::AddressGossiper => Message::AddressGossiper(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                    MessageDiscriminants::GetRequest => largest_get_request(estimator, cache),
-                    MessageDiscriminants::GetResponse => largest_get_response(estimator, cache),
-                    MessageDiscriminants::FinalitySignature => Message::FinalitySignature(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                },
-            )
-        }
-    }
-}
 
 impl Display for Message {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

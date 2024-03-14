@@ -100,7 +100,7 @@ mod relaxed {
         EvidenceRequest { era_id: EraId, pub_key: PublicKey },
     }
 }
-pub(crate) use relaxed::{ConsensusMessage, ConsensusMessageDiscriminants};
+pub(crate) use relaxed::ConsensusMessage;
 
 /// A request to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]
@@ -483,72 +483,6 @@ impl<REv> ReactorEventT for REv where
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
 {
-}
-
-mod specimen_support {
-    use crate::utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator};
-
-    use super::{
-        protocols::{highway, zug},
-        ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,
-        EraRequest, SerializedMessage,
-    };
-
-    impl LargestSpecimen for ConsensusMessage {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, ConsensusMessageDiscriminants, _, _>(estimator, |variant| {
-                match variant {
-                    ConsensusMessageDiscriminants::Protocol => {
-                        let zug_payload = SerializedMessage::from_message(
-                            &zug::Message::<ClContext>::largest_specimen(estimator, cache),
-                        );
-                        let highway_payload = SerializedMessage::from_message(
-                            &highway::HighwayMessage::<ClContext>::largest_specimen(
-                                estimator, cache,
-                            ),
-                        );
-
-                        let payload = if zug_payload.as_raw().len() > highway_payload.as_raw().len()
-                        {
-                            zug_payload
-                        } else {
-                            highway_payload
-                        };
-
-                        ConsensusMessage::Protocol {
-                            era_id: LargestSpecimen::largest_specimen(estimator, cache),
-                            payload,
-                        }
-                    }
-                    ConsensusMessageDiscriminants::EvidenceRequest => {
-                        ConsensusMessage::EvidenceRequest {
-                            era_id: LargestSpecimen::largest_specimen(estimator, cache),
-                            pub_key: LargestSpecimen::largest_specimen(estimator, cache),
-                        }
-                    }
-                }
-            })
-        }
-    }
-
-    impl LargestSpecimen for ConsensusRequestMessage {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            let zug_sync_request = SerializedMessage::from_message(
-                &zug::SyncRequest::<ClContext>::largest_specimen(estimator, cache),
-            );
-
-            ConsensusRequestMessage {
-                era_id: LargestSpecimen::largest_specimen(estimator, cache),
-                payload: zug_sync_request,
-            }
-        }
-    }
-
-    impl LargestSpecimen for EraRequest<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator, cache))
-        }
-    }
 }
 
 impl<REv> Component<REv> for EraSupervisor

@@ -13,7 +13,6 @@ pub(crate) mod registered_metric;
 #[cfg(target_os = "linux")]
 pub(crate) mod rlimit;
 pub(crate) mod round_robin;
-pub(crate) mod specimen;
 pub(crate) mod umask;
 pub mod work_queue;
 

@@ -718,46 +718,7 @@ mod relaxed {
 
     impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
 }
-pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
-
-mod specimen_support {
-    use crate::{
-        components::consensus::ClContext,
-        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
-    };
-
-    use super::{HighwayMessage, HighwayMessageDiscriminants};
-
-    impl LargestSpecimen for HighwayMessage<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
-                match variant {
-                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                    HighwayMessageDiscriminants::RequestDependency => {
-                        HighwayMessage::RequestDependency(
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                        )
-                    }
-                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
-                        HighwayMessage::RequestDependencyByHeight {
-                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
-                            vid: LargestSpecimen::largest_specimen(estimator, cache),
-                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
-                        }
-                    }
-                    HighwayMessageDiscriminants::LatestStateRequest => {
-                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
-                            estimator, cache,
-                        ))
-                    }
-                }
-            })
-        }
-    }
-}
+pub(crate) use relaxed::HighwayMessage;
 
 impl<C> ConsensusProtocol<C> for HighwayProtocol<C>
 where

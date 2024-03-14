@@ -48,13 +48,10 @@ pub use self::{
     network_config::{JulietConfig, NetworkConfig},
     protocol_config::ProtocolConfig,
 };
-use crate::{components::network::generate_largest_serialized_message, utils::Loadable};
+use crate::utils::Loadable;
 
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
-
-// Additional overhead accounted for (eg. lower level networking packet encapsulation).
-const CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN: usize = 256;
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -94,22 +91,6 @@ impl Chainspec {
     #[tracing::instrument(ret, level = "info", skip(self), fields(hash=%self.hash()))]
     pub fn is_valid(&self) -> bool {
         info!("begin chainspec validation");
-        // Ensure the size of the largest message generated under these chainspec settings does not
-        // exceed the configured message size limit.
-        let _serialized = generate_largest_serialized_message(self);
-        let _ = CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN;
-
-        //TODO: in a next ticket, generate a maximum message size for each channel:
-        //if serialized.len() + CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN
-        //    > self.network_config.maximum_net_message_size as usize
-        //{
-        //    warn!(calculated_length=serialized.len(),
-        //        configured_maximum=self.network_config.maximum_net_message_size,
-        //        "config value [network][maximum_net_message_size] is too small to"
-        //        "accomodate the maximum message size",
-        //    );
-        //    return false;
-        //}
 
         if self.core_config.unbonding_delay <= self.core_config.auction_delay {
             warn!(

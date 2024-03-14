@@ -92,7 +92,7 @@ mod relaxed {
 
     impl<C: Context> ConsensusNetworkMessage for Message<C> {}
 }
-pub(crate) use relaxed::{Content, ContentDiscriminants, Message, MessageDiscriminants};
+pub(crate) use relaxed::{Content, Message};
 
 impl<C: Context> Content<C> {
     /// Returns whether the two contents contradict each other. A correct validator is expected to
