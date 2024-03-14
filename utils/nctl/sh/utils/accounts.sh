@@ -105,9 +105,9 @@ function get_main_purse_uref()
     local ACCOUNT_KEY=${1}
     local STATE_ROOT_HASH=${2:-$(get_state_root_hash)}
 
-   source "$NCTL"/sh/views/view_chain_account.sh \
-       account-key="$ACCOUNT_KEY" \
-       root-hash="$STATE_ROOT_HASH" \
-       | jq '.stored_value.AddressableEntity.main_purse' \
-       | sed -e 's/^"//' -e 's/"$//'
+    source "$NCTL"/sh/views/view_chain_account.sh \
+        account-key="$ACCOUNT_KEY" \
+        root-hash="$STATE_ROOT_HASH" \
+        | jq '.stored_value.AddressableEntity.main_purse' \
+        | sed -e 's/^"//' -e 's/"$//'
 }
