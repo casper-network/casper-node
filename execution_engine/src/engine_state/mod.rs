@@ -349,12 +349,6 @@ impl ExecutionEngineV1 {
                         }
                     }
                 }
-                Payment::UseSession => match session_execution_kind.convert_for_payment() {
-                    Ok(execution_kind) => Some(execution_kind),
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error));
-                    }
-                },
             };
 
             if let Some(custom_payment) = maybe_custom_payment {

@@ -3406,7 +3406,7 @@
       "additionalProperties": false
     },
     "TransformKindV2": {
-      "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
+      "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of `TransformKindV2` are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
       "oneOf": [
         {
           "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",

@@ -658,10 +658,10 @@ mod tests {
     }
 
     // Please note: values in the following test cases must much the production chainspec.
-    const MAX_STANDARD_COUNT: u64 = 100;
-    const MAX_AUCTION_COUNT: u64 = 200;
+    const MAX_STANDARD_COUNT: u64 = 50;
+    const MAX_AUCTION_COUNT: u64 = 100;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
-    const MAX_MINT_COUNT: u64 = 1000;
+    const MAX_MINT_COUNT: u64 = 500;
 
     struct TestCase {
         mint_count: u64,

@@ -443,7 +443,7 @@ pub enum ApiError {
     /// as an installer/upgrader.
     /// ```
     /// # use casper_types::ApiError;
-    /// assert_eq!(ApiError::from(47), ApiError::NotAllowedToAddContractVersion);
+    /// assert_eq!(ApiError::from(48), ApiError::NotAllowedToAddContractVersion);
     /// ```
     NotAllowedToAddContractVersion,
 }

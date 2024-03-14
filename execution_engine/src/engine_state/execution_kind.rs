@@ -71,19 +71,6 @@ impl<'a> ExecutionKind<'a> {
         Ok(ExecutionKind::Standard(module_bytes))
     }
 
-    /// Returns a new `ExecutionKind` cloned from `self`, but converting any Wasm bytes variant to
-    /// `Standard`, and returning an error if they are empty.
-    pub fn convert_for_payment(&self) -> Result<Self, Error> {
-        match self {
-            ExecutionKind::Standard(module_bytes)
-            | ExecutionKind::Installer(module_bytes)
-            | ExecutionKind::Upgrader(module_bytes)
-            | ExecutionKind::Isolated(module_bytes)
-            | ExecutionKind::Deploy(module_bytes) => Self::new_standard_for_payment(module_bytes),
-            ExecutionKind::Stored { .. } => Ok(self.clone()),
-        }
-    }
-
     /// Returns a new contract variant of `ExecutionKind`.
     pub fn new_stored<R>(
         tracking_copy: &mut TrackingCopy<R>,

@@ -4,10 +4,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    account::AccountHash, bytesrepr::Bytes, BlockTime, DeployHash, Digest, ExecutableDeployItem,
-    InitiatorAddr, PublicKey, RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash,
-    TransactionInvocationTarget, TransactionSessionKind, TransactionTarget, TransactionV1Body,
-    TransactionV1Hash,
+    account::AccountHash, bytesrepr::Bytes, runtime_args, BlockTime, DeployHash, Digest,
+    ExecutableDeployItem, InitiatorAddr, PublicKey, RuntimeArgs, Transaction,
+    TransactionEntryPoint, TransactionHash, TransactionInvocationTarget, TransactionSessionKind,
+    TransactionTarget, TransactionV1Body, TransactionV1Hash, U512,
 };
 
 const DEFAULT_ENTRY_POINT: &str = "call";
@@ -21,8 +21,6 @@ pub enum Payment {
     Stored(TransactionInvocationTarget),
     /// Compiled Wasm as byte code to be executed as custom payment.
     ModuleBytes(Bytes),
-    /// The session from this transaction should be executed as custom payment.
-    UseSession,
 }
 
 /// The payment-related portion of an `ExecuteRequest`.
@@ -306,12 +304,10 @@ impl ExecuteRequest {
             Transaction::V1(v1_txn) => {
                 let (hash, _header, body, _approvals) = v1_txn.destructure();
                 gas_price = 1;
-                // If the payment amount is `None`, the provided session will be invoked
-                // during the payment and session phases.
                 payment_info = PaymentInfo {
-                    payment: Payment::UseSession,
+                    payment: Payment::Standard,
                     entry_point: DEFAULT_ENTRY_POINT.to_string(),
-                    args: RuntimeArgs::new(),
+                    args: runtime_args! { "amount" => U512::from(1_500_000_000_000_u64) }, /* TODO - this is bogus: should be resolved once new payment logic is merged. */
                 };
                 session_info = SessionInfo::try_from((body, hash))?;
             }
