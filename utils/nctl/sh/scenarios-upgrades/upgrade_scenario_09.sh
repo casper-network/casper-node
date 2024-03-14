@@ -53,7 +53,7 @@ function _main()
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
 
-    POST_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    POST_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block_with_signatures.block.Version2.hash')"
 
     _step_05
     _step_06 "$PRE_UPGRADE_BLOCK_HASH" "$POST_UPGRADE_BLOCK_HASH"
