@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.  The format
 * Add `tcp_connect_timeout`, `setup_timeout`, `tcp_connect_attempts`, `tcp_connect_base_backoff`, `significant_error_backoff`, `permanent_error_backoff`, `successful_reconnect_delay`, `flaky_connection_threshold`, `max_incoming_connections` and `max_outgoing_connections` to the `network.conman` section in the config.
 
 ### Changed
+* The node's connection model has changed, now only establishing a single connection per peer. The direction of the connection is chosen based on the randomly generated `NodeID`s.
+* Node-to-node communication is now based on the [`juliet`](https://docs.rs/juliet) networking protocol, allowing for multiplexed communication that includes backpressure. This will result in some operations having lower latency and increased reliability under load.
 * Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
 
 ### Removed
