@@ -505,7 +505,7 @@ fn latest_switch_block_header() -> TestCase {
         }),
         asserter: Box::new(move |response| {
             assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
-                header.next_era_validator_weights().is_some()
+                header.is_switch_block()
             })
         }),
     }
