@@ -26,9 +26,6 @@ const DEFAULT_GOSSIP_INTERVAL: TimeDiff = TimeDiff::from_seconds(30);
 /// Default delay until initial round of address gossiping starts.
 const DEFAULT_INITIAL_GOSSIP_DELAY: TimeDiff = TimeDiff::from_seconds(5);
 
-/// Default time limit for an address to be in the pending set.
-const DEFAULT_MAX_ADDR_PENDING_TIME: TimeDiff = TimeDiff::from_seconds(60);
-
 /// Default timeout during which the handshake needs to be completed.
 const DEFAULT_HANDSHAKE_TIMEOUT: TimeDiff = TimeDiff::from_seconds(20);
 
@@ -48,13 +45,7 @@ impl Default for Config {
             min_peers_for_initialization: DEFAULT_MIN_PEERS_FOR_INITIALIZATION,
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
-            max_addr_pending_time: DEFAULT_MAX_ADDR_PENDING_TIME,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
-            max_incoming_peer_connections: 0,
-            max_outgoing_byte_rate_non_validators: 0,
-            tarpit_version_threshold: None,
-            tarpit_duration: TimeDiff::from_seconds(600),
-            tarpit_chance: 0.2,
             send_buffer_size: PerChannel::init_with(|_| None),
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
@@ -100,20 +91,8 @@ pub struct Config {
     pub gossip_interval: TimeDiff,
     /// Initial delay before the first round of gossip.
     pub initial_gossip_delay: TimeDiff,
-    /// Maximum allowed time for an address to be kept in the pending set.
-    pub max_addr_pending_time: TimeDiff,
     /// Maximum allowed time for handshake completion.
     pub handshake_timeout: TimeDiff,
-    /// Maximum number of incoming connections per unique peer. Unlimited if `0`.
-    pub max_incoming_peer_connections: u16,
-    /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
-    pub max_outgoing_byte_rate_non_validators: u32,
-    /// The protocol version at which (or under) tarpitting is enabled.
-    pub tarpit_version_threshold: Option<ProtocolVersion>,
-    /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub tarpit_duration: TimeDiff,
-    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    pub tarpit_chance: f32,
     /// An optional buffer size for each Juliet channel, allowing to setup how many messages
     /// we can keep in a memory buffer before blocking at call site.
     ///

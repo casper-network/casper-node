@@ -208,47 +208,14 @@ gossip_interval = '120 seconds'
 # more than the expected time required for initial connections to complete.
 initial_gossip_delay = '5 seconds'
 
-# How long a connection is allowed to be stuck as pending before it is abandoned.
-max_addr_pending_time = '1 minute'
-
 # Maximum time allowed for a connection handshake between two nodes to be completed. Connections
 # exceeding this threshold are considered unlikely to be healthy or even malicious and thus
 # terminated.
 handshake_timeout = '20 seconds'
 
-# Maximum number of incoming connections per unique peer allowed. If the limit is hit, additional
-# connections will be rejected. A value of `0` means unlimited.
-max_incoming_peer_connections = 3
-
-# The maximum total of upstream bandwidth in bytes per second allocated to non-validating peers.
-# A value of `0` means unlimited.
-max_outgoing_byte_rate_non_validators = 6553600
-
 # Timeout before giving up on a peer. If a peer exceeds this time limit for acknowledging or
 # responding to a received message, it is considered unresponsive and the connection severed.
 ack_timeout = '30sec'
-
-# Version threshold to enable tarpit for.
-#
-# When set to a version (the value may be `null` to disable the feature), any peer that reports a
-# protocol version equal or below the threshold will be rejected only after holding open the
-# connection for a specific (`tarpit_duration`) amount of time.
-#
-# This option makes most sense to enable on known nodes with addresses where legacy nodes that are
-# still in operation are connecting to, as these older versions will only attempt to reconnect to
-# other nodes once they have exhausted their set of known nodes.
-tarpit_version_threshold = '1.2.1'
-
-# How long to hold connections to trapped legacy nodes.
-tarpit_duration = '10 minutes'
-
-# The probability [0.0, 1.0] of this node trapping a legacy node.
-#
-# Since older nodes will only reconnect if all their options are exhausted, it is sufficient for a
-# single known node to hold open a connection to prevent the node from reconnecting. This should be
-# set to `1/n` or higher, with `n` being the number of known nodes expected in the configuration of
-# legacy nodes running this software.
-tarpit_chance = 0.2
 
 # How long peers remain blocked after they get blocklisted.
 blocklist_retain_duration = '10 minutes'
