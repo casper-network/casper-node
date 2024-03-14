@@ -10,7 +10,6 @@ use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
-use strum::EnumDiscriminants;
 
 use crate::{
     components::{
@@ -31,8 +30,7 @@ use crate::{
 };
 
 /// Reactor message.
-#[derive(Clone, From, Serialize, Deserialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
+#[derive(Clone, From, Serialize, Deserialize)]
 pub(crate) enum Message {
     /// Consensus component message.
     #[from]
