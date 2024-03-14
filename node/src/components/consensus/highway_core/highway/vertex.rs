@@ -8,6 +8,7 @@ use casper_types::Timestamp;
 use crate::components::consensus::{
     highway_core::{
         endorsement::SignedEndorsement,
+        evidence::Evidence,
         highway::{PingError, VertexError},
         state::Panorama,
     },
@@ -15,81 +16,47 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Validators},
 };
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use casper_types::Timestamp;
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::{
-        highway_core::evidence::Evidence, traits::Context, utils::ValidatorIndex,
-    };
-
-    use super::{Endorsements, Ping, SignedWireUnit};
-
-    /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-    #[derive(
-        DataSize,
-        Clone,
-        Debug,
-        Eq,
-        PartialEq,
-        PartialOrd,
-        Ord,
-        Hash,
-        Serialize,
-        Deserialize,
-        EnumDiscriminants,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Dependency<C>
-    where
-        C: Context,
-    {
-        /// The hash of a unit.
-        Unit(C::Hash),
-        /// The index of the validator against which evidence is needed.
-        Evidence(ValidatorIndex),
-        /// The hash of the unit to be endorsed.
-        Endorsement(C::Hash),
-        /// The ping by a particular validator for a particular timestamp.
-        Ping(ValidatorIndex, Timestamp),
-    }
-
-    /// An element of the protocol state, that might depend on other elements.
-    ///
-    /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-    #[derive(
-        DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Vertex<C>
-    where
-        C: Context,
-    {
-        /// A signed unit of the consensus DAG.
-        Unit(SignedWireUnit<C>),
-        /// Evidence of a validator's transgression.
-        Evidence(Evidence<C>),
-        /// Endorsements for a unit.
-        Endorsements(Endorsements<C>),
-        /// A ping conveying the activity of its creator.
-        Ping(Ping<C>),
-    }
+/// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub enum Dependency<C>
+where
+    C: Context,
+{
+    /// The hash of a unit.
+    Unit(C::Hash),
+    /// The index of the validator against which evidence is needed.
+    Evidence(ValidatorIndex),
+    /// The hash of the unit to be endorsed.
+    Endorsement(C::Hash),
+    /// The ping by a particular validator for a particular timestamp.
+    Ping(ValidatorIndex, Timestamp),
 }
-pub use relaxed::{Dependency, DependencyDiscriminants, Vertex, VertexDiscriminants};
+
+/// An element of the protocol state, that might depend on other elements.
+///
+/// It is the vertex in a directed acyclic graph, whose edges are dependencies.
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub enum Vertex<C>
+where
+    C: Context,
+{
+    /// A signed unit of the consensus DAG.
+    Unit(SignedWireUnit<C>),
+    /// Evidence of a validator's transgression.
+    Evidence(Evidence<C>),
+    /// Endorsements for a unit.
+    Endorsements(Endorsements<C>),
+    /// A ping conveying the activity of its creator.
+    Ping(Ping<C>),
+}
 
 impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.

@@ -4,12 +4,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use strum::EnumDiscriminants;
 
 use super::GossipItem;
 
-#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(bound = "for<'a> T: Deserialize<'a>")]
 pub(crate) enum Message<T: GossipItem> {
     /// Gossiped out to random peers to notify them of an item we hold.

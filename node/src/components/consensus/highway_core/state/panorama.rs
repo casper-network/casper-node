@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fmt::Debug};
 
+use datasize::DataSize;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use casper_types::Timestamp;
 
@@ -13,37 +15,23 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, ValidatorMap},
 };
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::traits::Context;
-
-    /// The observed behavior of a validator at some point in time.
-    #[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants)]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Observation<C>
-    where
-        C: Context,
-    {
-        /// No unit by that validator was observed yet.
-        None,
-        /// The validator's latest unit.
-        Correct(C::Hash),
-        /// The validator has been seen
-        Faulty,
-    }
+/// The observed behavior of a validator at some point in time.
+#[derive(Clone, DataSize, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub enum Observation<C>
+where
+    C: Context,
+{
+    /// No unit by that validator was observed yet.
+    None,
+    /// The validator's latest unit.
+    Correct(C::Hash),
+    /// The validator has been seen
+    Faulty,
 }
-pub use relaxed::{Observation, ObservationDiscriminants};
 
 impl<C: Context> Debug for Observation<C>
 where

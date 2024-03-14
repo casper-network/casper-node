@@ -1,10 +1,12 @@
 use std::iter;
 
+use datasize::DataSize;
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::components::consensus::{
-    highway_core::{highway::SignedWireUnit, state::Params},
+    highway_core::{endorsement::SignedEndorsement, highway::SignedWireUnit, state::Params},
     traits::Context,
     utils::{ValidatorIndex, Validators},
 };
@@ -34,53 +36,35 @@ pub enum EvidenceError {
     Signature,
 }
 
-#[allow(clippy::arithmetic_side_effects)]
-pub mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
+/// Evidence that a validator is faulty.
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
 
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::{
-        highway_core::{endorsement::SignedEndorsement, highway::SignedWireUnit},
-        traits::Context,
-    };
-
-    /// Evidence that a validator is faulty.
-    #[derive(
-        Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Evidence<C>
-    where
-        C: Context,
-    {
-        /// The validator produced two units with the same sequence number.
-        Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
-        /// The validator endorsed two conflicting units.
-        Endorsements {
-            /// The endorsement for `unit1`.
-            endorsement1: SignedEndorsement<C>,
-            /// The unit with the lower (or equal) sequence number.
-            unit1: SignedWireUnit<C>,
-            /// The endorsement for `unit2`, by the same creator as endorsement1.
-            endorsement2: SignedEndorsement<C>,
-            /// The unit with the higher (or equal) sequence number, on a conflicting fork of the
-            /// same creator as `unit1`.
-            unit2: SignedWireUnit<C>,
-            /// The predecessors of `unit2`, back to the same sequence number as `unit1`, in
-            /// reverse chronological order.
-            swimlane2: Vec<SignedWireUnit<C>>,
-        },
-    }
+pub enum Evidence<C>
+where
+    C: Context,
+{
+    /// The validator produced two units with the same sequence number.
+    Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
+    /// The validator endorsed two conflicting units.
+    Endorsements {
+        /// The endorsement for `unit1`.
+        endorsement1: SignedEndorsement<C>,
+        /// The unit with the lower (or equal) sequence number.
+        unit1: SignedWireUnit<C>,
+        /// The endorsement for `unit2`, by the same creator as endorsement1.
+        endorsement2: SignedEndorsement<C>,
+        /// The unit with the higher (or equal) sequence number, on a conflicting fork of the
+        /// same creator as `unit1`.
+        unit2: SignedWireUnit<C>,
+        /// The predecessors of `unit2`, back to the same sequence number as `unit1`, in
+        /// reverse chronological order.
+        swimlane2: Vec<SignedWireUnit<C>>,
+    },
 }
-pub use relaxed::{Evidence, EvidenceDiscriminants};
 
 impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.

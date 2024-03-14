@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, trace};
 
-use casper_types::{EraId, Timestamp};
+use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::Component,
@@ -74,32 +74,17 @@ pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use casper_types::{EraId, PublicKey};
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use super::era_supervisor::SerializedMessage;
-
-    #[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum ConsensusMessage {
-        /// A protocol message, to be handled by the instance in the specified era.
-        Protocol {
-            era_id: EraId,
-            payload: SerializedMessage,
-        },
-        /// A request for evidence against the specified validator, from any era that is still
-        /// bonded in `era_id`.
-        EvidenceRequest { era_id: EraId, pub_key: PublicKey },
-    }
+#[derive(DataSize, Clone, Serialize, Deserialize)]
+pub(crate) enum ConsensusMessage {
+    /// A protocol message, to be handled by the instance in the specified era.
+    Protocol {
+        era_id: EraId,
+        payload: SerializedMessage,
+    },
+    /// A request for evidence against the specified validator, from any era that is still
+    /// bonded in `era_id`.
+    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
 }
-pub(crate) use relaxed::ConsensusMessage;
 
 /// A request to be handled by the consensus protocol instance in a particular era.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]

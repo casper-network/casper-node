@@ -11,7 +11,7 @@ use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use strum::{Display, EnumCount, EnumDiscriminants, EnumIter, FromRepr};
+use strum::{Display, EnumCount, EnumIter, FromRepr};
 
 use casper_hashing::Digest;
 #[cfg(test)]
@@ -27,8 +27,7 @@ fn default_protocol_version() -> ProtocolVersion {
     ProtocolVersion::V1_0_0
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     // TODO: Remove.
