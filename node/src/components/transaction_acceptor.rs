@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
     AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
-    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedApprovals,
-    InitiatorAddr, Key, PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction,
+    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
+    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, SystemConfig, Transaction,
     TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
@@ -74,7 +74,8 @@ pub struct TransactionAcceptor {
     acceptor_config: Config,
     chain_name: String,
     protocol_version: ProtocolVersion,
-    config: TransactionConfig,
+    cost_table: SystemConfig,
+    transaction_config: TransactionConfig,
     max_associated_keys: u32,
     administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
@@ -98,7 +99,8 @@ impl TransactionAcceptor {
             acceptor_config,
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
-            config: chainspec.transaction_config,
+            cost_table: chainspec.system_costs_config,
+            transaction_config: chainspec.transaction_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
             administrators,
             metrics: metrics::Metrics::new(registry)?,
@@ -121,7 +123,8 @@ impl TransactionAcceptor {
             Transaction::Deploy(deploy) => deploy
                 .is_config_compliant(
                     &self.chain_name,
-                    &self.config,
+                    &self.cost_table,
+                    &self.transaction_config,
                     self.max_associated_keys,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
@@ -130,7 +133,8 @@ impl TransactionAcceptor {
             Transaction::V1(txn) => txn
                 .is_config_compliant(
                     &self.chain_name,
-                    &self.config,
+                    &self.cost_table,
+                    &self.transaction_config,
                     self.max_associated_keys,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
@@ -779,7 +783,7 @@ impl TransactionAcceptor {
             return effect_builder
                 .store_finalized_approvals(
                     event_metadata.transaction.hash(),
-                    FinalizedApprovals::new(&event_metadata.transaction),
+                    event_metadata.transaction.approvals(),
                 )
                 .event(move |is_new| Event::StoredFinalizedApprovals {
                     event_metadata,

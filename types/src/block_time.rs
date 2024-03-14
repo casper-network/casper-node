@@ -1,6 +1,9 @@
 use alloc::vec::Vec;
 
-use crate::bytesrepr::{Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    CLType, CLTyped,
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -58,5 +61,11 @@ impl FromBytes for BlockTime {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (time, rem) = FromBytes::from_bytes(bytes)?;
         Ok((BlockTime::new(time), rem))
+    }
+}
+
+impl CLTyped for BlockTime {
+    fn cl_type() -> CLType {
+        CLType::U64
     }
 }

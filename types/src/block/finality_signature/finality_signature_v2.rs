@@ -332,7 +332,9 @@ mod tests {
             chain_name_hash,
             &secret_key,
         );
-        finality_signature.is_verified().unwrap();
+        finality_signature
+            .is_verified()
+            .expect("should have verified");
         // Verify that changing era causes verification to fail.
         let invalid_finality_signature = FinalitySignatureV2 {
             era_id: EraId::from(2),

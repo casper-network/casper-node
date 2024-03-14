@@ -20,6 +20,7 @@ pub(super) enum InitiatorAddrAndSecretKey<'a> {
 }
 
 impl<'a> InitiatorAddrAndSecretKey<'a> {
+    /// The address of the initiator of a [`TransactionV1`].
     pub fn initiator_addr(&self) -> InitiatorAddr {
         match self {
             InitiatorAddrAndSecretKey::Both { initiator_addr, .. }
@@ -30,6 +31,7 @@ impl<'a> InitiatorAddrAndSecretKey<'a> {
         }
     }
 
+    /// The secret key of the initiator of a [`TransactionV1`].
     pub fn secret_key(&self) -> Option<&SecretKey> {
         match self {
             InitiatorAddrAndSecretKey::Both { secret_key, .. }

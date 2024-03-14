@@ -1,7 +1,4 @@
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -42,7 +39,6 @@ pub struct TransactionV1Header {
     ttl: TimeDiff,
     body_hash: Digest,
     pricing_mode: PricingMode,
-    payment_amount: Option<u64>,
     initiator_addr: InitiatorAddr,
 }
 
@@ -54,7 +50,6 @@ impl TransactionV1Header {
         ttl: TimeDiff,
         body_hash: Digest,
         pricing_mode: PricingMode,
-        payment_amount: Option<u64>,
         initiator_addr: InitiatorAddr,
     ) -> Self {
         TransactionV1Header {
@@ -63,7 +58,6 @@ impl TransactionV1Header {
             ttl,
             body_hash,
             pricing_mode,
-            payment_amount,
             initiator_addr,
         }
     }
@@ -107,11 +101,6 @@ impl TransactionV1Header {
     /// Returns the pricing mode for the transaction.
     pub fn pricing_mode(&self) -> &PricingMode {
         &self.pricing_mode
-    }
-
-    /// Returns the payment amount for the transaction.
-    pub fn payment_amount(&self) -> Option<u64> {
-        self.payment_amount
     }
 
     /// Returns the address of the initiator of the transaction.
@@ -175,7 +164,6 @@ impl ToBytes for TransactionV1Header {
         self.ttl.write_bytes(writer)?;
         self.body_hash.write_bytes(writer)?;
         self.pricing_mode.write_bytes(writer)?;
-        self.payment_amount.write_bytes(writer)?;
         self.initiator_addr.write_bytes(writer)
     }
 
@@ -191,7 +179,6 @@ impl ToBytes for TransactionV1Header {
             + self.ttl.serialized_length()
             + self.body_hash.serialized_length()
             + self.pricing_mode.serialized_length()
-            + self.payment_amount.serialized_length()
             + self.initiator_addr.serialized_length()
     }
 }
@@ -203,7 +190,6 @@ impl FromBytes for TransactionV1Header {
         let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
-        let (payment_amount, remainder) = Option::<u64>::from_bytes(remainder)?;
         let (initiator_addr, remainder) = InitiatorAddr::from_bytes(remainder)?;
         let transaction_header = TransactionV1Header {
             chain_name,
@@ -211,7 +197,6 @@ impl FromBytes for TransactionV1Header {
             ttl,
             body_hash,
             pricing_mode,
-            payment_amount,
             initiator_addr,
         };
         Ok((transaction_header, remainder))
@@ -227,18 +212,8 @@ impl Display for TransactionV1Header {
         write!(
             formatter,
             "transaction-v1-header[{}, chain_name: {}, timestamp: {}, ttl: {}, pricing mode: {}, \
-            payment_amount: {}, initiator: {}]",
-            hash,
-            self.chain_name,
-            self.timestamp,
-            self.ttl,
-            self.pricing_mode,
-            if let Some(payment) = self.payment_amount {
-                payment.to_string()
-            } else {
-                "none".to_string()
-            },
-            self.initiator_addr
+            initiator: {}]",
+            hash, self.chain_name, self.timestamp, self.ttl, self.pricing_mode, self.initiator_addr
         )
     }
 }

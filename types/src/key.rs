@@ -71,6 +71,7 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
+const BLOCK_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -102,6 +103,8 @@ const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_D
 const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
@@ -284,13 +287,14 @@ pub enum KeyTag {
     ByteCode = 18,
     Message = 19,
     NamedKey = 20,
-    BalanceHold = 21,
+    BlockMessageCount = 21,
+    BalanceHold = 22,
 }
 
 impl KeyTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..21) {
+        match rng.gen_range(0..23) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -312,7 +316,8 @@ impl KeyTag {
             18 => KeyTag::ByteCode,
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
-            21 => KeyTag::BalanceHold,
+            21 => KeyTag::BlockMessageCount,
+            22 => KeyTag::BalanceHold,
             _ => panic!(),
         }
     }
@@ -342,6 +347,7 @@ impl Display for KeyTag {
             KeyTag::ByteCode => write!(f, "ByteCode"),
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
+            KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
         }
     }
@@ -389,6 +395,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
+            tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
             _ => return Err(Error::Formatting),
         };
@@ -446,8 +453,162 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
+    /// A `Key` under which the total number of emitted messages in the last block is stored.
+    BlockMessageCount,
     /// A `Key` under which a hold on a purse balance is stored.
     BalanceHold(BalanceHoldAddr),
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Key {
+    fn schema_name() -> String {
+        String::from("Key")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
+                user accounts) are stored in global state."
+                .to_string(),
+        );
+        schema_object.into()
+    }
+}
+
+/// Errors produced when converting a `String` into a `Key`.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum FromStrError {
+    /// Account parse error.
+    Account(addressable_entity::FromStrError),
+    /// Hash parse error.
+    Hash(String),
+    /// URef parse error.
+    URef(uref::FromStrError),
+    /// Transfer parse error.
+    Transfer(TransferFromStrError),
+    /// DeployInfo parse error.
+    DeployInfo(String),
+    /// EraInfo parse error.
+    EraInfo(String),
+    /// Balance parse error.
+    Balance(String),
+    /// Bid parse error.
+    Bid(String),
+    /// Withdraw parse error.
+    Withdraw(String),
+    /// Dictionary parse error.
+    Dictionary(String),
+    /// System contract registry parse error.
+    SystemContractRegistry(String),
+    /// Era summary parse error.
+    EraSummary(String),
+    /// Unbond parse error.
+    Unbond(String),
+    /// Chainspec registry error.
+    ChainspecRegistry(String),
+    /// Checksum registry error.
+    ChecksumRegistry(String),
+    /// Bid parse error.
+    BidAddr(String),
+    /// Package parse error.
+    Package(String),
+    /// Entity parse error.
+    AddressableEntity(String),
+    /// Byte code parse error.
+    ByteCode(String),
+    /// Message parse error.
+    Message(contract_messages::FromStrError),
+    /// Named key parse error.
+    NamedKey(String),
+    /// BlockMessageCount key parse error.
+    BlockMessageCount(String),
+    /// Unknown prefix.
+    UnknownPrefix,
+}
+
+impl From<addressable_entity::FromStrError> for FromStrError {
+    fn from(error: addressable_entity::FromStrError) -> Self {
+        FromStrError::Account(error)
+    }
+}
+
+impl From<TransferFromStrError> for FromStrError {
+    fn from(error: TransferFromStrError) -> Self {
+        FromStrError::Transfer(error)
+    }
+}
+
+impl From<uref::FromStrError> for FromStrError {
+    fn from(error: uref::FromStrError) -> Self {
+        FromStrError::URef(error)
+    }
+}
+
+impl From<contract_messages::FromStrError> for FromStrError {
+    fn from(error: contract_messages::FromStrError) -> Self {
+        FromStrError::Message(error)
+    }
+}
+
+impl Display for FromStrError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            FromStrError::Account(error) => write!(f, "account-key from string error: {}", error),
+            FromStrError::Hash(error) => write!(f, "hash-key from string error: {}", error),
+            FromStrError::URef(error) => write!(f, "uref-key from string error: {}", error),
+            FromStrError::Transfer(error) => write!(f, "transfer-key from string error: {}", error),
+            FromStrError::DeployInfo(error) => {
+                write!(f, "deploy-info-key from string error: {}", error)
+            }
+            FromStrError::EraInfo(error) => write!(f, "era-info-key from string error: {}", error),
+            FromStrError::Balance(error) => write!(f, "balance-key from string error: {}", error),
+            FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
+            FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
+            FromStrError::Dictionary(error) => {
+                write!(f, "dictionary-key from string error: {}", error)
+            }
+            FromStrError::SystemContractRegistry(error) => {
+                write!(
+                    f,
+                    "system-contract-registry-key from string error: {}",
+                    error
+                )
+            }
+            FromStrError::EraSummary(error) => {
+                write!(f, "era-summary-key from string error: {}", error)
+            }
+            FromStrError::Unbond(error) => {
+                write!(f, "unbond-key from string error: {}", error)
+            }
+            FromStrError::ChainspecRegistry(error) => {
+                write!(f, "chainspec-registry-key from string error: {}", error)
+            }
+            FromStrError::ChecksumRegistry(error) => {
+                write!(f, "checksum-registry-key from string error: {}", error)
+            }
+            FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
+            FromStrError::Package(error) => write!(f, "package-key from string error: {}", error),
+            FromStrError::AddressableEntity(error) => {
+                write!(f, "addressable-entity-key from string error: {}", error)
+            }
+            FromStrError::ByteCode(error) => {
+                write!(f, "byte-code-key from string error: {}", error)
+            }
+            FromStrError::Message(error) => {
+                write!(f, "message-key from string error: {}", error)
+            }
+            FromStrError::NamedKey(error) => {
+                write!(f, "named-key from string error: {}", error)
+            }
+            FromStrError::BlockMessageCount(error) => {
+                write!(f, "block-message-count-key form string error: {}", error)
+            }
+            FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
+        }
+    }
 }
 
 impl Key {
@@ -476,6 +637,7 @@ impl Key {
             Key::ByteCode(..) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
+            Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
         }
     }
@@ -575,6 +737,13 @@ impl Key {
             }
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
+            }
+            Key::BlockMessageCount => {
+                format!(
+                    "{}{}",
+                    BLOCK_MESSAGE_COUNT_PREFIX,
+                    base16::encode_lower(&PADDING_BYTES)
+                )
             }
             Key::BalanceHold(balance_hold_addr) => {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
@@ -779,6 +948,17 @@ impl Key {
             Ok(named_key) => return Ok(Key::NamedKey(named_key)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
+        }
+
+        if let Some(message_count) = input.strip_prefix(BLOCK_MESSAGE_COUNT_PREFIX) {
+            let padded_bytes = checksummed_hex::decode(message_count)
+                .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?;
+            let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
+                FromStrError::SystemContractRegistry(
+                    "Failed to deserialize block message count key".to_string(),
+                )
+            })?;
+            return Ok(Key::BlockMessageCount);
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1242,6 +1422,13 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
+            Key::BlockMessageCount => {
+                write!(
+                    f,
+                    "Key::BlockMessageCount({})",
+                    base16::encode_lower(&PADDING_BYTES)
+                )
+            }
             Key::BalanceHold(balance_hold_addr) => {
                 write!(f, "Key::BalanceHold({})", balance_hold_addr)
             }
@@ -1279,6 +1466,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
+            Key::BlockMessageCount => KeyTag::BlockMessageCount,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
         }
     }
@@ -1394,6 +1582,7 @@ impl ToBytes for Key {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
             Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
+            Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
             Key::BalanceHold(balance_hold_addr) => {
                 U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
             }
@@ -1417,7 +1606,8 @@ impl ToBytes for Key {
             Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
-            | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            | Key::ChecksumRegistry
+            | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
             Key::BidAddr(bid_addr) => match bid_addr.tag() {
                 BidAddrTag::Unified => {
                     let bytes = bid_addr.to_bytes()?;
@@ -1524,6 +1714,10 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
+            KeyTag::BlockMessageCount => {
+                let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
+                Ok((Key::BlockMessageCount, rem))
+            }
             KeyTag::BalanceHold => {
                 let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
                 Ok((Key::BalanceHold(balance_hold_addr), rem))
@@ -1558,6 +1752,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
+        Key::BlockMessageCount => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
     }
 }
@@ -1565,7 +1760,7 @@ fn please_add_to_distribution_impl(key: Key) {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=18) {
+        match rng.gen_range(0..=21) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1586,7 +1781,9 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
-            20 => Key::BalanceHold(rng.gen()),
+            20 => Key::NamedKey(rng.gen()),
+            21 => Key::BlockMessageCount,
+            22 => Key::BalanceHold(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1619,6 +1816,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
+        BlockMessageCount,
         BalanceHold(&'a BalanceHoldAddr),
     }
 
@@ -1646,6 +1844,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
+        BlockMessageCount,
         BalanceHold(BalanceHoldAddr),
     }
 
@@ -1675,6 +1874,7 @@ mod serde_helpers {
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
+                Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
                 Key::BalanceHold(balance_hold_addr) => {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
@@ -1708,6 +1908,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
+                BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
                 BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
                     Key::BalanceHold(balance_hold_addr)
                 }
@@ -1797,6 +1998,7 @@ mod tests {
         EntityAddr::new_contract_entity_addr([42; 32]),
         [43; 32],
     ));
+    const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
     const KEYS: &[Key] = &[
@@ -1827,6 +2029,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        BLOCK_MESSAGE_COUNT,
         BALANCE_HOLD,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
@@ -2002,6 +2205,14 @@ mod tests {
             format!(
                 "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
+            )
+        );
+
+        assert_eq!(
+            format!("{}", BLOCK_MESSAGE_COUNT),
+            format!(
+                "Key::BlockMessageCount({})",
+                base16::encode_lower(&PADDING_BYTES)
             )
         )
     }
@@ -2375,6 +2586,7 @@ mod tests {
             1,
         )));
         round_trip(&Key::NamedKey(NamedKeyAddr::default()));
+        round_trip(&Key::BlockMessageCount);
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
     }
 }

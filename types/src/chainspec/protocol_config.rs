@@ -15,7 +15,7 @@ use crate::{
 use crate::{ActivationPoint, GlobalStateUpdate};
 
 /// Configuration values associated with the protocol.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ProtocolConfig {
     /// Protocol version.

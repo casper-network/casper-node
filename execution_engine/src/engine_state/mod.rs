@@ -168,7 +168,7 @@ impl ExecutionEngineV1 {
             balance_hold_interval,
         );
         let wasmless_transfer_gas = Gas::new(U512::from(
-            self.config().system_config().wasmless_transfer_cost(),
+            self.config().system_config().mint_costs().transfer,
         ));
         let transaction_hash = TransactionHash::Deploy(deploy_hash);
         let holds_epoch = Some(

@@ -12,7 +12,7 @@ use crate::testing::TestRng;
 use super::AccountsConfig;
 
 /// Configuration values associated with the network.
-#[derive(Clone, PartialEq, Eq, Serialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct NetworkConfig {
     /// The network name.

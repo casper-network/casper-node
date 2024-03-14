@@ -14,7 +14,7 @@ use lmdb::{
 };
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -25,10 +25,10 @@ use super::versioned_databases::VersionedDatabases;
 use crate::block_store::types::ApprovalsHashes;
 use casper_types::{
     execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, FinalizedApprovals,
-    StoredValue, Transaction, TransactionHash, Transfer,
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue,
+    Transaction, TransactionHash, Transfer,
 };
 
 /// Filename for the LMDB database created by the Storage component.
@@ -79,7 +79,7 @@ pub struct LmdbBlockStore {
     state_store_db: Database,
     /// The finalized transaction approvals databases.
     pub(crate) finalized_transaction_approvals_dbs:
-        VersionedDatabases<TransactionHash, FinalizedApprovals>,
+        VersionedDatabases<TransactionHash, BTreeSet<Approval>>,
 }
 
 impl LmdbBlockStore {
@@ -540,7 +540,7 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
             for transform_entry in &effect.transforms {
-                if let execution_result_v1::Transform::WriteTransfer(transfer) =
+                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer) =
                     &transform_entry.transform
                 {
                     transfers.push(*transfer);
@@ -549,7 +549,7 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
         }
         ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
             for transform in effects.transforms() {
-                if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind() {
+                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform.kind() {
                     transfers.push(*transfer);
                 }
             }
@@ -681,11 +681,11 @@ where
     }
 }
 
-impl<'a, T> DataReader<TransactionHash, FinalizedApprovals> for LmdbBlockStoreTransaction<'a, T>
+impl<'a, T> DataReader<TransactionHash, BTreeSet<Approval>> for LmdbBlockStoreTransaction<'a, T>
 where
     T: LmdbTransaction,
 {
-    fn read(&self, key: TransactionHash) -> Result<Option<FinalizedApprovals>, BlockStoreError> {
+    fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
             .finalized_transaction_approvals_dbs
             .get(&self.txn, &key)

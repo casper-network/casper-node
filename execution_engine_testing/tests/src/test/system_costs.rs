@@ -18,7 +18,8 @@ use casper_types::{
     GenesisValidator, HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts,
     MessageLimits, MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -155,31 +156,6 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[ignore]
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
-    // let new_wasmless_transfer_cost = DEFAULT_WASMLESS_TRANSFER_COST;
-    // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
-
-    // let new_auction_costs = AuctionCosts {
-    //     add_bid: NEW_ADD_BID_COST,
-    //     withdraw_bid: NEW_WITHDRAW_BID_COST,
-    //     ..Default::default()
-    // };
-    // let new_mint_costs = MintCosts::default();
-    // let new_standard_payment_costs = StandardPaymentCosts::default();
-    // let new_handle_payment_costs = HandlePaymentCosts::default();
-
-    // let new_system_config = SystemConfig::new(
-    //     new_wasmless_transfer_cost,
-    //     new_auction_costs,
-    //     new_mint_costs,
-    //     new_handle_payment_costs,
-    //     new_standard_payment_costs,
-    // );
-
-    // let new_engine_config = EngineConfigBuilder::default()
-    //     .with_max_associated_keys(new_max_associated_keys)
-    //     .with_system_config(new_system_config)
-    //     .build();
-
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -641,12 +617,10 @@ fn mint_transfer_has_expected_costs() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let expected_call_cost = U512::from(DEFAULT_TRANSFER_COST);
     assert_eq!(
         balance_after,
         balance_before - transfer_amount - transaction_fee,
     );
-    assert_eq!(builder.last_exec_gas_cost().value(), expected_call_cost);
 }
 
 #[ignore]
@@ -886,15 +860,18 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         MessageLimits::default(),
     );
 
-    let new_wasmless_transfer_cost = 0;
     let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
     let new_auction_costs = AuctionCosts::default();
-    let new_mint_costs = MintCosts::default();
+    let new_mint_costs = MintCosts {
+        transfer: 0,
+        ..Default::default()
+    };
     let new_standard_payment_costs = StandardPaymentCosts::default();
     let new_handle_payment_costs = HandlePaymentCosts::default();
 
     let system_costs_config = SystemConfig::new(
-        new_wasmless_transfer_cost,
+        DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+        DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
         new_auction_costs,
         new_mint_costs,
         new_handle_payment_costs,

@@ -3,8 +3,8 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    addressable_entity::NamedKeyAddr, execution::TransformKind, runtime_args, CLValue, EntityAddr,
-    Key, RuntimeArgs, StoredValue,
+    addressable_entity::NamedKeyAddr, execution::TransformKindV2, runtime_args, CLValue,
+    EntityAddr, Key, RuntimeArgs, StoredValue,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -55,7 +55,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .map(|transform| transform.kind());
 
     let payment_uref = match payment_transforms.next().unwrap() {
-        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+        TransformKindV2::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
         _ => panic!("Should be Write transform"),
@@ -76,7 +76,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .map(|transform| transform.kind());
 
     let session_uref = match session_transforms.next().unwrap() {
-        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+        TransformKindV2::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
         _ => panic!("Should be Write transform"),
