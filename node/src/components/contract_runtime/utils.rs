@@ -1,3 +1,20 @@
+use datasize::DataSize;
+use num_rational::Ratio;
+use once_cell::sync::Lazy;
+use std::{
+    cmp,
+    collections::{BTreeMap, HashMap},
+    ops::Range,
+    sync::{Arc, Mutex},
+};
+use tracing::{debug, error, info};
+
+use casper_execution_engine::engine_state::ExecutionEngineV1;
+use casper_storage::{
+    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
+};
+use casper_types::{Chainspec, EraId, Key};
+
 use crate::{
     contract_runtime::{
         exec_queue::{ExecQueue, QueueItem},
@@ -14,21 +31,6 @@ use crate::{
     fatal,
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
-use casper_execution_engine::engine_state::ExecutionEngineV1;
-use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
-};
-use casper_types::{Chainspec, EraId, Key};
-use datasize::DataSize;
-use num_rational::Ratio;
-use once_cell::sync::Lazy;
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, error};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -55,6 +57,282 @@ where
         .expect("task panicked")
 }
 
+// #[allow(clippy::too_many_arguments)]
+// pub(super) async fn exec_or_requeue<REv>(
+//     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+//     execution_engine_v1: Arc<ExecutionEngineV1>,
+//     chainspec: Arc<Chainspec>,
+//     metrics: Arc<Metrics>,
+//     mut exec_queue: ExecQueue,
+//     shared_pre_state: Arc<Mutex<ExecutionPreState>>,
+//     current_pre_state: ExecutionPreState,
+//     effect_builder: EffectBuilder<REv>,
+//     mut executable_block: ExecutableBlock,
+//     key_block_height_for_activation_point: u64,
+//     mut meta_block_state: MetaBlockState,
+//     current_gas_price: u8,
+// ) where
+//     REv: From<ContractRuntimeRequest>
+//         + From<ContractRuntimeAnnouncement>
+//         + From<StorageRequest>
+//         + From<MetaBlockAnnouncement>
+//         + From<FatalAnnouncement>
+//         + Send,
+// {
+//     info!("ContractRuntime: execute_finalized_block_or_requeue");
+//     let contract_runtime_metrics = metrics.clone();
+//     let block_max_install_upgrade_count =
+//         chainspec.transaction_config.block_max_install_upgrade_count;
+//     let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
+//     let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
+//     let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
+//     let go_up = chainspec.vacancy_config.upper_threshold;
+//     let go_down = chainspec.vacancy_config.lower_threshold;
+//     let max = chainspec.vacancy_config.max_gas_price;
+//     let min = chainspec.vacancy_config.min_gas_price;
+//     let is_era_end = executable_block.era_report.is_some();
+//     if is_era_end && executable_block.rewards.is_none() {
+//         if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
+//             executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
+//                 let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
+//                     effect_builder,
+//                     chainspec.as_ref(),
+//                     executable_block.clone(),
+//                 )
+//                     .await
+//                 {
+//                     Ok(rewards) => rewards,
+//                     Err(e) => {
+//                         return fatal!(effect_builder, "Failed to compute the rewards:
+// {e:?}").await                     }
+//                 };
+//
+//                 debug!("rewards successfully computed");
+//
+//                 rewards
+//             } else {
+//                 //TODO instead, use a list of all the validators with 0
+//                 BTreeMap::new()
+//             });
+//         }
+//
+//         // TODO: Make the call to determine gas price calc based on the tracking in storage here!
+//         let maybe_next_era_gas_price = if is_era_end {
+//             info!("End of era calculating new gas price");
+//             let era_id = executable_block.era_id;
+//             let block_height = executable_block.height;
+//
+//             let switch_block_transaction_hashes = executable_block.transactions.len() as u64;
+//
+//             let maybe_utilization = effect_builder
+//                 .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
+//                 .await;
+//
+//             match maybe_utilization {
+//                 None => {
+//                     let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
+//                     return fatal!(effect_builder, "{}", error).await;
+//                 }
+//                 Some((utilization, block_count)) => {
+//                     let per_block_capacity = {
+//                         block_max_install_upgrade_count
+//                             + block_max_standard_count
+//                             + block_max_mint_count
+//                             + block_max_auction_count
+//                     } as u64;
+//
+//                     let era_score = {
+//                         let numerator = utilization * 100;
+//                         let denominator = per_block_capacity * block_count;
+//                         Ratio::new(numerator, denominator).to_integer()
+//                     };
+//
+//                     let new_gas_price = if era_score >= go_up {
+//                         let new_gas_price = current_gas_price + 1;
+//                         if new_gas_price > max {
+//                             max
+//                         } else {
+//                             new_gas_price
+//                         }
+//                     } else if era_score < go_down {
+//                         let new_gas_price = current_gas_price - 1;
+//                         if new_gas_price <= min {
+//                             min
+//                         } else {
+//                             new_gas_price
+//                         }
+//                     } else {
+//                         current_gas_price
+//                     };
+//                     info!(%new_gas_price, "Calculated new gas price");
+//                     Some(new_gas_price)
+//                 }
+//             }
+//         } else {
+//             None
+//         };
+//
+//         let BlockAndExecutionResults {
+//             block,
+//             approvals_hashes,
+//             execution_results,
+//             maybe_step_effects_and_upcoming_era_validators,
+//         } = match run_intensive_task(move || {
+//             debug!("ContractRuntime: execute_finalized_block");
+//             execute_finalized_block(
+//                 data_access_layer.as_ref(),
+//                 execution_engine_v1.as_ref(),
+//                 chainspec.as_ref(),
+//                 Some(contract_runtime_metrics),
+//                 current_pre_state,
+//                 executable_block,
+//                 key_block_height_for_activation_point,
+//                 current_gas_price,
+//                 maybe_next_era_gas_price,
+//             )
+//         })
+//             .await
+//         {
+//             Ok(block_and_execution_results) => block_and_execution_results,
+//             Err(error) => {
+//                 error!(%error, "failed to execute block");
+//                 return fatal!(effect_builder, "{}", error).await;
+//             }
+//         };
+//
+//         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
+//         {
+//             // The `shared_pre_state` could have been set to a block we just fully synced after
+//             // doing a sync leap (via a call to `set_initial_state`).  We should not allow a
+// block             // which completed execution just after this to set the `shared_pre_state` back
+// to an             // earlier block height.
+//             let mut shared_pre_state = shared_pre_state.lock().unwrap();
+//             if shared_pre_state.next_block_height() < new_execution_pre_state.next_block_height()
+// {                 debug!(
+//                 next_block_height = new_execution_pre_state.next_block_height(),
+//                 "ContractRuntime: updating shared pre-state",
+//             );
+//                 *shared_pre_state = new_execution_pre_state.clone();
+//             } else {
+//                 debug!(
+//                 current_next_block_height = shared_pre_state.next_block_height(),
+//                 attempted_next_block_height = new_execution_pre_state.next_block_height(),
+//                 "ContractRuntime: not updating shared pre-state to older state"
+//             );
+//             }
+//         }
+//
+//         let current_era_id = block.era_id();
+//
+//         if let Some(StepEffectsAndUpcomingEraValidators {
+//                         step_effects,
+//                         mut upcoming_era_validators,
+//                     }) = maybe_step_effects_and_upcoming_era_validators
+//         {
+//             effect_builder
+//                 .announce_commit_step_success(current_era_id, step_effects)
+//                 .await;
+//
+//             if current_era_id.is_genesis() {
+//                 match upcoming_era_validators
+//                     .get(&current_era_id.successor())
+//                     .cloned()
+//                 {
+//                     Some(era_validators) => {
+//                         upcoming_era_validators.insert(EraId::default(), era_validators);
+//                     }
+//                     None => {
+//                         fatal!(effect_builder, "Missing era 1 validators").await;
+//                     }
+//                 }
+//             }
+//
+//             effect_builder
+//                 .announce_upcoming_era_validators(current_era_id, upcoming_era_validators)
+//                 .await;
+//         }
+//
+//         debug!(
+//         block_hash = %block.hash(),
+//         height = block.height(),
+//         era = block.era_id().value(),
+//         is_switch_block = block.is_switch_block(),
+//         "executed block"
+//     );
+//
+//         let execution_results_map: HashMap<_, _> = execution_results
+//             .iter()
+//             .cloned()
+//             .map(|artifact| (artifact.transaction_hash, artifact.execution_result))
+//             .collect();
+//         if meta_block_state.register_as_stored().was_updated() {
+//             effect_builder
+//                 .put_executed_block_to_storage(
+//                     Arc::clone(&block),
+//                     approvals_hashes,
+//                     execution_results_map,
+//                 )
+//                 .await;
+//         } else {
+//             effect_builder
+//                 .put_approvals_hashes_to_storage(approvals_hashes)
+//                 .await;
+//             effect_builder
+//                 .put_execution_results_to_storage(
+//                     *block.hash(),
+//                     block.height(),
+//                     block.era_id(),
+//                     execution_results_map,
+//                 )
+//                 .await;
+//         }
+//         if meta_block_state
+//             .register_as_executed()
+//             .was_already_registered()
+//         {
+//             error!(
+//             block_hash = %block.hash(),
+//             block_height = block.height(),
+//             ?meta_block_state,
+//             "should not execute the same block more than once"
+//         );
+//         }
+//
+//         let meta_block = MetaBlock::new_forward(block, execution_results, meta_block_state);
+//         effect_builder.announce_meta_block(meta_block).await;
+//
+//         let len = exec_queue.len();
+//
+//         info!("Length is {}", len);
+//
+//         // If the child is already finalized, start execution.
+//         let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
+//
+//
+//         info!("After remove length is {}", len);
+//
+//         if let Some(next_era_gas_price) = maybe_next_era_gas_price {
+//             effect_builder
+//                 .announce_new_era_gas_price(current_era_id.successor(), next_era_gas_price)
+//                 .await;
+//         }
+//
+//         // We schedule the next block from the queue to be executed:
+//         if let Some(QueueItem {
+//                         executable_block,
+//                         meta_block_state,
+//                     }) = next_block
+//         {
+//             metrics.exec_queue_size.dec();
+//             info!("ContractRuntime: next block enqueue_block_for_execution");
+//             effect_builder
+//                 .enqueue_block_for_execution(executable_block, meta_block_state)
+//                 .await;
+//         }
+//     }
+// }
+//
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn exec_or_requeue<REv>(
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
@@ -79,21 +357,10 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    let protocol_version = chainspec.protocol_version();
-    let activation_point = chainspec.protocol_config.activation_point;
-    let prune_batch_size = chainspec.core_config.prune_batch_size;
     let block_max_install_upgrade_count =
         chainspec.transaction_config.block_max_install_upgrade_count;
-    let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
-    let block_max_transfer_count = chainspec.transaction_config.block_max_transfer_count;
-    let block_max_staking_count = chainspec.transaction_config.block_max_staking_count;
-    let go_up = chainspec.vacancy_config.upper_threshold;
-    let go_down = chainspec.vacancy_config.lower_threshold;
-    let max = chainspec.vacancy_config.max_gas_price;
-    let min = chainspec.vacancy_config.min_gas_price;
     let is_era_end = executable_block.era_report.is_some();
     if is_era_end && executable_block.rewards.is_none() {
-    if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
@@ -119,6 +386,13 @@ pub(super) async fn exec_or_requeue<REv>(
 
     // TODO: Make the call to determine gas price calc based on the tracking in storage here!
     let maybe_next_era_gas_price = if is_era_end {
+        let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
+        let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
+        let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
+        let go_up = chainspec.vacancy_config.upper_threshold;
+        let go_down = chainspec.vacancy_config.lower_threshold;
+        let max = chainspec.vacancy_config.max_gas_price;
+        let min = chainspec.vacancy_config.min_gas_price;
         info!("End of era calculating new gas price");
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
@@ -138,8 +412,8 @@ pub(super) async fn exec_or_requeue<REv>(
                 let per_block_capacity = {
                     block_max_install_upgrade_count
                         + block_max_standard_count
-                        + block_max_transfer_count
-                        + block_max_staking_count
+                        + block_max_mint_count
+                        + block_max_auction_count
                 } as u64;
 
                 let era_score = {

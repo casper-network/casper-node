@@ -151,6 +151,21 @@ impl TransactionV1Header {
         self.timestamp.saturating_add(self.ttl)
     }
 
+    /// Returns the gas tolerance for the given transaction.
+    pub fn gas_tolerance(&self) -> u64 {
+        match self.pricing_mode {
+            PricingMode::Classic { gas_price, .. } => gas_price,
+            PricingMode::Fixed {
+                gas_price_tolerance,
+                ..
+            } => gas_price_tolerance,
+            PricingMode::Reserved { .. } => {
+                // TODO: Change this when reserve gets implemented.
+                0u64
+            }
+        }
+    }
+
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn invalidate(&mut self) {
         self.chain_name.clear();

@@ -14,6 +14,9 @@ use crate::{
     utils,
 };
 
+const ERA_ONE: EraId = EraId::new(1u64);
+const DEFAULT_MINIMUM_GAS_PRICE: u8 = 1;
+
 fn get_appendable_block(
     rng: &mut TestRng,
     transaction_buffer: &mut TransactionBuffer,
@@ -31,7 +34,7 @@ fn get_appendable_block(
     assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
 
     // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert!(appendable_block.transaction_hashes().len() <= transaction_limit);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
@@ -308,7 +311,7 @@ fn get_proposable_transactions() {
 
         // Check which transactions are proposable. Should return the transactions that were not
         // included in the block since those should be dead.
-        let proposable = transaction_buffer.proposable();
+        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
         assert_eq!(proposable.len(), transactions.len());
         let proposable_transaction_hashes: HashSet<_> =
             proposable.iter().map(|(th, _)| *th).collect();
@@ -317,7 +320,7 @@ fn get_proposable_transactions() {
         }
 
         // Get an appendable block. This should put the transactions on hold.
-        let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+        let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
         assert_eq!(transaction_buffer.hold.len(), 1);
         assert_container_sizes(
             &transaction_buffer,
@@ -327,7 +330,7 @@ fn get_proposable_transactions() {
         );
 
         // Check that held blocks are not proposable
-        let proposable = transaction_buffer.proposable();
+        let proposable = transaction_buffer.proposable(DEFAULT_MINIMUM_GAS_PRICE);
         assert_eq!(
             proposable.len(),
             transactions.len() - appendable_block.transaction_hashes().len()
@@ -511,7 +514,7 @@ fn block_fully_saturated() {
     );
 
     // Ensure that only 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize
@@ -614,7 +617,7 @@ fn block_not_fully_saturated() {
     );
 
     // Ensure that not more than 'total_allowed' transactions are proposed.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert!(appendable_block.transaction_hashes().len() <= total_allowed as usize);
 
     // Assert the number of proposed transaction types, block should not be fully saturated.
@@ -688,7 +691,7 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "transfers" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -748,7 +751,7 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "stakings" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -808,7 +811,7 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "install_upgrades" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -868,7 +871,7 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
 
     // Ensure that only 'total_allowed - 1' transactions are proposed, since a single place int the
     // "standards" bucket is still available.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(
         appendable_block.transaction_hashes().len(),
         total_allowed as usize - 1
@@ -997,7 +1000,7 @@ fn register_transactions_and_blocks() {
     let pre_proposal_timestamp = Timestamp::now();
 
     // get an appendable block. This should put the transactions on hold.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now(), ERA_ONE);
     assert_eq!(transaction_buffer.hold.len(), 1);
     assert_container_sizes(
         &transaction_buffer,

@@ -17,6 +17,8 @@ pub(crate) struct TransactionFootprint {
     pub(crate) body_hash: Digest,
     /// The estimated gas consumption.
     pub(crate) gas_limit: Gas,
+    /// The gas tolerance.
+    pub(crate) gas_tolerance: u64,
     /// The bytesrepr serialized length.
     pub(crate) size_estimate: usize,
     /// The transaction category.
@@ -60,6 +62,10 @@ impl TransactionFootprint {
     pub(crate) fn is_install_upgrade(&self) -> bool {
         matches!(self.category, TransactionCategory::InstallUpgrade)
     }
+
+    pub(crate) fn gas_tolerance(&self) -> u64 {
+        self.gas_tolerance
+    }
 }
 
 pub(crate) trait TransactionExt {
@@ -78,6 +84,7 @@ impl TransactionExt for Transaction {
             transaction_hash,
             body_hash,
             gas_limit,
+            gas_tolerance,
             size_estimate,
             category,
             timestamp,
@@ -103,10 +110,12 @@ impl TransactionExt for Transaction {
                 let timestamp = deploy.header().timestamp();
                 let ttl = deploy.header().ttl();
                 let approvals = self.approvals();
+                let gas_tolerance = deploy.header().gas_price();
                 (
                     transaction_hash,
                     body_hash,
                     gas_limit,
+                    gas_tolerance,
                     size_estimate,
                     category,
                     timestamp,
@@ -117,6 +126,7 @@ impl TransactionExt for Transaction {
             Transaction::V1(transaction) => {
                 let transaction_hash = TransactionHash::V1(*transaction.hash());
                 let body_hash = *transaction.header().body_hash();
+                let gas_tolernace = transaction.header().gas_tolerance();
                 let gas_limit = match transaction.gas_limit(cost_table, gas_price) {
                     Some(amount) => amount,
                     None => {
@@ -144,6 +154,7 @@ impl TransactionExt for Transaction {
                     transaction_hash,
                     body_hash,
                     gas_limit,
+                    gas_tolernace,
                     size_estimate,
                     category,
                     timestamp,
@@ -156,6 +167,7 @@ impl TransactionExt for Transaction {
             transaction_hash,
             body_hash,
             gas_limit,
+            gas_tolerance,
             size_estimate,
             category,
             timestamp,

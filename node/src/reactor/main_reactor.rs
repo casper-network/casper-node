@@ -65,7 +65,10 @@ use crate::{
             TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorInfoRequest},
+        requests::{
+            AcceptTransactionRequest, ChainspecRawBytesRequest, ContractRuntimeRequest,
+            ReactorInfoRequest,
+        },
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -1205,10 +1208,7 @@ impl reactor::Reactor for MainReactor {
         let transaction_acceptor =
             TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
         let transaction_buffer =
-            TransactionBuffer::new(Arc::clone(&chainspec),
-            config.transaction_buffer,
-            chainspec.system_costs_config,
-            registry)?;
+            TransactionBuffer::new(Arc::clone(&chainspec), config.transaction_buffer, registry)?;
 
         let reactor = MainReactor {
             chainspec,

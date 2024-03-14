@@ -383,6 +383,16 @@ impl Block {
         }
     }
 
+    /// Returns the count of transactions within a block.
+    pub fn transaction_count(&self) -> u64 {
+        match self {
+            Block::V1(block) => {
+                (block.body.deploy_hashes().len() + block.body.transfer_hashes().len()) as u64
+            }
+            Block::V2(block_v2) => block_v2.all_transactions().count() as u64,
+        }
+    }
+
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]

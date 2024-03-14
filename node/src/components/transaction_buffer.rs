@@ -20,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Chainspec, Digest, DisplayIter, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, TransactionId,
+    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction,
+    TransactionCategory, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -46,6 +46,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
+use crate::effect::{requests::ContractRuntimeRequest, Responder};
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
@@ -394,19 +395,7 @@ impl TransactionBuffer {
             .filter(|(th, _)| !self.dead.contains(th))
             .filter(|(_, (_, maybe_data))| match maybe_data {
                 None => false,
-                Some((footprint, _)) => match footprint {
-                    TransactionFootprint::Deploy(deploy_footprint) => {
-                        deploy_footprint.header.gas_price() >= current_era_gas_price as u64
-                    }
-                    TransactionFootprint::V1(transaction_footprint) => {
-                        match transaction_footprint.header.pricing_mode() {
-                            PricingMode::GasPriceMultiplier(tolerance) => {
-                                *tolerance >= current_era_gas_price as u64
-                            }
-                            PricingMode::Fixed | PricingMode::Reserved => true,
-                        }
-                    }
-                },
+                Some(footprint) => footprint.gas_tolerance() >= (current_era_gas_price as u64),
             })
             .filter_map(|(th, (_, maybe_data))| {
                 maybe_data
@@ -416,8 +405,11 @@ impl TransactionBuffer {
             .collect()
     }
 
-    fn buckets(&mut self) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
-        let proposable = self.proposable();
+    fn buckets(
+        &mut self,
+        current_era_gas_price: u8,
+    ) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
+        let proposable = self.proposable(current_era_gas_price);
 
         let mut buckets: HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> =
             HashMap::new();
@@ -742,7 +734,10 @@ where
                 Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
                     match maybe_gas_price {
                         None => responder
-                            .respond(AppendableBlock::new(self.transaction_config, timestamp))
+                            .respond(AppendableBlock::new(
+                                self.chainspec.transaction_config,
+                                timestamp,
+                            ))
                             .ignore(),
                         Some(gas_price) => {
                             self.prices.insert(era_id, gas_price);

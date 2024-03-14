@@ -259,8 +259,8 @@ impl TestFixture {
         chainspec.vacancy_config.upper_threshold = go_up;
         chainspec.vacancy_config.lower_threshold = go_down;
         chainspec.transaction_config.block_max_standard_count = max_standard_count;
-        chainspec.transaction_config.block_max_staking_count = max_staking_count;
-        chainspec.transaction_config.block_max_transfer_count = max_transfer_count;
+        chainspec.transaction_config.block_max_auction_count = max_staking_count;
+        chainspec.transaction_config.block_max_mint_count = max_transfer_count;
         chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
@@ -720,9 +720,8 @@ impl TestFixture {
         let switch_block_header = runner
             .main_reactor()
             .storage
-            .read_switch_block_header_by_era_id(era_id)
-            .unwrap()
-            .expect("must have block header");
+            .read_switch_block_by_era_id(era_id)
+            .unwrap();
 
         let switch_block_height = switch_block_header.height();
         assert_eq!(era_id, switch_block_header.era_id());
@@ -750,8 +749,8 @@ impl TestFixture {
                 .transaction_config
                 .block_max_install_upgrade_count
                 + self.chainspec.transaction_config.block_max_standard_count
-                + self.chainspec.transaction_config.block_max_transfer_count
-                + self.chainspec.transaction_config.block_max_staking_count;
+                + self.chainspec.transaction_config.block_max_mint_count
+                + self.chainspec.transaction_config.block_max_auction_count;
 
             blocks_in_era * (capacity_per_block as u64)
         };
@@ -2608,9 +2607,6 @@ async fn block_vacancy() {
     fixture.run_until_consensus_in_era(ERA_TWO, ONE_MIN).await;
 
     let actual_utilization_era_one = fixture.get_score_for_era(ERA_ONE);
-
-    println!("{actual_utilization_era_one}");
-
     let expected_price =
         if actual_utilization_era_one > fixture.chainspec.vacancy_config.upper_threshold {
             price_for_era_1 + 1
@@ -2689,7 +2685,6 @@ async fn should_raise_gas_price_to_ceiling() {
 
         fixture.inject_transaction(txn).await;
         let era_id = EraId::new(era);
-        println!("{era_id}");
         fixture
             .run_until_stored_switch_block_header(era_id, ONE_MIN)
             .await;

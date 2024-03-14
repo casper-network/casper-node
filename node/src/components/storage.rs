@@ -50,7 +50,7 @@ use casper_storage::block_store::{
 
 use std::{
     borrow::Cow,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -58,7 +58,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::collections::BTreeMap;
 
 #[cfg(test)]
 use casper_types::SignedBlock;
@@ -1021,82 +1020,6 @@ impl Storage {
         txn.read(*era_id).map_err(FatalStorageError::from)
     }
 
-    /// Writes a block to storage, updating indices as necessary.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    fn write_block(
-        &mut self,
-        txn: &mut RwTransaction,
-        block: &Block,
-    ) -> Result<bool, FatalStorageError> {
-        let block_body = block.clone_body();
-
-        if !self
-            .block_body_dbs
-            .put(txn, block.body_hash(), &block_body, true)?
-        {
-            error!(%block, "could not insert block body");
-            return Ok(false);
-        }
-
-        let block_header = block.clone_header();
-        if !self
-            .block_header_dbs
-            .put(txn, block.hash(), &block_header, true)?
-        {
-            error!(%block, "could not insert block header");
-            return Ok(false);
-        }
-
-        Self::insert_to_block_header_indices(
-            &mut self.block_height_index,
-            &mut self.switch_block_era_id_index,
-            &block_header,
-        )?;
-        let transaction_hashes = match block {
-            Block::V1(v1) => v1
-                .deploy_and_transfer_hashes()
-                .map(TransactionHash::from)
-                .collect(),
-            Block::V2(v2) => v2.all_transactions().copied().collect(),
-        };
-        Self::insert_to_transaction_index(
-            &mut self.transaction_hash_index,
-            *block.hash(),
-            block.height(),
-            block.era_id(),
-            transaction_hashes,
-        )?;
-
-        let transaction_hash_count = match block_body {
-            BlockBody::V1(_legacy_block_body) => {
-                // We shouldn't be tracking utilization for legacy blocks.
-                0u64
-            }
-            BlockBody::V2(block_body) => block_body.all_transactions().collect_vec().len() as u64,
-        };
-
-        let era_id = block.era_id();
-
-        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
-            block_score.insert(block.height(), transaction_hash_count);
-        };
-
-        match self.utilization_tracker.get_mut(&era_id) {
-            Some(block_score) => {
-                block_score.insert(block.height(), transaction_hash_count);
-            }
-            None => {
-                let mut block_score = BTreeMap::new();
-                block_score.insert(block.height(), transaction_hash_count);
-                self.utilization_tracker.insert(era_id, block_score);
-            }
-        }
-
-        Ok(true)
-    }
-
     /// Retrieves a set of transactions, along with their potential finalized approvals.
     #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a>(
@@ -1121,6 +1044,8 @@ impl Storage {
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
+        let transaction_hash_count = block.transaction_count();
+        let era_id = block.era_id();
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1130,6 +1055,21 @@ impl Storage {
             exec_results: execution_results,
         })?;
         txn.commit()?;
+
+        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
+            block_score.insert(block.height(), transaction_hash_count);
+        };
+
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(block_score) => {
+                block_score.insert(block.height(), transaction_hash_count);
+            }
+            None => {
+                let mut block_score = BTreeMap::new();
+                block_score.insert(block.height(), transaction_hash_count);
+                self.utilization_tracker.insert(era_id, block_score);
+            }
+        }
 
         Ok(true)
     }
@@ -2010,6 +1950,33 @@ impl Storage {
         }
         Ok(Some(ret))
     }
+
+    fn get_block_utilization_score(
+        &mut self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)> {
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(utilization) => {
+                utilization.entry(block_height).or_insert(transaction_count);
+
+                let transaction_count = utilization.values().into_iter().sum();
+                let block_count = utilization.keys().len() as u64;
+
+                Some((transaction_count, block_count))
+            }
+            None => {
+                let mut utilization = BTreeMap::new();
+                utilization.insert(block_height, transaction_count);
+
+                self.utilization_tracker.insert(era_id, utilization);
+
+                let block_count = 1u64;
+                Some((transaction_count, block_count))
+            }
+        }
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -2319,5 +2286,16 @@ impl Storage {
             block_height: block_hash_and_height.block_height,
             execution_result,
         })
+    }
+
+    pub(crate) fn get_utilization_for_era(&self, era_id: EraId) -> Option<u64> {
+        let era_utilization = match self.utilization_tracker.get(&era_id) {
+            Some(utilization) => utilization,
+            None => return None,
+        };
+
+        let total_utilization: u64 = era_utilization.values().sum();
+
+        Some(total_utilization)
     }
 }

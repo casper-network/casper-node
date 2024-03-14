@@ -25,6 +25,17 @@ pub struct VacancyConfig {
     pub min_gas_price: u8,
 }
 
+impl Default for VacancyConfig {
+    fn default() -> Self {
+        Self {
+            upper_threshold: 90,
+            lower_threshold: 50,
+            max_gas_price: 3,
+            min_gas_price: 1,
+        }
+    }
+}
+
 impl VacancyConfig {
     /// Returns a random [`VacancyConfig`]
     #[cfg(any(feature = "testing", test))]
@@ -79,7 +90,6 @@ impl FromBytes for VacancyConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VacancyConfig;
 
     #[test]
     fn bytesrepr_roundtrip() {

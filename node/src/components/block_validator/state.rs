@@ -546,7 +546,7 @@ mod tests {
     use rand::Rng;
 
     use casper_types::{
-        testing::TestRng, ChainspecRawBytes, SystemConfig, TimeDiff, Transaction, TransactionHash,
+        testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction, TransactionHash,
     };
 
     use super::{super::tests::*, *};
