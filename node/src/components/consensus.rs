@@ -68,9 +68,8 @@ pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
-pub(crate) use protocols::highway::max_rounds_per_era;
 #[cfg(test)]
-pub(crate) use protocols::highway::HighwayMessage;
+pub(crate) use protocols::highway::{max_rounds_per_era, HighwayMessage};
 pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
