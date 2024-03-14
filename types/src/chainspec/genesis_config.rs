@@ -10,8 +10,7 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AdministratorAccount, Chainspec, FeeHandling, GenesisAccount, Motes, PublicKey, RefundHandling,
-    SystemConfig, WasmConfig,
+    AdministratorAccount, Chainspec, GenesisAccount, Motes, PublicKey, SystemConfig, WasmConfig,
 };
 
 /// Default number of validator slots.
@@ -32,12 +31,6 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
-/// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
-/// Default gas cost refund ratio.
-pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(99, 100),
-};
 
 /// Represents the details of a genesis process.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,8 +44,6 @@ pub struct GenesisConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
-    refund_handling: RefundHandling,
-    fee_handling: FeeHandling,
 }
 
 impl GenesisConfig {
@@ -86,8 +77,6 @@ impl GenesisConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            refund_handling: DEFAULT_REFUND_HANDLING,
-            fee_handling: DEFAULT_FEE_HANDLING,
         }
     }
 
@@ -195,16 +184,6 @@ impl Distribution<GenesisConfig> for Standard {
 
         let genesis_timestamp_millis = rng.gen();
 
-        let refund_handling = RefundHandling::Refund {
-            refund_ratio: Ratio::new_raw(rng.gen_range(0..=100), 100),
-        };
-
-        let fee_handling = if rng.gen() {
-            FeeHandling::Accumulate
-        } else {
-            FeeHandling::PayToProposer
-        };
-
         GenesisConfig {
             accounts,
             wasm_config,
@@ -215,8 +194,6 @@ impl Distribution<GenesisConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
-            refund_handling,
-            fee_handling,
         }
     }
 }
@@ -236,8 +213,6 @@ pub struct GenesisConfigBuilder {
     round_seigniorage_rate: Option<Ratio<u64>>,
     unbonding_delay: Option<u64>,
     genesis_timestamp_millis: Option<u64>,
-    refund_handling: Option<RefundHandling>,
-    fee_handling: Option<FeeHandling>,
 }
 
 impl GenesisConfigBuilder {
@@ -300,18 +275,6 @@ impl GenesisConfigBuilder {
         self
     }
 
-    /// Sets the refund handling config option.
-    pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
-        self.refund_handling = Some(refund_handling);
-        self
-    }
-
-    /// Sets the fee handling config option.
-    pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
-        self.fee_handling = Some(fee_handling);
-        self
-    }
-
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig {
@@ -330,8 +293,6 @@ impl GenesisConfigBuilder {
             genesis_timestamp_millis: self
                 .genesis_timestamp_millis
                 .unwrap_or(DEFAULT_GENESIS_TIMESTAMP_MILLIS),
-            refund_handling: self.refund_handling.unwrap_or(DEFAULT_REFUND_HANDLING),
-            fee_handling: self.fee_handling.unwrap_or(DEFAULT_FEE_HANDLING),
         }
     }
 }
@@ -354,8 +315,6 @@ impl From<&Chainspec> for GenesisConfig {
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
-            .with_refund_handling(chainspec.core_config.refund_handling)
-            .with_fee_handling(chainspec.core_config.fee_handling)
             .build()
     }
 }

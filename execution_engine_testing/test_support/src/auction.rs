@@ -19,16 +19,16 @@ use casper_types::{
     runtime_args,
     system::auction,
     ChainspecRegistry, Digest, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, DEFAULT_REFUND_HANDLING, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 use crate::{
     transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
+    DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -325,8 +325,6 @@ fn create_run_genesis_request(
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-        .with_refund_handling(DEFAULT_REFUND_HANDLING)
-        .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build();
 
     GenesisRequest::new(

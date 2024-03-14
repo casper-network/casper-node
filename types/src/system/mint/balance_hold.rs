@@ -1,8 +1,13 @@
-use core::fmt::{Debug, Display, Formatter};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
-use alloc::vec::Vec;
-#[cfg(any(feature = "std", test))]
-use std::convert::TryFrom;
+use core::{
+    convert::TryFrom,
+    fmt::{Debug, Display, Formatter},
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -17,11 +22,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
+    checksummed_hex,
+    key::FromStrError,
     system::auction::Error,
-    BlockTime, Key, KeyTag, Timestamp, URefAddr, UREF_ADDR_LENGTH,
+    BlockTime, Key, KeyTag, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
 };
-
-const BALANCE_HOLD_ADDR_TAG_LENGTH: u8 = 1;
 
 const GAS_TAG: u8 = 0;
 
@@ -87,11 +92,11 @@ pub enum BalanceHoldAddr {
 
 impl BalanceHoldAddr {
     /// The length in bytes of a [`BalanceHoldAddr`] for a gas hold address.
-    pub const GAS_HOLD_ADDR_LENGTH: usize =
-        UREF_ADDR_LENGTH + BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH;
+    pub const GAS_HOLD_ADDR_LENGTH: usize = UREF_ADDR_LENGTH
+        + BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH
+        + BLOCKTIME_SERIALIZED_LENGTH;
 
     /// Creates a Gas variant instance of [`BalanceHoldAddr`].
-    #[cfg(any(feature = "testing", test))]
     pub(crate) const fn new_gas(purse_addr: URefAddr, block_time: BlockTime) -> BalanceHoldAddr {
         BalanceHoldAddr::Gas {
             purse_addr,
@@ -106,7 +111,7 @@ impl BalanceHoldAddr {
                 purse_addr,
                 block_time,
             } => {
-                BALANCE_HOLD_ADDR_TAG_LENGTH as usize
+                BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH
                     + ToBytes::serialized_length(purse_addr)
                     + ToBytes::serialized_length(block_time)
             }
@@ -142,6 +147,68 @@ impl BalanceHoldAddr {
         ret.push(KeyTag::BalanceHold as u8);
         ret.extend(purse_addr_bytes);
         Ok(ret)
+    }
+
+    /// To formatted string.
+    pub fn to_formatted_string(&self) -> String {
+        match self {
+            BalanceHoldAddr::Gas {
+                purse_addr,
+                block_time,
+            } => {
+                format!(
+                    "{}{}{}",
+                    // also, put the tag in readable form
+                    base16::encode_lower(&GAS_TAG.to_le_bytes()),
+                    base16::encode_lower(purse_addr),
+                    // TODO: we could conceivably stringify the u64 millis instead of bytes-ing
+                    // which would allow visual / human determination of the timestamp
+                    // but on the other hand, how many humans casually do from UNIX EPOCH
+                    // time calculation with their eyeballs? Something to discuss prior to
+                    // shipping.
+                    // BlockTime.value as string instead
+                    base16::encode_lower(&block_time.value().to_le_bytes())
+                )
+            }
+        }
+    }
+
+    /// From formatted string.
+    pub fn from_formatted_string(hex: &str) -> Result<Self, FromStrError> {
+        let bytes = checksummed_hex::decode(hex)
+            .map_err(|error| FromStrError::BalanceHold(error.to_string()))?;
+        if bytes.is_empty() {
+            return Err(FromStrError::BalanceHold(
+                "bytes should not be 0 len".to_string(),
+            ));
+        }
+        let tag_bytes = <[u8; BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH]>::try_from(
+            bytes[0..BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH].as_ref(),
+        )
+        .map_err(|err| FromStrError::BalanceHold(err.to_string()))?;
+        let tag = <u8>::from_le_bytes(tag_bytes);
+        let tag = BalanceHoldAddrTag::try_from_u8(tag).ok_or_else(|| {
+            FromStrError::BalanceHold("failed to parse balance hold addr tag".to_string())
+        })?;
+
+        let uref_addr = URefAddr::try_from(bytes[1..=UREF_ADDR_LENGTH].as_ref())
+            .map_err(|err| FromStrError::BalanceHold(err.to_string()))?;
+
+        // if more tags are added, extend the below logic to handle every case.
+        // it is possible that it will turn out that all further tags include blocktime
+        // in which case it can be pulled up out of the tag guard condition.
+        // however, im erring on the side of future tolerance and guarding it for now.
+        if tag == BalanceHoldAddrTag::Gas {
+            let block_time_bytes =
+                <[u8; BLOCKTIME_SERIALIZED_LENGTH]>::try_from(bytes[33..].as_ref())
+                    .map_err(|err| FromStrError::BalanceHold(err.to_string()))?;
+
+            let block_time_millis = <u64>::from_le_bytes(block_time_bytes);
+            let block_time = BlockTime::new(block_time_millis);
+            Ok(BalanceHoldAddr::new_gas(uref_addr, block_time))
+        } else {
+            Err(FromStrError::BalanceHold("invalid tag".to_string()))
+        }
     }
 }
 

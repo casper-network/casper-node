@@ -265,7 +265,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-        holds_epoch: Option<u64>,
+        _holds_epoch: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.context.entity().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
@@ -279,7 +279,6 @@ where
             args.insert(mint::ARG_TARGET, target)?;
             args.insert(mint::ARG_AMOUNT, amount)?;
             args.insert(mint::ARG_ID, id)?;
-            args.insert(mint::ARG_HOLDS_EPOCH, holds_epoch)?;
             Ok(())
         })
         .map_err(|_| Error::CLValue)?;

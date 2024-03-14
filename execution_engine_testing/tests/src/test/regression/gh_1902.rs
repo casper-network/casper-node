@@ -1,8 +1,9 @@
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest,
@@ -14,7 +15,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         mint, standard_payment,
     },
-    AddressableEntity, Gas, PublicKey, SecretKey, U512,
+    AddressableEntity, FeeHandling, Gas, PublicKey, RefundHandling, SecretKey, U512,
 };
 
 const BOND_AMOUNT: u64 = 42;
@@ -29,7 +30,17 @@ static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let chainspec = builder
+        .chainspec()
+        .clone()
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(1, 1),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer);
+    builder.with_chainspec(chainspec);
+
+    let request = LOCAL_GENESIS_REQUEST.clone();
+    builder.run_genesis(request);
     let id: Option<u64> = None;
     let transfer_args_1 = runtime_args! {
         mint::ARG_TARGET => *ACCOUNT_1_ADDR,
@@ -47,21 +58,26 @@ fn exec_and_assert_costs(
     exec_request: ExecuteRequest,
     caller: AddressableEntity,
     expected_tokens_paid: U512,
-    expected_payment_charge: U512,
+    _payment_amount: U512,
     expected_gas_cost: Gas,
 ) {
     let balance_before = builder.get_purse_balance(caller.main_purse());
 
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let proposer_balance_before = builder.get_proposer_purse_balance();
 
     builder.exec(exec_request).expect_success().commit();
 
     let balance_after = builder.get_purse_balance(caller.main_purse());
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
-    assert_eq!(transaction_fee, expected_payment_charge);
+    let proposer_fee = builder.get_proposer_purse_balance() - proposer_balance_before;
 
-    let expected = balance_before - expected_tokens_paid - transaction_fee;
+    assert_eq!(
+        proposer_fee,
+        expected_gas_cost.value(),
+        "with PayToProposer && 100% refund of unspent, the fee should equal the gas cost"
+    );
+
+    let expected = balance_before - expected_tokens_paid - proposer_fee;
 
     assert_eq!(
         balance_after,
@@ -89,7 +105,14 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.
     let add_bid_cost = builder.get_auction_costs().add_bid;
-    let add_bid_payment_amount = U512::from(add_bid_cost);
+
+    let pay_cost = builder
+        .chainspec()
+        .system_costs_config
+        .standard_payment_costs()
+        .pay;
+
+    let add_bid_payment_amount = U512::from(add_bid_cost + pay_cost) * 2;
 
     let add_bid_request = {
         let sender = *DEFAULT_ACCOUNT_ADDR;

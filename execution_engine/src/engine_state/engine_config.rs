@@ -8,7 +8,7 @@ use num_traits::One;
 
 use casper_types::{
     account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, TimeDiff,
-    WasmConfig, DEFAULT_REFUND_HANDLING,
+    WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -40,9 +40,6 @@ pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-
-/// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
 /// Default period for balance holds to decay (currently 24 hours).

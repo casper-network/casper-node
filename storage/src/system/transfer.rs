@@ -137,7 +137,6 @@ pub struct TransferArgs {
     target: URef,
     amount: U512,
     arg_id: Option<u64>,
-    holds_epoch: Option<u64>,
 }
 
 impl TransferArgs {
@@ -148,7 +147,6 @@ impl TransferArgs {
         target: URef,
         amount: U512,
         arg_id: Option<u64>,
-        holds_epoch: Option<u64>,
     ) -> Self {
         Self {
             to,
@@ -156,7 +154,6 @@ impl TransferArgs {
             target,
             amount,
             arg_id,
-            holds_epoch,
         }
     }
 
@@ -184,11 +181,6 @@ impl TransferArgs {
     pub fn arg_id(&self) -> Option<u64> {
         self.arg_id
     }
-
-    /// Returns `holds_epoch` field.
-    pub fn holds_epoch(&self) -> Option<u64> {
-        self.holds_epoch
-    }
 }
 
 impl TryFrom<TransferArgs> for RuntimeArgs {
@@ -202,7 +194,6 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
         runtime_args.insert(mint::ARG_TARGET, transfer_args.target)?;
         runtime_args.insert(mint::ARG_AMOUNT, transfer_args.amount)?;
         runtime_args.insert(mint::ARG_ID, transfer_args.arg_id)?;
-        runtime_args.insert(mint::ARG_HOLDS_EPOCH, transfer_args.holds_epoch)?;
 
         Ok(runtime_args)
     }
@@ -418,15 +409,6 @@ impl TransferRuntimeArgsBuilder {
         Ok(id)
     }
 
-    fn resolve_holds_epoch(&self) -> Result<Option<u64>, TransferError> {
-        let id_value = self
-            .inner
-            .get(mint::ARG_HOLDS_EPOCH)
-            .ok_or_else(|| TransferError::MissingArgument)?;
-        let id: Option<u64> = self.map_cl_value(id_value)?;
-        Ok(id)
-    }
-
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
@@ -468,15 +450,12 @@ impl TransferRuntimeArgsBuilder {
 
         let arg_id = self.resolve_id()?;
 
-        let holds_epoch = self.resolve_holds_epoch()?;
-
         Ok(TransferArgs {
             to,
             source,
             target,
             amount,
             arg_id,
-            holds_epoch,
         })
     }
 

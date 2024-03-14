@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
@@ -41,7 +41,7 @@ fn initialize() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -94,7 +94,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(

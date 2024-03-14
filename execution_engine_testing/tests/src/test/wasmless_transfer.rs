@@ -2,8 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
     Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -651,7 +650,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
     .build();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(create_account_1_request)
         .expect_success()
         .commit();
@@ -967,7 +966,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

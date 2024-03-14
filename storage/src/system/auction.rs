@@ -72,12 +72,10 @@ pub trait Auction:
         holds_epoch: Option<u64>,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
-            // Validation set rotation might be disabled on some private chains and we should not
-            // allow new bids to come in.
+            // The validator set may be closed on some side chains,
+            // which is configured by disabling bids.
             return Err(Error::AuctionBidsDisabled.into());
         }
-
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall.into());
@@ -86,6 +84,8 @@ pub trait Auction:
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
             return Err(Error::DelegationRateTooLarge.into());
         }
+
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());

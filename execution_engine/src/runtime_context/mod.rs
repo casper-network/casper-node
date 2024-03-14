@@ -780,10 +780,8 @@ where
     pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), ExecError> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
-        let is_system = self.entity_key.is_system_key();
-
         // gas charge overflow protection
-        match prev.checked_add(gas.cost(is_system)) {
+        match prev.checked_add(gas) {
             None => {
                 self.set_gas_counter(gas_limit);
                 Err(ExecError::GasLimit)

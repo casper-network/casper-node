@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 
 use casper_types::{runtime_args, RuntimeArgs};
@@ -14,7 +14,7 @@ const DO_NOTHING_CONTRACT: &str = "do_nothing.wasm";
 #[test]
 fn should_run_ee_1225_verify_finalize_payment_invariants() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()

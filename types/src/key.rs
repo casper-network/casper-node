@@ -577,7 +577,8 @@ impl Key {
                 format!("{}", named_key)
             }
             Key::BalanceHold(balance_hold_addr) => {
-                format!("{}{}", BALANCE_HOLD_PREFIX, balance_hold_addr)
+                let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
+                format!("{}{}", BALANCE_HOLD_PREFIX, tail)
             }
         }
     }
@@ -631,6 +632,12 @@ impl Key {
             let era_id = EraId::from_str(era_id_str)
                 .map_err(|error| FromStrError::EraInfo(error.to_string()))?;
             return Ok(Key::EraInfo(era_id));
+        }
+
+        // note: BALANCE_HOLD must come before BALANCE due to overlapping head (balance-)
+        if let Some(hex) = input.strip_prefix(BALANCE_HOLD_PREFIX) {
+            let balance_hold_addr = BalanceHoldAddr::from_formatted_string(hex)?;
+            return Ok(Key::BalanceHold(balance_hold_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
@@ -1021,7 +1028,7 @@ impl Key {
         }
     }
 
-    /// Returns if they inner Key is for a system contract entity.
+    /// Returns if the inner address is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
         if let Self::AddressableEntity(entity_addr) = self {
             return match entity_addr.tag() {
@@ -1075,12 +1082,7 @@ impl Key {
                 // the system entities and all packages are public info
                 true
             }
-            Key::AddressableEntity(addr_entity_addr) => {
-                // smart contracts and system contracts are public
-                // and an entity can read its own entity record
-                addr_entity_addr.tag() != EntityKindTag::Account || entity_addr == addr_entity_addr
-            }
-            Key::Account(account_hash) | Key::Unbond(account_hash) => {
+            Key::Unbond(account_hash) => {
                 // and an account holder can read their own account record
                 entity_addr.tag() == EntityKindTag::Account
                     && entity_addr.value() == account_hash.value()
@@ -1089,6 +1091,14 @@ impl Key {
                 // an entity can read its own named keys
                 &named_key_addr.entity_addr() == entity_addr
             }
+            Key::ByteCode(_)
+            | Key::Account(_)
+            | Key::Hash(_)
+            | Key::AddressableEntity(_)
+            | Key::Balance(_)
+            | Key::BalanceHold(_)
+            | Key::Dictionary(_)
+            | Key::Message(_) => true,
             _ => false,
         };
         if !ret {

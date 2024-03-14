@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
@@ -47,7 +47,7 @@ static DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(500_000));
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let id: Option<u64> = None;
 
@@ -75,7 +75,7 @@ fn setup() -> LmdbWasmTestBuilder {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let id: Option<u64> = None;
 

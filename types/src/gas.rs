@@ -29,14 +29,6 @@ impl Gas {
         self.0
     }
 
-    /// Returns the cost to be charged.
-    pub fn cost(&self, is_system: bool) -> Self {
-        if is_system {
-            return Gas::new(U512::zero());
-        }
-        *self
-    }
-
     /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
     ///
     /// Returns `None` if `conv_rate == 0`.

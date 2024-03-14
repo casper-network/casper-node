@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
@@ -115,7 +115,7 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
@@ -356,7 +356,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -580,7 +580,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

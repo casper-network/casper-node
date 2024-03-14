@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
@@ -21,7 +21,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     let bid_amount = U512::one();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let auction = builder.get_auction_contract_hash();
 

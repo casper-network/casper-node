@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{self, Error},
@@ -37,7 +37,7 @@ fn should_deploy_with_authorized_identity_key() {
     .build();
     // Basic deploy with single key
     LmdbWasmTestBuilder::default()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
         .expect_success();
@@ -70,7 +70,7 @@ fn should_raise_auth_failure_with_invalid_key() {
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
@@ -126,7 +126,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
@@ -192,7 +192,7 @@ fn should_raise_deploy_authorization_failure() {
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
@@ -353,7 +353,7 @@ fn should_authorize_deploy_with_multiple_keys() {
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         // Reusing a test contract that would add new key
         .exec(exec_request_1)
         .expect_success()
@@ -420,7 +420,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     .build();
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         // Reusing a test contract that would add new key
@@ -508,7 +508,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         // Reusing a test contract that would add new key
         .exec(add_key_1_request)
         .expect_success()

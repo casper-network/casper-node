@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, Key, URef};
 
@@ -34,7 +34,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();

@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, Phase};
 
@@ -34,7 +34,7 @@ fn should_run_get_phase_contract() {
     };
 
     LmdbWasmTestBuilder::default()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
         .expect_success();

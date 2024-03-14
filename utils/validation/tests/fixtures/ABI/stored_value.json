@@ -39,8 +39,11 @@
         "type": "StoredValue",
         "value": {
           "AddressableEntity": {
+            "protocol_version": "1.0.0",
+            "entity_kind": "SmartContract",
             "package_hash": "contract-package-6464646464646464646464646464646464646464646464646464646464646464",
             "byte_code_hash": "byte-code-6565656565656565656565656565656565656565656565656565656565656565",
+            "main_purse": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
             "entry_points": [
               {
                 "name": "public_entry_point_func",
@@ -58,20 +61,17 @@
                   ],
                   "ret": "Unit",
                   "access": "Public",
-                  "entry_point_type": "AddressableEntity"
+                  "entry_point_type": "Called"
                 }
               }
             ],
-            "protocol_version": "1.0.0",
-            "main_purse": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
             "associated_keys": [],
             "action_thresholds": {
               "deployment": 1,
               "upgrade_management": 1,
               "key_management": 1
             },
-            "message_topics": [],
-            "entity_kind": "SmartContract"
+            "message_topics": []
           }
         }
       }

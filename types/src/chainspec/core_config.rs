@@ -28,6 +28,17 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 
+/// Default refund handling.
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
+    refund_ratio: Ratio::new_raw(99, 100),
+};
+
+/// Default fee handling.
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
+
+/// Default balance hold interval.
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
+
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -272,11 +283,9 @@ impl Default for CoreConfig {
             allow_unrestricted_transfers: true,
             compute_rewards: true,
             administrators: Default::default(),
-            refund_handling: RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(99, 100),
-            },
-            fee_handling: FeeHandling::PayToProposer,
-            balance_hold_interval: TimeDiff::from_seconds(24 * 60 * 60),
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
+            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }

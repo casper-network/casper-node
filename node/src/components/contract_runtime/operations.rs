@@ -30,7 +30,6 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    system::mint::ARG_HOLDS_EPOCH,
     BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
     ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
 };
@@ -81,8 +80,7 @@ pub fn execute_finalized_block(
     let mut execution_artifacts: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
     let block_time = executable_block.timestamp.millis();
-    let holds_epoch =
-        block_time.saturating_sub(chainspec.core_config.balance_hold_interval.millis());
+    let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
 
     let start = Instant::now();
     let txn_ids = executable_block
@@ -100,14 +98,8 @@ pub fn execute_finalized_block(
 
     for transaction in executable_block.transactions {
         let transaction_hash = transaction.hash();
-        let mut runtime_args = transaction.session_args().clone();
+        let runtime_args = transaction.session_args().clone();
         let entry_point = transaction.entry_point();
-        if entry_point.requires_holds_epoch() {
-            if let Err(cve) = runtime_args.insert(ARG_HOLDS_EPOCH, Some(holds_epoch)) {
-                error!(%transaction_hash, ?cve, "failed to extend args with holds epoch");
-                continue; // skip to next record
-            }
-        }
 
         // handle payment per the chainspec determined fee setting
         // match chainspec.core_config.fee_handling {
@@ -116,11 +108,11 @@ pub fn execute_finalized_block(
         //         // amount is placed on the paying purse(s).
         //         let hold_amount = transaction.gas_limit();
         //         let hold_purse = get_purse_from_transaction_initiator();
-        //         let hold_req = HoldRequest::new(hold_purse, hold_amount);
+        //         let hold_req = BalanceHoldRequest::new(hold_purse, hold_amount);
         //         match scratch_state.hold(hold_req) {
-        //             HoldResult::RootNotFound => {}
-        //             HoldResult::Failure(tce) => {}
-        //             HoldResult::Success{ effects } => {}
+        //             BalanceHoldRequest::RootNotFound => {}
+        //             BalanceHoldRequest::Failure(tce) => {}
+        //             BalanceHoldRequest::Success{ effects } => {}
         //         }
         //     }
         //     FeeHandling::PayToProposer => {
@@ -145,7 +137,7 @@ pub fn execute_finalized_block(
             let transfer_req = TransferRequest::with_runtime_args(
                 native_runtime_config.clone(),
                 state_root_hash,
-                block_time,
+                holds_epoch,
                 protocol_version,
                 transaction_hash,
                 transaction.initiator_addr().account_hash(),
@@ -203,14 +195,19 @@ pub fn execute_finalized_block(
             continue;
         }
         if transaction.is_native_auction() {
-            let auction_method =
-                match AuctionMethod::from_parts(entry_point, &runtime_args, chainspec) {
-                    Ok(auction_method) => auction_method,
-                    Err(_) => {
-                        error!(%transaction_hash, "failed to resolve auction method");
-                        continue; // skip to next record
-                    }
-                };
+            let runtime_args = transaction.session_args();
+            let auction_method = match AuctionMethod::from_parts(
+                entry_point,
+                runtime_args,
+                holds_epoch,
+                chainspec,
+            ) {
+                Ok(auction_method) => auction_method,
+                Err(_) => {
+                    error!(%transaction_hash, "failed to resolve auction method");
+                    continue; // skip to next record
+                }
+            };
             let authorization_keys = transaction.authorization_keys();
             let bidding_req = BiddingRequest::new(
                 native_runtime_config.clone(),
@@ -291,7 +288,7 @@ pub fn execute_finalized_block(
             native_runtime_config.clone(),
             state_root_hash,
             protocol_version,
-            block_time,
+            holds_epoch,
         );
         match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {

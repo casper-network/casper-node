@@ -22,8 +22,8 @@ pub struct TransferRequest {
     config: NativeRuntimeConfig,
     /// State root hash.
     state_hash: Digest,
-    /// Block time represented as a unix timestamp.
-    block_time: u64,
+    /// Balance holds epoch.
+    holds_epoch: Option<u64>,
     /// Protocol version.
     protocol_version: ProtocolVersion,
     /// Transaction hash.
@@ -44,7 +44,7 @@ impl TransferRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: u64,
+        holds_epoch: Option<u64>,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         address: AccountHash,
@@ -56,7 +56,7 @@ impl TransferRequest {
         Self {
             config,
             state_hash,
-            block_time,
+            holds_epoch,
             protocol_version,
             transaction_hash,
             address,
@@ -71,7 +71,7 @@ impl TransferRequest {
     pub fn with_runtime_args(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: u64,
+        holds_epoch: Option<u64>,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         address: AccountHash,
@@ -83,7 +83,7 @@ impl TransferRequest {
         Self {
             config,
             state_hash,
-            block_time,
+            holds_epoch,
             protocol_version,
             transaction_hash,
             address,
@@ -122,8 +122,8 @@ impl TransferRequest {
     }
 
     /// Returns block time.
-    pub fn block_time(&self) -> u64 {
-        self.block_time
+    pub fn holds_epoch(&self) -> Option<u64> {
+        self.holds_epoch
     }
 
     /// Returns transaction hash.

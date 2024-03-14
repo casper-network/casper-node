@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
     account::AccountHash,
@@ -31,7 +31,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract =

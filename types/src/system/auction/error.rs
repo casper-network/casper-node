@@ -333,6 +333,12 @@ pub enum Error {
     /// assert_eq!(50, Error::ForgedReference as u8);
     /// ```
     ForgedReference = 50,
+    /// Unable to find purse.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(51, Error::MissingPurse as u8);
+    /// ```
+    MissingPurse = 51,
 }
 
 impl Display for Error {
@@ -389,6 +395,7 @@ impl Display for Error {
             Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
+            Error::MissingPurse => formatter.write_str("Missing purse"),
         }
     }
 }
@@ -471,6 +478,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
+            d if d == Error::MissingPurse as u8 => Ok(Error::MissingPurse),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -515,7 +523,7 @@ pub enum PurseLookupError {
 impl From<PurseLookupError> for Error {
     fn from(error: PurseLookupError) -> Self {
         match error {
-            PurseLookupError::KeyNotFound => Error::MissingKey,
+            PurseLookupError::KeyNotFound => Error::MissingPurse,
             PurseLookupError::KeyUnexpectedType => Error::InvalidKeyVariant,
         }
     }

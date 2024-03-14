@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 use casper_engine_test_support::{
     LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion};
@@ -99,7 +99,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
         builder
     } else {
         let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
-        builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
         builder
     };
 

@@ -3,8 +3,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 use casper_types::{
@@ -54,7 +54,7 @@ fn should_transfer_to_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -107,7 +107,7 @@ fn should_transfer_to_public_key() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -158,7 +158,7 @@ fn should_transfer_from_purse_to_public_key() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create a funded a purse, and store it in named keys
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -240,7 +240,7 @@ fn should_transfer_from_account_to_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let builder = builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -330,7 +330,7 @@ fn should_transfer_to_existing_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let builder = builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -447,7 +447,7 @@ fn should_fail_when_insufficient_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         // Exec transfer contract
         .exec(exec_request_1)
         .expect_success()
@@ -490,7 +490,7 @@ fn should_transfer_total_amount() {
     )
     .build();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 

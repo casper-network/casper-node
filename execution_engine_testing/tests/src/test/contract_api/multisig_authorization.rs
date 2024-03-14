@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
@@ -175,7 +175,7 @@ fn test_multisig_auth(
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for account in ROLE_A_KEYS.iter().chain(&ROLE_B_KEYS) {
         let add_key_request = {

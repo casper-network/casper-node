@@ -10,10 +10,7 @@ use once_cell::sync::Lazy;
 
 use casper_execution_engine::engine_state::{execution_result::ExecutionResult, Error};
 use casper_storage::data_access_layer::GenesisRequest;
-use casper_types::{
-    Gas, GenesisAccount, GenesisConfig, GenesisConfigBuilder, DEFAULT_FEE_HANDLING,
-    DEFAULT_REFUND_HANDLING,
-};
+use casper_types::{Gas, GenesisAccount, GenesisConfig, GenesisConfigBuilder};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
@@ -137,8 +134,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let refund_handling = DEFAULT_REFUND_HANDLING;
-    let fee_handling = DEFAULT_FEE_HANDLING;
 
     GenesisConfigBuilder::default()
         .with_accounts(accounts)
@@ -150,8 +145,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp_millis)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
         .build()
 }
 

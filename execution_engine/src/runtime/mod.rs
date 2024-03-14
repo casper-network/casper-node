@@ -630,9 +630,10 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
                 let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
+                let holds_epoch = Some(self.holds_epoch());
 
                 let maybe_balance: Option<U512> = mint_runtime
-                    .balance(uref, Some(self.holds_epoch()))
+                    .balance(uref, holds_epoch)
                     .map_err(Self::reverter)?;
                 CLValue::from_t(maybe_balance).map_err(Self::reverter)
             })(),
@@ -647,14 +648,9 @@ where
                 let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
-                let result: Result<(), mint::Error> = mint_runtime.transfer(
-                    maybe_to,
-                    source,
-                    target,
-                    amount,
-                    id,
-                    Some(self.holds_epoch()),
-                );
+                let holds_epoch = Some(self.holds_epoch());
+                let result: Result<(), mint::Error> =
+                    mint_runtime.transfer(maybe_to, source, target, amount, id, holds_epoch);
 
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
@@ -853,7 +849,6 @@ where
 
             auction::METHOD_ADD_BID => (|| {
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
-
                 let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
@@ -2521,12 +2516,12 @@ where
             return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
-        let holds_epoch = self.holds_epoch();
+        let holds_epoch = Some(self.holds_epoch());
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount
             > self
-                .available_balance(source, Some(holds_epoch))?
+                .available_balance(source, holds_epoch)?
                 .unwrap_or_default()
         {
             return Ok(Err(mint::Error::InsufficientFunds.into()));

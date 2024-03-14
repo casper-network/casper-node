@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 
 use casper_types::{
@@ -30,7 +30,7 @@ fn should_put_system_contract_hashes_to_account_context() {
     };
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(request)
         .expect_success()
         .commit();

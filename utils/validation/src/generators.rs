@@ -12,12 +12,15 @@ use casper_types::{
         ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
     },
     package::{EntityVersions, Groups, Package, PackageStatus},
-    system::auction::{
-        Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
-        ValidatorBid, WithdrawPurse,
+    system::{
+        auction::{
+            Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
+            ValidatorBid, WithdrawPurse,
+        },
+        mint::BalanceHoldAddr,
     },
-    AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped,
-    CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
+    AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
+    CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
     PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
@@ -206,6 +209,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
+        const BALANCE_HOLD_KEY: Key = Key::BalanceHold(BalanceHoldAddr::Gas {
+            purse_addr: [42; 32],
+            block_time: BlockTime::new(0),
+        });
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
         const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
@@ -242,6 +249,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         keys.insert(
             "Balance".to_string(),
             ABITestCase::from_inputs(vec![BALANCE_KEY.into()])?,
+        );
+        keys.insert(
+            "BalanceHold".to_string(),
+            ABITestCase::from_inputs(vec![BALANCE_HOLD_KEY.into()])?,
         );
         keys.insert(
             "WriteBid".to_string(),

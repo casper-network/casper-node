@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::Error;
 use casper_storage::tracking_copy::TrackingCopyError;
@@ -20,7 +20,7 @@ fn should_run_ee_532_non_existent_account_regression_test() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 

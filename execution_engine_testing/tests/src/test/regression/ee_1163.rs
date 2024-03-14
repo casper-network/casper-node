@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_GAS_PRICE, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
     Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -18,7 +18,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
     builder
 }
 

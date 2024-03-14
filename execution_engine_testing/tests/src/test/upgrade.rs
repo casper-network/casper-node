@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 
 use casper_execution_engine::{engine_state, execution::ExecError};
@@ -50,7 +50,7 @@ const ARG_IS_LOCKED: &str = "is_locked";
 fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create contract package and store contract ver: 1.0.0 with "delegate" entry function
     {
@@ -164,7 +164,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
 fn should_upgrade_do_nothing_to_do_something_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create contract package and store contract ver: 1.0.0
     {
@@ -298,7 +298,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 fn should_be_able_to_observe_state_transition_across_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store do-nothing-stored
     {
@@ -397,7 +397,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 fn should_support_extending_functionality() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store do-nothing-stored
     {
@@ -540,7 +540,7 @@ fn should_support_extending_functionality() {
 fn should_maintain_named_keys_across_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store contract
     {
@@ -644,7 +644,7 @@ fn should_maintain_named_keys_across_upgrade() {
 fn should_fail_upgrade_for_locked_contract() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store contract
     {
@@ -715,7 +715,7 @@ fn should_only_upgrade_if_threshold_is_met() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

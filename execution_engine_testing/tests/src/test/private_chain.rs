@@ -148,8 +148,6 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-        .with_refund_handling(PRIVATE_CHAIN_REFUND_HANDLING)
-        .with_fee_handling(PRIVATE_CHAIN_FEE_HANDLING)
         .build()
 });
 

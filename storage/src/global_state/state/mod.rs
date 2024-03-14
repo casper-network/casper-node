@@ -73,7 +73,7 @@ use crate::{
         genesis::{GenesisError, GenesisInstaller},
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
-        runtime_native::RuntimeNative,
+        runtime_native::{Id, RuntimeNative},
         transfer::{
             NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
         },
@@ -520,9 +520,10 @@ pub trait CommitProvider: StateProvider {
                 };
             }
 
+            let holds_epoch = request.holds_epoch();
             let system_account_key = PublicKey::System;
             let id = {
-                let mut bytes = match request.block_time().into_bytes() {
+                let mut bytes = match holds_epoch.into_bytes() {
                     Ok(bytes) => bytes,
                     Err(bre) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
@@ -543,7 +544,6 @@ pub trait CommitProvider: StateProvider {
             };
 
             let config = request.config();
-            let block_time = request.block_time();
             let authorization_keys = {
                 let mut auth_keys = BTreeSet::new();
                 auth_keys.insert(system_account_key.to_account_hash());
@@ -561,8 +561,6 @@ pub trait CommitProvider: StateProvider {
                 }
             };
 
-            let holds_epoch = block_time.saturating_sub(request.config().balance_hold_interval());
-
             for target in administrative_accounts {
                 let target_purse = match tc
                     .borrow_mut()
@@ -577,13 +575,12 @@ pub trait CommitProvider: StateProvider {
                     target_purse,
                     fee_portion,
                     None,
-                    Some(holds_epoch),
                 );
 
                 let transfer_req = TransferRequest::new(
                     config.clone(),
                     current_state_hash,
-                    block_time,
+                    holds_epoch,
                     protocol_version,
                     tmp_hash,
                     system_account_key.to_account_hash(),
@@ -634,38 +631,19 @@ pub trait CommitProvider: StateProvider {
 
         let protocol_version = request.protocol_version();
         let config = request.config();
-        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
 
-        let initiating_address = request.address();
-        let authorization_keys = request.authorization_keys();
-        let transfer_config = config.transfer_config();
-        let administrative_accounts = transfer_config.administrative_accounts();
-        let (entity, entity_named_keys, entity_access_rights) =
-            match tc.borrow_mut().resolved_entity(
-                protocol_version,
-                initiating_address,
-                authorization_keys,
-                &administrative_accounts,
-            ) {
-                Ok(ret) => ret,
-                Err(tce) => {
-                    return BiddingResult::Failure(tce);
-                }
-            };
-
-        // IMPORTANT: this runtime _must_ use the initiator's context.
-        let mut runtime = RuntimeNative::new(
-            protocol_version,
+        let mut runtime = match RuntimeNative::new_system_runtime(
             config.clone(),
-            id,
+            protocol_version,
+            Id::Transaction(request.transaction_hash()),
             Rc::clone(&tc),
-            initiating_address,
-            entity,
-            entity_named_keys,
-            entity_access_rights,
-            U512::MAX,
             Phase::Session,
-        );
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return BiddingResult::Failure(tce);
+            }
+        };
 
         let auction_method = request.auction_method();
 
@@ -1442,16 +1420,14 @@ pub trait StateProvider {
             }
         }
 
-        let transfer_args = {
-            match runtime_args_builder.build(
-                &entity,
-                entity_named_keys,
-                protocol_version,
-                Rc::clone(&tc),
-            ) {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => return TransferResult::Failure(error),
-            }
+        let transfer_args = match runtime_args_builder.build(
+            &entity,
+            entity_named_keys,
+            protocol_version,
+            Rc::clone(&tc),
+        ) {
+            Ok(transfer_args) => transfer_args,
+            Err(error) => return TransferResult::Failure(error),
         };
         if let Err(mint_error) = runtime.transfer(
             transfer_args.to(),
@@ -1459,7 +1435,7 @@ pub trait StateProvider {
             transfer_args.target(),
             transfer_args.amount(),
             transfer_args.arg_id(),
-            transfer_args.holds_epoch(),
+            request.holds_epoch(),
         ) {
             return TransferResult::Failure(TransferError::Mint(mint_error));
         }

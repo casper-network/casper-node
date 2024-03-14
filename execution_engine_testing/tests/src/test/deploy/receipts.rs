@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash, PublicKey,
@@ -51,7 +50,7 @@ static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 #[test]
 fn should_record_wasmless_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let id = Some(0);
 
@@ -120,7 +119,7 @@ fn should_record_wasmless_transfer() {
 #[test]
 fn should_record_wasm_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -183,7 +182,7 @@ fn should_record_wasm_transfer() {
 #[test]
 fn should_record_wasm_transfer_with_id() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let id = Some(0);
 
@@ -250,7 +249,7 @@ fn should_record_wasm_transfer_with_id() {
 #[test]
 fn should_record_wasm_transfers() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let alice_id = Some(0);
     let bob_id = Some(1);
@@ -385,7 +384,7 @@ fn should_record_wasm_transfers() {
 #[test]
 fn should_record_wasm_transfers_with_subcall() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let alice_id = Some(0);
     let bob_id = Some(1);

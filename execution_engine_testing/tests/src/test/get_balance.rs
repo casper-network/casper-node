@@ -1,8 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_storage::tracking_copy::{self, ValidationError};
 use casper_types::{
@@ -27,7 +26,7 @@ static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 fn get_balance_should_work() {
     let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -120,7 +119,7 @@ fn get_balance_should_work() {
 fn get_balance_using_public_key_should_work() {
     let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

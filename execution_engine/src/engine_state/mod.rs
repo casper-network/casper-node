@@ -16,13 +16,12 @@ use casper_storage::{
     data_access_layer::TransferRequest,
     global_state::state::StateProvider,
     system::runtime_native::TransferConfig,
-    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
+    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyExt},
 };
 
 use casper_types::{
     system::{
         handle_payment::{self},
-        mint::ARG_HOLDS_EPOCH,
         HANDLE_PAYMENT,
     },
     BlockTime, DeployInfo, Digest, EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, Motes,
@@ -177,14 +176,11 @@ impl ExecutionEngineV1 {
                 .value()
                 .saturating_sub(self.config.balance_hold_interval.millis()),
         );
-        let mut runtime_args = deploy_item.session.args().clone();
-        if let Err(cve) = runtime_args.insert(ARG_HOLDS_EPOCH, holds_epoch) {
-            return Err(Error::TrackingCopy(TrackingCopyError::CLValue(cve)));
-        }
+        let runtime_args = deploy_item.session.args().clone();
         let transfer_req = TransferRequest::with_runtime_args(
             native_runtime_config,
             prestate_hash,
-            blocktime.value(),
+            holds_epoch,
             protocol_version,
             transaction_hash,
             deploy_item.address,
@@ -636,7 +632,6 @@ impl ExecutionEngineV1 {
                         ))
                     }
                 };
-
             executor.exec(
                 session_execution_kind,
                 session_args,
@@ -711,7 +706,6 @@ impl ExecutionEngineV1 {
         // NOTE: session_code_spec_3: (do not include session execution effects in
         // results) is enforced in execution_result_builder.build()
         execution_result_builder.set_session_execution_result(session_result);
-
         // payment_code_spec_5: run finalize process
         let finalize_result: ExecutionResult = {
             let post_session_tc = post_session_rc.borrow();

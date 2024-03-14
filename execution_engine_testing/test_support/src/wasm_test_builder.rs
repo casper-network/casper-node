@@ -3,6 +3,7 @@ use std::{
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
+    iter::FromIterator,
     ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
@@ -20,13 +21,14 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest,
-        BlockRewardsResult, BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
-        FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
-        QueryResult, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TrieRequest,
+        balance::BalanceHandling, AuctionMethod, BalanceRequest, BalanceResult, BiddingRequest,
+        BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
     },
     global_state::{
         state::{
@@ -54,14 +56,13 @@ use casper_types::{
             WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
             AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
-        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
     HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Transfer,
-    TransferAddr, URef, OS_PAGE_SIZE, U512,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Timestamp,
+    TransactionHash, TransactionV1Hash, Transfer, TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -679,60 +680,126 @@ where
     /// Queries for the total supply of token.
     /// # Panics
     /// Panics if the total supply can't be found.
-    pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_entity_hash = self
-            .get_system_entity_hash(MINT)
-            .expect("should have mint_contract_hash");
-
-        let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint_entity_hash);
-
-        let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
-
-        let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
-            total_supply.into_t().expect("total supply should be U512")
+    pub fn total_supply(
+        &self,
+        maybe_post_state: Option<Digest>,
+        protocol_version: ProtocolVersion,
+    ) -> U512 {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+        let result = self
+            .data_access_layer
+            .total_supply(TotalSupplyRequest::new(post_state, protocol_version));
+        if let TotalSupplyResult::Success { total_supply } = result {
+            total_supply
         } else {
-            panic!("mint should track total supply");
-        };
+            panic!("total supply should exist at every root hash {:?}", result);
+        }
+    }
 
-        total_supply
+    /// Queries for the round seigniorage rate.
+    /// # Panics
+    /// Panics if the total supply or seigniorage rate can't be found.
+    pub fn round_seigniorage_rate(
+        &mut self,
+        maybe_post_state: Option<Digest>,
+        protocol_version: ProtocolVersion,
+    ) -> Ratio<U512> {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+        let result =
+            self.data_access_layer
+                .round_seigniorage_rate(RoundSeigniorageRateRequest::new(
+                    post_state,
+                    protocol_version,
+                ));
+        if let RoundSeigniorageRateResult::Success { rate } = result {
+            rate
+        } else {
+            panic!(
+                "round seigniorage rate should exist at every root hash {:?}",
+                result
+            );
+        }
     }
 
     /// Queries for the base round reward.
     /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
-    pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_named_keys =
-            self.get_named_keys(EntityAddr::System(self.get_mint_contract_hash().value()));
-
-        let total_supply_uref = *mint_named_keys
-            .get(TOTAL_SUPPLY_KEY)
-            .expect("must track total supply")
-            .as_uref()
-            .expect("must get uref");
-
-        let round_seigniorage_rate_uref = *mint_named_keys
-            .get(ROUND_SEIGNIORAGE_RATE_KEY)
-            .expect("must track round seigniorage rate");
-
-        let total_supply = self
-            .query(maybe_post_state, Key::URef(total_supply_uref), &[])
-            .expect("must read value under total supply URef")
-            .into_cl_value()
-            .expect("must convert into CL value")
-            .into_t::<U512>()
-            .expect("must convert into U512");
-
-        let rate = self
-            .query(maybe_post_state, round_seigniorage_rate_uref, &[])
-            .expect("must read value")
-            .into_cl_value()
-            .expect("must conver to cl value")
-            .into_t::<Ratio<U512>>()
-            .expect("must conver to ratio");
-
+    pub fn base_round_reward(
+        &mut self,
+        maybe_post_state: Option<Digest>,
+        protocol_version: ProtocolVersion,
+    ) -> U512 {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+        let total_supply = self.total_supply(Some(post_state), protocol_version);
+        let rate = self.round_seigniorage_rate(Some(post_state), protocol_version);
         rate.checked_mul(&Ratio::from(total_supply))
             .map(|ratio| ratio.to_integer())
             .expect("must get base round reward")
+    }
+
+    /// Direct auction interactions for stake management.
+    pub fn bidding(
+        &mut self,
+        maybe_post_state: Option<Digest>,
+        maybe_block_time: Option<Timestamp>,
+        protocol_version: ProtocolVersion,
+        account_hash: AccountHash,
+        auction_method: AuctionMethod,
+    ) -> BiddingResult {
+        let post_state = maybe_post_state
+            .or(self.post_state_hash)
+            .expect("builder must have a post-state hash");
+
+        let block_time = maybe_block_time.unwrap_or(Timestamp::now()).millis();
+        let transaction_hash = TransactionHash::V1(TransactionV1Hash::default());
+        let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
+
+        let config = &self.chainspec;
+        let fee_handling = config.core_config.fee_handling;
+        let refund_handling = config.core_config.refund_handling;
+        let vesting_schedule_period_millis = config.core_config.vesting_schedule_period.millis();
+        let allow_auction_bids = config.core_config.allow_auction_bids;
+        let compute_rewards = config.core_config.compute_rewards;
+        let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
+        let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
+        let balance_hold_interval = config.core_config.balance_hold_interval.millis();
+
+        let native_runtime_config = casper_storage::system::runtime_native::Config::new(
+            TransferConfig::Unadministered,
+            fee_handling,
+            refund_handling,
+            vesting_schedule_period_millis,
+            allow_auction_bids,
+            compute_rewards,
+            max_delegators_per_validator,
+            minimum_delegation_amount,
+            balance_hold_interval,
+        );
+
+        let bidding_req = BiddingRequest::new(
+            native_runtime_config,
+            post_state,
+            block_time,
+            protocol_version,
+            transaction_hash,
+            account_hash,
+            authorization_keys,
+            auction_method,
+        );
+        let ret = self.data_access_layer().bidding(bidding_req);
+        if let BiddingResult::Success {
+            post_state_hash, ..
+        } = ret
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+        ret
     }
 
     /// Runs an [`ExecuteRequest`].
@@ -878,13 +945,15 @@ where
         block_time: u64,
     ) -> FeeResult {
         let native_runtime_config = self.native_runtime_config();
-
+        let holds_epoch = Some(
+            block_time.saturating_sub(self.chainspec.core_config.balance_hold_interval.millis()),
+        );
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let fee_req = FeeRequest::new(
             native_runtime_config,
             pre_state_hash,
             protocol_version,
-            block_time,
+            holds_epoch,
         );
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
 

@@ -5,7 +5,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::FromBytes,
     execution::Effects,
-    system::{auction, auction::DelegationRate, mint},
+    system::{auction, auction::DelegationRate},
     CLTyped, CLValue, Chainspec, Digest, ProtocolVersion, PublicKey, RuntimeArgs,
     TransactionEntryPoint, TransactionHash, U512,
 };
@@ -54,6 +54,7 @@ impl AuctionMethod {
     pub fn from_parts(
         entry_point: TransactionEntryPoint,
         runtime_args: &RuntimeArgs,
+        holds_epoch: Option<u64>,
         chainspec: &Chainspec,
     ) -> Result<Self, ()> {
         match entry_point {
@@ -67,11 +68,15 @@ impl AuctionMethod {
             TransactionEntryPoint::ActivateBid => {
                 Self::activate_bid_from_args(runtime_args, chainspec)
             }
-            TransactionEntryPoint::AddBid => Self::add_bid_from_args(runtime_args, chainspec),
+            TransactionEntryPoint::AddBid => {
+                Self::add_bid_from_args(runtime_args, holds_epoch, chainspec)
+            }
             TransactionEntryPoint::WithdrawBid => {
                 Self::withdraw_bid_from_args(runtime_args, chainspec)
             }
-            TransactionEntryPoint::Delegate => Self::delegate_from_args(runtime_args, chainspec),
+            TransactionEntryPoint::Delegate => {
+                Self::delegate_from_args(runtime_args, holds_epoch, chainspec)
+            }
             TransactionEntryPoint::Undelegate => {
                 Self::undelegate_from_args(runtime_args, chainspec)
             }
@@ -94,12 +99,12 @@ impl AuctionMethod {
 
     pub fn add_bid_from_args(
         runtime_args: &RuntimeArgs,
+        holds_epoch: Option<u64>,
         _chainspec: &Chainspec,
     ) -> Result<Self, ()> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-        let holds_epoch = Self::get_named_argument(runtime_args, mint::ARG_HOLDS_EPOCH)?;
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
@@ -119,6 +124,7 @@ impl AuctionMethod {
 
     pub fn delegate_from_args(
         runtime_args: &RuntimeArgs,
+        holds_epoch: Option<u64>,
         chainspec: &Chainspec,
     ) -> Result<Self, ()> {
         let delegator_public_key = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
@@ -127,7 +133,6 @@ impl AuctionMethod {
 
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-        let holds_epoch = Self::get_named_argument(runtime_args, mint::ARG_HOLDS_EPOCH)?;
 
         Ok(Self::Delegate {
             delegator_public_key,
@@ -281,4 +286,11 @@ pub enum BiddingResult {
     },
     /// Bidding request failed
     Failure(TrackingCopyError),
+}
+
+impl BiddingResult {
+    /// Is this a success.
+    pub fn is_success(&self) -> bool {
+        matches!(self, BiddingResult::Success { .. })
+    }
 }

@@ -5,7 +5,7 @@ use num_rational::Ratio;
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 
 use crate::{lmdb_fixture, lmdb_fixture::CONTRACT_REGISTRY_SPECIAL_ADDRESS};
@@ -80,7 +80,7 @@ const ARG_ACCOUNT: &str = "account";
 fn should_upgrade_only_protocol_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
@@ -114,7 +114,7 @@ fn should_upgrade_only_protocol_version() {
 fn should_allow_only_wasm_costs_patch_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -148,7 +148,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 fn should_allow_only_wasm_costs_minor_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -186,7 +186,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 fn should_not_downgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
@@ -228,7 +228,7 @@ fn should_not_downgrade() {
 fn should_not_skip_major_versions() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -255,7 +255,7 @@ fn should_not_skip_major_versions() {
 fn should_allow_skip_minor_versions() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -283,7 +283,7 @@ fn should_allow_skip_minor_versions() {
 fn should_upgrade_only_validator_slots() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -340,7 +340,7 @@ fn should_upgrade_only_validator_slots() {
 fn should_upgrade_only_auction_delay() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -397,7 +397,7 @@ fn should_upgrade_only_auction_delay() {
 fn should_upgrade_only_locked_funds_period() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -454,7 +454,7 @@ fn should_upgrade_only_locked_funds_period() {
 fn should_upgrade_only_round_seigniorage_rate() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -515,7 +515,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
 fn should_upgrade_only_unbonding_delay() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -574,7 +574,7 @@ fn should_upgrade_only_unbonding_delay() {
 fn should_apply_global_state_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -640,7 +640,7 @@ fn should_apply_global_state_upgrade() {
 fn should_increase_max_associated_keys_after_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =

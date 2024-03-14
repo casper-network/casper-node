@@ -408,7 +408,8 @@ mod trie_chunking_tests {
         global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_FEE_HANDLING,
+        DEFAULT_REFUND_HANDLING,
     };
     use prometheus::Registry;
     use tempfile::tempdir;
@@ -487,6 +488,7 @@ mod trie_chunking_tests {
                 allow_unrestricted_transfers: true,
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
+                balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),

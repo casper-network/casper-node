@@ -370,9 +370,6 @@ impl Executor {
             None => return Err(EngineStateError::reverter(ApiError::HandlePayment(12))),
         };
 
-        let holds_epoch = blocktime
-            .value()
-            .saturating_sub(self.config.balance_hold_interval.millis());
         let runtime_args = {
             let transfer_args = TransferArgs::new(
                 None,
@@ -380,7 +377,6 @@ impl Executor {
                 payment_purse,
                 payment_amount,
                 None,
-                Some(holds_epoch),
             );
 
             match RuntimeArgs::try_from(transfer_args) {

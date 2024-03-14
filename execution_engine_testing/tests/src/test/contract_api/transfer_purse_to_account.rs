@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
     account::AccountHash,
@@ -24,7 +24,7 @@ static ACCOUNT_1_INITIAL_FUND: Lazy<U512> = Lazy::new(|| *DEFAULT_PAYMENT + 42);
 #[test]
 fn should_run_purse_to_account_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
     assert!(
@@ -69,7 +69,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_failure().commit();
 
