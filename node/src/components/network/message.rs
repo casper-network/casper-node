@@ -11,23 +11,15 @@ use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use strum::{Display, EnumCount, EnumDiscriminants, EnumIter, FromRepr};
+use strum::{Display, EnumCount, EnumIter, FromRepr};
 
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 
-use super::{connection_id::ConnectionId, serialize_network_message, Ticket};
-use crate::{
-    effect::EffectBuilder,
-    protocol,
-    types::{Chainspec, NodeId},
-    utils::{
-        opt_display::OptDisplay,
-        specimen::{Cache, LargestSpecimen, SizeEstimator},
-    },
-};
+use super::{connection_id::ConnectionId, Ticket};
+use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -35,8 +27,7 @@ fn default_protocol_version() -> ProtocolVersion {
     ProtocolVersion::V1_0_0
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
     // TODO: Remove.
@@ -403,168 +394,12 @@ pub(crate) trait FromIncoming<P> {
     }
 }
 
-mod specimen_support {
-    use std::iter;
-
-    use serde::Serialize;
-
-    use crate::utils::specimen::{
-        largest_variant, Cache, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
-    };
-
-    use super::{ConsensusCertificate, Message, MessageDiscriminants};
-
-    impl<P> LargestSpecimen for Message<P>
-    where
-        P: Serialize + LargestSpecimen,
-    {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            let largest_network_name = estimator.parameter("network_name_limit");
-
-            largest_variant::<Self, MessageDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    MessageDiscriminants::Handshake => Message::Handshake {
-                        network_name: iter::repeat(HIGHEST_UNICODE_CODEPOINT)
-                            .take(largest_network_name)
-                            .collect(),
-                        public_addr: LargestSpecimen::largest_specimen(estimator, cache),
-                        protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
-                        consensus_certificate: LargestSpecimen::largest_specimen(estimator, cache),
-                        chainspec_hash: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Payload => {
-                        Message::Payload(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                },
-            )
-        }
-    }
-
-    impl LargestSpecimen for ConsensusCertificate {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            ConsensusCertificate {
-                public_key: LargestSpecimen::largest_specimen(estimator, cache),
-                signature: LargestSpecimen::largest_specimen(estimator, cache),
-            }
-        }
-    }
-}
-
-/// An estimator that uses the serialized network representation as a measure of size.
-#[derive(Clone, Debug)]
-pub(crate) struct NetworkMessageEstimator<'a> {
-    /// The chainspec to retrieve estimation values from.
-    chainspec: &'a Chainspec,
-}
-
-impl<'a> NetworkMessageEstimator<'a> {
-    /// Creates a new network message estimator.
-    pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
-        Self { chainspec }
-    }
-
-    /// Returns a parameter by name as `i64`.
-    fn get_parameter(&self, name: &'static str) -> Option<i64> {
-        Some(match name {
-            // The name limit will be larger than the actual name, so it is a safe upper bound.
-            "network_name_limit" => self.chainspec.network_config.name.len() as i64,
-            // These limits are making deploys bigger than they actually are, since many items
-            // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-            "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "recent_era_count" => {
-                (self.chainspec.core_config.unbonding_delay
-                    - self.chainspec.core_config.auction_delay) as i64
-            }
-            "validator_count" => self.chainspec.core_config.validator_slots as i64,
-            "minimum_era_height" => self.chainspec.core_config.minimum_era_height as i64,
-            "era_duration_ms" => self.chainspec.core_config.era_duration.millis() as i64,
-            "minimum_round_length_ms" => self
-                .chainspec
-                .core_config
-                .minimum_block_time
-                .millis()
-                .max(1) as i64,
-            "max_deploy_size" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "approvals_hashes" => {
-                (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count) as i64
-            }
-            "max_deploys_per_block" => self.chainspec.deploy_config.block_max_deploy_count as i64,
-            "max_transfers_per_block" => {
-                self.chainspec.deploy_config.block_max_transfer_count as i64
-            }
-            "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count)
-                    as i64;
-
-                // Note: The +1 is to overestimate, as depending on the serialization format chosen,
-                //       spreading out the approvals can increase or decrease the size. For
-                //       example, in a length-prefixed encoding, putting them all in one may result
-                //       in a smaller size if variable size integer encoding it used. In a format
-                //       using separators without trailing separators (e.g. commas in JSON),
-                //       spreading out will reduce the total number of bytes.
-                ((self.chainspec.deploy_config.block_max_approval_count as i64 + max_total_deploys
-                    - 1)
-                    / max_total_deploys)
-                    .max(0)
-                    + 1
-            }
-            "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
-            // `RADIX` from EE.
-            "max_pointer_per_node" => 255,
-            // Endorsements are currently hard-disabled (via code). If ever re-enabled, this
-            // parameter should ideally be removed entirely.
-            "endorsements_enabled" => 0,
-            _ => return None,
-        })
-    }
-}
-
-/// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
-    let estimator = &NetworkMessageEstimator::new(chainspec);
-    let cache = &mut Cache::default();
-
-    Message::largest_specimen(estimator, cache)
-}
-
-pub(crate) fn generate_largest_serialized_message(chainspec: &Chainspec) -> Vec<u8> {
-    serialize_network_message(&generate_largest_message(chainspec))
-        .expect("did not expect serialization to fail") // it would fail in `SizeEstimator` before failing here
-        .into()
-}
-
-impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
-    fn estimate<T: Serialize>(&self, val: &T) -> usize {
-        serialize_network_message(&val)
-            .expect("could not serialize given item with network encoding")
-            .len()
-    }
-
-    fn parameter<T: TryFrom<i64>>(&self, name: &'static str) -> T {
-        let value = self
-            .get_parameter(name)
-            .unwrap_or_else(|| panic!("missing parameter \"{}\" for specimen estimation", name));
-
-        T::try_from(value).unwrap_or_else(|_| {
-            panic!(
-                "Failed to convert the parameter `{name}` of value `{value}` to the type `{}`",
-                core::any::type_name::<T>()
-            )
-        })
-    }
-}
-
 #[cfg(test)]
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
     use std::net::SocketAddr;
 
-    use assert_matches::assert_matches;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -888,25 +723,5 @@ mod tests {
             let result = Channel::from_repr(idx as u8);
             result.expect("must not have holes in channel enum");
         }
-    }
-
-    #[test]
-    fn assert_the_largest_specimen_type_and_size() {
-        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
-        let specimen = generate_largest_message(&chainspec);
-
-        assert_matches!(
-            specimen,
-            Message::Payload(protocol::Message::GetResponse { .. }),
-            "the type of the largest possible network message based on the production chainspec has changed"
-        );
-
-        let serialized = serialize_network_message(&specimen).expect("serialization failed");
-
-        assert_eq!(
-            serialized.len(),
-            8_388_736,
-            "the size of the largest possible network message based on the production chainspec has changed"
-        );
     }
 }

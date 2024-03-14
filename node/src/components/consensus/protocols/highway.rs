@@ -19,6 +19,7 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -41,7 +42,7 @@ use crate::{
             synchronizer::Synchronizer,
         },
         protocols,
-        traits::{ConsensusValueT, Context},
+        traits::{ConsensusNetworkMessage, ConsensusValueT, Context},
         utils::ValidatorIndex,
         ActionId, TimerId,
     },
@@ -675,89 +676,27 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::{
-        highway_core::{
-            highway::{Dependency, Vertex},
-            state::IndexPanorama,
-        },
-        traits::{ConsensusNetworkMessage, Context},
-        utils::ValidatorIndex,
-    };
-
-    #[derive(
-        DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants, Hash,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum HighwayMessage<C>
-    where
-        C: Context,
-    {
-        NewVertex(Vertex<C>),
-        // A dependency request. u64 is a random UUID identifying the request.
-        RequestDependency(u64, Dependency<C>),
-        RequestDependencyByHeight {
-            uuid: u64,
-            vid: ValidatorIndex,
-            unit_seq_number: u64,
-        },
-        LatestStateRequest(IndexPanorama),
-    }
-
-    impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) enum HighwayMessage<C>
+where
+    C: Context,
+{
+    NewVertex(Vertex<C>),
+    // A dependency request. u64 is a random UUID identifying the request.
+    RequestDependency(u64, Dependency<C>),
+    RequestDependencyByHeight {
+        uuid: u64,
+        vid: ValidatorIndex,
+        unit_seq_number: u64,
+    },
+    LatestStateRequest(IndexPanorama),
 }
-pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
 
-mod specimen_support {
-    use crate::{
-        components::consensus::ClContext,
-        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
-    };
-
-    use super::{HighwayMessage, HighwayMessageDiscriminants};
-
-    impl LargestSpecimen for HighwayMessage<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
-                match variant {
-                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                    HighwayMessageDiscriminants::RequestDependency => {
-                        HighwayMessage::RequestDependency(
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                        )
-                    }
-                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
-                        HighwayMessage::RequestDependencyByHeight {
-                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
-                            vid: LargestSpecimen::largest_specimen(estimator, cache),
-                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
-                        }
-                    }
-                    HighwayMessageDiscriminants::LatestStateRequest => {
-                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
-                            estimator, cache,
-                        ))
-                    }
-                }
-            })
-        }
-    }
-}
+impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
 
 impl<C> ConsensusProtocol<C> for HighwayProtocol<C>
 where
