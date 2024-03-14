@@ -4720,7 +4720,7 @@
       "type": "object",
       "required": [
         "block_index",
-        "entity_addr",
+        "entity_hash",
         "message",
         "topic_index",
         "topic_name",

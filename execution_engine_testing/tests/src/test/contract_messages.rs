@@ -937,7 +937,7 @@ fn should_produce_per_block_message_ordering() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let emitter_contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, emitter_contract_hash);

@@ -127,141 +127,6 @@ pub type PackageAddr = [u8; ADDR_LENGTH];
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
-/// Errors produced when converting a `String` into a `Key`.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum FromStrError {
-    /// Account parse error.
-    Account(addressable_entity::FromStrError),
-    /// Hash parse error.
-    Hash(String),
-    /// URef parse error.
-    URef(uref::FromStrError),
-    /// Transfer parse error.
-    Transfer(TransferFromStrError),
-    /// DeployInfo parse error.
-    DeployInfo(String),
-    /// EraInfo parse error.
-    EraInfo(String),
-    /// Balance parse error.
-    Balance(String),
-    /// Bid parse error.
-    Bid(String),
-    /// Withdraw parse error.
-    Withdraw(String),
-    /// Dictionary parse error.
-    Dictionary(String),
-    /// System contract registry parse error.
-    SystemContractRegistry(String),
-    /// Era summary parse error.
-    EraSummary(String),
-    /// Unbond parse error.
-    Unbond(String),
-    /// Chainspec registry error.
-    ChainspecRegistry(String),
-    /// Checksum registry error.
-    ChecksumRegistry(String),
-    /// Bid parse error.
-    BidAddr(String),
-    /// Package parse error.
-    Package(String),
-    /// Entity parse error.
-    AddressableEntity(String),
-    /// Byte code parse error.
-    ByteCode(String),
-    /// Message parse error.
-    Message(contract_messages::FromStrError),
-    /// Named key parse error.
-    NamedKey(String),
-    /// Balance hold parse error.
-    BalanceHold(String),
-    /// Unknown prefix.
-    UnknownPrefix,
-}
-
-impl From<addressable_entity::FromStrError> for FromStrError {
-    fn from(error: addressable_entity::FromStrError) -> Self {
-        FromStrError::Account(error)
-    }
-}
-
-impl From<TransferFromStrError> for FromStrError {
-    fn from(error: TransferFromStrError) -> Self {
-        FromStrError::Transfer(error)
-    }
-}
-
-impl From<uref::FromStrError> for FromStrError {
-    fn from(error: uref::FromStrError) -> Self {
-        FromStrError::URef(error)
-    }
-}
-
-impl From<contract_messages::FromStrError> for FromStrError {
-    fn from(error: contract_messages::FromStrError) -> Self {
-        FromStrError::Message(error)
-    }
-}
-
-impl Display for FromStrError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            FromStrError::Account(error) => write!(f, "account-key from string error: {}", error),
-            FromStrError::Hash(error) => write!(f, "hash-key from string error: {}", error),
-            FromStrError::URef(error) => write!(f, "uref-key from string error: {}", error),
-            FromStrError::Transfer(error) => write!(f, "transfer-key from string error: {}", error),
-            FromStrError::DeployInfo(error) => {
-                write!(f, "deploy-info-key from string error: {}", error)
-            }
-            FromStrError::EraInfo(error) => write!(f, "era-info-key from string error: {}", error),
-            FromStrError::Balance(error) => write!(f, "balance-key from string error: {}", error),
-            FromStrError::Bid(error) => write!(f, "bid-key from string error: {}", error),
-            FromStrError::Withdraw(error) => write!(f, "withdraw-key from string error: {}", error),
-            FromStrError::Dictionary(error) => {
-                write!(f, "dictionary-key from string error: {}", error)
-            }
-            FromStrError::SystemContractRegistry(error) => {
-                write!(
-                    f,
-                    "system-contract-registry-key from string error: {}",
-                    error
-                )
-            }
-            FromStrError::EraSummary(error) => {
-                write!(f, "era-summary-key from string error: {}", error)
-            }
-            FromStrError::Unbond(error) => {
-                write!(f, "unbond-key from string error: {}", error)
-            }
-            FromStrError::ChainspecRegistry(error) => {
-                write!(f, "chainspec-registry-key from string error: {}", error)
-            }
-            FromStrError::ChecksumRegistry(error) => {
-                write!(f, "checksum-registry-key from string error: {}", error)
-            }
-            FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
-            FromStrError::Package(error) => write!(f, "package-key from string error: {}", error),
-            FromStrError::AddressableEntity(error) => {
-                write!(f, "addressable-entity-key from string error: {}", error)
-            }
-            FromStrError::ByteCode(error) => {
-                write!(f, "byte-code-key from string error: {}", error)
-            }
-            FromStrError::Message(error) => {
-                write!(f, "message-key from string error: {}", error)
-            }
-            FromStrError::NamedKey(error) => {
-                write!(f, "named-key from string error: {}", error)
-            }
-            FromStrError::BalanceHold(error) => {
-                write!(f, "balance-hold from string error: {}", error)
-            }
-
-            FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
-        }
-    }
-}
-
 #[allow(missing_docs)]
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -525,6 +390,8 @@ pub enum FromStrError {
     NamedKey(String),
     /// BlockMessageCount key parse error.
     BlockMessageCount(String),
+    /// Balance hold parse error.
+    BalanceHold(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -605,6 +472,9 @@ impl Display for FromStrError {
             }
             FromStrError::BlockMessageCount(error) => {
                 write!(f, "block-message-count-key form string error: {}", error)
+            }
+            FromStrError::BalanceHold(error) => {
+                write!(f, "balance-hold from string error: {}", error)
             }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
@@ -1278,7 +1148,8 @@ impl Key {
             | Key::Balance(_)
             | Key::BalanceHold(_)
             | Key::Dictionary(_)
-            | Key::Message(_) => true,
+            | Key::Message(_)
+            | Key::BlockMessageCount => true,
             _ => false,
         };
         if !ret {
@@ -1338,24 +1209,6 @@ impl Key {
             warn!(?writing_entity_key, attempted_key=?self,  "attempt to write without permission")
         }
         ret
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for Key {
-    fn schema_name() -> String {
-        String::from("Key")
-    }
-
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some(
-            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
-                user accounts) are stored in global state."
-                .to_string(),
-        );
-        schema_object.into()
     }
 }
 

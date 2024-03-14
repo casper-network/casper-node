@@ -122,7 +122,9 @@ pub fn execute_finalized_block(
         //     FeeHandling::Accumulate => {
         //         // this is a variation on PayToProposer that was added for
         //         // for some private networks...the fees are all accumulated
-        //         // and distributed to administrative accounts.
+        //         // and distributed to administrative accounts as part of fee
+        //         // distribution. So, we just send the payment to the accumulator
+        //         // purse and move on.
         //     }
         //     FeeHandling::Burn => {
         //         // this is a new variation that is not currently supported.
@@ -220,7 +222,6 @@ pub fn execute_finalized_block(
                 auction_method,
             );
 
-            //NOTE: native mint interactions auto-commit
             let bidding_result = scratch_state.bidding(bidding_req);
             trace!(?transaction_hash, ?bidding_result, "native auction result");
             match bidding_result {
