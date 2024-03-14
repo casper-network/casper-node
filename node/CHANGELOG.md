@@ -13,12 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ## Unreleased
 
-### Changed
-* Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+### Added
 * Add `network.maximum_frame_size` to the chainspec
 * Add `tcp_connect_timeout`, `setup_timeout`, `tcp_connect_attempts`, `tcp_connect_base_backoff`, `significant_error_backoff`, `permanent_error_backoff`, `successful_reconnect_delay`, `flaky_connection_threshold`, `max_incoming_connections` and `max_outgoing_connections` to the `network.conman` section in the config.
 
-### Remove
+### Changed
+* Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+
+### Removed
 * The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.
 
 ## 1.5.6
