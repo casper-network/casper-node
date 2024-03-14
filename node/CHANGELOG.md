@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.  The format
 ### Removed
 * The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.
 * The `max_addr_pending_time` setting has been removed due to new connection management.
+* The `max_incoming_peer_connections` setting has been removed, we only allow a single connection per peer now.
+* The `max_outgoing_byte_rate_non_validators` setting has been removed.
 
 ## 1.5.6
 

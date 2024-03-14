@@ -46,7 +46,6 @@ impl Default for Config {
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
-            max_outgoing_byte_rate_non_validators: 0,
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
@@ -97,8 +96,6 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for handshake completion.
     pub handshake_timeout: TimeDiff,
-    /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
-    pub max_outgoing_byte_rate_non_validators: u32,
     /// The protocol version at which (or under) tarpitting is enabled.
     pub tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
