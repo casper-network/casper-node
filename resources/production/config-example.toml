@@ -208,9 +208,6 @@ gossip_interval = '120 seconds'
 # more than the expected time required for initial connections to complete.
 initial_gossip_delay = '5 seconds'
 
-# How long a connection is allowed to be stuck as pending before it is abandoned.
-max_addr_pending_time = '1 minute'
-
 # Maximum time allowed for a connection handshake between two nodes to be completed. Connections
 # exceeding this threshold are considered unlikely to be healthy or even malicious and thus
 # terminated.
