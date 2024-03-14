@@ -213,10 +213,6 @@ initial_gossip_delay = '5 seconds'
 # terminated.
 handshake_timeout = '20 seconds'
 
-# Maximum number of incoming connections per unique peer allowed. If the limit is hit, additional
-# connections will be rejected. A value of `0` means unlimited.
-max_incoming_peer_connections = 3
-
 # The maximum total of upstream bandwidth in bytes per second allocated to non-validating peers.
 # A value of `0` means unlimited.
 max_outgoing_byte_rate_non_validators = 6553600
