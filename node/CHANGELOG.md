@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.  The format
 * The `max_addr_pending_time` setting has been removed due to new connection management.
 * The `max_incoming_peer_connections` setting has been removed, we only allow a single connection per peer now.
 * The `max_outgoing_byte_rate_non_validators` setting has been removed.
+* The tarpit feature has been removed along with the respective `tarpit_version_threshold`, `tarpit_duration` and `tarpit_chance` configuration settings.
 
 ## 1.5.6
 

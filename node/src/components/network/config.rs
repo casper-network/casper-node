@@ -46,9 +46,6 @@ impl Default for Config {
             gossip_interval: DEFAULT_GOSSIP_INTERVAL,
             initial_gossip_delay: DEFAULT_INITIAL_GOSSIP_DELAY,
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
-            tarpit_version_threshold: None,
-            tarpit_duration: TimeDiff::from_seconds(600),
-            tarpit_chance: 0.2,
             send_buffer_size: PerChannel::init_with(|_| None),
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
@@ -96,12 +93,6 @@ pub struct Config {
     pub initial_gossip_delay: TimeDiff,
     /// Maximum allowed time for handshake completion.
     pub handshake_timeout: TimeDiff,
-    /// The protocol version at which (or under) tarpitting is enabled.
-    pub tarpit_version_threshold: Option<ProtocolVersion>,
-    /// If tarpitting is enabled, duration for which connections should be kept open.
-    pub tarpit_duration: TimeDiff,
-    /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
-    pub tarpit_chance: f32,
     /// An optional buffer size for each Juliet channel, allowing to setup how many messages
     /// we can keep in a memory buffer before blocking at call site.
     ///
