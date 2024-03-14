@@ -41,7 +41,7 @@ http = "0.2.1"
 humantime = "2.1.0"
 hyper = "0.14.26"
 itertools = "0.10.0"
-juliet = { git = "https://github.com/casper-network/juliet", rev = "90f92f08b8bf803089b5ae147c0072a02d8f4dd0", features = ["tracing"] }
+juliet = { version = "0.3.0", features = ["tracing"] }
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
 lmdb-rkv = "0.14"
