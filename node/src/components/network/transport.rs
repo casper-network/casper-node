@@ -3,8 +3,9 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{marker::PhantomData, pin::Pin};
+use std::{marker::PhantomData, pin::Pin, sync::Arc};
 
+use casper_types::PublicKey;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -170,6 +171,14 @@ where
         let (peer_id, transport) = tls_connect(&self.identity, stream, self.keylog.clone()).await?;
 
         self.finish_setting_up(peer_id, transport).await
+    }
+
+    fn route_established(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>) {
+        todo!()
+    }
+
+    fn route_lost(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>) {
+        todo!()
     }
 
     #[inline(always)]

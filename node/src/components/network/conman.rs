@@ -205,6 +205,8 @@ struct ActiveRoute {
     ctx: Arc<ConManContext>,
     /// The peer ID for which the route is registered.
     peer_id: NodeId,
+    /// Consensus key associated with route.
+    consensus_key: Option<Arc<PublicKey>>,
 }
 
 /// External integration.
@@ -230,6 +232,17 @@ pub(crate) trait ProtocolHandler: Send + Sync {
         &self,
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
+
+    /// A new route has been established.
+    ///
+    /// This hook is called when a new route has been established. For every call there will eventually be exactly one call of [`ProtocolHandler::route_lost`] as well.
+    fn route_established(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>);
+
+    /// An existing route has been lost.
+    ///
+    /// Only called exactly once for every preceding call of `route_established` when said route
+    /// is disconnected.
+    fn route_lost(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>);
 
     /// Process one incoming request.
     async fn handle_incoming_request(
@@ -981,12 +994,13 @@ impl ActiveRoute {
         direction: Direction,
         consensus_key: Option<Box<PublicKey>>,
     ) -> Self {
+        let consensus_key = consensus_key.map(Arc::from);
         let route = Route {
             peer: peer_id,
             client: rpc_client,
             remote_addr,
             direction,
-            consensus_key: consensus_key.map(Arc::from),
+            consensus_key: consensus_key.clone(),
             since: Instant::now(),
         };
 
@@ -994,7 +1008,14 @@ impl ActiveRoute {
             error!("should never encounter residual route");
         }
 
-        Self { ctx, peer_id }
+        ctx.protocol_handler
+            .route_established(peer_id, consensus_key.clone());
+
+        Self {
+            ctx,
+            peer_id,
+            consensus_key,
+        }
     }
 
     /// Serve data received from an active route.
@@ -1029,6 +1050,10 @@ impl ActiveRoute {
 
 impl Drop for ActiveRoute {
     fn drop(&mut self) {
+        self.ctx
+            .protocol_handler
+            .route_lost(self.peer_id, self.consensus_key.take());
+
         let mut guard = self.ctx.state.write().expect("lock poisoned");
         if guard.routing_table.remove(&self.peer_id).is_none() {
             error!("routing table should only be touched by active route");
