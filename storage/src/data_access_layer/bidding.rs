@@ -279,8 +279,6 @@ pub enum BiddingResult {
     Success {
         // The ret value, if any.
         ret: AuctionMethodRet,
-        /// State hash after bidding interaction is committed to the global state.
-        post_state_hash: Digest,
         /// Effects of bidding interaction.
         effects: Effects,
     },
@@ -292,5 +290,13 @@ impl BiddingResult {
     /// Is this a success.
     pub fn is_success(&self) -> bool {
         matches!(self, BiddingResult::Success { .. })
+    }
+
+    /// Effects.
+    pub fn effects(&self) -> Effects {
+        match self {
+            BiddingResult::RootNotFound | BiddingResult::Failure(_) => Effects::new(),
+            BiddingResult::Success { effects, .. } => effects.clone(),
+        }
     }
 }

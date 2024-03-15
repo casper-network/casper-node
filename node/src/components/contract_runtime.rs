@@ -72,8 +72,8 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
 pub(crate) use types::{
-    BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionState,
-    StepEffectsAndUpcomingEraValidators,
+    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionArtifacts, ExecutionPreState,
+    SpeculativeExecutionState, StepOutcome,
 };
 use utils::{exec_or_requeue, run_intensive_task};
 

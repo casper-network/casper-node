@@ -2,15 +2,17 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 use serde::Serialize;
+use tracing::{debug, trace};
 
 use casper_storage::{
-    block_store::types::ApprovalsHashes, data_access_layer::EraValidatorsRequest,
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{BalanceHoldResult, BiddingResult, EraValidatorsRequest, TransferResult},
 };
 use casper_types::{
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult},
-    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion,
-    PublicKey, Timestamp, TransactionHash, TransactionHeader, TransactionV1Hash,
+    execution::{Effects, ExecutionResult, ExecutionResultV2},
+    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, InvalidTransaction,
+    ProtocolVersion, PublicKey, Timestamp, TransactionHash, TransactionHeader, TransactionV1Hash,
     TransactionV1Header, U512,
 };
 
@@ -56,11 +58,216 @@ impl From<ValidatorWeightsByEraIdRequest> for EraValidatorsRequest {
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Clone, Debug, DataSize)]
-pub(crate) struct StepEffectsAndUpcomingEraValidators {
+pub(crate) struct StepOutcome {
     /// Validator sets for all upcoming eras that have already been determined.
     pub(crate) upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     /// An [`Effects`] created by an era ending.
     pub(crate) step_effects: Effects,
+}
+
+pub(crate) struct ExecutionArtifacts {
+    artifacts: Vec<ExecutionArtifact>,
+}
+
+pub(crate) enum ExecutionArtifactOutcome {
+    RootNotFound,
+    Failure,
+    Success(Effects),
+}
+
+impl ExecutionArtifacts {
+    pub fn with_capacity(capacity: usize) -> Self {
+        let artifacts = Vec::with_capacity(capacity);
+        ExecutionArtifacts { artifacts }
+    }
+
+    pub fn push(&mut self, execution_artifact: ExecutionArtifact) {
+        self.artifacts.push(execution_artifact);
+    }
+
+    pub fn push_invalid_transaction(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        invalid_transaction: InvalidTransaction,
+    ) {
+        self.push_failure(
+            transaction_hash,
+            transaction_header,
+            format!("{:?}", invalid_transaction),
+        );
+    }
+
+    pub fn push_auction_method_failure(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        cost: U512,
+    ) {
+        let msg = "failed to resolve auction method".to_string();
+        let artifact = ExecutionArtifact::new(
+            transaction_hash,
+            transaction_header,
+            ExecutionResult::V2(ExecutionResultV2::Failure {
+                effects: Effects::new(),
+                transfers: vec![],
+                error_message: msg.clone(),
+                cost,
+            }),
+            Messages::default(),
+        );
+        debug!(%transaction_hash, "{:?}", msg);
+        self.artifacts.push(artifact);
+    }
+
+    pub fn push_transfer_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        transfer_result: TransferResult,
+        cost: U512,
+    ) -> ExecutionArtifactOutcome {
+        trace!(
+            ?transaction_hash,
+            ?transfer_result,
+            "native transfer result"
+        );
+        match transfer_result {
+            TransferResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
+            TransferResult::Failure(transfer_error) => {
+                self.push_failure(
+                    transaction_hash,
+                    transaction_header,
+                    format!("{:?}", transfer_error),
+                );
+                debug!(%transfer_error);
+                ExecutionArtifactOutcome::Failure
+            }
+            TransferResult::Success {
+                effects: transfer_effects,
+                transfers,
+            } => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Success {
+                        effects: transfer_effects.clone(),
+                        cost,
+                        transfers,
+                    }),
+                    Messages::default(),
+                ));
+                ExecutionArtifactOutcome::Success(transfer_effects)
+            }
+        }
+    }
+
+    pub fn push_bidding_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        bidding_result: BiddingResult,
+        cost: U512,
+    ) -> ExecutionArtifactOutcome {
+        trace!(?transaction_hash, ?bidding_result, "bidding result");
+        match bidding_result {
+            BiddingResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
+            BiddingResult::Failure(tce) => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Failure {
+                        effects: Effects::new(),
+                        cost,
+                        transfers: vec![],
+                        error_message: format!("{:?}", tce),
+                    }),
+                    Messages::default(),
+                ));
+                debug!(%tce);
+                ExecutionArtifactOutcome::Failure
+            }
+            BiddingResult::Success {
+                effects: bidding_effects,
+                ..
+            } => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Success {
+                        effects: bidding_effects.clone(),
+                        cost,
+                        transfers: vec![],
+                    }),
+                    Messages::default(),
+                ));
+                ExecutionArtifactOutcome::Success(bidding_effects)
+            }
+        }
+    }
+
+    pub fn push_hold_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        hold_result: BalanceHoldResult,
+    ) -> ExecutionArtifactOutcome {
+        trace!(?transaction_hash, ?hold_result, "balance hold result");
+        if hold_result.is_root_not_found() {
+            return ExecutionArtifactOutcome::RootNotFound;
+        }
+        if !hold_result.is_fully_covered() {
+            let error_message = hold_result.error_message();
+            self.push_failure(transaction_hash, transaction_header, error_message.clone());
+            debug!(%error_message);
+            ExecutionArtifactOutcome::Failure
+        } else {
+            let hold_cost = U512::zero(); // we don't charge for the hold itself.
+            let hold_effects = hold_result.effects();
+            self.artifacts.push(ExecutionArtifact::new(
+                transaction_hash,
+                transaction_header,
+                ExecutionResult::V2(ExecutionResultV2::Success {
+                    effects: hold_effects.clone(),
+                    transfers: vec![],
+                    cost: hold_cost,
+                }),
+                Messages::default(),
+            ));
+            ExecutionArtifactOutcome::Success(hold_effects)
+        }
+    }
+
+    fn push_failure(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        error_message: String,
+    ) {
+        let execution_artifact = ExecutionArtifact::new(
+            transaction_hash,
+            transaction_header,
+            ExecutionResult::V2(ExecutionResultV2::Failure {
+                effects: Effects::new(),
+                cost: U512::zero(),
+                transfers: vec![],
+                error_message,
+            }),
+            Messages::default(),
+        );
+        self.artifacts.push(execution_artifact);
+    }
+
+    pub fn execution_results(&self) -> Vec<&ExecutionResult> {
+        self.artifacts
+            .iter()
+            .map(|artifact| &artifact.execution_result)
+            .collect::<Vec<&ExecutionResult>>()
+    }
+
+    pub fn take(self) -> Vec<ExecutionArtifact> {
+        self.artifacts
+    }
 }
 
 #[derive(Clone, Debug, DataSize, PartialEq, Eq, Serialize)]
@@ -120,16 +327,15 @@ impl ExecutionArtifact {
 /// A [`Block`] that was the result of execution in the `ContractRuntime` along with any execution
 /// effects it may have.
 #[derive(Clone, Debug, DataSize)]
-pub struct BlockAndExecutionResults {
+pub struct BlockAndExecutionArtifacts {
     /// The [`Block`] the contract runtime executed.
     pub(crate) block: Arc<BlockV2>,
     /// The [`ApprovalsHashes`] for the deploys in this block.
     pub(crate) approvals_hashes: Box<ApprovalsHashes>,
-    /// The results from executing the deploys in the block.
-    pub(crate) execution_results: Vec<ExecutionArtifact>,
+    /// The results from executing the transactions in the block.
+    pub(crate) execution_artifacts: Vec<ExecutionArtifact>,
     /// The [`Effects`] and the upcoming validator sets determined by the `step`
-    pub(crate) maybe_step_effects_and_upcoming_era_validators:
-        Option<StepEffectsAndUpcomingEraValidators>,
+    pub(crate) step_outcome: Option<StepOutcome>,
 }
 
 #[derive(DataSize, Debug, Clone, Serialize)]

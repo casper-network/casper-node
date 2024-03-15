@@ -619,121 +619,6 @@ pub trait CommitProvider: StateProvider {
         }
         FeeResult::Failure(FeeError::NoFeesDistributed)
     }
-
-    /// Direct auction interaction for all variations of bid management.
-    fn bidding(&self, request: BiddingRequest) -> BiddingResult {
-        let state_hash = request.state_hash();
-        let tc = match self.tracking_copy(state_hash) {
-            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
-            Ok(None) => return BiddingResult::RootNotFound,
-            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
-        };
-
-        let protocol_version = request.protocol_version();
-        let config = request.config();
-
-        let mut runtime = match RuntimeNative::new_system_runtime(
-            config.clone(),
-            protocol_version,
-            Id::Transaction(request.transaction_hash()),
-            Rc::clone(&tc),
-            Phase::Session,
-        ) {
-            Ok(rt) => rt,
-            Err(tce) => {
-                return BiddingResult::Failure(tce);
-            }
-        };
-
-        let auction_method = request.auction_method();
-
-        let result = match auction_method {
-            AuctionMethod::ActivateBid {
-                validator_public_key,
-            } => runtime
-                .activate_bid(validator_public_key)
-                .map(|_| AuctionMethodRet::Unit)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::AddBid {
-                public_key,
-                delegation_rate,
-                amount,
-                holds_epoch,
-            } => runtime
-                .add_bid(public_key, delegation_rate, amount, holds_epoch)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Api),
-            AuctionMethod::WithdrawBid { public_key, amount } => runtime
-                .withdraw_bid(public_key, amount)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::Delegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-                max_delegators_per_validator,
-                minimum_delegation_amount,
-                holds_epoch,
-            } => runtime
-                .delegate(
-                    delegator_public_key,
-                    validator_public_key,
-                    amount,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                    holds_epoch,
-                )
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Api),
-            AuctionMethod::Undelegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-            } => runtime
-                .undelegate(delegator_public_key, validator_public_key, amount)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::Redelegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-                new_validator,
-                minimum_delegation_amount,
-            } => runtime
-                .redelegate(
-                    delegator_public_key,
-                    validator_public_key,
-                    amount,
-                    new_validator,
-                    minimum_delegation_amount,
-                )
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-        };
-
-        let effects = tc.borrow_mut().effects();
-
-        // commit
-        match result {
-            Ok(ret) => match self.commit(state_hash, effects.clone()) {
-                Ok(post_state_hash) => BiddingResult::Success {
-                    ret,
-                    post_state_hash,
-                    effects,
-                },
-                Err(tce) => BiddingResult::Failure(tce.into()),
-            },
-            Err(tce) => BiddingResult::Failure(tce),
-        }
-    }
 }
 
 /// A trait expressing operations over the trie.
@@ -1008,6 +893,113 @@ pub trait StateProvider {
             }
         }
         BidsResult::Success { bids }
+    }
+
+    /// Direct auction interaction for all variations of bid management.
+    fn bidding(&self, request: BiddingRequest) -> BiddingResult {
+        let state_hash = request.state_hash();
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return BiddingResult::RootNotFound,
+            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let protocol_version = request.protocol_version();
+        let config = request.config();
+
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            Id::Transaction(request.transaction_hash()),
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return BiddingResult::Failure(tce);
+            }
+        };
+
+        let auction_method = request.auction_method();
+
+        let result = match auction_method {
+            AuctionMethod::ActivateBid {
+                validator_public_key,
+            } => runtime
+                .activate_bid(validator_public_key)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::AddBid {
+                public_key,
+                delegation_rate,
+                amount,
+                holds_epoch,
+            } => runtime
+                .add_bid(public_key, delegation_rate, amount, holds_epoch)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Api),
+            AuctionMethod::WithdrawBid { public_key, amount } => runtime
+                .withdraw_bid(public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Delegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                max_delegators_per_validator,
+                minimum_delegation_amount,
+                holds_epoch,
+            } => runtime
+                .delegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    max_delegators_per_validator,
+                    minimum_delegation_amount,
+                    holds_epoch,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Api),
+            AuctionMethod::Undelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+            } => runtime
+                .undelegate(delegator_public_key, validator_public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Redelegate {
+                delegator_public_key,
+                validator_public_key,
+                amount,
+                new_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .redelegate(
+                    delegator_public_key,
+                    validator_public_key,
+                    amount,
+                    new_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(ret) => BiddingResult::Success { ret, effects },
+            Err(tce) => BiddingResult::Failure(tce),
+        }
     }
 
     /// Gets the execution result checksum.

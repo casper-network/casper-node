@@ -792,14 +792,7 @@ where
             authorization_keys,
             auction_method,
         );
-        let ret = self.data_access_layer().bidding(bidding_req);
-        if let BiddingResult::Success {
-            post_state_hash, ..
-        } = ret
-        {
-            self.post_state_hash = Some(post_state_hash);
-        }
-        ret
+        self.data_access_layer().bidding(bidding_req)
     }
 
     /// Runs an [`ExecuteRequest`].

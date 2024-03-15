@@ -335,6 +335,21 @@ impl Transaction {
         }
     }
 
+    /// Is this a transaction that should be sent to the v1 execution engine?
+    pub fn is_v1_wasm(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => !deploy.is_transfer(),
+            Transaction::V1(v1) => match v1.target() {
+                TransactionTarget::Native => false,
+                TransactionTarget::Stored { runtime, .. }
+                | TransactionTarget::Session { runtime, .. } => {
+                    matches!(runtime, TransactionRuntime::VmCasperV1)
+                        && (v1.is_standard() || v1.is_install_or_upgrade())
+                }
+            },
+        }
+    }
+
     /// Authorization keys.
     pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
         match self {

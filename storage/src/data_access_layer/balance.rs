@@ -290,4 +290,14 @@ impl BalanceResult {
             _ => None,
         }
     }
+
+    /// Is the available balance sufficient to cover the cost?
+    pub fn is_sufficient(&self, cost: U512) -> bool {
+        match self {
+            BalanceResult::RootNotFound | BalanceResult::Failure(_) => false,
+            BalanceResult::Success {
+                available_balance, ..
+            } => available_balance >= &cost,
+        }
+    }
 }
