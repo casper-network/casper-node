@@ -28,6 +28,17 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 
+/// Default refund handling.
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
+    refund_ratio: Ratio::new_raw(99, 100),
+};
+
+/// Default fee handling.
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
+
+/// Default balance hold interval.
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
+
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -120,14 +131,16 @@ pub struct CoreConfig {
     pub allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub compute_rewards: bool,
-    /// Administrative accounts are a valid option for a private chain only.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub refund_handling: RefundHandling,
     /// Fee handling.
     pub fee_handling: FeeHandling,
+    /// How long does it take for a balance hold to fade away?
+    pub balance_hold_interval: TimeDiff,
+    /// Administrative accounts are a valid option for a private chain only.
+    //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub administrators: BTreeSet<PublicKey>,
 }
 
 impl CoreConfig {
@@ -202,6 +215,8 @@ impl CoreConfig {
             FeeHandling::Accumulate
         };
 
+        let balance_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
+
         CoreConfig {
             era_duration,
             minimum_era_height,
@@ -232,6 +247,7 @@ impl CoreConfig {
             compute_rewards,
             refund_handling,
             fee_handling,
+            balance_hold_interval,
         }
     }
 }
@@ -267,10 +283,9 @@ impl Default for CoreConfig {
             allow_unrestricted_transfers: true,
             compute_rewards: true,
             administrators: Default::default(),
-            refund_handling: RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(99, 100),
-            },
-            fee_handling: FeeHandling::PayToProposer,
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
+            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }
@@ -310,6 +325,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.administrators.to_bytes()?);
         buffer.extend(self.refund_handling.to_bytes()?);
         buffer.extend(self.fee_handling.to_bytes()?);
+        buffer.extend(self.balance_hold_interval.to_bytes()?);
         Ok(buffer)
     }
 
@@ -345,6 +361,7 @@ impl ToBytes for CoreConfig {
             + self.administrators.serialized_length()
             + self.refund_handling.serialized_length()
             + self.fee_handling.serialized_length()
+            + self.balance_hold_interval.serialized_length()
     }
 }
 
@@ -380,6 +397,7 @@ impl FromBytes for CoreConfig {
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (balance_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -410,6 +428,7 @@ impl FromBytes for CoreConfig {
             administrators: administrative_accounts,
             refund_handling,
             fee_handling,
+            balance_hold_interval,
         };
         Ok((config, remainder))
     }

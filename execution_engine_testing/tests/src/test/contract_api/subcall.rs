@@ -1,8 +1,7 @@
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs, StorageCosts, ENTITY_INITIAL_VERSION, U512};
 
@@ -41,7 +40,7 @@ fn should_charge_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(do_nothing_request).expect_success().commit();
 
@@ -129,7 +128,7 @@ fn should_add_all_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(add_zero_gas_from_session_request)
@@ -185,7 +184,7 @@ fn expensive_subcall_should_cost_more() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     // store the contracts first
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(store_do_nothing_request)

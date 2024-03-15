@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, addressable_entity::Weight, runtime_args, U512};
 
@@ -34,9 +34,7 @@ fn should_manage_associated_key() {
     )
     .build();
 
-    builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
-        .commit();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
 
     builder.exec(exec_request_1).expect_success().commit();
 

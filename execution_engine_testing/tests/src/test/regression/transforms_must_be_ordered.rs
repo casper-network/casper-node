@@ -5,7 +5,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
     execution::TransformKindV2, runtime_args, system::standard_payment, AddressableEntityHash, Key,
@@ -21,7 +21,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     const N_OPS: usize = 1000;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut rng = StdRng::seed_from_u64(0);
 

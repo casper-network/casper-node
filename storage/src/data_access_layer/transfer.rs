@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
 use casper_types::{
-    account::AccountHash, execution::Effects, BlockTime, Digest, Gas, InitiatorAddr,
-    ProtocolVersion, RuntimeArgs, TransactionHash, TransferAddr,
+    account::AccountHash, execution::Effects, Digest, Gas, InitiatorAddr, ProtocolVersion,
+    RuntimeArgs, TransactionHash, TransferAddr,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -22,8 +22,8 @@ pub struct TransferRequest {
     config: NativeRuntimeConfig,
     /// State root hash.
     state_hash: Digest,
-    /// Block time represented as a unix timestamp.
-    block_time: BlockTime,
+    /// Balance holds epoch.
+    holds_epoch: Option<u64>,
     /// Protocol version.
     protocol_version: ProtocolVersion,
     /// Transaction hash.
@@ -44,7 +44,7 @@ impl TransferRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: BlockTime,
+        holds_epoch: Option<u64>,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
@@ -56,7 +56,7 @@ impl TransferRequest {
         Self {
             config,
             state_hash,
-            block_time,
+            holds_epoch,
             protocol_version,
             transaction_hash,
             initiator,
@@ -71,7 +71,7 @@ impl TransferRequest {
     pub fn with_runtime_args(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: BlockTime,
+        holds_epoch: Option<u64>,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
@@ -83,7 +83,7 @@ impl TransferRequest {
         Self {
             config,
             state_hash,
-            block_time,
+            holds_epoch,
             protocol_version,
             transaction_hash,
             initiator,
@@ -121,9 +121,9 @@ impl TransferRequest {
         self.protocol_version
     }
 
-    /// Returns block time.
-    pub fn block_time(&self) -> BlockTime {
-        self.block_time
+    /// Returns holds epoch.
+    pub fn holds_epoch(&self) -> Option<u64> {
+        self.holds_epoch
     }
 
     /// Returns transaction hash.

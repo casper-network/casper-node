@@ -164,6 +164,20 @@ impl TransactionEntryPoint {
             _ => unreachable!(),
         }
     }
+
+    /// Does this entry point kind require holds epoch?
+    pub fn requires_holds_epoch(&self) -> bool {
+        match self {
+            TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Custom(_)
+            | TransactionEntryPoint::Transfer => true,
+            TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid => false,
+        }
+    }
 }
 
 impl Display for TransactionEntryPoint {

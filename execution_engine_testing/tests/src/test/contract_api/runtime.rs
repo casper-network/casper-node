@@ -4,7 +4,7 @@ use rand::Rng;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::runtime_context::RANDOM_BYTES_COUNT;
 use casper_storage::address_generator::ADDRESS_LENGTH;
@@ -42,7 +42,7 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
 #[test]
 fn should_return_different_random_bytes_on_different_phases() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let execute_request = {
         let mut rng = rand::thread_rng();
@@ -79,7 +79,7 @@ fn should_return_different_random_bytes_on_each_call() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let all_addresses: HashSet<_> = (0..RUNS)
         .map(|_| {
@@ -109,7 +109,7 @@ fn should_hash() {
     let mut rng = rand::thread_rng();
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for _ in 0..RUNS {
         let input: [u8; INPUT_LENGTH] = rng.gen();

@@ -8,7 +8,7 @@ use num_traits::One;
 
 use casper_types::{
     account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
-    WasmConfig, DEFAULT_REFUND_HANDLING,
+    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -40,13 +40,12 @@ pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-
-/// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
 /// Default protocol version.
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
+/// Default period for balance holds to decay (currently 24 hours).
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
@@ -82,6 +81,8 @@ pub struct EngineConfig {
     pub(crate) fee_handling: FeeHandling,
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
+    /// The period over which balance holds decay.
+    pub(crate) balance_hold_interval: TimeDiff,
 }
 
 impl Default for EngineConfig {
@@ -102,6 +103,7 @@ impl Default for EngineConfig {
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
             protocol_version: DEFAULT_PROTOCOL_VERSION,
+            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }
@@ -219,6 +221,7 @@ pub struct EngineConfigBuilder {
     refund_handling: Option<RefundHandling>,
     fee_handling: Option<FeeHandling>,
     compute_rewards: Option<bool>,
+    balance_hold_interval: Option<TimeDiff>,
 }
 
 impl EngineConfigBuilder {
@@ -348,6 +351,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets balance hold interval config option.
+    pub fn balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval = Some(balance_hold_interval);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_associated_keys = self
@@ -388,6 +397,9 @@ impl EngineConfigBuilder {
             .max_delegators_per_validator
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
+        let balance_hold_interval = self
+            .balance_hold_interval
+            .unwrap_or(DEFAULT_BALANCE_HOLD_INTERVAL);
 
         EngineConfig {
             max_associated_keys,
@@ -405,6 +417,7 @@ impl EngineConfigBuilder {
             vesting_schedule_period_millis,
             max_delegators_per_validator,
             compute_rewards,
+            balance_hold_interval,
         }
     }
 }

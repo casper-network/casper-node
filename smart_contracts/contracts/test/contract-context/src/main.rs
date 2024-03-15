@@ -97,7 +97,7 @@ fn create_entrypoints_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     entry_points.add_entry_point(contract_code_test);
 
@@ -106,7 +106,7 @@ fn create_entrypoints_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     entry_points.add_entry_point(session_code_caller_as_contract);
 

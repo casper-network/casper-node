@@ -26,7 +26,7 @@ pub enum FeeHandling {
     /// Burn the fees.
     Burn,
     /// No fees.
-    None,
+    NoFee,
 }
 
 impl FeeHandling {
@@ -42,7 +42,7 @@ impl ToBytes for FeeHandling {
             FeeHandling::PayToProposer => Ok(vec![FEE_HANDLING_PROPOSER_TAG]),
             FeeHandling::Accumulate => Ok(vec![FEE_HANDLING_ACCUMULATE_TAG]),
             FeeHandling::Burn => Ok(vec![FEE_HANDLING_BURN_TAG]),
-            FeeHandling::None => Ok(vec![FEE_HANDLING_NONE_TAG]),
+            FeeHandling::NoFee => Ok(vec![FEE_HANDLING_NONE_TAG]),
         }
     }
 
@@ -58,7 +58,7 @@ impl FromBytes for FeeHandling {
             FEE_HANDLING_PROPOSER_TAG => Ok((FeeHandling::PayToProposer, rem)),
             FEE_HANDLING_ACCUMULATE_TAG => Ok((FeeHandling::Accumulate, rem)),
             FEE_HANDLING_BURN_TAG => Ok((FeeHandling::Burn, rem)),
-            FEE_HANDLING_NONE_TAG => Ok((FeeHandling::None, rem)),
+            FEE_HANDLING_NONE_TAG => Ok((FeeHandling::NoFee, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

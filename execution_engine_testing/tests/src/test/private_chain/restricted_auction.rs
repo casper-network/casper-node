@@ -17,8 +17,9 @@ fn should_not_distribute_rewards_but_compute_next_set() {
 
     let mut builder = super::private_chain_setup();
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
 
     for _ in 0..3 {
         builder.distribute(
@@ -100,7 +101,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         era_info
     );
 
-    let total_supply_after_distribution = builder.total_supply(None);
+    let total_supply_after_distribution = builder.total_supply(None, protocol_version);
     assert_eq!(
         initial_supply, total_supply_after_distribution,
         "total supply of tokens should not increase after an auction is ran"

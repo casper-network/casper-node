@@ -10,10 +10,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
-        TransferRequest,
+        AuctionMethod, BalanceHoldRequest, BiddingRequest, BiddingResult, BlockRewardsRequest,
+        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
+        FeeRequest, FeeResult, FlushRequest, InsufficientBalanceHandling, PruneRequest,
+        PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -24,10 +24,12 @@ use casper_storage::{
 use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    system::mint::BalanceHoldAddrTag,
     ApprovalsHash, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2,
-    EraId, Gas, Key, ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionEntryPoint,
-    TransactionHash, TransactionHeader, U512,
+    EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, SystemConfig,
+    Transaction, TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
 };
 
 use super::{
@@ -62,7 +64,6 @@ pub fn execute_finalized_block(
     let protocol_version = chainspec.protocol_version();
     let activation_point_era_id = chainspec.protocol_config.activation_point.era_id();
     let prune_batch_size = chainspec.core_config.prune_batch_size;
-    let system_costs = chainspec.system_costs_config;
     let native_runtime_config = NativeRuntimeConfig::from_chainspec(chainspec);
 
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
@@ -72,8 +73,9 @@ pub fn execute_finalized_block(
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_artifacts: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
-    // Run any transactions that must be executed
     let block_time = BlockTime::new(executable_block.timestamp.millis());
+    let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
+
     let start = Instant::now();
     let txn_ids = executable_block
         .transactions
@@ -86,61 +88,9 @@ pub fn execute_finalized_block(
     let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
-    // Pay out fees, if relevant.
-    {
-        let fee_req = FeeRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-        );
-        match scratch_state.distribute_fees(fee_req) {
-            FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
-            FeeResult::Success {
-                //transfers: fee_transfers,
-                post_state_hash,
-                ..
-            } => {
-                //transfers.extend(fee_transfers);
-                state_root_hash = post_state_hash;
-                // TODO: looks like effects & transfer records are associated with the
-                // ExecutionResult struct which assumes they were caused by a
-                // deploy. however, systemic operations produce effects and transfer
-                // records also.
-            }
-        }
-    }
-
-    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
-    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
-    // at one point, they were going to be paid out per block (and might be in the future)
-    // but it ended up settling on per era. the behavior is driven by Some / None as sent
-    // thus if in future calling logic passes rewards per block it should just work as is.
-    if let Some(rewards) = &executable_block.rewards {
-        let rewards_req = BlockRewardsRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            rewards.clone(),
-        );
-        match scratch_state.distribute_block_rewards(rewards_req) {
-            BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
-            }
-            BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre))
-            }
-            BlockRewardsResult::Success {
-                post_state_hash, ..
-            } => {
-                state_root_hash = post_state_hash;
-            }
-        }
-    }
+    let system_costs = chainspec.system_costs_config;
+    let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
+    let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
 
     for txn in executable_block.transactions {
         let txn_hash = txn.hash();
@@ -148,6 +98,95 @@ pub fn execute_finalized_block(
             Transaction::Deploy(deploy) => TransactionHeader::from(deploy.header().clone()),
             Transaction::V1(v1_txn) => TransactionHeader::from(v1_txn.header().clone()),
         };
+
+        // NOTE: this is the actual adjusted cost   (gas limit * gas price)
+        // NOT the allowed computation limit        (gas limit)
+        let cost = match txn.gas_limit(&system_costs, gas_price) {
+            Ok(gas) => gas.value(),
+            Err(ite) => {
+                execution_artifacts.push(ExecutionArtifact::new(
+                    txn_hash,
+                    txn_header,
+                    ExecutionResult::V2(ExecutionResultV2::Failure {
+                        effects: Effects::new(),
+                        gas: Gas::zero(),
+                        transfers: vec![],
+                        error_message: format!("{:?}", ite),
+                    }),
+                    Messages::default(),
+                ));
+                debug!(%ite, "invalid transaction");
+                continue;
+            }
+        };
+
+        // handle payment per the chainspec determined fee setting
+        match chainspec.core_config.fee_handling {
+            FeeHandling::NoFee => {
+                // this is the "fee elimination" model...a BalanceHold for the full cost is placed
+                // on the initiator's purse.
+                let hold_amount = cost;
+                let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
+                    state_root_hash,
+                    protocol_version,
+                    txn.initiator_addr().into(),
+                    BalanceHoldAddrTag::Gas,
+                    hold_amount,
+                    block_time,
+                    chainspec.core_config.balance_hold_interval,
+                    insufficient_balance_handling,
+                ));
+                if hold_result.is_root_not_found() {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                let execution_result = {
+                    let hold_cost = Gas::zero(); // we don't charge for the hold itself.
+                    let hold_effects = hold_result.effects();
+                    if hold_result.is_fully_covered() {
+                        ExecutionResultV2::Success {
+                            effects: hold_effects,
+                            transfers: vec![],
+                            gas: hold_cost,
+                        }
+                    } else {
+                        let error_message = hold_result.error_message();
+                        debug!(%error_message);
+                        ExecutionResultV2::Failure {
+                            effects: hold_effects,
+                            transfers: vec![],
+                            error_message,
+                            gas: hold_cost,
+                        }
+                    }
+                };
+                execution_artifacts.push(ExecutionArtifact::new(
+                    txn_hash,
+                    txn_header.clone(),
+                    ExecutionResult::V2(execution_result),
+                    Messages::default(),
+                ));
+                if !hold_result.is_fully_covered() {
+                    continue;
+                }
+            }
+            FeeHandling::PayToProposer => {
+                // this is the current mainnet mechanism...pay up front
+                // finalize at the end
+                // we have the proposer of this block...just deposit to them
+            }
+            FeeHandling::Accumulate => {
+                // this is a variation on PayToProposer that was added for
+                // for some private networks...the fees are all accumulated
+                // and distributed to administrative accounts as part of fee
+                // distribution. So, we just send the payment to the accumulator
+                // purse and move on.
+            }
+            FeeHandling::Burn => {
+                // this is a new variation that is not currently supported.
+                // this is for future use...but it is very simple...the
+                // fees are simply burned, lowering total supply.
+            }
+        }
 
         let request = UserRequest::new(
             state_root_hash,
@@ -219,14 +258,68 @@ pub fn execute_finalized_block(
         ));
     }
 
+    // Pay out fees, if relevant.  This auto-commits
+    {
+        let fee_req = FeeRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            holds_epoch,
+        );
+        match scratch_state.distribute_fees(fee_req) {
+            FeeResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
+            FeeResult::Success {
+                //transfers: fee_transfers,
+                post_state_hash,
+                ..
+            } => {
+                //transfers.extend(fee_transfers);
+                state_root_hash = post_state_hash;
+                // TODO: looks like effects & transfer records are associated with the
+                // ExecutionResult struct which assumes they were caused by a
+                // deploy. however, systemic operations produce effects and transfer
+                // records also.
+            }
+        }
+    }
+
+    // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
+    // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
+    // at one point, they were going to be paid out per block (and might be in the future)
+    // but it ended up settling on per era. the behavior is driven by Some / None
+    // thus if in future the calling logic passes rewards per block it should just work as is.
+    if let Some(rewards) = &executable_block.rewards {
+        let rewards_req = BlockRewardsRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+            rewards.clone(),
+        );
+        match scratch_state.distribute_block_rewards(rewards_req) {
+            BlockRewardsResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            BlockRewardsResult::Failure(bre) => {
+                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+            }
+            BlockRewardsResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
+        }
+    }
+
     // Write the transaction approvals' and execution results' checksums to global state.
     let execution_results_checksum = compute_execution_results_checksum(
         execution_artifacts
             .iter()
             .map(|artifact| &artifact.execution_result),
     )?;
-
-    // handle checksum registry
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
     checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
@@ -672,6 +765,11 @@ impl UserRequest {
         let txn_hash = txn.hash();
         let initiator_addr = txn.initiator_addr();
         let authorization_keys = txn.signers();
+        let holds_epoch = Some(
+            block_time
+                .value()
+                .saturating_sub(native_runtime_config.balance_hold_interval()),
+        );
 
         // Return early for native deploy, i.e. a transfer.
         let v1_txn = match txn {
@@ -682,7 +780,7 @@ impl UserRequest {
                 let transfer_req = TransferRequest::with_runtime_args(
                     native_runtime_config,
                     state_hash,
-                    block_time,
+                    holds_epoch,
                     protocol_version,
                     txn_hash,
                     initiator_addr,
@@ -704,7 +802,7 @@ impl UserRequest {
                 let transfer_req = TransferRequest::with_runtime_args(
                     native_runtime_config,
                     state_hash,
-                    block_time,
+                    holds_epoch,
                     protocol_version,
                     txn_hash,
                     initiator_addr,
@@ -714,12 +812,15 @@ impl UserRequest {
                 );
                 return Ok(UserRequest::Mint(transfer_req));
             }
-            TransactionEntryPoint::AddBid => AuctionMethod::new_add_bid(v1_txn.args())?,
+            TransactionEntryPoint::AddBid => {
+                AuctionMethod::new_add_bid(v1_txn.args(), holds_epoch)?
+            }
             TransactionEntryPoint::WithdrawBid => AuctionMethod::new_withdraw_bid(v1_txn.args())?,
             TransactionEntryPoint::Delegate => AuctionMethod::new_delegate(
                 v1_txn.args(),
                 native_runtime_config.max_delegators_per_validator(),
                 native_runtime_config.minimum_delegation_amount(),
+                holds_epoch,
             )?,
             TransactionEntryPoint::Undelegate => AuctionMethod::new_undelegate(v1_txn.args())?,
             TransactionEntryPoint::Redelegate => AuctionMethod::new_redelegate(

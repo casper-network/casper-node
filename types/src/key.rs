@@ -31,6 +31,7 @@ use rand::{
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use tracing::warn;
 
 #[cfg(any(feature = "testing", test))]
 use crate::TransferV2Addr;
@@ -48,7 +49,10 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     package::PackageHash,
-    system::auction::{BidAddr, BidAddrTag},
+    system::{
+        auction::{BidAddr, BidAddrTag},
+        mint::BalanceHoldAddr,
+    },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransactionHash, TransactionV1Hash,
     TransferAddr, TransferFromStrError, TransferV1Addr, TRANSFER_V1_ADDR_LENGTH, UREF_ADDR_LENGTH,
@@ -59,6 +63,7 @@ const DEPLOY_INFO_PREFIX: &str = "deploy-";
 const LEGACY_TRANSFER_PREFIX: &str = "transfer-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
+const BALANCE_HOLD_PREFIX: &str = "balance-hold-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
@@ -155,14 +160,15 @@ pub enum KeyTag {
     Message = 19,
     NamedKey = 20,
     BlockMessageCount = 21,
-    TransactionInfo = 22,
-    Transfer = 23,
+    BalanceHold = 22,
+    TransactionInfo = 23,
+    Transfer = 24,
 }
 
 impl KeyTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=23) {
+        match rng.gen_range(0..=24) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -185,8 +191,9 @@ impl KeyTag {
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
             21 => KeyTag::BlockMessageCount,
-            22 => KeyTag::TransactionInfo,
-            23 => KeyTag::Transfer,
+            22 => KeyTag::BalanceHold,
+            23 => KeyTag::TransactionInfo,
+            24 => KeyTag::Transfer,
             _ => panic!(),
         }
     }
@@ -217,6 +224,7 @@ impl Display for KeyTag {
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
+            KeyTag::BalanceHold => write!(f, "BalanceHold"),
             KeyTag::TransactionInfo => write!(f, "TransactionInfo"),
             KeyTag::Transfer => write!(f, "Transfer"),
         }
@@ -266,6 +274,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
             tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
+            tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
             tag if tag == KeyTag::TransactionInfo as u8 => KeyTag::TransactionInfo,
             tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
             _ => return Err(Error::Formatting),
@@ -326,6 +335,8 @@ pub enum Key {
     NamedKey(NamedKeyAddr),
     /// A `Key` under which the total number of emitted messages in the last block is stored.
     BlockMessageCount,
+    /// A `Key` under which a hold on a purse balance is stored.
+    BalanceHold(BalanceHoldAddr),
     /// A `Key` under which info about a transaction is stored.
     TransactionInfo(TransactionHash),
     /// A `Key` under which a versioned transfer is stored.
@@ -398,6 +409,8 @@ pub enum FromStrError {
     NamedKey(String),
     /// BlockMessageCount key parse error.
     BlockMessageCount(String),
+    /// Balance hold parse error.
+    BalanceHold(String),
     /// TransactionInfo parse error.
     TransactionInfo(String),
     /// Transfer parse error.
@@ -479,6 +492,9 @@ impl Display for FromStrError {
             FromStrError::BlockMessageCount(error) => {
                 write!(f, "block-message-count-key form string error: {}", error)
             }
+            FromStrError::BalanceHold(error) => {
+                write!(f, "balance-hold from string error: {}", error)
+            }
             FromStrError::TransactionInfo(error) => {
                 write!(f, "transaction-info-key from string error: {}", error)
             }
@@ -517,6 +533,7 @@ impl Key {
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
             Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
+            Key::BalanceHold(_) => String::from("Key::BalanceHold"),
             Key::TransactionInfo(_) => String::from("Key::TransactionInfo"),
             Key::Transfer(_) => String::from("Key::Transfer"),
         }
@@ -631,6 +648,10 @@ impl Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BalanceHold(balance_hold_addr) => {
+                let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
+                format!("{}{}", BALANCE_HOLD_PREFIX, tail)
+            }
             Key::TransactionInfo(txn_hash) => match txn_hash {
                 TransactionHash::Deploy(deploy_hash) => {
                     format!(
@@ -710,6 +731,12 @@ impl Key {
             let era_id = EraId::from_str(era_id_str)
                 .map_err(|error| FromStrError::EraInfo(error.to_string()))?;
             return Ok(Key::EraInfo(era_id));
+        }
+
+        // note: BALANCE_HOLD must come before BALANCE due to overlapping head (balance-)
+        if let Some(hex) = input.strip_prefix(BALANCE_HOLD_PREFIX) {
+            let balance_hold_addr = BalanceHoldAddr::from_formatted_string(hex)?;
+            return Ok(Key::BalanceHold(balance_hold_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
@@ -985,6 +1012,16 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner `BalanceHoldAddr` if `self` is of type
+    /// [`Key::BalanceHold`], otherwise returns `None`.
+    pub fn as_balance_hold(&self) -> Option<&BalanceHoldAddr> {
+        if let Self::BalanceHold(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
     /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
     pub fn into_uref(self) -> Option<URef> {
         match self {
@@ -1121,7 +1158,7 @@ impl Key {
         }
     }
 
-    /// Returns if they inner Key is for a system contract entity.
+    /// Returns if the inner address is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
         if let Self::AddressableEntity(entity_addr) = self {
             return match entity_addr.tag() {
@@ -1154,6 +1191,104 @@ impl Key {
         } else {
             false
         }
+    }
+
+    /// Is the record under this key readable by the entity corresponding to the imputed address?
+    pub fn is_readable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can read everything
+            return true;
+        }
+        let ret = match self {
+            Key::BidAddr(_) => {
+                // all bids are public information
+                true
+            }
+            Key::URef(uref) => {
+                // uref's require explicit permissions
+                uref.is_readable()
+            }
+            Key::SystemEntityRegistry | Key::Package(_) => {
+                // the system entities and all packages are public info
+                true
+            }
+            Key::Unbond(account_hash) => {
+                // and an account holder can read their own account record
+                entity_addr.tag() == EntityKindTag::Account
+                    && entity_addr.value() == account_hash.value()
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can read its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            Key::ByteCode(_)
+            | Key::Account(_)
+            | Key::Hash(_)
+            | Key::AddressableEntity(_)
+            | Key::Balance(_)
+            | Key::BalanceHold(_)
+            | Key::Dictionary(_)
+            | Key::Message(_)
+            | Key::BlockMessageCount => true,
+            _ => false,
+        };
+        if !ret {
+            let reading_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?reading_entity_key, attempted_key=?self,  "attempt to read without permission")
+        }
+        ret
+    }
+
+    /// Is the record under this key addable by the entity corresponding to the imputed address?
+    pub fn is_addable(&self, entity_addr: &EntityAddr) -> bool {
+        // unlike readable / writeable which are universally supported,
+        //  only some data types support commutative add / extension
+        let ret = match self {
+            Key::URef(uref) => uref.is_addable(),
+            Key::AddressableEntity(addr_entity_addr) => {
+                // an entity can extend itself (only associated keys, currently)
+                entity_addr == addr_entity_addr
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can extend its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // other data types do not support commutative addition / extension
+                let adding_entity_key = Key::AddressableEntity(*entity_addr);
+                warn!(?adding_entity_key, attempted_key=?self,  "attempt to add on an unsupported data type");
+                return false; // we want the above more explicit warn message, not both messages.
+            }
+        };
+        if !ret {
+            let adding_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?adding_entity_key, attempted_key=?self,  "attempt to add without permission");
+        }
+        ret
+    }
+
+    /// Is the record under this key writeable by the entity corresponding to the imputed address?
+    pub fn is_writeable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can write everything
+            return true;
+        }
+        let ret = match self {
+            Key::URef(uref) => uref.is_writeable(),
+            Key::NamedKey(named_key_addr) => {
+                // an entity can write to its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // only the system can write other kinds of records
+                false
+            }
+        };
+        if !ret {
+            let writing_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?writing_entity_key, attempted_key=?self,  "attempt to write without permission")
+        }
+        ret
     }
 }
 
@@ -1229,6 +1364,9 @@ impl Display for Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BalanceHold(balance_hold_addr) => {
+                write!(f, "Key::BalanceHold({})", balance_hold_addr)
+            }
             Key::TransactionInfo(TransactionHash::Deploy(deploy_hash)) => write!(
                 f,
                 "Key::TransactionInfo(deploy-{})",
@@ -1280,6 +1418,7 @@ impl Tagged<KeyTag> for Key {
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
             Key::BlockMessageCount => KeyTag::BlockMessageCount,
+            Key::BalanceHold(_) => KeyTag::BalanceHold,
             Key::TransactionInfo(_) => KeyTag::TransactionInfo,
             Key::Transfer(_) => KeyTag::Transfer,
         }
@@ -1399,6 +1538,9 @@ impl ToBytes for Key {
                 KEY_ID_SERIALIZED_LENGTH + named_key_addr.serialized_length()
             }
             Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
+            Key::BalanceHold(balance_hold_addr) => {
+                U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+            }
             Key::TransactionInfo(txn_hash) => {
                 KEY_ID_SERIALIZED_LENGTH + txn_hash.serialized_length()
             }
@@ -1438,6 +1580,7 @@ impl ToBytes for Key {
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
+            Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
             Key::TransactionInfo(txn_hash) => txn_hash.write_bytes(writer),
             Key::Transfer(addr) => addr.write_bytes(writer),
         }
@@ -1536,6 +1679,10 @@ impl FromBytes for Key {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::BlockMessageCount, rem))
             }
+            KeyTag::BalanceHold => {
+                let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
+                Ok((Key::BalanceHold(balance_hold_addr), rem))
+            }
             KeyTag::TransactionInfo => {
                 let (txn_hash, rem) = TransactionHash::from_bytes(remainder)?;
                 Ok((Key::TransactionInfo(txn_hash), rem))
@@ -1575,6 +1722,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
         Key::BlockMessageCount => unimplemented!(),
+        Key::BalanceHold(_) => unimplemented!(),
         Key::TransactionInfo(_) => unimplemented!(),
         Key::Transfer(_) => unimplemented!(),
     }
@@ -1606,12 +1754,13 @@ impl Distribution<Key> for Standard {
             19 => Key::Message(rng.gen()),
             20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
             21 => Key::BlockMessageCount,
-            22 => Key::TransactionInfo(if rng.gen() {
+            22 => Key::BalanceHold(rng.gen()),
+            23 => Key::TransactionInfo(if rng.gen() {
                 TransactionHash::Deploy(DeployHash::from_raw(rng.gen()))
             } else {
                 TransactionHash::V1(TransactionV1Hash::from_raw(rng.gen()))
             }),
-            23 => Key::Transfer(if rng.gen() {
+            24 => Key::Transfer(if rng.gen() {
                 TransferAddr::V1(TransferV1Addr::new(rng.gen()))
             } else {
                 TransferAddr::V2(TransferV2Addr::new(rng.gen()))
@@ -1649,6 +1798,7 @@ mod serde_helpers {
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
         BlockMessageCount,
+        BalanceHold(&'a BalanceHoldAddr),
         TransactionInfo(&'a TransactionHash),
         Transfer(&'a TransferAddr),
     }
@@ -1678,6 +1828,7 @@ mod serde_helpers {
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
         BlockMessageCount,
+        BalanceHold(BalanceHoldAddr),
         TransactionInfo(TransactionHash),
         Transfer(TransferAddr),
     }
@@ -1711,6 +1862,9 @@ mod serde_helpers {
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key_addr) => BinarySerHelper::NamedKey(named_key_addr),
                 Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
+                Key::BalanceHold(balance_hold_addr) => {
+                    BinarySerHelper::BalanceHold(balance_hold_addr)
+                }
                 Key::TransactionInfo(txn_hash) => BinarySerHelper::TransactionInfo(txn_hash),
                 Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
             }
@@ -1746,6 +1900,9 @@ mod serde_helpers {
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
                 BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
+                BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
+                    Key::BalanceHold(balance_hold_addr)
+                }
                 BinaryDeserHelper::TransactionInfo(txn_hash) => Key::TransactionInfo(txn_hash),
                 BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
             }
@@ -1784,7 +1941,7 @@ mod tests {
         account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
         bytesrepr::{Error, FromBytes},
         uref::UREF_FORMATTED_STRING_PREFIX,
-        AccessRights, URef,
+        AccessRights, BlockTime, URef,
     };
 
     const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
@@ -1835,6 +1992,8 @@ mod tests {
         [43; 32],
     ));
     const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
+    const BALANCE_HOLD: Key =
+        Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
     const TRANSACTION_INFO_DEPLOY_KEY: Key =
         Key::TransactionInfo(TransactionHash::Deploy(DeployHash::from_raw([42; 32])));
     const TRANSACTION_INFO_V1_KEY: Key =
@@ -1870,6 +2029,7 @@ mod tests {
         MESSAGE_KEY,
         NAMED_KEY,
         BLOCK_MESSAGE_COUNT,
+        BALANCE_HOLD,
         TRANSACTION_INFO_V1_KEY,
         TRANSFER_V1_KEY,
         TRANSFER_V2_KEY,
@@ -2357,6 +2517,15 @@ mod tests {
             Key::from_formatted_str(no_prefix).unwrap_err().to_string(),
             "unknown prefix for key"
         );
+
+        let balance_hold_err = Key::from_formatted_str(BALANCE_HOLD_PREFIX)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            balance_hold_err.starts_with("balance-hold from string error: "),
+            "{}",
+            bid_addr_err
+        );
     }
 
     #[test]
@@ -2433,7 +2602,9 @@ mod tests {
             nines.into(),
             1,
         )));
+        round_trip(&Key::NamedKey(NamedKeyAddr::default()));
         round_trip(&Key::BlockMessageCount);
+        round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
         round_trip(&Key::TransactionInfo(TransactionHash::Deploy(
             DeployHash::from_raw(zeros),
         )));

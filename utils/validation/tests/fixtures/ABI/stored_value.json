@@ -61,7 +61,7 @@
                   ],
                   "ret": "Unit",
                   "access": "Public",
-                  "entry_point_type": "AddressableEntity"
+                  "entry_point_type": "Called"
                 }
               }
             ],

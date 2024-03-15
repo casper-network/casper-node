@@ -4,14 +4,14 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::SystemTime};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::BalanceRequest;
+use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
@@ -80,6 +80,7 @@ pub struct TransactionAcceptor {
     administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
     metrics: metrics::Metrics,
+    balance_hold_interval: u64,
 }
 
 impl TransactionAcceptor {
@@ -103,6 +104,7 @@ impl TransactionAcceptor {
             max_associated_keys: chainspec.core_config.max_associated_keys,
             administrators,
             metrics: metrics::Metrics::new(registry)?,
+            balance_hold_interval: chainspec.core_config.balance_hold_interval.millis(),
         })
     }
 
@@ -127,7 +129,7 @@ impl TransactionAcceptor {
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
             Transaction::V1(txn) => txn
                 .is_config_compliant(
                     &self.chain_name,
@@ -137,7 +139,7 @@ impl TransactionAcceptor {
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
 
         if let Err(error) = is_config_compliant {
@@ -245,10 +247,17 @@ impl TransactionAcceptor {
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
                 let protocol_version = block_header.protocol_version();
+                let hold_interval = self.balance_hold_interval;
+                let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+                let balance_handling = BalanceHandling::Available {
+                    hold_interval,
+                    block_time,
+                };
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     protocol_version,
                     entity.main_purse(),
+                    balance_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)
@@ -687,8 +696,12 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
     ) -> Effects<Event> {
         let is_valid = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Error::from),
-            Transaction::V1(txn) => txn.verify().map_err(Error::from),
+            Transaction::Deploy(deploy) => deploy
+                .is_valid()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
+            Transaction::V1(txn) => txn
+                .verify()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
         if let Err(error) = is_valid {
             return self.reject_transaction(effect_builder, *event_metadata, error);
@@ -823,6 +836,10 @@ impl TransactionAcceptor {
 impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
     type Event = Event;
 
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -903,10 +920,6 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
     }
 }
 

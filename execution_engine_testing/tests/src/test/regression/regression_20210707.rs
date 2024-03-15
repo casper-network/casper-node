@@ -2,8 +2,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     engine_state::{Error as CoreError, ExecuteRequest},
@@ -87,7 +87,7 @@ fn assert_forged_uref_error(error: CoreError, forged_uref: URef) {
 fn should_transfer_funds_from_contract_to_new_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -127,7 +127,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
 fn should_transfer_funds_from_contract_to_existing_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -172,7 +172,7 @@ fn should_transfer_funds_from_contract_to_existing_account() {
 fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -209,7 +209,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
 fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -263,7 +263,7 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
 fn should_not_transfer_funds_into_bob_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -308,7 +308,7 @@ fn should_not_transfer_funds_into_bob_purse() {
 fn should_not_transfer_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -349,7 +349,7 @@ fn should_not_transfer_from_hardcoded_purse() {
 fn should_not_refund_to_bob_and_charge_alice() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -407,7 +407,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
 fn should_not_charge_alice_for_execution() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -465,7 +465,7 @@ fn should_not_charge_alice_for_execution() {
 fn should_not_charge_for_execution_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 

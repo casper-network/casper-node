@@ -20,6 +20,7 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+
 extern crate core;
 
 mod access_rights;
@@ -120,8 +121,8 @@ pub use chainspec::{
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
     MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig,
     RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
-    TransactionV1Config, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_REFUND_HANDLING,
+    TransactionV1Config, ValidatorConfig, WasmConfig, DEFAULT_BALANCE_HOLD_INTERVAL,
+    DEFAULT_FEE_HANDLING, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -134,10 +135,12 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{
@@ -179,16 +182,19 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[cfg(any(feature = "std", test))]
+pub use transaction::GasLimited;
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployConfigFailure,
-    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
-    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
-    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
-    TransactionConfigFailure, TransactionEntryPoint, TransactionHash, TransactionHeader,
-    TransactionId, TransactionInvocationTarget, TransactionRuntime, TransactionScheduling,
-    TransactionSessionKind, TransactionTarget, TransactionV1, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Categorized as CategorizedTransaction,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
+    InitiatorAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg,
+    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
+    TransactionTarget, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

@@ -100,7 +100,10 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     }
 
     let payment_purse = get_payment_purse(provider)?;
-    let mut payment_amount = match provider.balance(payment_purse)? {
+    let mut payment_amount = match provider.available_balance(
+        payment_purse,
+        None, // the internal payment purse does not have holds
+    )? {
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
@@ -199,7 +202,7 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
             provider.write_balance(payment_purse, U512::zero())?;
             provider.reduce_total_supply(fee)?;
         }
-        FeeHandling::None => {
+        FeeHandling::NoFee => {
             // noop
         }
     }
@@ -241,13 +244,15 @@ where
 
     // Distribute accumulation purse balance into all administrators
     match provider.fee_handling() {
-        FeeHandling::PayToProposer | FeeHandling::Burn | FeeHandling::None => return Ok(()),
+        FeeHandling::PayToProposer | FeeHandling::Burn | FeeHandling::NoFee => return Ok(()),
         FeeHandling::Accumulate => {}
     }
 
     let administrative_accounts = provider.administrative_accounts().clone();
     let accumulation_purse = get_accumulation_purse(provider)?;
-    let accumulated_balance = provider.balance(accumulation_purse)?.unwrap_or_default();
+    let accumulated_balance = provider
+        .available_balance(accumulation_purse, None)?
+        .unwrap_or_default();
     let reward_recipients = U512::from(administrative_accounts.len());
 
     if let Some(reward_amount) = accumulated_balance.checked_div(reward_recipients) {

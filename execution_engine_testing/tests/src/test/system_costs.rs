@@ -5,8 +5,8 @@ use casper_engine_test_support::{
     utils, ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
     runtime_args,
@@ -42,8 +42,8 @@ const UPDATED_CALL_CONTRACT_COST: HostFunctionCost = 12_345;
 const NEW_ADD_BID_COST: u32 = 2_500_000_000;
 const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 const NEW_DELEGATE_COST: u32 = 2_500_000_000;
-const NEW_UNDELEGATE_COST: u32 = 2_500_000_000;
-const NEW_REDELEGATE_COST: u32 = 2_500_000_000;
+const NEW_UNDELEGATE_COST: u32 = NEW_DELEGATE_COST;
+const NEW_REDELEGATE_COST: u32 = NEW_DELEGATE_COST;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
 const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
@@ -62,7 +62,7 @@ const ARG_AMOUNT: &str = "amount";
 fn add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -154,7 +154,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
 #[test]
 fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -483,6 +483,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         balance_after,
         balance_before - U512::from(BID_AMOUNT) - transaction_fee_1,
     );
+
     assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
 
     // Redelegate bid
@@ -549,7 +550,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 fn mint_transfer_has_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -617,7 +618,7 @@ fn mint_transfer_has_expected_costs() {
 fn should_charge_for_erroneous_system_contract_calls() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
@@ -737,7 +738,12 @@ fn should_charge_for_erroneous_system_contract_calls() {
             entrypoint,
             expected_cost,
         );
-        assert_eq!(builder.last_exec_gas_cost().value(), call_cost);
+        assert_eq!(
+            builder.last_exec_gas_cost().value(),
+            call_cost,
+            "{:?}",
+            entrypoint
+        );
     }
 }
 
@@ -746,7 +752,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -786,7 +792,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let new_opcode_costs = OpcodeCosts {
         bit: 0,

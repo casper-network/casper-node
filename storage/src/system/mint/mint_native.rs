@@ -30,7 +30,7 @@ where
     }
 
     fn get_immediate_caller(&self) -> Option<Caller> {
-        let caller = Caller::Session {
+        let caller = Caller::Initiator {
             account_hash: PublicKey::System.to_account_hash(),
         };
         Some(caller)
@@ -170,11 +170,15 @@ where
         Ok(())
     }
 
-    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
+    fn available_balance(
+        &mut self,
+        uref: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
         match self
             .tracking_copy()
             .borrow_mut()
-            .get_purse_balance(Key::Balance(uref.addr()))
+            .get_available_balance(Key::Balance(uref.addr()), holds_epoch)
         {
             Ok(motes) => Ok(Some(motes.value())),
             Err(_) => Err(Error::Storage),

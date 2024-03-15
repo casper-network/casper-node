@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_SECRET_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_SECRET_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{Error as StateError, ExecuteRequest},
@@ -21,9 +21,7 @@ const BLOCK_TIME: BlockTime = BlockTime::new(10);
 #[test]
 fn should_allow_add_contract_version_via_deploy() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
-        .commit();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
 
     let deploy_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT, RuntimeArgs::new())
@@ -34,9 +32,7 @@ fn should_allow_add_contract_version_via_deploy() {
 
 fn try_add_contract_version(kind: TransactionSessionKind, should_succeed: bool) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
-        .commit();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
 
     let module_bytes = utils::read_wasm_file(CONTRACT);
 

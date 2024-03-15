@@ -43,16 +43,7 @@ impl Gas {
         self.0
     }
 
-    /// Returns the cost to be charged.
-    pub fn cost(&self, is_system: bool) -> Self {
-        if is_system {
-            return Gas::new(U512::zero());
-        }
-        *self
-    }
-
-    /// Converts the given `Motes` to `Gas` by dividing them by `motes_per_unit_of_gas`, rounding
-    /// down.
+    /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
     ///
     /// Returns `None` if `motes_per_unit_of_gas == 0`.
     pub fn from_motes(motes: Motes, motes_per_unit_of_gas: u64) -> Option<Self> {

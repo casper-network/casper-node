@@ -91,6 +91,7 @@ pub trait MintProvider {
         target: URef,
         amount: U512,
         id: Option<u64>,
+        holds_epoch: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error>;
 
     /// Mint `amount` new token into `existing_purse`.
@@ -102,7 +103,11 @@ pub trait MintProvider {
     fn create_purse(&mut self) -> Result<URef, Error>;
 
     /// Gets purse balance.
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error>;
 
     /// Reads the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error>;

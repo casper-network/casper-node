@@ -18,7 +18,7 @@ pub const BLOCKTIME_SERIALIZED_LENGTH: usize = U64_SERIALIZED_LENGTH;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[derive(
-    Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Clone, Copy, Default, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize,
 )]
 pub struct BlockTime(u64);
 

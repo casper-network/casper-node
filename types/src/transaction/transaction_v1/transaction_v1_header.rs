@@ -18,7 +18,7 @@ use crate::{
     Digest, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{TransactionConfig, TransactionV1ConfigFailure, TransactionV1Hash};
+use crate::{InvalidTransactionV1, TransactionConfig, TransactionV1Hash};
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -117,7 +117,7 @@ impl TransactionV1Header {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
         transaction_hash: &TransactionV1Hash,
-    ) -> Result<(), TransactionV1ConfigFailure> {
+    ) -> Result<(), InvalidTransactionV1> {
         if self.ttl() > config.max_ttl {
             debug!(
                 %transaction_hash,
@@ -125,7 +125,7 @@ impl TransactionV1Header {
                 max_ttl = %config.max_ttl,
                 "transaction ttl excessive"
             );
-            return Err(TransactionV1ConfigFailure::ExcessiveTimeToLive {
+            return Err(InvalidTransactionV1::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: self.ttl(),
             });
@@ -136,7 +136,7 @@ impl TransactionV1Header {
                 %transaction_hash, transaction_header = %self, %at,
                 "transaction timestamp in the future"
             );
-            return Err(TransactionV1ConfigFailure::TimestampInFuture {
+            return Err(InvalidTransactionV1::TimestampInFuture {
                 validation_timestamp: at,
                 timestamp_leeway,
                 got: self.timestamp(),
@@ -158,15 +158,6 @@ impl TransactionV1Header {
 }
 
 impl ToBytes for TransactionV1Header {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.chain_name.write_bytes(writer)?;
-        self.timestamp.write_bytes(writer)?;
-        self.ttl.write_bytes(writer)?;
-        self.body_hash.write_bytes(writer)?;
-        self.pricing_mode.write_bytes(writer)?;
-        self.initiator_addr.write_bytes(writer)
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -180,6 +171,15 @@ impl ToBytes for TransactionV1Header {
             + self.body_hash.serialized_length()
             + self.pricing_mode.serialized_length()
             + self.initiator_addr.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.chain_name.write_bytes(writer)?;
+        self.timestamp.write_bytes(writer)?;
+        self.ttl.write_bytes(writer)?;
+        self.body_hash.write_bytes(writer)?;
+        self.pricing_mode.write_bytes(writer)?;
+        self.initiator_addr.write_bytes(writer)
     }
 }
 

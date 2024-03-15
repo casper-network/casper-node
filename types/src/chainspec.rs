@@ -17,6 +17,7 @@ mod transaction_config;
 mod upgrade_config;
 mod vm_config;
 
+#[cfg(any(feature = "std", test))]
 use std::{fmt::Debug, sync::Arc};
 
 #[cfg(feature = "datasize")]
@@ -30,7 +31,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -38,12 +39,18 @@ pub use accounts_config::{
 };
 pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
-pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
-pub use fee_handling::FeeHandling;
-#[cfg(any(feature = "std", test))]
-pub use genesis_config::{GenesisConfig, GenesisConfigBuilder, DEFAULT_REFUND_HANDLING};
 #[cfg(any(feature = "testing", test))]
-pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING};
+pub use core_config::DEFAULT_FEE_HANDLING;
+#[cfg(any(feature = "std", test))]
+pub use core_config::DEFAULT_REFUND_HANDLING;
+pub use core_config::{
+    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_BALANCE_HOLD_INTERVAL,
+};
+pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::DEFAULT_AUCTION_DELAY;
+#[cfg(any(feature = "std", test))]
+pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
@@ -183,6 +190,14 @@ impl Chainspec {
             chainspec_registry,
             fee_handling,
         ))
+    }
+
+    /// Returns balance hold epoch based upon configured hold interval, calculated from the imputed
+    /// timestamp.
+    pub fn balance_holds_epoch(&self, timestamp: Timestamp) -> u64 {
+        timestamp
+            .millis()
+            .saturating_sub(self.core_config.balance_hold_interval.millis())
     }
 }
 

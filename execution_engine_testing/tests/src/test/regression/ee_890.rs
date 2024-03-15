@@ -2,7 +2,7 @@ use casper_wasm::{self, builder};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
 
@@ -52,7 +52,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
     let message = builder.get_error_message().expect("should fail");
@@ -80,7 +80,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
     let message = builder.get_error_message().expect("should fail");

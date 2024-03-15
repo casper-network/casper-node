@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{Error, WASMLESS_TRANSFER_FIXED_GAS_PRICE};
 use casper_storage::{data_access_layer::TransferRequest, system::transfer::TransferError};
@@ -12,7 +11,7 @@ use casper_types::{
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
     builder
 }
 

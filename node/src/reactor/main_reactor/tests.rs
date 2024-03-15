@@ -577,7 +577,6 @@ impl TestFixture {
             .storage
             .read_highest_block()
             .expect("should have block");
-
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
@@ -1713,18 +1712,18 @@ async fn run_redelegate_bid_network() {
     );
 
     deploy.sign(&alice_secret_key);
-    let txn = Transaction::Deploy(deploy);
-    let txn_hash = txn.hash();
+    let transaction = Transaction::Deploy(deploy);
+    let transaction_hash = transaction.hash();
 
     // Inject the transaction and run the network until executed.
-    fixture.inject_transaction(txn).await;
+    fixture.inject_transaction(transaction).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&transaction_hash, TEN_SECS)
         .await;
 
     // Ensure execution succeeded and that there is a Prune transform for the bid's key.
     fixture
-        .successful_execution_transforms(&txn_hash)
+        .successful_execution_transforms(&transaction_hash)
         .iter()
         .find(|transform| match transform.kind() {
             TransformKindV2::Prune(prune_key) => prune_key == &bid_key,

@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    LmdbWasmTestBuilder, TransferRequestBuilder, PRODUCTION_RUN_GENESIS_REQUEST,
+    LmdbWasmTestBuilder, TransferRequestBuilder, LOCAL_GENESIS_REQUEST,
 };
 use casper_storage::tracking_copy::{self, ValidationError};
 use casper_types::{
@@ -22,9 +22,12 @@ static TRANSFER_AMOUNT_1: Lazy<U512> = Lazy::new(|| U512::from(100_000_000));
 fn get_balance_should_work() {
     let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR).build();
+    let block_time = 1_000_000;
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR)
+        .with_block_time(block_time)
+        .build();
 
     builder
         .transfer_and_commit(transfer_request)
@@ -36,7 +39,8 @@ fn get_balance_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result = builder.get_purse_balance_result(protocol_version, alice_main_purse);
+    let alice_balance_result =
+        builder.get_purse_balance_result(protocol_version, alice_main_purse, block_time);
 
     let alice_balance = alice_balance_result
         .motes()
@@ -107,9 +111,12 @@ fn get_balance_should_work() {
 fn get_balance_using_public_key_should_work() {
     let protocol_version = ProtocolVersion::V2_0_0;
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR).build();
+    let block_time = 1_000_000;
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR)
+        .with_block_time(block_time)
+        .build();
 
     builder
         .transfer_and_commit(transfer_request)
@@ -122,7 +129,7 @@ fn get_balance_using_public_key_should_work() {
     let alice_main_purse = alice_account.main_purse();
 
     let alice_balance_result =
-        builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone());
+        builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone(), block_time);
 
     let alice_balance = alice_balance_result
         .motes()

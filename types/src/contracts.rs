@@ -1089,7 +1089,7 @@ mod tests {
                 vec![],
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::Session,
+                EntryPointType::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             let entrypoint = EntryPoint::new(
@@ -1097,7 +1097,7 @@ mod tests {
                 vec![Parameter::new("Foo", CLType::U32)],
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 1"]),
-                EntryPointType::Session,
+                EntryPointType::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             ret

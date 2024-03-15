@@ -213,7 +213,7 @@ where
             AccountHash::from_public_key(unbonding_purse.unbonder_public_key(), crypto::blake2b);
         let maybe_value = self
             .context
-            .read_gs_direct(&Key::Account(account_hash))
+            .read_gs_unsafe(&Key::Account(account_hash))
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
@@ -230,7 +230,7 @@ where
 
         let maybe_value = self
             .context
-            .read_gs_direct(&contract_key)
+            .read_gs_unsafe(&contract_key)
             .map_err(|exec_error| {
                 error!("MintProvider::unbond: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
@@ -243,6 +243,7 @@ where
                     *unbonding_purse.bonding_purse(),
                     contract.main_purse(),
                     *unbonding_purse.amount(),
+                    None,
                     None,
                 )
                 .map_err(|_| Error::Transfer)?
@@ -264,6 +265,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
+        _holds_epoch: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.context.entity().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
@@ -340,8 +342,12 @@ where
         })
     }
 
-    fn get_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        Runtime::get_balance(self, purse)
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: Option<u64>,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 

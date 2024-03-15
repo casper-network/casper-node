@@ -18,7 +18,6 @@ use casper_storage::{
     tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyExt},
 };
 use casper_types::{
-    addressable_entity::EntityKind,
     system::{
         handle_payment::{self},
         HANDLE_PAYMENT,
@@ -150,9 +149,7 @@ impl ExecutionEngineV1 {
             }
         };
 
-        let entity_kind = entity.kind();
-
-        let entity_addr = EntityAddr::new_of_kind(entity_kind, entity_hash.value());
+        let entity_addr = entity.entity_addr(entity_hash);
 
         let entity_named_keys = match tracking_copy
             .borrow_mut()
@@ -218,11 +215,15 @@ impl ExecutionEngineV1 {
             }
         };
 
+        let holds_epoch = block_time
+            .value()
+            .saturating_sub(self.config.balance_hold_interval.millis());
+
         // Get account main purse balance to enforce precondition and in case of forced
         // transfer validation_spec_5: account main purse minimum balance
         let account_main_purse_balance: Motes = match tracking_copy
             .borrow_mut()
-            .get_purse_balance(entity_main_purse_key)
+            .get_available_balance(entity_main_purse_key, Some(holds_epoch))
         {
             Ok(balance) => balance,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -289,7 +290,7 @@ impl ExecutionEngineV1 {
                 FeeHandling::PayToProposer => {
                     FeesPurseHandling::ToProposer(proposer.to_account_hash())
                 }
-                FeeHandling::None => FeesPurseHandling::None(payment_purse_uref),
+                FeeHandling::NoFee => FeesPurseHandling::None(payment_purse_uref),
                 FeeHandling::Accumulate => FeesPurseHandling::Accumulate,
                 FeeHandling::Burn => FeesPurseHandling::Burn,
             };
@@ -370,7 +371,6 @@ impl ExecutionEngineV1 {
                     payment_args,
                     entity_hash,
                     &entity,
-                    entity_kind,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -388,7 +388,6 @@ impl ExecutionEngineV1 {
                 match executor.exec_standard_payment(
                     payment_args,
                     &entity,
-                    entity_kind,
                     authorization_keys.clone(),
                     account_hash,
                     block_time,
@@ -476,7 +475,7 @@ impl ExecutionEngineV1 {
         let payment_purse_balance: Motes = {
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance(purse_balance_key)
+                .get_available_balance(purse_balance_key, Some(holds_epoch))
             {
                 Ok(balance) => balance,
                 Err(error) => {
@@ -544,7 +543,6 @@ impl ExecutionEngineV1 {
                 session_args,
                 entity_hash,
                 &entity,
-                entity_kind,
                 &mut session_named_keys,
                 session_access_rights,
                 authorization_keys.clone(),
@@ -614,7 +612,6 @@ impl ExecutionEngineV1 {
         // NOTE: session_code_spec_3: (do not include session execution effects in
         // results) is enforced in execution_result_builder.build()
         execution_result_builder.set_session_execution_result(session_result);
-
         // payment_code_spec_5: run finalize process
         let finalize_result: ExecutionResult = {
             let post_session_tc = post_session_tc.borrow();
@@ -692,7 +689,6 @@ impl ExecutionEngineV1 {
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    EntityKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
                     block_time,

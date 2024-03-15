@@ -571,7 +571,7 @@ where
         debug!(?fee_handling, "create accumulation purse if required");
         match fee_handling {
             FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
-            FeeHandling::Accumulate | FeeHandling::None => {}
+            FeeHandling::Accumulate | FeeHandling::NoFee => {}
         }
         let mut address_generator = {
             let seed_bytes = (

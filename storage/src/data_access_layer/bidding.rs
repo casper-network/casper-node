@@ -42,6 +42,7 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        holds_epoch: Option<u64>,
     },
     WithdrawBid {
         public_key: PublicKey,
@@ -53,6 +54,7 @@ pub enum AuctionMethod {
         amount: U512,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        holds_epoch: Option<u64>,
     },
     Undelegate {
         delegator: PublicKey,
@@ -74,7 +76,10 @@ impl AuctionMethod {
         Ok(Self::ActivateBid { validator })
     }
 
-    pub fn new_add_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    pub fn new_add_bid(
+        runtime_args: &RuntimeArgs,
+        holds_epoch: Option<u64>,
+    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -82,6 +87,7 @@ impl AuctionMethod {
             public_key,
             delegation_rate,
             amount,
+            holds_epoch,
         })
     }
 
@@ -95,6 +101,7 @@ impl AuctionMethod {
         runtime_args: &RuntimeArgs,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        holds_epoch: Option<u64>,
     ) -> Result<Self, InvalidAuctionRuntimeArgs> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
@@ -106,6 +113,7 @@ impl AuctionMethod {
             amount,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            holds_epoch,
         })
     }
 
@@ -249,4 +257,11 @@ pub enum BiddingResult {
     },
     /// Bidding request failed
     Failure(TrackingCopyError),
+}
+
+impl BiddingResult {
+    /// Is this a success.
+    pub fn is_success(&self) -> bool {
+        matches!(self, BiddingResult::Success { .. })
+    }
 }

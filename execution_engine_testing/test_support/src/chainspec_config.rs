@@ -47,7 +47,7 @@ pub enum Error {
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
 /// chainspec format changes over versions, as long as we maintain the core config in this form
 /// in the chainspec file, it can continue to be parsed as an `ChainspecConfig`.
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Clone, Default, Debug)]
 pub struct ChainspecConfig {
     /// CoreConfig
     #[serde(rename = "core")]
@@ -142,8 +142,8 @@ impl ChainspecConfig {
         ))
     }
 
-    /// Create a `RunGenesisRequest` using values from the production `chainspec.toml`.
-    pub fn create_genesis_request_from_production_chainspec(
+    /// Create a `RunGenesisRequest` using values from the local `chainspec.toml`.
+    pub fn create_genesis_request_from_local_chainspec(
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<GenesisRequest, Error> {

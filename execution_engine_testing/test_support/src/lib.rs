@@ -21,12 +21,11 @@ mod wasm_test_builder;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
-    DEFAULT_REFUND_HANDLING, U512,
+    account::AccountHash, testing::TestRng, ChainspecRegistry, Digest, GenesisAccount,
+    GenesisConfig, GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey,
+    SystemConfig, WasmConfig, U512,
 };
 
 pub use chainspec_config::ChainspecConfig;
@@ -57,7 +56,7 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 /// Ticks per year: 31536000000
 ///
 /// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(1, 4200000000000000000);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
@@ -98,7 +97,7 @@ pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 /// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000_u64;
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 10_000_000_000_000_000_000_u64;
 /// Minimal amount for a transfer that creates new accounts.
 pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
 /// Default proposer public key.
@@ -124,6 +123,15 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         None,
     );
     ret.push(proposer_account);
+    let rng = &mut TestRng::new();
+    for _ in 0..10 {
+        let filler_account = GenesisAccount::account(
+            PublicKey::random(rng),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+            None,
+        );
+        ret.push(filler_account);
+    }
     ret
 });
 /// Default [`ProtocolVersion`].
@@ -147,8 +155,6 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-        .with_refund_handling(DEFAULT_REFUND_HANDLING)
-        .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build()
 });
 
@@ -157,8 +163,8 @@ pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
 
 /// A [`GenesisRequest`] using cost tables matching those used in Casper Mainnet.
-pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
-    ChainspecConfig::create_genesis_request_from_production_chainspec(
+pub static LOCAL_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
+    ChainspecConfig::create_genesis_request_from_local_chainspec(
         DEFAULT_ACCOUNTS.clone(),
         DEFAULT_PROTOCOL_VERSION,
     )

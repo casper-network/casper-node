@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
+    ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
@@ -107,6 +107,9 @@ fn test_burning_fees(
         fee_handling,
         PRIVATE_CHAIN_COMPUTE_REWARDS,
     );
+
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
     let rewards_purse_key = handle_payment_1
@@ -120,7 +123,7 @@ fn test_burning_fees(
         RuntimeArgs::default(),
     )
     .build();
-    let total_supply_before = builder.total_supply(None);
+    let total_supply_before = builder.total_supply(None, protocol_version);
     let exec_request_1_proposer = exec_request_1.proposer.clone();
     let proposer_account_1 = builder
         .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
@@ -131,7 +134,7 @@ fn test_burning_fees(
         U512::zero(),
         "proposer should not receive anything",
     );
-    let total_supply_after = builder.total_supply(None);
+    let total_supply_after = builder.total_supply(None, protocol_version);
     assert_eq!(
         total_supply_before - total_supply_after,
         expected_burn_amount,
@@ -141,14 +144,14 @@ fn test_burning_fees(
         TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
             .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
             .build();
-    let total_supply_before = builder.total_supply(None);
+    let total_supply_before = builder.total_supply(None, protocol_version);
     builder
         .transfer_and_commit(transfer_request)
         .expect_success();
-    let total_supply_after = builder.total_supply(None);
+    let total_supply_after = builder.total_supply(None, protocol_version);
 
     match fee_handling {
-        FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::None => {
+        FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::NoFee => {
             assert_eq!(total_supply_before, total_supply_after);
         }
         FeeHandling::Burn => {

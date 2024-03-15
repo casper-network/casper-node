@@ -7,7 +7,7 @@ use casper_types::{GenesisAccount, GenesisValidator, Key};
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::Error, execution::ExecError, runtime::PreprocessingError,
@@ -17,7 +17,7 @@ use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_DELEGATE_COST, U512,
 };
 
 use crate::wasm_utils;
@@ -35,9 +35,8 @@ static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
-static UNDERFUNDED_DELEGATE_AMOUNT: Lazy<U512> =
-    Lazy::new(|| U512::from(DEFAULT_DELEGATE_COST - 1));
-static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(DEFAULT_ADD_BID_COST - 1));
+static UNDERFUNDED_DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1));
+static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1));
 static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 
 #[ignore]
@@ -67,7 +66,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let auction = builder.get_auction_contract_hash();
 
-    let bid_amount = U512::one();
+    let bid_amount = U512::from(100_000_000_000_000u64);
 
     let deploy_hash = [42; 32];
 
@@ -108,8 +107,6 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 #[ignore]
 #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
-    assert!(U512::from(DEFAULT_ADD_BID_COST) > *UNDERFUNDED_ADD_BID_AMOUNT);
-
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -172,7 +169,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 fn should_run_ee_1129_underfunded_mint_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -218,7 +215,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 fn should_not_panic_when_calling_session_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -264,7 +261,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 fn should_not_panic_when_calling_payment_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -308,7 +305,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 fn should_not_panic_when_calling_contract_package_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -359,7 +356,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -424,7 +421,7 @@ fn do_nothing_without_memory() -> Vec<u8> {
 fn should_not_panic_when_calling_module_without_memory() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()

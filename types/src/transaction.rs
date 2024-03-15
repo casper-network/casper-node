@@ -2,6 +2,7 @@ mod addressable_entity_identifier;
 mod approval;
 mod approvals_hash;
 mod deploy;
+mod error;
 mod execution_info;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
@@ -24,8 +25,8 @@ mod transfer_target;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
-#[cfg(feature = "std")]
-use std::error::Error as StdError;
+#[cfg(any(feature = "std", test))]
+use std::hash::Hash;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -39,24 +40,30 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+#[cfg(any(feature = "std", test))]
+use crate::SystemConfig;
+
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "std", test))]
+use crate::Gas;
+#[cfg(feature = "json-schema")]
+use crate::URef;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, Timestamp,
+    Digest, SecretKey, TimeDiff, Timestamp,
 };
-#[cfg(feature = "json-schema")]
-use crate::{TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
 pub use deploy::{
-    Deploy, DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InvalidDeploy,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use error::InvalidTransaction;
 pub use execution_info::ExecutionInfo;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
@@ -74,7 +81,7 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionCategory, TransactionV1, TransactionV1Body, TransactionV1ConfigFailure,
+    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
     TransactionV1Hash, TransactionV1Header,
 };
@@ -109,46 +116,6 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     Transaction::V1(v1_txn)
 });
 
-/// A representation of the way in which a transaction failed validation checks.
-#[derive(Debug)]
-pub enum TransactionConfigFailure {
-    /// Error details for the Deploy variant.
-    Deploy(DeployConfigFailure),
-    /// Error details for the TransactionV1 variant.
-    V1(TransactionV1ConfigFailure),
-}
-
-impl From<DeployConfigFailure> for TransactionConfigFailure {
-    fn from(value: DeployConfigFailure) -> Self {
-        Self::Deploy(value)
-    }
-}
-
-impl From<TransactionV1ConfigFailure> for TransactionConfigFailure {
-    fn from(value: TransactionV1ConfigFailure) -> Self {
-        Self::V1(value)
-    }
-}
-
-#[cfg(feature = "std")]
-impl StdError for TransactionConfigFailure {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            TransactionConfigFailure::Deploy(deploy) => deploy.source(),
-            TransactionConfigFailure::V1(v1) => v1.source(),
-        }
-    }
-}
-
-impl Display for TransactionConfigFailure {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            TransactionConfigFailure::Deploy(deploy) => write!(f, "{}", deploy),
-            TransactionConfigFailure::V1(v1) => write!(f, "{}", v1),
-        }
-    }
-}
-
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(
@@ -175,9 +142,41 @@ impl Transaction {
         }
     }
 
+    /// Body hash.
+    pub fn body_hash(&self) -> Digest {
+        match self {
+            Transaction::Deploy(deploy) => *deploy.header().body_hash(),
+            Transaction::V1(v1) => *v1.header().body_hash(),
+        }
+    }
+
+    /// Size estimate.
+    pub fn size_estimate(&self) -> usize {
+        match self {
+            Transaction::Deploy(deploy) => deploy.serialized_length(),
+            Transaction::V1(v1) => v1.header().serialized_length(),
+        }
+    }
+
+    /// Timestamp.
+    pub fn timestamp(&self) -> Timestamp {
+        match self {
+            Transaction::Deploy(deploy) => deploy.header().timestamp(),
+            Transaction::V1(v1) => v1.header().timestamp(),
+        }
+    }
+
+    /// Time to live.
+    pub fn ttl(&self) -> TimeDiff {
+        match self {
+            Transaction::Deploy(deploy) => deploy.header().ttl(),
+            Transaction::V1(v1) => v1.header().ttl(),
+        }
+    }
+
     /// Returns `Ok` if the given transaction is valid. Verification procedure is delegated to the
     /// implementation of the particular variant of the transaction.
-    pub fn verify(&self) -> Result<(), TransactionConfigFailure> {
+    pub fn verify(&self) -> Result<(), InvalidTransaction> {
         match self {
             Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
             Transaction::V1(v1) => v1.verify().map_err(Into::into),
@@ -330,6 +329,55 @@ impl Transaction {
     }
 }
 
+/// Self discloses category.
+pub trait Categorized {
+    /// What category does this instance belong in.
+    fn category(&self) -> TransactionCategory;
+}
+
+impl Categorized for Transaction {
+    fn category(&self) -> TransactionCategory {
+        match self {
+            Transaction::Deploy(deploy) => deploy.category(),
+            Transaction::V1(v1) => v1.category(),
+        }
+    }
+}
+
+/// Calculates gas limit for a transaction.
+#[cfg(any(feature = "std", test))]
+pub trait GasLimited {
+    /// The error type.
+    type Error;
+
+    /// Returns the gas limit or an error.
+    fn gas_limit(
+        &self,
+        system_costs: &SystemConfig,
+        gas_price: Option<u64>,
+    ) -> Result<Gas, Self::Error>;
+}
+
+#[cfg(any(feature = "std", test))]
+impl GasLimited for Transaction {
+    type Error = InvalidTransaction;
+
+    fn gas_limit(
+        &self,
+        system_costs: &SystemConfig,
+        gas_price: Option<u64>,
+    ) -> Result<Gas, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_limit(system_costs, gas_price)
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1
+                .gas_limit(system_costs, gas_price)
+                .map_err(InvalidTransaction::from),
+        }
+    }
+}
+
 impl From<Deploy> for Transaction {
     fn from(deploy: Deploy) -> Self {
         Self::Deploy(deploy)
@@ -343,19 +391,6 @@ impl From<TransactionV1> for Transaction {
 }
 
 impl ToBytes for Transaction {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            Transaction::Deploy(deploy) => {
-                DEPLOY_TAG.write_bytes(writer)?;
-                deploy.write_bytes(writer)
-            }
-            Transaction::V1(txn) => {
-                V1_TAG.write_bytes(writer)?;
-                txn.write_bytes(writer)
-            }
-        }
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -368,6 +403,19 @@ impl ToBytes for Transaction {
                 Transaction::Deploy(deploy) => deploy.serialized_length(),
                 Transaction::V1(txn) => txn.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Transaction::Deploy(deploy) => {
+                DEPLOY_TAG.write_bytes(writer)?;
+                deploy.write_bytes(writer)
+            }
+            Transaction::V1(txn) => {
+                V1_TAG.write_bytes(writer)?;
+                txn.write_bytes(writer)
+            }
+        }
     }
 }
 

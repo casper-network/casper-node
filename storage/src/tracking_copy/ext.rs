@@ -1,10 +1,17 @@
-use std::{collections::BTreeSet, convert::TryInto};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    convert::TryInto,
+};
 
-use crate::global_state::{error::Error as GlobalStateError, state::StateReader};
+use crate::{
+    data_access_layer::balance::BalanceHoldsWithProof,
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+};
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof, ByteCode,
-    ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package,
-    PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof,
+    system::mint::BalanceHoldAddrTag, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue,
+    ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package, PackageHash, StoredValue,
+    StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -20,8 +27,13 @@ pub trait TrackingCopyExt<R> {
     /// Gets the purse balance key for a given purse.
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error>;
 
-    /// Gets the balance for a given balance key.
-    fn get_purse_balance(&self, balance_key: Key) -> Result<Motes, Self::Error>;
+    /// Returns the available balance, considering any holds from holds_epoch to now.
+    /// If holds_epoch is none, available balance == total balance.
+    fn get_available_balance(
+        &self,
+        balance_key: Key,
+        holds_epoch: Option<u64>,
+    ) -> Result<Motes, Self::Error>;
 
     /// Gets the purse balance key for a given purse and provides a Merkle proof.
     fn get_purse_balance_key_with_proof(
@@ -30,10 +42,18 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     /// Gets the balance at a given balance key and provides a Merkle proof.
-    fn get_purse_balance_with_proof(
+    fn get_total_balance_with_proof(
         &self,
         balance_key: Key,
-    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
+    ) -> Result<(U512, TrieMerkleProof<Key, StoredValue>), Self::Error>;
+
+    /// Gets the balance holds for a given balance, with Merkle proofs.
+    fn get_balance_holds_with_proof(
+        &self,
+        purse_addr: URefAddr,
+        block_time: u64,
+        hold_interval: u64,
+    ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error>;
 
     /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
@@ -75,15 +95,61 @@ where
         Ok(Key::Balance(balance_key.addr()))
     }
 
-    fn get_purse_balance(&self, key: Key) -> Result<Motes, Self::Error> {
-        let stored_value: StoredValue = self
-            .read(&key)?
-            .ok_or(TrackingCopyError::KeyNotFound(key))?;
-        let cl_value: CLValue = stored_value
-            .try_into()
-            .map_err(TrackingCopyError::TypeMismatch)?;
-        let balance = Motes::new(cl_value.into_t::<U512>()?);
-        Ok(balance)
+    fn get_available_balance(
+        &self,
+        key: Key,
+        holds_epoch: Option<u64>,
+    ) -> Result<Motes, Self::Error> {
+        let key = {
+            if let Key::URef(uref) = key {
+                Key::Balance(uref.addr())
+            } else {
+                key
+            }
+        };
+
+        if let Key::Balance(purse_addr) = key {
+            let stored_value: StoredValue = self
+                .read(&key)?
+                .ok_or(TrackingCopyError::KeyNotFound(key))?;
+            let cl_value: CLValue = stored_value
+                .try_into()
+                .map_err(TrackingCopyError::TypeMismatch)?;
+            let total_balance = cl_value.into_t::<U512>()?;
+            match holds_epoch {
+                None => Ok(Motes::new(total_balance)),
+                Some(epoch) => {
+                    let mut total_holds = U512::zero();
+                    let tag = BalanceHoldAddrTag::Gas;
+                    let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+                    let gas_hold_keys = self.keys_with_prefix(&prefix)?;
+                    for gas_hold_key in gas_hold_keys {
+                        if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
+                            let block_time = balance_hold_addr.block_time();
+                            if block_time.value() < epoch {
+                                // ignore holds from prior to imputed epoch
+                                continue;
+                            }
+                            let stored_value: StoredValue = self
+                                .read(&gas_hold_key)?
+                                .ok_or(TrackingCopyError::KeyNotFound(key))?;
+                            let cl_value: CLValue = stored_value
+                                .try_into()
+                                .map_err(TrackingCopyError::TypeMismatch)?;
+                            let hold_amount = cl_value.into_t()?;
+                            total_holds =
+                                total_holds.checked_add(hold_amount).unwrap_or(U512::zero());
+                        }
+                    }
+                    let available = total_balance
+                        .checked_sub(total_holds)
+                        .unwrap_or(U512::zero());
+                    Ok(Motes::new(available))
+                }
+            }
+        } else {
+            Err(Self::Error::UnexpectedKeyVariant(key))
+        }
     }
 
     fn get_purse_balance_key_with_proof(
@@ -105,20 +171,78 @@ where
         Ok((balance_key, proof))
     }
 
-    fn get_purse_balance_with_proof(
+    fn get_total_balance_with_proof(
         &self,
         key: Key,
-    ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error> {
-        let proof: TrieMerkleProof<Key, StoredValue> = self
-            .read_with_proof(&key.normalize())?
-            .ok_or(TrackingCopyError::KeyNotFound(key))?;
-        let cl_value: CLValue = proof
-            .value()
-            .to_owned()
-            .try_into()
-            .map_err(TrackingCopyError::TypeMismatch)?;
-        let balance = Motes::new(cl_value.into_t::<U512>()?);
-        Ok((balance, proof))
+    ) -> Result<(U512, TrieMerkleProof<Key, StoredValue>), Self::Error> {
+        if let Key::Balance(_) = key {
+            let proof: TrieMerkleProof<Key, StoredValue> = self
+                .read_with_proof(&key.normalize())?
+                .ok_or(TrackingCopyError::KeyNotFound(key))?;
+            let cl_value: CLValue = proof
+                .value()
+                .to_owned()
+                .try_into()
+                .map_err(TrackingCopyError::TypeMismatch)?;
+            let balance = cl_value.into_t()?;
+            Ok((balance, proof))
+        } else {
+            Err(Self::Error::UnexpectedKeyVariant(key))
+        }
+    }
+
+    fn get_balance_holds_with_proof(
+        &self,
+        purse_addr: URefAddr,
+        block_time: u64,
+        hold_interval: u64,
+    ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error> {
+        let hold_epoch = block_time.saturating_sub(hold_interval);
+
+        let mut ret: BTreeMap<BlockTime, BalanceHoldsWithProof> = BTreeMap::new();
+        let tag = BalanceHoldAddrTag::Gas;
+        let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+        let gas_hold_keys = self.keys_with_prefix(&prefix)?;
+        // if more hold kinds are added, chain them here and loop once.
+        for gas_hold_key in gas_hold_keys {
+            if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
+                let block_time = balance_hold_addr.block_time();
+                if block_time.value() < hold_epoch {
+                    // ignore holds older than the interval
+                    continue;
+                }
+                let proof: TrieMerkleProof<Key, StoredValue> = self
+                    .read_with_proof(&gas_hold_key.normalize())?
+                    .ok_or(TrackingCopyError::KeyNotFound(gas_hold_key))?;
+                let cl_value: CLValue = proof
+                    .value()
+                    .to_owned()
+                    .try_into()
+                    .map_err(TrackingCopyError::TypeMismatch)?;
+                let hold_amount = cl_value.into_t()?;
+                match ret.entry(block_time) {
+                    Entry::Vacant(entry) => {
+                        let mut inner = BTreeMap::new();
+                        inner.insert(tag, (hold_amount, proof));
+                        entry.insert(inner);
+                    }
+                    Entry::Occupied(mut occupied_entry) => {
+                        let inner = occupied_entry.get_mut();
+                        match inner.entry(tag) {
+                            Entry::Vacant(entry) => {
+                                entry.insert((hold_amount, proof));
+                            }
+                            Entry::Occupied(_) => {
+                                unreachable!(
+                                    "there should be only one entry per (block_time, hold kind)"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(ret)
     }
 
     fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error> {

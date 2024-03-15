@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
@@ -22,7 +22,7 @@ fn regression_20211110() {
     let mut funds: u64 = STARTING_BALANCE;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request = TransferRequestBuilder::new(funds, ACCOUNT_1_ADDR).build();
 

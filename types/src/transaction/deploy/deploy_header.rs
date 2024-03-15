@@ -18,7 +18,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{DeployConfigFailure, TransactionConfig};
+use crate::{InvalidDeploy, TransactionConfig};
 
 /// The header portion of a [`Deploy`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -112,7 +112,7 @@ impl DeployHeader {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
         deploy_hash: &DeployHash,
-    ) -> Result<(), DeployConfigFailure> {
+    ) -> Result<(), InvalidDeploy> {
         // as of 2.0.0 deploy dependencies are not supported.
         // a legacy deploy citing dependencies should be rejected
         if !self.dependencies.is_empty() {
@@ -120,7 +120,7 @@ impl DeployHeader {
                 %deploy_hash,
                 "deploy dependencies no longer supported"
             );
-            return Err(DeployConfigFailure::DependenciesNoLongerSupported);
+            return Err(InvalidDeploy::DependenciesNoLongerSupported);
         }
 
         if self.ttl() > config.max_ttl {
@@ -130,7 +130,7 @@ impl DeployHeader {
                 max_ttl = %config.max_ttl,
                 "deploy ttl excessive"
             );
-            return Err(DeployConfigFailure::ExcessiveTimeToLive {
+            return Err(InvalidDeploy::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: self.ttl(),
             });
@@ -138,7 +138,7 @@ impl DeployHeader {
 
         if self.timestamp() > at + timestamp_leeway {
             debug!(%deploy_hash, deploy_header = %self, %at, "deploy timestamp in the future");
-            return Err(DeployConfigFailure::TimestampInFuture {
+            return Err(InvalidDeploy::TimestampInFuture {
                 validation_timestamp: at,
                 timestamp_leeway,
                 got: self.timestamp(),

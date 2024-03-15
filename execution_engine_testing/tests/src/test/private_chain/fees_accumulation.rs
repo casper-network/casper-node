@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
     account::AccountHash, system::handle_payment::ACCUMULATION_PURSE_KEY, EntityAddr, EraId,
@@ -27,7 +27,7 @@ const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract =

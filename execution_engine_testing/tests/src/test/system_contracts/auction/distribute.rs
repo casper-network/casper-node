@@ -8,9 +8,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
+use casper_storage::data_access_layer::AuctionMethod;
 use casper_types::{
     self,
     account::AccountHash,
@@ -21,7 +22,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -251,11 +252,12 @@ fn should_distribute_delegation_rate_zero() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
@@ -516,13 +518,18 @@ fn should_withdraw_bids_after_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+    let total_payout = builder.base_round_reward(None, protocol_version);
 
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
-    let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let rate = builder.round_seigniorage_rate(None, protocol_version);
+
+    let expected_total_reward = rate * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
+
     assert_eq!(total_payout, expected_total_reward_integer);
 
     for request in post_genesis_requests {
@@ -532,7 +539,7 @@ fn should_withdraw_bids_after_distribute() {
     for _ in 0..=builder.get_auction_delay() {
         let step_request = StepRequestBuilder::new()
             .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_protocol_version(protocol_version)
             .with_next_era_id(builder.get_era().successor())
             .with_run_auction(true)
             .build();
@@ -640,6 +647,7 @@ fn should_withdraw_bids_after_distribute() {
             "delegator 1 should have a stake"
         );
         let undelegate_amount = U512::from(DELEGATOR_1_STAKE) + delegator_1_actual_payout;
+
         undelegate(
             &mut builder,
             *DELEGATOR_1_ADDR,
@@ -725,11 +733,10 @@ fn should_withdraw_bids_after_distribute() {
 #[ignore]
 #[test]
 fn should_distribute_rewards_after_restaking_delegated_funds() {
-    const VALIDATOR_1_STAKE: u64 = 1_000_000_000_000;
-    const DELEGATOR_1_STAKE: u64 = 1_000_000_000_000;
-    const DELEGATOR_2_STAKE: u64 = 1_000_000_000_000;
+    const VALIDATOR_1_STAKE: u64 = 7_000_000_000_000_000;
+    const DELEGATOR_1_STAKE: u64 = 5_000_000_000_000_000;
+    const DELEGATOR_2_STAKE: u64 = 5_000_000_000_000_000;
     const TOTAL_DELEGATOR_STAKE: u64 = DELEGATOR_1_STAKE + DELEGATOR_2_STAKE;
-    const TOTAL_STAKE: u64 = TOTAL_DELEGATOR_STAKE + VALIDATOR_1_STAKE;
 
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
@@ -818,322 +825,231 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
-    let expected_total_reward_1 = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
-    let expected_total_reward_1_integer = expected_total_reward_1.to_integer();
-    assert_eq!(total_payout, expected_total_reward_1_integer);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let initial_rate = builder.round_seigniorage_rate(None, protocol_version);
+    let initial_round_reward = builder.base_round_reward(None, protocol_version);
+
+    let initial_expected_reward_rate = initial_rate * initial_supply;
+    assert_eq!(
+        initial_round_reward,
+        initial_expected_reward_rate.to_integer()
+    );
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    for _ in 0..=builder.get_auction_delay() {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .with_next_era_id(builder.get_era().successor())
-            .with_run_auction(true)
-            .build();
+    // we need to crank forward because our validator is not a genesis validator
+    builder.advance_eras_by_default_auction_delay();
 
+    let mut era = builder.get_era();
+    let mut round_reward = initial_round_reward;
+    let mut total_supply = initial_supply;
+    let mut expected_reward_rate = initial_expected_reward_rate;
+    let mut validator_stake = U512::from(VALIDATOR_1_STAKE);
+    let mut delegator_1_stake = U512::from(DELEGATOR_1_STAKE);
+    let mut delegator_2_stake = U512::from(DELEGATOR_2_STAKE);
+    let mut total_delegator_stake = U512::from(TOTAL_DELEGATOR_STAKE);
+    let mut total_stake = U512::from(VALIDATOR_1_STAKE + TOTAL_DELEGATOR_STAKE);
+    for idx in 0..10 {
+        let rewards = {
+            let mut rewards = BTreeMap::new();
+            rewards.insert(VALIDATOR_1.clone(), round_reward);
+            rewards
+        };
+
+        let result = builder.distribute(None, protocol_version, rewards, Timestamp::now().millis());
+        assert!(result.is_success(), "failed to distribute {:?}", result);
+        builder.advance_era();
+        let current_era = builder.get_era();
+        assert_eq!(
+            era.successor(),
+            current_era,
+            "unexpected era {:?}",
+            current_era
+        );
+        era = current_era;
+
+        let updated_round_reward = builder.base_round_reward(None, protocol_version);
+        round_reward = updated_round_reward;
+
+        let updated_validator_stake = get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should have validator bid")
+            .staked_amount();
         assert!(
-            builder.step(step_request).is_success(),
-            "must execute step successfully"
+            updated_validator_stake > validator_stake,
+            "validator stake should go up"
         );
+        let updated_delegator_1_stake =
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+        assert!(
+            updated_delegator_1_stake > delegator_1_stake,
+            "delegator 1 stake should go up"
+        );
+        let updated_delegator_2_stake =
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
+        assert!(
+            updated_delegator_2_stake > delegator_2_stake,
+            "delegator 2 stake should go up was: {:?} is: {:?}",
+            delegator_2_stake,
+            updated_delegator_2_stake,
+        );
+        let updated_total_delegator_stake = updated_delegator_1_stake + updated_delegator_2_stake;
+        assert!(
+            updated_total_delegator_stake > total_delegator_stake,
+            "total delegator stake should go up"
+        );
+        total_delegator_stake = updated_total_delegator_stake;
+        let updated_total_stake = updated_validator_stake + updated_total_delegator_stake;
+        assert!(
+            updated_total_stake > total_stake,
+            "total stake should go up"
+        );
+
+        let delegators_share = {
+            let commission_rate = Ratio::new(
+                U512::from(VALIDATOR_1_DELEGATION_RATE),
+                U512::from(DELEGATION_RATE_DENOMINATOR),
+            );
+            let reward_multiplier = Ratio::new(updated_total_delegator_stake, updated_total_stake);
+            let delegator_reward = expected_reward_rate
+                .checked_mul(&reward_multiplier)
+                .expect("should get delegator reward ratio");
+            let commission = delegator_reward
+                .checked_mul(&commission_rate)
+                .expect("must get delegator reward");
+            delegator_reward.checked_sub(&commission).unwrap()
+        };
+
+        let delegator_1_expected_payout = {
+            let reward_multiplier =
+                Ratio::new(updated_delegator_1_stake, updated_total_delegator_stake);
+            delegators_share
+                .checked_mul(&reward_multiplier)
+                .map(|ratio| ratio.to_integer())
+                .expect("must get delegator 1 reward")
+        };
+
+        let delegator_2_expected_payout = {
+            let reward_multiplier =
+                Ratio::new(updated_delegator_2_stake, updated_total_delegator_stake);
+            delegators_share
+                .checked_mul(&reward_multiplier)
+                .map(|ratio| ratio.to_integer())
+                .expect("must get delegator 2 reward")
+        };
+
+        let validator_1_actual_payout = updated_validator_stake - validator_stake;
+
+        let validator_1_expected_payout = (expected_reward_rate
+            - Ratio::from(delegator_1_expected_payout + delegator_2_expected_payout))
+        .to_integer();
+        assert_eq!(validator_1_actual_payout, validator_1_expected_payout);
+
+        let delegator_1_actual_payout = updated_delegator_1_stake - delegator_1_stake;
+        assert_eq!(delegator_1_actual_payout, delegator_1_expected_payout);
+
+        let delegator_2_actual_payout = updated_delegator_2_stake - delegator_2_stake;
+        assert_eq!(delegator_2_actual_payout, delegator_2_expected_payout);
+
+        let updated_era_info = get_era_info(&mut builder);
+
+        assert!(matches!(
+            updated_era_info.select(VALIDATOR_1.clone()).next(),
+            Some(SeigniorageAllocation::Validator { validator_public_key, amount })
+            if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout
+        ));
+
+        assert!(matches!(
+            updated_era_info.select(DELEGATOR_1.clone()).next(),
+            Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+            if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout
+        ));
+
+        assert!(matches!(
+            updated_era_info.select(DELEGATOR_2.clone()).next(),
+            Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
+            if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout
+        ));
+
+        // Next round of rewards
+        let updated_supply = builder.total_supply(None, protocol_version);
+        assert!(updated_supply > total_supply);
+        total_supply = updated_supply;
+
+        let updated_rate = builder.round_seigniorage_rate(None, protocol_version);
+        expected_reward_rate = updated_rate * total_supply;
+
+        // lets churn the bids just to have some fun
+        let undelegate_amount = delegator_1_expected_payout - 1;
+        let undelegate_result = builder.bidding(
+            None,
+            None,
+            protocol_version,
+            (*DELEGATOR_1_ADDR).into(),
+            AuctionMethod::Undelegate {
+                validator: VALIDATOR_1.clone(),
+                delegator: DELEGATOR_1.clone(),
+                amount: undelegate_amount,
+            },
+        );
+        assert!(undelegate_result.is_success(), "{:?}", undelegate_result);
+        delegator_1_stake =
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
+
+        let updelegate_amount = U512::from(1_000_000);
+        let updelegate_result = builder.bidding(
+            None,
+            None,
+            protocol_version,
+            (*DELEGATOR_2_ADDR).into(),
+            AuctionMethod::Delegate {
+                max_delegators_per_validator: u32::MAX,
+                minimum_delegation_amount: updelegate_amount.as_u64(),
+                validator: VALIDATOR_1.clone(),
+                delegator: DELEGATOR_2.clone(),
+                amount: updelegate_amount,
+                holds_epoch: None,
+            },
+        );
+        assert!(updelegate_result.is_success(), "{:?}", updelegate_result);
+        delegator_2_stake =
+            get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
+
+        let auction_method = {
+            let amount = U512::from(10_000_000);
+            if idx % 2 == 0 {
+                AuctionMethod::AddBid {
+                    public_key: VALIDATOR_1.clone(),
+                    amount,
+                    delegation_rate: 0,
+                    holds_epoch: None,
+                }
+            } else {
+                AuctionMethod::WithdrawBid {
+                    public_key: VALIDATOR_1.clone(),
+                    amount,
+                }
+            }
+        };
+        let bid_flip_result = builder.bidding(
+            None,
+            None,
+            protocol_version,
+            (*VALIDATOR_1_ADDR).into(),
+            auction_method,
+        );
+        assert!(bid_flip_result.is_success(), "{:?}", bid_flip_result);
+        validator_stake = get_validator_bid(&mut builder, VALIDATOR_1.clone())
+            .expect("should have validator bid")
+            .staked_amount();
+
+        total_stake = validator_stake + delegator_1_stake + delegator_2_stake;
     }
-
-    let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout);
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let validator_1_staked_amount_1 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
-        .expect("should have validator bid")
-        .staked_amount();
-    let delegator_1_staked_amount_1 =
-        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    let delegator_2_staked_amount_1 =
-        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
-
-    let delegators_share = {
-        let commission_rate = Ratio::new(
-            U512::from(VALIDATOR_1_DELEGATION_RATE),
-            U512::from(DELEGATION_RATE_DENOMINATOR),
-        );
-        let reward_multiplier =
-            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
-        let delegator_reward = expected_total_reward_1
-            .checked_mul(&reward_multiplier)
-            .expect("should get delegator reward ratio");
-        let commission = delegator_reward
-            .checked_mul(&commission_rate)
-            .expect("must get delegator reward");
-        delegator_reward.checked_sub(&commission).unwrap()
-    };
-
-    let delegator_1_expected_payout_1 = {
-        let reward_multiplier = Ratio::new(
-            U512::from(DELEGATOR_1_STAKE),
-            U512::from(TOTAL_DELEGATOR_STAKE),
-        );
-        delegators_share
-            .checked_mul(&reward_multiplier)
-            .map(|ratio| ratio.to_integer())
-            .expect("must get delegator 1 reward")
-    };
-
-    let delegator_2_expected_payout_1 = {
-        let reward_multiplier = Ratio::new(
-            U512::from(DELEGATOR_2_STAKE),
-            U512::from(TOTAL_DELEGATOR_STAKE),
-        );
-        delegators_share
-            .checked_mul(&reward_multiplier)
-            .map(|ratio| ratio.to_integer())
-            .expect("must get delegator 2 reward")
-    };
-
-    let validator_1_actual_payout_1 = {
-        let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = validator_1_staked_amount_1;
-
-        validator_stake_after - validator_stake_before
-    };
-
-    let validator_1_expected_payout_1 = {
-        let total_delegator_payout = delegator_1_expected_payout_1 + delegator_2_expected_payout_1;
-        let validator_share = expected_total_reward_1 - Ratio::from(total_delegator_payout);
-        validator_share.to_integer()
-    };
-    assert_eq!(validator_1_actual_payout_1, validator_1_expected_payout_1);
-
-    let delegator_1_actual_payout_1 = {
-        let delegator_stake_before = U512::from(DELEGATOR_1_STAKE);
-        let delegator_stake_after = delegator_1_staked_amount_1;
-
-        delegator_stake_after - delegator_stake_before
-    };
-
-    assert_eq!(delegator_1_actual_payout_1, delegator_1_expected_payout_1);
-
-    let delegator_2_actual_payout_1 = {
-        let delegator_stake_before = U512::from(DELEGATOR_2_STAKE);
-        let delegator_stake_after = delegator_2_staked_amount_1;
-        delegator_stake_after - delegator_stake_before
-    };
-
-    assert_eq!(delegator_2_actual_payout_1, delegator_2_expected_payout_1);
-
-    let era_info_1 = get_era_info(&mut builder);
-
-    assert!(matches!(
-        era_info_1.select(VALIDATOR_1.clone()).next(),
-        Some(SeigniorageAllocation::Validator { validator_public_key, amount })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_1
-    ));
-
-    assert!(matches!(
-        era_info_1.select(DELEGATOR_1.clone()).next(),
-        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout_1
-    ));
-
-    assert!(matches!(
-        era_info_1.select(DELEGATOR_2.clone()).next(),
-        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout_1
-    ));
-
-    // Next round of rewards
-    let total_supply_2 = builder.total_supply(None);
-    let total_payout_2 = builder.base_round_reward(None);
-    assert!(total_supply_2 > initial_supply);
-
-    let expected_total_reward_2 = *GENESIS_ROUND_SEIGNIORAGE_RATE * total_supply_2;
-
-    let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
-    assert_eq!(total_payout_2, expected_total_reward_2_integer);
-
-    let mut rewards = BTreeMap::new();
-    rewards.insert(VALIDATOR_1.clone(), total_payout_2);
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let validator_1_staked_amount_2 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
-        .expect("should have validator bid")
-        .staked_amount();
-    let delegator_1_staked_amount_2 =
-        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
-    let delegator_2_staked_amount_2 =
-        get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
-
-    let delegators_share_2 = {
-        let commission_rate = Ratio::new(
-            U512::from(VALIDATOR_1_DELEGATION_RATE),
-            U512::from(DELEGATION_RATE_DENOMINATOR),
-        );
-        let reward_multiplier =
-            Ratio::new(U512::from(TOTAL_DELEGATOR_STAKE), U512::from(TOTAL_STAKE));
-        let delegator_reward = expected_total_reward_2
-            .checked_mul(&reward_multiplier)
-            .expect("should get delegator reward ratio");
-        let commission = delegator_reward
-            .checked_mul(&commission_rate)
-            .expect("must get delegator reward");
-        delegator_reward.checked_sub(&commission).unwrap()
-    };
-
-    let delegator_1_expected_payout_2 = {
-        let reward_multiplier = Ratio::new(
-            U512::from(DELEGATOR_1_STAKE),
-            U512::from(TOTAL_DELEGATOR_STAKE),
-        );
-        delegators_share_2
-            .checked_mul(&reward_multiplier)
-            .map(|ratio| ratio.to_integer())
-            .expect("must get delegator 1 reward")
-    };
-
-    let delegator_2_expected_payout_2 = {
-        let reward_multiplier = Ratio::new(
-            U512::from(DELEGATOR_2_STAKE),
-            U512::from(TOTAL_DELEGATOR_STAKE),
-        );
-        delegators_share_2
-            .checked_mul(&reward_multiplier)
-            .map(|ratio| ratio.to_integer())
-            .expect("must get delegator 2 reward")
-    };
-
-    let validator_1_expected_payout_2 = {
-        let total_delegator_payout = delegator_1_expected_payout_2 + delegator_2_expected_payout_2;
-        let validator_share = expected_total_reward_2 - Ratio::from(total_delegator_payout);
-        validator_share.to_integer()
-    };
-
-    let validator_1_actual_payout_2 = {
-        let validator_stake_before = validator_1_staked_amount_1;
-        let validator_stake_after = validator_1_staked_amount_2;
-        validator_stake_after - validator_stake_before
-    };
-    assert_eq!(validator_1_actual_payout_2, validator_1_expected_payout_2);
-
-    let delegator_1_actual_payout_2 = {
-        let delegator_stake_before = delegator_1_staked_amount_1;
-        let delegator_stake_after = delegator_1_staked_amount_2;
-
-        delegator_stake_after - delegator_stake_before
-    };
-
-    assert_eq!(delegator_1_actual_payout_2, delegator_1_expected_payout_2);
-
-    let delegator_2_actual_payout_2 = {
-        let delegator_stake_before = delegator_2_staked_amount_1;
-        let delegator_stake_after = delegator_2_staked_amount_2;
-        delegator_stake_after - delegator_stake_before
-    };
-
-    assert_eq!(delegator_2_actual_payout_2, delegator_2_expected_payout_2);
-
-    // Ensure that paying out next set of rewards gives higher payouts than previous time.
-    assert!(validator_1_actual_payout_2 > validator_1_actual_payout_1);
-    assert!(delegator_1_actual_payout_2 > delegator_1_actual_payout_1);
-    assert!(delegator_2_actual_payout_2 > delegator_2_actual_payout_1);
-
-    let era_info_2 = get_era_info(&mut builder);
-
-    assert_ne!(era_info_2, era_info_1);
-
-    assert!(matches!(
-        era_info_2.select(VALIDATOR_1.clone()).next(),
-        Some(SeigniorageAllocation::Validator { validator_public_key, amount, .. })
-        if *validator_public_key == *VALIDATOR_1 && *amount == validator_1_expected_payout_2
-    ));
-
-    assert!(matches!(
-        era_info_2.select(DELEGATOR_1.clone()).next(),
-        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_1 && *amount == delegator_1_expected_payout_2
-    ));
-
-    assert!(matches!(
-        era_info_2.select(DELEGATOR_2.clone()).next(),
-        Some(SeigniorageAllocation::Delegator { delegator_public_key, amount, .. })
-        if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_expected_payout_2
-    ));
-
-    // Withdraw delegator rewards
-    let delegator_1_rewards = delegator_1_actual_payout_1 + delegator_1_actual_payout_2;
-    undelegate(
-        &mut builder,
-        *DELEGATOR_1_ADDR,
-        DELEGATOR_1.clone(),
-        VALIDATOR_1.clone(),
-        delegator_1_rewards,
-    );
-    let remaining_delegator_1_bid =
-        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
-            .expect("should have delegator bid");
-    assert_eq!(
-        remaining_delegator_1_bid.staked_amount(),
-        U512::from(DELEGATOR_1_STAKE)
-    );
-
-    let delegator_2_rewards = delegator_2_actual_payout_1 + delegator_2_actual_payout_2;
-    undelegate(
-        &mut builder,
-        *DELEGATOR_2_ADDR,
-        DELEGATOR_2.clone(),
-        VALIDATOR_1.clone(),
-        delegator_2_rewards,
-    );
-    let remaining_delegator_2_bid =
-        get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
-            .expect("should have delegator bid");
-    assert_eq!(
-        remaining_delegator_2_bid.staked_amount(),
-        U512::from(DELEGATOR_2_STAKE)
-    );
-
-    // Withdraw validator rewards
-    let validator_1_rewards = validator_1_actual_payout_1 + validator_1_actual_payout_2;
-    withdraw_bid(
-        &mut builder,
-        *VALIDATOR_1_ADDR,
-        VALIDATOR_1.clone(),
-        validator_1_rewards,
-    );
-    let remaining_validator_1_bid =
-        get_validator_bid(&mut builder, VALIDATOR_1.clone()).expect("should have validator bid");
-    assert_eq!(
-        remaining_validator_1_bid.staked_amount(),
-        U512::from(VALIDATOR_1_STAKE)
-    );
 }
 
 #[ignore]
@@ -1232,11 +1148,12 @@ fn should_distribute_delegation_rate_half() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
@@ -1463,10 +1380,11 @@ fn should_distribute_delegation_rate_full() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
 
@@ -1644,11 +1562,12 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
@@ -1946,11 +1865,12 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
@@ -2277,11 +2197,12 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
-    let total_payout = builder.base_round_reward(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
@@ -2633,16 +2554,17 @@ fn should_increase_total_supply_after_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    let post_genesis_supply = builder.total_supply(None);
+    let post_genesis_supply = builder.total_supply(None, protocol_version);
 
     assert_eq!(
         initial_supply, post_genesis_supply,
@@ -2655,7 +2577,7 @@ fn should_increase_total_supply_after_distribute() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let post_auction_supply = builder.total_supply(None);
+    let post_auction_supply = builder.total_supply(None, protocol_version);
     assert_eq!(
         initial_supply, post_auction_supply,
         "total supply should remain unchanged regardless of auction"
@@ -2668,26 +2590,28 @@ fn should_increase_total_supply_after_distribute() {
     rewards.insert(VALIDATOR_2.clone(), total_payout);
     rewards.insert(VALIDATOR_3.clone(), total_payout);
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
-        },
-    )
-    .build();
+    for _ in 0..5 {
+        let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+            *SYSTEM_ADDR,
+            builder.get_auction_contract_hash(),
+            METHOD_DISTRIBUTE,
+            runtime_args! {
+                ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+                ARG_REWARDS_MAP => rewards.clone()
+            },
+        )
+        .build();
 
-    builder.exec(distribute_request).commit().expect_success();
+        builder.exec(distribute_request).expect_success().commit();
 
-    let post_distribute_supply = builder.total_supply(None);
-    assert!(
-        initial_supply < post_distribute_supply,
-        "total supply should increase after distribute ({} >= {})",
-        initial_supply,
-        post_distribute_supply
-    );
+        let post_distribute_supply = builder.total_supply(None, protocol_version);
+        assert!(
+            initial_supply < post_distribute_supply,
+            "total supply should increase after distribute ({} >= {})",
+            initial_supply,
+            post_distribute_supply
+        );
+    }
 }
 
 #[ignore]
@@ -2810,16 +2734,17 @@ fn should_not_create_purses_during_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
     }
 
-    let post_genesis_supply = builder.total_supply(None);
+    let post_genesis_supply = builder.total_supply(None, protocol_version);
 
     assert_eq!(
         initial_supply, post_genesis_supply,
@@ -2832,7 +2757,7 @@ fn should_not_create_purses_during_distribute() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let post_auction_supply = builder.total_supply(None);
+    let post_auction_supply = builder.total_supply(None, protocol_version);
     assert_eq!(
         initial_supply, post_auction_supply,
         "total supply should remain unchanged regardless of auction"
@@ -2865,7 +2790,7 @@ fn should_not_create_purses_during_distribute() {
         number_of_purses_before_distribute
     );
 
-    let post_distribute_supply = builder.total_supply(None);
+    let post_distribute_supply = builder.total_supply(None, protocol_version);
     assert!(
         initial_supply < post_distribute_supply,
         "total supply should increase after distribute ({} >= {})",
@@ -2971,10 +2896,11 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     // initial token supply
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
     let expected_total_reward_before = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
     let expected_total_reward_integer = expected_total_reward_before.to_integer();
 
@@ -3040,7 +2966,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     //
     // Update round seigniorage rate into 50% of default value
     //
-    let new_seigniorage_multiplier = Ratio::new_raw(1, 10);
+    let new_seigniorage_multiplier = Ratio::new_raw(1, 2);
     let new_round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE * new_seigniorage_multiplier;
 
     let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
@@ -3060,7 +2986,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     builder.upgrade(&mut upgrade_request);
 
-    let initial_supply = builder.total_supply(None);
+    let initial_supply = builder.total_supply(None, protocol_version);
 
     for _ in 0..5 {
         builder.advance_era();
@@ -3088,22 +3014,6 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let mut rewards = BTreeMap::new();
     rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
-
-    /*
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_REWARDS_MAP => rewards
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-    */
 
     let validator_1_balance_after = {
         let validator_staked_amount = get_validator_bid(&mut builder, VALIDATOR_1.clone())
@@ -3146,9 +3056,9 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         validator_1_balance_after + delegator_1_balance_after + delegator_2_balance_after;
     assert_eq!(total_payout_after, expected_total_reward_after);
 
-    assert!(expected_validator_1_payout_before > expected_validator_1_balance_after); // expected amount after decreasing seigniorage rate is lower than the first amount
-    assert!(total_payout_before > total_payout_after); // expected total payout after decreasing
-                                                       // rate is lower than the first payout
+    // expected amount after reducing the seigniorage rate is lower than the first amount
+    assert!(expected_validator_1_payout_before > expected_validator_1_balance_after);
+    assert!(total_payout_before > total_payout_after);
 }
 
 // In this test, we set up a validator and a delegator, then the delegator delegates to the
@@ -3164,7 +3074,7 @@ fn should_not_restake_after_full_unbond() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
 
@@ -3295,7 +3205,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
     builder.advance_eras_by_default_auction_delay();

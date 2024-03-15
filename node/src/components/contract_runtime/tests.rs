@@ -398,7 +398,6 @@ mod trie_chunking_tests {
     use prometheus::Registry;
     use tempfile::tempdir;
 
-    use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
     use casper_storage::global_state::{
         state::{CommitProvider, StateProvider},
         trie::Trie,
@@ -410,7 +409,8 @@ mod trie_chunking_tests {
         global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_REFUND_HANDLING,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_FEE_HANDLING,
+        DEFAULT_REFUND_HANDLING,
     };
 
     use super::{Config as ContractRuntimeConfig, ContractRuntime};
@@ -486,6 +486,7 @@ mod trie_chunking_tests {
                 allow_unrestricted_transfers: true,
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
+                balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),

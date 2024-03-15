@@ -7,9 +7,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::engine_state::{
-    engine_config::DEFAULT_FEE_HANDLING, execution_result::ExecutionResult, Error,
-};
+use casper_execution_engine::engine_state::{execution_result::ExecutionResult, Error};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{bytesrepr::Bytes, GenesisAccount, GenesisConfig, GenesisConfigBuilder};
 
@@ -17,7 +15,7 @@ use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBON
 use crate::{
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_REFUND_HANDLING, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 
 static RUST_WORKSPACE_PATH: Lazy<PathBuf> = Lazy::new(|| {
@@ -135,8 +133,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let refund_handling = DEFAULT_REFUND_HANDLING;
-    let fee_handling = DEFAULT_FEE_HANDLING;
 
     GenesisConfigBuilder::default()
         .with_accounts(accounts)
@@ -148,8 +144,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp_millis)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
         .build()
 }
 

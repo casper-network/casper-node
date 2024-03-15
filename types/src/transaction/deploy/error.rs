@@ -17,7 +17,7 @@ use crate::{crypto, TimeDiff, Timestamp, U512};
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[non_exhaustive]
-pub enum DeployConfigFailure {
+pub enum InvalidDeploy {
     /// Invalid chain name.
     InvalidChainName {
         /// The expected chain name.
@@ -120,30 +120,30 @@ pub enum DeployConfigFailure {
     },
 }
 
-impl Display for DeployConfigFailure {
+impl Display for InvalidDeploy {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            DeployConfigFailure::InvalidChainName { expected, got } => {
+            InvalidDeploy::InvalidChainName { expected, got } => {
                 write!(
                     formatter,
                     "invalid chain name: expected {}, got {}",
                     expected, got
                 )
             }
-            DeployConfigFailure::DependenciesNoLongerSupported => {
+            InvalidDeploy::DependenciesNoLongerSupported => {
                 write!(formatter, "dependencies no longer supported",)
             }
-            DeployConfigFailure::ExcessiveSize(error) => {
+            InvalidDeploy::ExcessiveSize(error) => {
                 write!(formatter, "deploy size too large: {}", error)
             }
-            DeployConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
+            InvalidDeploy::ExcessiveTimeToLive { max_ttl, got } => {
                 write!(
                     formatter,
                     "time-to-live of {} exceeds limit of {}",
                     got, max_ttl
                 )
             }
-            DeployConfigFailure::TimestampInFuture {
+            InvalidDeploy::TimestampInFuture {
                 validation_timestamp,
                 timestamp_leeway,
                 got,
@@ -154,49 +154,49 @@ impl Display for DeployConfigFailure {
                     got, validation_timestamp, timestamp_leeway
                 )
             }
-            DeployConfigFailure::InvalidBodyHash => {
+            InvalidDeploy::InvalidBodyHash => {
                 write!(
                     formatter,
                     "the provided body hash does not match the actual hash of the body"
                 )
             }
-            DeployConfigFailure::InvalidDeployHash => {
+            InvalidDeploy::InvalidDeployHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the deploy"
                 )
             }
-            DeployConfigFailure::EmptyApprovals => {
+            InvalidDeploy::EmptyApprovals => {
                 write!(formatter, "the deploy has no approvals")
             }
-            DeployConfigFailure::InvalidApproval { index, error } => {
+            InvalidDeploy::InvalidApproval { index, error } => {
                 write!(
                     formatter,
                     "the approval at index {} is invalid: {}",
                     index, error
                 )
             }
-            DeployConfigFailure::ExcessiveSessionArgsLength { max_length, got } => {
+            InvalidDeploy::ExcessiveSessionArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized session code runtime args of {} exceeds limit of {}",
                     got, max_length
                 )
             }
-            DeployConfigFailure::ExcessivePaymentArgsLength { max_length, got } => {
+            InvalidDeploy::ExcessivePaymentArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized payment code runtime args of {} exceeds limit of {}",
                     got, max_length
                 )
             }
-            DeployConfigFailure::MissingPaymentAmount => {
+            InvalidDeploy::MissingPaymentAmount => {
                 write!(formatter, "missing payment 'amount' runtime argument")
             }
-            DeployConfigFailure::FailedToParsePaymentAmount => {
+            InvalidDeploy::FailedToParsePaymentAmount => {
                 write!(formatter, "failed to parse payment 'amount' as U512")
             }
-            DeployConfigFailure::ExceededBlockGasLimit {
+            InvalidDeploy::ExceededBlockGasLimit {
                 block_gas_limit,
                 got,
             } => {
@@ -206,20 +206,20 @@ impl Display for DeployConfigFailure {
                     got, block_gas_limit
                 )
             }
-            DeployConfigFailure::MissingTransferAmount => {
+            InvalidDeploy::MissingTransferAmount => {
                 write!(formatter, "missing transfer 'amount' runtime argument")
             }
-            DeployConfigFailure::FailedToParseTransferAmount => {
+            InvalidDeploy::FailedToParseTransferAmount => {
                 write!(formatter, "failed to parse transfer 'amount' as U512")
             }
-            DeployConfigFailure::InsufficientTransferAmount { minimum, attempted } => {
+            InvalidDeploy::InsufficientTransferAmount { minimum, attempted } => {
                 write!(
                     formatter,
                     "insufficient transfer amount; minimum: {} attempted: {}",
                     minimum, attempted
                 )
             }
-            DeployConfigFailure::ExcessiveApprovals {
+            InvalidDeploy::ExcessiveApprovals {
                 got,
                 max_associated_keys,
             } => {
@@ -233,34 +233,34 @@ impl Display for DeployConfigFailure {
     }
 }
 
-impl From<ExcessiveSizeError> for DeployConfigFailure {
+impl From<ExcessiveSizeError> for InvalidDeploy {
     fn from(error: ExcessiveSizeError) -> Self {
-        DeployConfigFailure::ExcessiveSize(error)
+        InvalidDeploy::ExcessiveSize(error)
     }
 }
 
 #[cfg(feature = "std")]
-impl StdError for DeployConfigFailure {
+impl StdError for InvalidDeploy {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            DeployConfigFailure::InvalidApproval { error, .. } => Some(error),
-            DeployConfigFailure::InvalidChainName { .. }
-            | DeployConfigFailure::DependenciesNoLongerSupported { .. }
-            | DeployConfigFailure::ExcessiveSize(_)
-            | DeployConfigFailure::ExcessiveTimeToLive { .. }
-            | DeployConfigFailure::TimestampInFuture { .. }
-            | DeployConfigFailure::InvalidBodyHash
-            | DeployConfigFailure::InvalidDeployHash
-            | DeployConfigFailure::EmptyApprovals
-            | DeployConfigFailure::ExcessiveSessionArgsLength { .. }
-            | DeployConfigFailure::ExcessivePaymentArgsLength { .. }
-            | DeployConfigFailure::MissingPaymentAmount
-            | DeployConfigFailure::FailedToParsePaymentAmount
-            | DeployConfigFailure::ExceededBlockGasLimit { .. }
-            | DeployConfigFailure::MissingTransferAmount
-            | DeployConfigFailure::FailedToParseTransferAmount
-            | DeployConfigFailure::InsufficientTransferAmount { .. }
-            | DeployConfigFailure::ExcessiveApprovals { .. } => None,
+            InvalidDeploy::InvalidApproval { error, .. } => Some(error),
+            InvalidDeploy::InvalidChainName { .. }
+            | InvalidDeploy::DependenciesNoLongerSupported { .. }
+            | InvalidDeploy::ExcessiveSize(_)
+            | InvalidDeploy::ExcessiveTimeToLive { .. }
+            | InvalidDeploy::TimestampInFuture { .. }
+            | InvalidDeploy::InvalidBodyHash
+            | InvalidDeploy::InvalidDeployHash
+            | InvalidDeploy::EmptyApprovals
+            | InvalidDeploy::ExcessiveSessionArgsLength { .. }
+            | InvalidDeploy::ExcessivePaymentArgsLength { .. }
+            | InvalidDeploy::MissingPaymentAmount
+            | InvalidDeploy::FailedToParsePaymentAmount
+            | InvalidDeploy::ExceededBlockGasLimit { .. }
+            | InvalidDeploy::MissingTransferAmount
+            | InvalidDeploy::FailedToParseTransferAmount
+            | InvalidDeploy::InsufficientTransferAmount { .. }
+            | InvalidDeploy::ExcessiveApprovals { .. } => None,
         }
     }
 }

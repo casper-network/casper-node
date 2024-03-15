@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, U512};
 
@@ -36,7 +36,7 @@ fn setup() -> LmdbWasmTestBuilder {
     };
 
     let mut ctx = LmdbWasmTestBuilder::default();
-    ctx.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+    ctx.run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()

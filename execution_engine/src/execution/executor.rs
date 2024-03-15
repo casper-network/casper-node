@@ -8,11 +8,11 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntityKind, NamedKeys},
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     system::{handle_payment, mint, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
-    EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
     TransactionHash, URef, U512,
 };
 
@@ -55,7 +55,6 @@ impl Executor {
         args: RuntimeArgs,
         entity_hash: AddressableEntityHash,
         entity: &AddressableEntity,
-        entity_kind: EntityKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -87,7 +86,7 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let entity_key = Key::addressable_entity_key(entity_kind.tag(), entity_hash);
+        let entity_key = Key::addressable_entity_key(entity.kind().tag(), entity_hash);
 
         let calling_add_contract_version = match execution_kind {
             ExecutionKind::Installer(_)
@@ -105,7 +104,6 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -116,7 +114,7 @@ impl Executor {
             args.clone(),
             gas_limit,
             spending_limit,
-            EntryPointType::Session,
+            EntryPointType::Caller,
             calling_add_contract_version,
         );
 
@@ -166,7 +164,6 @@ impl Executor {
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -230,7 +227,8 @@ impl Executor {
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
-        let entity_addr = EntityAddr::new_of_kind(entity_kind, entity_hash.value());
+        let entity_addr = entity.entity_addr(entity_hash);
+        let entity_key = entity_addr.into();
 
         let mut named_keys = match tracking_copy.borrow_mut().get_named_keys(entity_addr) {
             Ok(named_key) => named_key,
@@ -238,7 +236,6 @@ impl Executor {
         };
 
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
-        let entity_key = entity_addr.into();
         let calling_add_contract_version = CallingAddContractVersion::Forbidden;
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
@@ -246,7 +243,6 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -257,7 +253,7 @@ impl Executor {
             runtime_args.clone(),
             gas_limit,
             remaining_spending_limit,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
             calling_add_contract_version,
         );
 
@@ -309,7 +305,6 @@ impl Executor {
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -335,7 +330,6 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -360,7 +354,6 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         entity: &AddressableEntity,
-        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -385,7 +378,6 @@ impl Executor {
 
         let (maybe_purse, get_payment_result) = self.get_payment_purse(
             entity,
-            entity_kind,
             authorization_keys.clone(),
             account_hash,
             blocktime,
@@ -429,7 +421,6 @@ impl Executor {
         let (transfer_result, payment_result) = self.invoke_mint_to_transfer(
             runtime_args,
             entity,
-            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -463,7 +454,6 @@ impl Executor {
     pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
-        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -481,7 +471,6 @@ impl Executor {
             DirectSystemContractCall::GetPaymentPurse,
             RuntimeArgs::new(),
             entity,
-            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -500,7 +489,6 @@ impl Executor {
         &self,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -519,7 +507,6 @@ impl Executor {
             DirectSystemContractCall::Transfer,
             runtime_args,
             entity,
-            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
