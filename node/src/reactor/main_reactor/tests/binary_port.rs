@@ -318,6 +318,7 @@ async fn binary_port_component() {
         next_upgrade(),
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
+        latest_switch_block_header(),
         node_status(),
         get_block_header(highest_block.clone_header()),
         get_block_transfers(highest_block.clone_header()),
@@ -609,6 +610,21 @@ fn chainspec_raw_bytes(network_chainspec_raw_bytes: ChainspecRawBytes) -> TestCa
     }
 }
 
+fn latest_switch_block_header() -> TestCase {
+    TestCase {
+        name: "latest_switch_block_header",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::LatestSwitchBlockHeader.into(),
+            key: vec![],
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+                header.is_switch_block()
+            })
+        }),
+    }
+}
+
 fn node_status() -> TestCase {
     TestCase {
         name: "node_status",
@@ -628,6 +644,7 @@ fn node_status() -> TestCase {
                         && node_status.block_sync.historical().is_none()
                         && node_status.block_sync.forward().is_none()
                         && matches!(node_status.reactor_state.into_inner().as_str(), "Validate")
+                        && node_status.latest_switch_block_hash.is_some()
                 },
             )
         }),
