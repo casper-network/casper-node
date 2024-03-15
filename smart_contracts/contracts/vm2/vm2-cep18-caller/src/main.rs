@@ -1,3 +1,4 @@
+#![cfg_attr(target_family = "wasm", no_main)]
 const MODULE_PATH: &str = module_path!();
 
 pub mod exports {
@@ -11,13 +12,28 @@ pub mod exports {
     pub fn call(address: Address) -> String {
         log!("Hello {address:?}");
         let handle = ContractHandle::<TokenContractRef>::from_address(address);
+
+        // Mint tokens, then check the balance of the account that called this contract
         handle
-            .call(|contract| contract.name())
+            .call(|contract| contract.mint([99; 32], 100))
             .expect("Should call")
+            .expect("Should mint");
+
+        let balance_result = handle
+            .call(|contract| contract.balance_of([99; 32]))
+            .expect("Should call");
+
+        assert_eq!(balance_result, 100);
+
+        let name_result = handle
+            .call(|contract| contract.name())
+            .expect("Should call");
+        log!("Name: {name_result:?}");
+        name_result
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use casper_sdk::host::native::{self, dispatch_with, Environment};
 

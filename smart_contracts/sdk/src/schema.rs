@@ -87,12 +87,9 @@ thread_local! {
     pub static DISPATCHER: RefCell<BTreeMap<String, extern "C" fn()>> = Default::default();
 }
 
-#[no_mangle]
-pub unsafe fn register_func(name: &str, f: extern "C" fn() -> ()) {
-    println!("registering function {}", name);
-    DISPATCHER.with(|foo| foo.borrow_mut().insert(name.to_string(), f));
-}
-
-pub fn register_entrypoint<'a, F: fmt::Debug + Fn()>(entrypoint: EntryPoint<'a, F>) {
-    dbg!(entrypoint);
-}
+// #[cfg(not(target_family = "wasm"))]
+// #[no_mangle]
+// pub unsafe fn register_func(name: &str, f: extern "C" fn() -> ()) {
+//     println!("registering function {}", name);
+//     DISPATCHER.with(|foo| foo.borrow_mut().insert(name.to_string(), f));
+// }

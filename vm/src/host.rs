@@ -146,12 +146,12 @@ pub(crate) fn casper_read<S: StateReader<Key, StoredValue, Error = global_state:
             // To protect the network against potential non-determinism (i.e. one validator runs out of space or just faces I/O issues that other validators may not have) we're simply aborting the process, hoping that once the node goes back online issues are resolved on the validator side.
             // TODO: We should signal this to the contract runtime somehow, and let validator nodes skip execution.
             error!(?error, "Error while reading from storage; aborting");
-            panic!("Error while reading from storage; aborting")
+            panic!("Error while reading from storage; aborting key={global_state_key:?} error={error:?}")
         }
     }
 }
 
-fn keyspace_to_global_state_key(address: [u8; 32], keyspace: Keyspace<'_>) -> Key {
+fn keyspace_to_global_state_key<'a>(address: [u8; 32], keyspace: Keyspace<'a>) -> Key {
     match keyspace {
         Keyspace::State => casper_types::Key::State(EntityAddr::SmartContract(address)),
         Keyspace::Context(payload) => {
@@ -630,6 +630,10 @@ pub(crate) fn casper_call<
                 }
                 Err(_other_host_error) => {}
             }
+
+            let new_context = new_instance.teardown();
+            caller.context_mut().storage.merge(new_context.storage);
+
             Ok(host_result)
         }
         Some(stored_value) => {

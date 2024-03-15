@@ -1885,7 +1885,15 @@ mod tests {
                 "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
-        )
+        );
+
+        assert_eq!(
+            format!("{}", STATE_KEY),
+            format!(
+                "Key::State(addressable-entity-contract-{})",
+                base16::encode_lower(&[42; 32])
+            )
+        );
     }
 
     #[test]
@@ -2194,6 +2202,38 @@ mod tests {
             let tag: KeyTag = key.tag();
             bytesrepr::test_serialization_roundtrip(&tag);
         }
+    }
+
+    #[test]
+    fn bytesrepr_serialization_roundtrip() {
+        bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&HASH_KEY);
+        bytesrepr::test_serialization_roundtrip(&UREF_KEY);
+        bytesrepr::test_serialization_roundtrip(&TRANSFER_KEY);
+        bytesrepr::test_serialization_roundtrip(&DEPLOY_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&BALANCE_KEY);
+        bytesrepr::test_serialization_roundtrip(&BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&WITHDRAW_KEY);
+        bytesrepr::test_serialization_roundtrip(&DICTIONARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&SYSTEM_CONTRACT_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_SUMMARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNBOND_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHAINSPEC_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHECKSUM_REGISTRY_KEY);
+        // bytesrepr::test_serialization_roundtrip(&UNIFIED_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&VALIDATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&DELEGATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&PACKAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SYSTEM_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_EMPTY_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_V1_WASM_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
+        bytesrepr::test_serialization_roundtrip(&STATE_KEY);
     }
 
     #[test]

@@ -719,7 +719,8 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
-        named_key_value_arb().prop_map(StoredValue::NamedKey)
+        named_key_value_arb().prop_map(StoredValue::NamedKey),
+        collection::vec(any::<u8>(), 0..1000).prop_map(StoredValue::RawBytes),
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure

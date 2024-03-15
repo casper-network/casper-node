@@ -18,7 +18,7 @@ use serde_bytes::ByteBuf;
 use crate::{
     account::Account,
     addressable_entity::NamedKeyValue,
-    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::{MessageChecksum, MessageTopicSummary},
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage, ContractV2},
@@ -686,7 +686,7 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
-                StoredValue::RawBytes(bytes) => bytes.len(),
+                StoredValue::RawBytes(bytes) => bytes.serialized_length(),
                 StoredValue::ContractV2(contract_v2) => contract_v2.serialized_length(),
             }
     }
@@ -716,7 +716,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?,
-            StoredValue::RawBytes(bytes) => writer.extend_from_slice(bytes),
+            StoredValue::RawBytes(bytes) => bytes.write_bytes(writer)?,
             StoredValue::ContractV2(contract_v2) => contract_v2.write_bytes(writer)?,
         };
         Ok(())
@@ -781,8 +781,8 @@ impl FromBytes for StoredValue {
                 })
             }
             tag if tag == Tag::RawBytes as u8 => {
-                let (bytes, remainder) = Vec::<u8>::from_bytes(remainder)?;
-                Ok((StoredValue::RawBytes(bytes), remainder))
+                let (bytes, remainder) = Bytes::from_bytes(remainder)?;
+                Ok((StoredValue::RawBytes(bytes.into()), remainder))
             }
             tag if tag == Tag::ContractV2 as u8 => ContractV2::from_bytes(remainder)
                 .map(|(contract_v2, remainder)| (StoredValue::ContractV2(contract_v2), remainder)),
