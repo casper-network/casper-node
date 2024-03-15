@@ -69,7 +69,6 @@ const ERA_TWO: EraId = EraId::new(2);
 const ERA_THREE: EraId = EraId::new(3);
 const TEN_SECS: Duration = Duration::from_secs(10);
 const ONE_MIN: Duration = Duration::from_secs(60);
-const TWO_MIN: Duration = Duration::from_secs(120);
 
 type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
 
@@ -2631,7 +2630,7 @@ async fn block_vacancy() {
 }
 
 #[tokio::test]
-async fn should_raise_gas_price_to_ceiling() {
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
@@ -2644,9 +2643,9 @@ async fn should_raise_gas_price_to_ceiling() {
     let max_gas_price: u8 = 3;
 
     let spec_override = ConfigsOverride {
-        minimum_era_height: 1,
-        lower_threshold: 5,
-        upper_threshold: 10,
+        minimum_era_height: 5,
+        lower_threshold: 0,
+        upper_threshold: 1,
         max_standard_count: 1,
         max_staking_count: 1,
         max_install_count: 1,
@@ -2663,12 +2662,12 @@ async fn should_raise_gas_price_to_ceiling() {
         .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
         .await;
 
-    let current_era_id = 2u64;
-    let max_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
-    // Increase the utilization of the chain to above the upper threshold
-    // for a few eras to ensure the gas price reaches the max but does not
-    // exceed the max total price
-    for era in current_era_id..=5 {
+    let switch_block = fixture.switch_block(ERA_ONE);
+
+    let mut current_era = switch_block.era_id();
+
+    // Run the network at load for at least 5 eras.
+    for _ in 0..5 {
         let target_public_key = PublicKey::random(&mut fixture.rng);
         let mut native_transfer = Deploy::native_transfer(
             fixture.chainspec.network_config.name.clone(),
@@ -2676,41 +2675,34 @@ async fn should_raise_gas_price_to_ceiling() {
             target_public_key,
             None,
             Timestamp::now(),
-            TimeDiff::from_seconds(60),
+            TimeDiff::from_seconds(1200),
             max_gas_price as u64,
         );
 
         native_transfer.sign(&alice_secret_key);
         let txn = Transaction::Deploy(native_transfer);
-
         fixture.inject_transaction(txn).await;
-        let era_id = EraId::new(era);
+        let next_era = current_era.successor();
         fixture
-            .run_until_stored_switch_block_header(era_id, ONE_MIN)
+            .run_until_stored_switch_block_header(next_era, ONE_MIN)
             .await;
+        current_era = next_era;
     }
 
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
-    let actual_gas_price = fixture
-        .highest_complete_block()
-        .maybe_current_gas_price()
-        .unwrap();
+    let actual_gas_price = fixture.get_current_era_price();
+    assert_eq!(actual_gas_price, expected_gas_price);
 
-    assert_eq!(expected_gas_price, actual_gas_price);
+    // Run the network at zero load and ensure the value falls back to the floor.
+    for _ in 0..5 {
+        let next_era = current_era.successor();
+        fixture
+            .run_until_stored_switch_block_header(next_era, ONE_MIN)
+            .await;
+        current_era = next_era;
+    }
 
-    let stopping_era = EraId::new(15);
-
-    // Run until an arbitrarily far era with no load to ensure that the
-    // gas price can reach the floor again.
-    fixture
-        .run_until_stored_switch_block_header(stopping_era, TWO_MIN)
-        .await;
-
-    let actual_gas_price = fixture
-        .switch_block(stopping_era)
-        .header()
-        .current_gas_price();
     let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
-
-    assert_eq!(expected_gas_price, actual_gas_price);
+    let actual_gas_price = fixture.get_current_era_price();
+    assert_eq!(actual_gas_price, expected_gas_price);
 }

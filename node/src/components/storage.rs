@@ -1957,7 +1957,7 @@ impl Storage {
         block_height: u64,
         transaction_count: u64,
     ) -> Option<(u64, u64)> {
-        match self.utilization_tracker.get_mut(&era_id) {
+        let ret = match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
                 utilization.entry(block_height).or_insert(transaction_count);
 
@@ -1975,7 +1975,12 @@ impl Storage {
                 let block_count = 1u64;
                 Some((transaction_count, block_count))
             }
-        }
+        };
+
+        self.utilization_tracker
+            .retain(|key_era_id, _| key_era_id.value() + 2 >= era_id.value());
+
+        ret
     }
 }
 

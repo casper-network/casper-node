@@ -7,7 +7,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_storage::{
@@ -429,7 +429,7 @@ pub(super) async fn exec_or_requeue<REv>(
                     } else {
                         new_gas_price
                     }
-                } else if era_score < go_down {
+                } else if era_score <= go_down {
                     let new_gas_price = current_gas_price - 1;
                     if new_gas_price <= min {
                         min

@@ -286,6 +286,10 @@ fn get_proposable_transactions() {
         )
         .unwrap();
 
+        transaction_buffer
+            .prices
+            .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
         // populate transaction buffer with some transactions
         let transactions: Vec<_> = (0..50)
             .map(|_| create_valid_transaction(&mut rng, category, None, None))
@@ -362,6 +366,9 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut transaction_buffer =
         TransactionBuffer::new(chainspec, Config::default(), &Registry::new()).unwrap();
 
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
@@ -390,6 +397,9 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
@@ -416,6 +426,9 @@ fn get_appendable_block_when_standards_are_of_one_category() {
     };
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
@@ -442,6 +455,10 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     get_appendable_block(
         &mut rng,
@@ -478,6 +495,10 @@ fn block_fully_saturated() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Try to register 10 more transactions per each category as allowed by the config.
     let (transfers, stakings, install_upgrades, standards) = generate_and_register_transactions(
@@ -574,6 +595,10 @@ fn block_not_fully_saturated() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Try to register less than max capacity per each category as allowed by the config.
     let actual_transfer_count = rng.gen_range(0..MIN_COUNT - 1);
@@ -675,6 +700,10 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
     // Saturate all buckets but transfers.
     let (transfers, _, _, _) = generate_and_register_transactions(
         &mut transaction_buffer,
@@ -734,6 +763,10 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but stakings.
     let (_, stakings, _, _) = generate_and_register_transactions(
@@ -795,6 +828,10 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
 
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
+
     // Saturate all buckets but install_upgrades.
     let (_, _, install_upgrades, _) = generate_and_register_transactions(
         &mut transaction_buffer,
@@ -854,6 +891,10 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
 
     let mut transaction_buffer =
         TransactionBuffer::new(Arc::new(chainspec), Config::default(), &Registry::new()).unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // Saturate all buckets but standards.
     let (_, _, _, standards) = generate_and_register_transactions(
@@ -948,6 +989,10 @@ fn register_transactions_and_blocks() {
         &Registry::new(),
     )
     .unwrap();
+
+    transaction_buffer
+        .prices
+        .insert(ERA_ONE, DEFAULT_MINIMUM_GAS_PRICE);
 
     // try to register valid transactions
     let num_valid_transactions: usize = rng.gen_range(50..500);
