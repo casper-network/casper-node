@@ -7,7 +7,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use casper_execution_engine::engine_state::ExecutionEngineV1;
 use casper_storage::{
