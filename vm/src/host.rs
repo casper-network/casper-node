@@ -631,8 +631,18 @@ pub(crate) fn casper_call<
                 Err(_other_host_error) => {}
             }
 
-            let new_context = new_instance.teardown();
-            caller.context_mut().storage.merge(new_context.storage);
+            match host_result {
+                Ok(()) => {
+                    // Execution succeeded, merge all effects into the caller.
+                    let new_context = new_instance.teardown();
+                    caller.context_mut().storage.merge(new_context.storage);
+                }
+                Err(HostError::CalleeGasDepleted)
+                | Err(HostError::CalleeReverted)
+                | Err(HostError::CalleeTrapped) => {
+                    // Error means no changes to the storage
+                }
+            }
 
             Ok(host_result)
         }

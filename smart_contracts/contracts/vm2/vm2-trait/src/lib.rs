@@ -4,6 +4,8 @@
 #[macro_use]
 extern crate alloc;
 
+use core::fmt;
+
 use alloc::{string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};

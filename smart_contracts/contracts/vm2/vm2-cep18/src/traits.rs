@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI};
 use casper_sdk::{collections::Map, host, types::Address};

@@ -653,14 +653,6 @@ where
 
         let data = env_mut.data_mut();
 
-        // // let data = data.clone();
-
-        // data
-
-        // // let WasmerEnv { context, .. } = env.as_ref(&store);
-
-        // let Context { storage, address } = data;
-
         Context {
             storage: data.context.storage.fork2(),
             address: data.context.address,

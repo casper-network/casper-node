@@ -19,6 +19,7 @@ const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 pub struct Harness {
+    counter: u64,
     greeting: String,
     address_inside_constructor: Option<Address>,
 }
@@ -36,6 +37,7 @@ pub enum CustomError {
 impl Default for Harness {
     fn default() -> Self {
         Self {
+            counter: 0,
             greeting: "Default value".to_string(),
             address_inside_constructor: None,
         }
@@ -49,6 +51,7 @@ impl Harness {
     pub fn constructor_with_args(who: String) -> Self {
         log!("👋 Hello from constructor with args: {who}");
         Self {
+            counter: 0,
             greeting: format!("Hello, {who}!"),
             address_inside_constructor: Some(host::get_caller()),
         }
@@ -72,6 +75,7 @@ impl Harness {
     pub fn initialize() -> Self {
         log!("👋 Hello from constructor");
         Self {
+            counter: 0,
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
         }
@@ -81,20 +85,43 @@ impl Harness {
         &self.greeting
     }
 
+    pub fn increment_counter(&mut self) {
+        self.counter += 1;
+    }
+
+    pub fn counter(&self) -> u64 {
+        self.counter
+    }
+
     pub fn set_greeting(&mut self, greeting: String) {
+        self.counter += 1;
         log!("Saving greeting {}", greeting);
         self.greeting = greeting;
     }
 
-    pub fn emit_unreachable_trap(&self) -> ! {
+    pub fn emit_unreachable_trap(&mut self) -> ! {
+        self.counter += 1;
         panic!("unreachable");
     }
 
-    pub fn emit_revert_with_data(&self) -> Result<(), CustomError> {
-        revert!(Err(CustomError::Bar))
+    #[casper(revert_on_error)]
+    pub fn emit_revert_with_data(&mut self) -> Result<(), CustomError> {
+        log!("emit_revert_with_data state={:?}", self);
+        log!(
+            "Reverting with data before {counter}",
+            counter = self.counter
+        );
+        self.counter += 1;
+        log!(
+            "Reverting with data after {counter}",
+            counter = self.counter
+        );
+        // Here we can't use revert!() macro, as it explicitly calls `return` and does not involve writing the state again.
+        Err(CustomError::Bar)
     }
 
-    pub fn emit_revert_without_data(&self) -> ! {
+    pub fn emit_revert_without_data(&mut self) -> ! {
+        self.counter += 1;
         revert!()
     }
 
@@ -181,11 +208,41 @@ pub fn call() {
 
         log!("Trap recovered");
 
-        let call_result = contract_handle
-            .try_call(|harness| harness.emit_revert_with_data())
-            .expect("Call succeed");
-        assert_eq!(call_result.result, ResultCode::CalleeReverted);
-        assert_eq!(call_result.into_return_value(), Err(CustomError::Bar),);
+        {
+            let counter_value_before = contract_handle
+                .call(|harness| harness.counter())
+                .expect("Should call");
+
+            // increase counter
+            let () = contract_handle
+                .call(|harness| harness.increment_counter())
+                .expect("Should call");
+
+            let counter_value_after = contract_handle
+                .call(|harness| harness.counter())
+                .expect("Should call");
+
+            assert_eq!(counter_value_before + 1, counter_value_after);
+        }
+
+        {
+            let counter_value_before = contract_handle
+                .call(|harness| harness.counter())
+                .expect("Should call");
+
+            let call_result = contract_handle
+                .try_call(|harness| harness.emit_revert_with_data())
+                .expect("Call succeed");
+
+            assert_eq!(call_result.result, ResultCode::CalleeReverted);
+            assert_eq!(call_result.into_return_value(), Err(CustomError::Bar),);
+
+            let counter_value_after = contract_handle
+                .call(|harness| harness.counter())
+                .expect("Should call");
+
+            assert_eq!(counter_value_before, counter_value_after);
+        }
 
         log!("Revert with data success");
 
