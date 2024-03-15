@@ -1,3 +1,5 @@
+//! Contains genesis configuration settings.
+
 #[cfg(any(feature = "testing", test))]
 use std::iter;
 

@@ -129,7 +129,7 @@ impl TransactionAcceptor {
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
             Transaction::V1(txn) => txn
                 .is_config_compliant(
                     &self.chain_name,
@@ -139,7 +139,7 @@ impl TransactionAcceptor {
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
 
         if let Err(error) = is_config_compliant {
@@ -696,8 +696,12 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
     ) -> Effects<Event> {
         let is_valid = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Error::from),
-            Transaction::V1(txn) => txn.verify().map_err(Error::from),
+            Transaction::Deploy(deploy) => deploy
+                .is_valid()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
+            Transaction::V1(txn) => txn
+                .verify()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
         if let Err(error) = is_valid {
             return self.reject_transaction(effect_builder, *event_metadata, error);
@@ -832,6 +836,10 @@ impl TransactionAcceptor {
 impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
     type Event = Event;
 
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
     fn handle_event(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -912,10 +920,6 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
     }
 }
 

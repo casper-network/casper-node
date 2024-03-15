@@ -860,10 +860,10 @@ pub trait StateProvider {
             } => (total_balance, available_balance, purse_addr),
         };
 
-        let (hold_amount, covered) = {
+        let held_amount = {
             if remaining_balance >= request.hold_amount() {
                 // the purse has sufficient balance to fully cover the hold
-                (request.hold_amount(), true)
+                request.hold_amount()
             } else if request.insufficient_handling() == InsufficientBalanceHandling::Noop {
                 // the purse has insufficient balance but the holding mode is noop, so get out
                 return BalanceHoldResult::Failure(BalanceHoldError::InsufficientBalance {
@@ -879,11 +879,11 @@ pub trait StateProvider {
                 // knowing that they will fail due to insufficient funds, but only
                 // after making the system do the work of processing the balance
                 // check without penalty to themselves.
-                (remaining_balance, false)
+                remaining_balance
             }
         };
 
-        let cl_value = match CLValue::from_t(hold_amount) {
+        let cl_value = match CLValue::from_t(held_amount) {
             Ok(cl_value) => cl_value,
             Err(cve) => {
                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
@@ -903,13 +903,17 @@ pub trait StateProvider {
             Key::BalanceHold(balance_hold_addr),
             StoredValue::CLValue(cl_value),
         );
-        let available_balance = remaining_balance.saturating_sub(hold_amount);
 
-        BalanceHoldResult::Success {
+        let available_balance = remaining_balance.saturating_sub(held_amount);
+        let effects = tc.effects();
+
+        BalanceHoldResult::success(
             total_balance,
             available_balance,
-            full_amount_held: covered,
-        }
+            held_amount,
+            request.hold_amount(),
+            effects,
+        )
     }
 
     /// Get the requested era validators.

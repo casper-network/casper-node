@@ -376,7 +376,7 @@ impl ExecutionEngineV1 {
                 FeeHandling::PayToProposer => {
                     FeesPurseHandling::ToProposer(proposer.to_account_hash())
                 }
-                FeeHandling::None => FeesPurseHandling::None(payment_purse_uref),
+                FeeHandling::NoFee => FeesPurseHandling::None(payment_purse_uref),
                 FeeHandling::Accumulate => FeesPurseHandling::Accumulate,
                 FeeHandling::Burn => FeesPurseHandling::Burn,
             };

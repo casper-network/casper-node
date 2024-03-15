@@ -1,7 +1,7 @@
 use crate::{data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError};
 use casper_types::{
-    account::AccountHash, system::mint::BalanceHoldAddrTag, BlockTime, Digest, EntityAddr,
-    ProtocolVersion, PublicKey, TimeDiff, URef, URefAddr, U512,
+    account::AccountHash, execution::Effects, system::mint::BalanceHoldAddrTag, BlockTime, Digest,
+    EntityAddr, ProtocolVersion, PublicKey, TimeDiff, URef, URefAddr, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -242,12 +242,79 @@ pub enum BalanceHoldResult {
     /// Balance hold successfully placed.
     Success {
         /// Purse total balance.
-        total_balance: U512,
+        total_balance: Box<U512>,
         /// Purse available balance after hold placed.
-        available_balance: U512,
-        /// Were we able to hold the full amount?
-        full_amount_held: bool,
+        available_balance: Box<U512>,
+        /// How much were we supposed to hold?
+        hold: Box<U512>,
+        /// How much did we actually hold?
+        held: Box<U512>,
+        /// Effects of bidding interaction.
+        effects: Box<Effects>,
     },
     /// Failed to place balance hold.
     Failure(BalanceHoldError),
+}
+
+impl BalanceHoldResult {
+    pub fn success(
+        total_balance: U512,
+        available_balance: U512,
+        hold: U512,
+        held: U512,
+        effects: Effects,
+    ) -> Self {
+        BalanceHoldResult::Success {
+            total_balance: Box::new(total_balance),
+            available_balance: Box::new(available_balance),
+            hold: Box::new(hold),
+            held: Box::new(held),
+            effects: Box::new(effects),
+        }
+    }
+
+    /// Was the hold fully covered?
+    pub fn is_fully_covered(&self) -> bool {
+        match self {
+            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => false,
+            BalanceHoldResult::Success { hold, held, .. } => hold == held,
+        }
+    }
+
+    /// Was the hold successful?
+    pub fn is_success(&self) -> bool {
+        matches!(self, BalanceHoldResult::Success { .. })
+    }
+
+    /// Was the root not found?
+    pub fn is_root_not_found(&self) -> bool {
+        matches!(self, BalanceHoldResult::RootNotFound)
+    }
+
+    /// The effects, if any.
+    pub fn effects(&self) -> Effects {
+        match self {
+            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => Effects::new(),
+            BalanceHoldResult::Success { effects, .. } => *effects.clone(),
+        }
+    }
+
+    pub fn error_message(&self) -> String {
+        match self {
+            BalanceHoldResult::Success { hold, held, .. } => {
+                if hold == held {
+                    String::default()
+                } else {
+                    format!(
+                        "insufficient balance to cover hold amount: {}, held remaining amount: {}",
+                        hold, held
+                    )
+                }
+            }
+            BalanceHoldResult::RootNotFound => "root not found".to_string(),
+            BalanceHoldResult::Failure(bhe) => {
+                format!("{:?}", bhe)
+            }
+        }
+    }
 }

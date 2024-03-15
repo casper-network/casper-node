@@ -17,6 +17,7 @@ mod transaction_config;
 mod upgrade_config;
 mod vm_config;
 
+#[cfg(any(feature = "std", test))]
 use std::{fmt::Debug, sync::Arc};
 
 #[cfg(feature = "datasize")]

@@ -2,8 +2,8 @@
 use crate::data_access_layer::BalanceHoldRequest;
 use casper_types::{
     account::AccountHash, global_state::TrieMerkleProof, system::mint::BalanceHoldAddrTag,
-    AccessRights, BlockTime, Digest, EntityAddr, Key, ProtocolVersion, PublicKey, StoredValue,
-    URef, URefAddr, U512,
+    AccessRights, BlockTime, Digest, EntityAddr, InitiatorAddr, Key, ProtocolVersion, PublicKey,
+    StoredValue, URef, URefAddr, U512,
 };
 use std::collections::BTreeMap;
 
@@ -95,6 +95,15 @@ impl BalanceIdentifier {
 impl Default for BalanceIdentifier {
     fn default() -> Self {
         BalanceIdentifier::Purse(URef::default())
+    }
+}
+
+impl From<InitiatorAddr> for BalanceIdentifier {
+    fn from(value: InitiatorAddr) -> Self {
+        match value {
+            InitiatorAddr::PublicKey(public_key) => BalanceIdentifier::Public(public_key),
+            InitiatorAddr::AccountHash(account_hash) => BalanceIdentifier::Account(account_hash),
+        }
     }
 }
 

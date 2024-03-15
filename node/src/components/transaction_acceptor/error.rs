@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    binary_port, AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest,
-    EntityVersion, InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
+    binary_port, AddressableEntityHash, BlockHash, BlockHeader, Digest, EntityVersion,
+    InitiatorAddr, InvalidTransaction, PackageHash, Timestamp,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -15,13 +15,9 @@ pub(crate) enum Error {
     #[error("block chain has no blocks")]
     EmptyBlockchain,
 
-    /// The deploy has an invalid configuration.
-    #[error("invalid deploy: {0}")]
-    InvalidDeployConfiguration(#[from] DeployConfigFailure),
-
-    /// The v1 transaction has an invalid configuration.
-    #[error("invalid v1 transaction: {0}")]
-    InvalidV1Configuration(#[from] TransactionV1ConfigFailure),
+    /// The deploy has an invalid transaction.
+    #[error("invalid transaction: {0}")]
+    InvalidTransaction(#[from] InvalidTransaction),
 
     /// The transaction is invalid due to missing or otherwise invalid parameters.
     #[error(
@@ -72,8 +68,7 @@ impl From<Error> for binary_port::ErrorCode {
     fn from(err: Error) -> Self {
         match err {
             Error::EmptyBlockchain
-            | Error::InvalidDeployConfiguration(_)
-            | Error::InvalidV1Configuration(_)
+            | Error::InvalidTransaction(_)
             | Error::Parameters { .. }
             | Error::Expired { .. }
             | Error::ExpectedDeploy

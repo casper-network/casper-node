@@ -19,14 +19,17 @@ use super::super::{RuntimeArgs, TransactionEntryPoint, TransactionScheduling, Tr
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use super::TransactionCategory;
+#[cfg(any(feature = "std", test))]
+use super::TransactionConfig;
 #[cfg(doc)]
 use super::TransactionV1;
-#[cfg(any(feature = "std", test))]
-use super::{TransactionConfig, TransactionV1ConfigFailure};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     TransactionSessionKind,
 };
+
+#[cfg(any(feature = "std", test))]
+use crate::InvalidTransactionV1;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
@@ -128,10 +131,7 @@ impl TransactionV1Body {
     }
 
     #[cfg(any(feature = "std", test))]
-    pub(super) fn is_valid(
-        &self,
-        config: &TransactionConfig,
-    ) -> Result<(), TransactionV1ConfigFailure> {
+    pub(super) fn is_valid(&self, config: &TransactionConfig) -> Result<(), InvalidTransactionV1> {
         let args_length = self.args.serialized_length();
         if args_length > config.transaction_v1_config.max_args_length as usize {
             debug!(
@@ -139,7 +139,7 @@ impl TransactionV1Body {
                 max_args_length = config.transaction_v1_config.max_args_length,
                 "transaction runtime args excessive size"
             );
-            return Err(TransactionV1ConfigFailure::ExcessiveArgsLength {
+            return Err(InvalidTransactionV1::ExcessiveArgsLength {
                 max_length: config.transaction_v1_config.max_args_length as usize,
                 got: args_length,
             });
@@ -152,7 +152,7 @@ impl TransactionV1Body {
                         entry_point = %self.entry_point,
                         "native transaction cannot have custom entry point"
                     );
-                    Err(TransactionV1ConfigFailure::EntryPointCannotBeCustom {
+                    Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                         entry_point: self.entry_point.clone(),
                     })
                 }
@@ -190,7 +190,7 @@ impl TransactionV1Body {
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
                     );
-                    Err(TransactionV1ConfigFailure::EntryPointMustBeCustom {
+                    Err(InvalidTransactionV1::EntryPointMustBeCustom {
                         entry_point: self.entry_point.clone(),
                     })
                 }
@@ -199,7 +199,7 @@ impl TransactionV1Body {
                 TransactionEntryPoint::Custom(_) => {
                     if module_bytes.is_empty() {
                         debug!("transaction with session code must not have empty module bytes");
-                        return Err(TransactionV1ConfigFailure::EmptyModuleBytes);
+                        return Err(InvalidTransactionV1::EmptyModuleBytes);
                     }
                     Ok(())
                 }
@@ -214,7 +214,7 @@ impl TransactionV1Body {
                         entry_point = %self.entry_point,
                         "transaction with session code must have custom entry point"
                     );
-                    Err(TransactionV1ConfigFailure::EntryPointMustBeCustom {
+                    Err(InvalidTransactionV1::EntryPointMustBeCustom {
                         entry_point: self.entry_point.clone(),
                     })
                 }
@@ -400,13 +400,6 @@ impl Display for TransactionV1Body {
 }
 
 impl ToBytes for TransactionV1Body {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.args.write_bytes(writer)?;
-        self.target.write_bytes(writer)?;
-        self.entry_point.write_bytes(writer)?;
-        self.scheduling.write_bytes(writer)
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -418,6 +411,13 @@ impl ToBytes for TransactionV1Body {
             + self.target.serialized_length()
             + self.entry_point.serialized_length()
             + self.scheduling.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.args.write_bytes(writer)?;
+        self.target.write_bytes(writer)?;
+        self.entry_point.write_bytes(writer)?;
+        self.scheduling.write_bytes(writer)
     }
 }
 
@@ -452,7 +452,7 @@ mod tests {
         let mut body = TransactionV1Body::random(rng);
         body.args = runtime_args! {"a" => 1_u8};
 
-        let expected_error = TransactionV1ConfigFailure::ExcessiveArgsLength {
+        let expected_error = InvalidTransactionV1::ExcessiveArgsLength {
             max_length: 10,
             got: 15,
         };
@@ -474,7 +474,7 @@ mod tests {
             TransactionScheduling::random(rng),
         );
 
-        let expected_error = TransactionV1ConfigFailure::EntryPointCannotBeCustom { entry_point };
+        let expected_error = InvalidTransactionV1::EntryPointCannotBeCustom { entry_point };
 
         let config = TransactionConfig::default();
         assert_eq!(body.is_valid(&config,), Err(expected_error));
@@ -509,7 +509,7 @@ mod tests {
                 TransactionScheduling::random(rng),
             );
 
-            let expected_error = TransactionV1ConfigFailure::EntryPointMustBeCustom { entry_point };
+            let expected_error = InvalidTransactionV1::EntryPointMustBeCustom { entry_point };
 
             assert_eq!(stored_body.is_valid(&config,), Err(expected_error.clone()));
             assert_eq!(session_body.is_valid(&config,), Err(expected_error));

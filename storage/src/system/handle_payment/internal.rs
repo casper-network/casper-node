@@ -202,7 +202,7 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
             provider.write_balance(payment_purse, U512::zero())?;
             provider.reduce_total_supply(fee)?;
         }
-        FeeHandling::None => {
+        FeeHandling::NoFee => {
             // noop
         }
     }
@@ -244,7 +244,7 @@ where
 
     // Distribute accumulation purse balance into all administrators
     match provider.fee_handling() {
-        FeeHandling::PayToProposer | FeeHandling::Burn | FeeHandling::None => return Ok(()),
+        FeeHandling::PayToProposer | FeeHandling::Burn | FeeHandling::NoFee => return Ok(()),
         FeeHandling::Accumulate => {}
     }
 

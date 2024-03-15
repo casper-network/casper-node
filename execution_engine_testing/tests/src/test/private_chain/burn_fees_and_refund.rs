@@ -153,7 +153,7 @@ fn test_burning_fees(
     let total_supply_after = builder.total_supply(None, protocol_version);
 
     match fee_handling {
-        FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::None => {
+        FeeHandling::PayToProposer | FeeHandling::Accumulate | FeeHandling::NoFee => {
             assert_eq!(total_supply_before, total_supply_after);
         }
         FeeHandling::Burn => {

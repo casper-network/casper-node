@@ -25,19 +25,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-#[cfg(any(feature = "std", test))]
-use super::InitiatorAddrAndSecretKey;
 use super::{
-    Approval, ApprovalsHash, InitiatorAddr, PricingMode, TransactionEntryPoint,
+    Approval, ApprovalsHash, Categorized, InitiatorAddr, PricingMode, TransactionEntryPoint,
     TransactionScheduling, TransactionTarget,
 };
+#[cfg(any(feature = "std", test))]
+use super::{GasLimited, InitiatorAddrAndSecretKey};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 #[cfg(any(feature = "std", test))]
-use crate::{Gas, Motes, TransactionConfig, U512};
-
-#[cfg(any(feature = "std", test))]
-use crate::SystemConfig;
+use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -46,7 +43,8 @@ use crate::{
 };
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
-    ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
+    ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
+    InvalidTransaction as InvalidTransactionV1,
 };
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
@@ -85,7 +83,7 @@ pub struct TransactionV1 {
         data_size(skip)
     )]
     #[cfg(any(feature = "once_cell", test))]
-    is_verified: OnceCell<Result<(), TransactionV1ConfigFailure>>,
+    is_verified: OnceCell<Result<(), InvalidTransactionV1>>,
 }
 
 impl TransactionV1 {
@@ -221,66 +219,6 @@ impl TransactionV1 {
         self.body().is_standard()
     }
 
-    /// Returns the gas limit for this transaction.
-    #[cfg(any(feature = "std", test))]
-    pub fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u64>) -> Option<Gas> {
-        match self.header().pricing_mode() {
-            PricingMode::Classic {
-                payment_amount,
-                gas_price: user_specified_price,
-            } => {
-                let actual_price = match gas_price {
-                    Some(system_specified_price) => {
-                        // take the higher of the two possible prices
-                        (*user_specified_price).max(system_specified_price)
-                    }
-                    None => *user_specified_price,
-                };
-                let motes = Motes::new(U512::from(*payment_amount));
-                Gas::from_motes(motes, actual_price)
-            }
-            PricingMode::Fixed { .. } => {
-                // if gas price is not provided, assume price == 1
-                let gas_price = gas_price.unwrap_or(1);
-                let cost = {
-                    if self.is_native_mint() {
-                        // Because we currently only support one native mint interaction,
-                        // native transfer, we can short circuit to return that value.
-                        // However if other direct mint interactions are supported
-                        // in the future (such as the upcoming burn feature),
-                        // this logic will need to be expanded to self.mint_costs().field?
-                        // for the value for each verb...see how auction is set up below.
-                        costs.mint_costs().transfer
-                    } else if self.is_native_auction() {
-                        match self.body().entry_point() {
-                            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
-                                unreachable!("this must be programmer error");
-                            }
-                            TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
-                                costs.auction_costs().add_bid
-                            }
-                            TransactionEntryPoint::WithdrawBid => {
-                                costs.auction_costs().withdraw_bid
-                            }
-                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
-                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
-                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
-                        }
-                    } else if self.is_install_or_upgrade() {
-                        costs.install_upgrade_limit()
-                    } else {
-                        costs.standard_transaction_limit()
-                    }
-                };
-                Gas::from_motes(Motes::new(U512::from(cost)), gas_price)
-            }
-            PricingMode::Reserved { paid_amount, .. } => {
-                // prepaid, if receipt is legit (future use, not currently implemented)
-                Gas::from_motes(Motes::new(U512::from(paid_amount)), 1)
-            }
-        }
-    }
-
     /// Returns the approvals for this transaction.
     pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals
@@ -316,7 +254,7 @@ impl TransactionV1 {
 
     /// Returns `Ok` if and only if this transaction's body hashes to the value of `body_hash()`,
     /// and if this transaction's header hashes to the value claimed as the transaction hash.
-    pub fn has_valid_hash(&self) -> Result<(), TransactionV1ConfigFailure> {
+    pub fn has_valid_hash(&self) -> Result<(), InvalidTransactionV1> {
         let body_hash = Digest::hash(
             self.body
                 .to_bytes()
@@ -324,7 +262,7 @@ impl TransactionV1 {
         );
         if body_hash != *self.header.body_hash() {
             debug!(?self, ?body_hash, "invalid transaction body hash");
-            return Err(TransactionV1ConfigFailure::InvalidBodyHash);
+            return Err(InvalidTransactionV1::InvalidBodyHash);
         }
 
         let hash = TransactionV1Hash::new(Digest::hash(
@@ -334,7 +272,7 @@ impl TransactionV1 {
         ));
         if hash != self.hash {
             debug!(?self, ?hash, "invalid transaction hash");
-            return Err(TransactionV1ConfigFailure::InvalidTransactionHash);
+            return Err(InvalidTransactionV1::InvalidTransactionHash);
         }
         Ok(())
     }
@@ -343,7 +281,7 @@ impl TransactionV1 {
     ///   * the transaction hash is correct (see [`TransactionV1::has_valid_hash`] for details)
     ///   * approvals are non empty, and
     ///   * all approvals are valid signatures of the signed hash
-    pub fn verify(&self) -> Result<(), TransactionV1ConfigFailure> {
+    pub fn verify(&self) -> Result<(), InvalidTransactionV1> {
         #[cfg(any(feature = "once_cell", test))]
         return self.is_verified.get_or_init(|| self.do_verify()).clone();
 
@@ -351,10 +289,10 @@ impl TransactionV1 {
         self.do_verify()
     }
 
-    fn do_verify(&self) -> Result<(), TransactionV1ConfigFailure> {
+    fn do_verify(&self) -> Result<(), InvalidTransactionV1> {
         if self.approvals.is_empty() {
             debug!(?self, "transaction has no approvals");
-            return Err(TransactionV1ConfigFailure::EmptyApprovals);
+            return Err(InvalidTransactionV1::EmptyApprovals);
         }
 
         self.has_valid_hash()?;
@@ -365,7 +303,7 @@ impl TransactionV1 {
                     ?self,
                     "failed to verify transaction approval {}: {}", index, error
                 );
-                return Err(TransactionV1ConfigFailure::InvalidApproval { index, error });
+                return Err(InvalidTransactionV1::InvalidApproval { index, error });
             }
         }
 
@@ -384,7 +322,7 @@ impl TransactionV1 {
         max_associated_keys: u32,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
-    ) -> Result<(), TransactionV1ConfigFailure> {
+    ) -> Result<(), InvalidTransactionV1> {
         self.is_valid_size(transaction_config.max_transaction_size)?;
 
         let header = self.header();
@@ -395,7 +333,7 @@ impl TransactionV1 {
                 chain_name = %header.chain_name(),
                 "invalid chain identifier"
             );
-            return Err(TransactionV1ConfigFailure::InvalidChainName {
+            return Err(InvalidTransactionV1::InvalidChainName {
                 expected: chain_name.to_string(),
                 got: header.chain_name().to_string(),
             });
@@ -410,25 +348,24 @@ impl TransactionV1 {
                 max_associated_keys = %max_associated_keys,
                 "number of transaction approvals exceeds the limit"
             );
-            return Err(TransactionV1ConfigFailure::ExcessiveApprovals {
+            return Err(InvalidTransactionV1::ExcessiveApprovals {
                 got: self.approvals.len() as u32,
                 max_associated_keys,
             });
         }
 
-        if let Some(gas_limit) = self.gas_limit(cost_table, None) {
-            let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
-            if gas_limit > block_gas_limit {
-                debug!(
-                    amount = %gas_limit,
-                    %block_gas_limit,
-                    "transaction gas limit exceeds block gas limit"
-                );
-                return Err(TransactionV1ConfigFailure::ExceedsBlockGasLimit {
-                    block_gas_limit: transaction_config.block_gas_limit,
-                    got: Box::new(gas_limit.value()),
-                });
-            }
+        let gas_limit = self.gas_limit(cost_table, None)?;
+        let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
+        if gas_limit > block_gas_limit {
+            debug!(
+                amount = %gas_limit,
+                %block_gas_limit,
+                "transaction gas limit exceeds block gas limit"
+            );
+            return Err(InvalidTransactionV1::ExceedsBlockGasLimit {
+                block_gas_limit: transaction_config.block_gas_limit,
+                got: Box::new(gas_limit.value()),
+            });
         }
 
         self.body.is_valid(transaction_config)
@@ -589,6 +526,104 @@ impl TransactionV1 {
                 }
             },
         }
+    }
+}
+
+impl Categorized for TransactionV1 {
+    fn category(&self) -> TransactionCategory {
+        if self.is_native_mint() {
+            TransactionCategory::Mint
+        } else if self.is_native_auction() {
+            TransactionCategory::Auction
+        } else if self.is_install_or_upgrade() {
+            TransactionCategory::InstallUpgrade
+        } else {
+            TransactionCategory::Standard
+        }
+    }
+}
+
+#[cfg(any(feature = "std", test))]
+impl GasLimited for TransactionV1 {
+    type Error = InvalidTransactionV1;
+
+    fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u64>) -> Result<Gas, Self::Error> {
+        let gas = match self.header().pricing_mode() {
+            PricingMode::Classic {
+                payment_amount,
+                gas_price: user_specified_price,
+            } => {
+                let actual_price = match gas_price {
+                    Some(system_specified_price) => {
+                        // take the higher of the two possible prices
+                        (*user_specified_price).max(system_specified_price)
+                    }
+                    None => *user_specified_price,
+                };
+                let motes = Motes::new(U512::from(*payment_amount));
+                Gas::from_motes(motes, actual_price).ok_or(
+                    InvalidTransactionV1::GasPriceConversion {
+                        amount: *payment_amount,
+                        gas_price: actual_price,
+                    },
+                )?
+            }
+            PricingMode::Fixed { .. } => {
+                // if gas price is not provided, assume price == 1
+                let gas_price = gas_price.unwrap_or(1);
+                let cost = {
+                    if self.is_native_mint() {
+                        // Because we currently only support one native mint interaction,
+                        // native transfer, we can short circuit to return that value.
+                        // However if other direct mint interactions are supported
+                        // in the future (such as the upcoming burn feature),
+                        // this logic will need to be expanded to self.mint_costs().field?
+                        // for the value for each verb...see how auction is set up below.
+                        costs.mint_costs().transfer
+                    } else if self.is_native_auction() {
+                        let entry_point = self.body().entry_point();
+                        match entry_point {
+                            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
+                                return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
+                                    entry_point: entry_point.clone(),
+                                })
+                            }
+                            TransactionEntryPoint::AddBid | TransactionEntryPoint::ActivateBid => {
+                                costs.auction_costs().add_bid
+                            }
+                            TransactionEntryPoint::WithdrawBid => {
+                                costs.auction_costs().withdraw_bid
+                            }
+                            TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
+                            TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
+                            TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
+                        }
+                    } else if self.is_install_or_upgrade() {
+                        costs.install_upgrade_limit()
+                    } else {
+                        costs.standard_transaction_limit()
+                    }
+                };
+                let fixed_cost = U512::from(cost);
+                Gas::from_motes(Motes::new(fixed_cost), gas_price).ok_or(
+                    InvalidTransactionV1::GasPriceConversion {
+                        amount: fixed_cost.as_u64(),
+                        gas_price,
+                    },
+                )?
+            }
+            PricingMode::Reserved { paid_amount, .. } => {
+                let actual_price = 1;
+                // prepaid, if receipt is legit (future use, not currently implemented)
+                Gas::from_motes(Motes::new(*paid_amount), actual_price).ok_or(
+                    InvalidTransactionV1::GasPriceConversion {
+                        amount: paid_amount.as_u64(),
+                        gas_price: actual_price,
+                    },
+                )?
+            }
+        };
+        Ok(gas)
     }
 }
 
@@ -757,7 +792,7 @@ mod tests {
 
     fn check_is_not_valid(
         invalid_transaction: TransactionV1,
-        expected_error: TransactionV1ConfigFailure,
+        expected_error: InvalidTransactionV1,
     ) {
         assert!(
             invalid_transaction.is_verified.get().is_none(),
@@ -769,11 +804,11 @@ mod tests {
         // this makes the test too fragile.  Otherwise expect the actual error should exactly match
         // the expected error.
         match expected_error {
-            TransactionV1ConfigFailure::InvalidApproval {
+            InvalidTransactionV1::InvalidApproval {
                 index: expected_index,
                 ..
             } => match actual_error {
-                TransactionV1ConfigFailure::InvalidApproval {
+                InvalidTransactionV1::InvalidApproval {
                     index: actual_index,
                     ..
                 } => {
@@ -800,10 +835,7 @@ mod tests {
         let mut transaction = TransactionV1::random(rng);
 
         transaction.invalidate();
-        check_is_not_valid(
-            transaction,
-            TransactionV1ConfigFailure::InvalidTransactionHash,
-        );
+        check_is_not_valid(transaction, InvalidTransactionV1::InvalidTransactionHash);
     }
 
     #[test]
@@ -814,7 +846,7 @@ mod tests {
             .build()
             .unwrap();
         assert!(transaction.approvals.is_empty());
-        check_is_not_valid(transaction, TransactionV1ConfigFailure::EmptyApprovals)
+        check_is_not_valid(transaction, InvalidTransactionV1::EmptyApprovals)
     }
 
     #[test]
@@ -840,7 +872,7 @@ mod tests {
             .unwrap();
         check_is_not_valid(
             transaction,
-            TransactionV1ConfigFailure::InvalidApproval {
+            InvalidTransactionV1::InvalidApproval {
                 index: expected_index,
                 error: crypto::Error::SignatureError, // This field is ignored in the check.
             },
@@ -883,7 +915,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let expected_error = TransactionV1ConfigFailure::InvalidChainName {
+        let expected_error = InvalidTransactionV1::InvalidChainName {
             expected: expected_chain_name.to_string(),
             got: wrong_chain_name.to_string(),
         };
@@ -919,7 +951,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let expected_error = TransactionV1ConfigFailure::ExcessiveTimeToLive {
+        let expected_error = InvalidTransactionV1::ExcessiveTimeToLive {
             max_ttl: transaction_config.max_ttl,
             got: ttl,
         };
@@ -956,7 +988,7 @@ mod tests {
             .unwrap();
         let current_timestamp = transaction.timestamp() - leeway - TimeDiff::from_seconds(1);
 
-        let expected_error = TransactionV1ConfigFailure::TimestampInFuture {
+        let expected_error = InvalidTransactionV1::TimestampInFuture {
             validation_timestamp: current_timestamp,
             timestamp_leeway: leeway,
             got: transaction.timestamp(),
@@ -996,7 +1028,7 @@ mod tests {
 
         let current_timestamp = transaction.timestamp();
 
-        let expected_error = TransactionV1ConfigFailure::ExcessiveApprovals {
+        let expected_error = InvalidTransactionV1::ExcessiveApprovals {
             got: MAX_ASSOCIATED_KEYS + 1,
             max_associated_keys: MAX_ASSOCIATED_KEYS,
         };

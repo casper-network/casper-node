@@ -181,16 +181,20 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+
+#[cfg(any(feature = "std", test))]
+pub use transaction::GasLimited;
 pub use transaction::{
-    AddressableEntityIdentifier, Approval, ApprovalsHash, Deploy, DeployConfigFailure,
-    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash, DeployHeader,
-    DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo, InitiatorAddr,
-    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
-    TransactionConfigFailure, TransactionEntryPoint, TransactionHash, TransactionHeader,
-    TransactionId, TransactionInvocationTarget, TransactionRuntime, TransactionScheduling,
-    TransactionSessionKind, TransactionTarget, TransactionV1, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransferTarget,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Categorized as CategorizedTransaction,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
+    InitiatorAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg,
+    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
+    TransactionTarget, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

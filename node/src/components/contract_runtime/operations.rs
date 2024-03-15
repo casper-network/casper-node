@@ -11,10 +11,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
-        TransferRequest, TransferResult,
+        AuctionMethod, BalanceHoldRequest, BiddingRequest, BiddingResult, BlockRewardsRequest,
+        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
+        FeeRequest, FeeResult, FlushRequest, InsufficientBalanceHandling, PruneRequest,
+        PruneResult, StepRequest, StepResult, TransferRequest, TransferResult,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -30,8 +30,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
-    ApprovalsHash, BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2,
-    EraId, Key, ProtocolVersion, PublicKey, Transaction, U512,
+    system::mint::BalanceHoldAddrTag,
+    ApprovalsHash, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest,
+    EraEndV2, EraId, FeeHandling, GasLimited, Key, ProtocolVersion, PublicKey, Transaction, U512,
 };
 
 use crate::{
@@ -96,42 +97,103 @@ pub fn execute_finalized_block(
     let scratch_state = data_access_layer.get_scratch_global_state();
     let mut effects = Effects::new();
 
+    let system_costs = chainspec.system_costs_config;
+    let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
+    let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
+
     for transaction in executable_block.transactions {
         let transaction_hash = transaction.hash();
         let runtime_args = transaction.session_args().clone();
         let entry_point = transaction.entry_point();
 
+        // NOTE: this is the actual adjusted cost   (gas limit * gas price)
+        // NOT the allowed computation limit        (gas limit)
+        let cost = match transaction.gas_limit(&system_costs, gas_price) {
+            Ok(gas) => gas.value(),
+            Err(ite) => {
+                execution_artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction.header(),
+                    ExecutionResult::V2(ExecutionResultV2::Failure {
+                        effects: Effects::new(),
+                        cost: U512::zero(),
+                        transfers: vec![],
+                        error_message: format!("{:?}", ite),
+                    }),
+                    Messages::default(),
+                ));
+                debug!(%ite, "invalid transaction");
+                continue;
+            }
+        };
+
         // handle payment per the chainspec determined fee setting
-        // match chainspec.core_config.fee_handling {
-        //     FeeHandling::None => {
-        //         // this is the "fee elimination" model...a BalanceHold for the
-        //         // amount is placed on the paying purse(s).
-        //         let hold_amount = transaction.gas_limit();
-        //         let hold_purse = get_purse_from_transaction_initiator();
-        //         let hold_req = BalanceHoldRequest::new(hold_purse, hold_amount);
-        //         match scratch_state.hold(hold_req) {
-        //             BalanceHoldRequest::RootNotFound => {}
-        //             BalanceHoldRequest::Failure(tce) => {}
-        //             BalanceHoldRequest::Success{ effects } => {}
-        //         }
-        //     }
-        //     FeeHandling::PayToProposer => {
-        //         // this is the current mainnet mechanism...pay up front
-        //         // finalize at the end
-        //     }
-        //     FeeHandling::Accumulate => {
-        //         // this is a variation on PayToProposer that was added for
-        //         // for some private networks...the fees are all accumulated
-        //         // and distributed to administrative accounts as part of fee
-        //         // distribution. So, we just send the payment to the accumulator
-        //         // purse and move on.
-        //     }
-        //     FeeHandling::Burn => {
-        //         // this is a new variation that is not currently supported.
-        //         // this is for future use...but it is very simple...the
-        //         // fees are simply burned, lowering total supply.
-        //     }
-        // }
+        match chainspec.core_config.fee_handling {
+            FeeHandling::NoFee => {
+                // this is the "fee elimination" model...a BalanceHold for the full cost is placed
+                // on the initiator's purse.
+                let hold_amount = cost;
+                let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
+                    state_root_hash,
+                    protocol_version,
+                    transaction.initiator_addr().into(),
+                    BalanceHoldAddrTag::Gas,
+                    hold_amount,
+                    BlockTime::new(block_time),
+                    chainspec.core_config.balance_hold_interval,
+                    insufficient_balance_handling,
+                ));
+                if hold_result.is_root_not_found() {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                let execution_result = {
+                    let hold_cost = U512::zero(); // we don't charge for the hold itself.
+                    let hold_effects = hold_result.effects();
+                    if hold_result.is_fully_covered() {
+                        ExecutionResultV2::Success {
+                            effects: hold_effects,
+                            transfers: vec![],
+                            cost: hold_cost,
+                        }
+                    } else {
+                        let error_message = hold_result.error_message();
+                        debug!(%error_message);
+                        ExecutionResultV2::Failure {
+                            effects: hold_effects,
+                            transfers: vec![],
+                            error_message,
+                            cost: hold_cost,
+                        }
+                    }
+                };
+                execution_artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction.header(),
+                    ExecutionResult::V2(execution_result),
+                    Messages::default(),
+                ));
+                if !hold_result.is_fully_covered() {
+                    continue;
+                }
+            }
+            FeeHandling::PayToProposer => {
+                // this is the current mainnet mechanism...pay up front
+                // finalize at the end
+                // we have the proposer of this block...just deposit to them
+            }
+            FeeHandling::Accumulate => {
+                // this is a variation on PayToProposer that was added for
+                // for some private networks...the fees are all accumulated
+                // and distributed to administrative accounts as part of fee
+                // distribution. So, we just send the payment to the accumulator
+                // purse and move on.
+            }
+            FeeHandling::Burn => {
+                // this is a new variation that is not currently supported.
+                // this is for future use...but it is very simple...the
+                // fees are simply burned, lowering total supply.
+            }
+        }
 
         if transaction.is_native_mint() {
             // native transfers are routed to the data provider
