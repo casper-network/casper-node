@@ -2895,7 +2895,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
 
         let transfers = get_block_transfers(&mut harness, &mut storage, *hash);
         if !block_info.deploy_hashes.is_empty() {
-            let mut stored_transfers: Vec<DeployHash> = transfers
+            let mut stored_transfers: Vec<TransactionHash> = transfers
                 .unwrap()
                 .iter()
                 .map(|transfer| match transfer {
@@ -2904,7 +2904,12 @@ fn check_block_operations_with_node_1_5_2_storage() {
                 })
                 .collect();
             stored_transfers.sort();
-            let mut expected_deploys = block_info.deploy_hashes.clone();
+            let mut expected_deploys: Vec<TransactionHash> = block_info
+                .deploy_hashes
+                .clone()
+                .iter()
+                .map(|dh| TransactionHash::Deploy(*dh))
+                .collect();
             expected_deploys.sort();
             assert_eq!(stored_transfers, expected_deploys);
         }

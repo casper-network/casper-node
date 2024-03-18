@@ -1,13 +1,11 @@
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
-use alloc::vec::Vec;
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
+use crate::state_request::GlobalStateRequest;
+
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
-
-#[cfg(test)]
-use crate::testing::TestRng;
-
-use super::state_request::GlobalStateRequest;
 
 const RECORD_TAG: u8 = 0;
 const INFORMATION_TAG: u8 = 1;
@@ -134,7 +132,7 @@ impl FromBytes for GetRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

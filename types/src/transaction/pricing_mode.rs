@@ -39,6 +39,8 @@ pub enum PricingMode {
         payment_amount: u64,
         /// User-specified gas_price tolerance (minimum 1).
         gas_price: u64,
+        /// Standard payment.
+        standard_payment: bool,
     },
     /// The cost of the transaction is determined by the cost table, per the
     /// transaction kind.
@@ -66,6 +68,7 @@ impl PricingMode {
             0 => PricingMode::Classic {
                 payment_amount: rng.gen(),
                 gas_price: 1,
+                standard_payment: true,
             },
             1 => PricingMode::Fixed {
                 gas_price_tolerance: rng.gen(),
@@ -85,11 +88,12 @@ impl Display for PricingMode {
             PricingMode::Classic {
                 payment_amount,
                 gas_price,
+                standard_payment,
             } => {
                 write!(
                     formatter,
-                    "payment amount {}, gas price multiplier {}",
-                    payment_amount, gas_price
+                    "payment amount {}, gas price multiplier {} standard_payment {}",
+                    payment_amount, gas_price, standard_payment
                 )
             }
             PricingMode::Reserved {
@@ -113,10 +117,12 @@ impl ToBytes for PricingMode {
             PricingMode::Classic {
                 payment_amount,
                 gas_price,
+                standard_payment,
             } => {
                 CLASSIC_TAG.write_bytes(writer)?;
                 payment_amount.write_bytes(writer)?;
-                gas_price.write_bytes(writer)
+                gas_price.write_bytes(writer)?;
+                standard_payment.write_bytes(writer)
             }
             PricingMode::Reserved {
                 receipt,
@@ -147,7 +153,12 @@ impl ToBytes for PricingMode {
                 PricingMode::Classic {
                     payment_amount,
                     gas_price,
-                } => payment_amount.serialized_length() + gas_price.serialized_length(),
+                    standard_payment,
+                } => {
+                    payment_amount.serialized_length()
+                        + gas_price.serialized_length()
+                        + standard_payment.serialized_length()
+                }
                 PricingMode::Reserved {
                     receipt,
                     paid_amount,
@@ -167,10 +178,12 @@ impl FromBytes for PricingMode {
             CLASSIC_TAG => {
                 let (payment_amount, remainder) = u64::from_bytes(remainder)?;
                 let (gas_price, remainder) = u64::from_bytes(remainder)?;
+                let (standard_payment, remainder) = bool::from_bytes(remainder)?;
                 Ok((
                     PricingMode::Classic {
                         payment_amount,
                         gas_price,
+                        standard_payment,
                     },
                     remainder,
                 ))

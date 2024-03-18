@@ -468,6 +468,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-binary-port"
+version = "1.0.0"
+dependencies = [
+ "bincode",
+ "casper-execution-engine",
+ "casper-storage",
+ "casper-types",
+ "once_cell",
+ "rand",
+ "schemars",
+ "serde",
+ "serde-map-to-array",
+ "serde_json",
+ "serde_test",
+ "thiserror",
+]
+
+[[package]]
 name = "casper-contract"
 version = "3.0.0"
 dependencies = [
@@ -610,6 +628,7 @@ dependencies = [
  "base64 0.13.1",
  "bincode",
  "bytes",
+ "casper-binary-port",
  "casper-execution-engine",
  "casper-json-rpc",
  "casper-storage",

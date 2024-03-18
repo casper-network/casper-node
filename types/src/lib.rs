@@ -28,7 +28,6 @@ pub mod account;
 pub mod addressable_entity;
 pub mod api_error;
 mod auction_state;
-pub mod binary_port;
 mod block;
 mod block_time;
 mod byte_code;

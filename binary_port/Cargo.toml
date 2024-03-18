@@ -1,0 +1,32 @@
+[package]
+name = "casper-binary-port"
+version = "1.0.0"
+edition = "2018"
+description = "Types for the casper node binary port"
+documentation = "https://docs.rs/casper-binary-port"
+readme = "README.md"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/binary_port"
+license = "Apache-2.0"
+exclude = ["proptest-regressions"]
+
+[dependencies]
+casper-execution-engine = { version = "6.0.0", path = "../execution_engine" }
+casper-storage = { version = "1.4.3", path = "../storage" }
+casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+serde = { version = "1.0.183", features = ["derive"] }
+thiserror = "1.0.45"
+serde-map-to-array = "1.1.0"
+once_cell = { version = "1.5.2", optional = true }
+schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
+bincode = "1.3.3"
+
+[dev-dependencies]
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+rand = "0.8.3"
+serde_json = "1"
+serde_test = "1"
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]

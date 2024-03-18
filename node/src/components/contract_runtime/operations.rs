@@ -5,15 +5,16 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
     self, execution_result::ExecutionResultAndMessages, ExecuteRequest, ExecutionEngineV1,
-    ExecutionResult as EngineExecutionResult,
+    ExecutionResult as EngineExecutionResult, WasmV1Request,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        AuctionMethod, BalanceHoldRequest, BiddingRequest, BiddingResult, BlockRewardsRequest,
-        BlockRewardsResult, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem,
-        FeeRequest, FeeResult, FlushRequest, InsufficientBalanceHandling, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest,
+        balance::BalanceHandling, AuctionMethod, BalanceHoldRequest, BalanceIdentifier,
+        BalanceRequest, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
+        FeeResult, FlushRequest, InsufficientBalanceHandling, PruneRequest, PruneResult,
+        StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -22,20 +23,20 @@ use casper_storage::{
     system::runtime_native::Config as NativeRuntimeConfig,
 };
 use casper_types::{
-    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
-    ApprovalsHash, BlockTime, BlockV2, CLValue, Chainspec, ChecksumRegistry, Digest, EraEndV2,
-    EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey, SystemConfig,
-    Transaction, TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
+    ApprovalsHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
+    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, Phase,
+    ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionCategory,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
 };
 
 use super::{
-    utils::calculate_prune_eras, BlockAndExecutionResults, BlockExecutionError, ExecutionArtifact,
-    ExecutionPreState, Metrics, NewUserRequestError, SpeculativeExecutionError,
-    SpeculativeExecutionState, StepEffectsAndUpcomingEraValidators, APPROVALS_CHECKSUM_NAME,
+    types::{ExecutionArtifactOutcome, SpeculativeExecutionResult, StepOutcome},
+    utils::calculate_prune_eras,
+    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionArtifact, ExecutionArtifacts,
+    ExecutionPreState, Metrics, NewUserRequestError, APPROVALS_CHECKSUM_NAME,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
@@ -53,7 +54,7 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
-) -> Result<BlockAndExecutionResults, BlockExecutionError> {
+) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
@@ -71,108 +72,221 @@ pub fn execute_finalized_block(
     let parent_seed = execution_pre_state.parent_seed();
 
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_artifacts: Vec<ExecutionArtifact> =
-        Vec::with_capacity(executable_block.transactions.len());
+    let mut artifacts = ExecutionArtifacts::with_capacity(executable_block.transactions.len());
     let block_time = BlockTime::new(executable_block.timestamp.millis());
+    let balance_handling = BalanceHandling::Available {
+        block_time: executable_block.timestamp.millis(),
+        hold_interval: chainspec.core_config.balance_hold_interval.millis(),
+    };
     let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
 
     let start = Instant::now();
-    let txn_ids = executable_block
-        .transactions
-        .iter()
-        .map(Transaction::fetch_id)
-        .collect_vec();
-    let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
-        .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
     let scratch_state = data_access_layer.get_scratch_global_state();
-    let mut effects = Effects::new();
 
     let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
 
-    for txn in executable_block.transactions {
+    for txn in &executable_block.transactions {
+        let mut effects = Effects::new();
+        let initiator_addr = txn.initiator_addr();
         let txn_hash = txn.hash();
-        let txn_header = match &txn {
-            Transaction::Deploy(deploy) => TransactionHeader::from(deploy.header().clone()),
-            Transaction::V1(v1_txn) => TransactionHeader::from(v1_txn.header().clone()),
-        };
+        let txn_header = txn.header();
+        let runtime_args = txn.session_args().clone();
+        let entry_point = txn.entry_point();
+        let authorization_keys = txn.authorization_keys();
 
-        // NOTE: this is the actual adjusted cost   (gas limit * gas price)
-        // NOT the allowed computation limit        (gas limit)
-        let cost = match txn.gas_limit(&system_costs, gas_price) {
-            Ok(gas) => gas.value(),
+        // NOTE: this is the allowed computation limit   (gas limit)
+        let gas_limit = match txn.gas_limit(&system_costs, None) {
+            Ok(gas) => gas,
             Err(ite) => {
-                execution_artifacts.push(ExecutionArtifact::new(
-                    txn_hash,
-                    txn_header,
-                    ExecutionResult::V2(ExecutionResultV2::Failure {
-                        effects: Effects::new(),
-                        gas: Gas::zero(),
-                        transfers: vec![],
-                        error_message: format!("{:?}", ite),
-                    }),
-                    Messages::default(),
-                ));
                 debug!(%ite, "invalid transaction");
+                artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
                 continue;
             }
         };
+
+        // NOTE: this is the actual adjusted cost   (gas limit * gas price)
+        let cost = match txn.gas_limit(&system_costs, gas_price) {
+            Ok(gas) => gas,
+            Err(ite) => {
+                debug!(%ite, "invalid transaction");
+                artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
+                continue;
+            }
+        };
+
+        let balance_identifier = {
+            if !txn.is_standard_payment() {
+                // execute custom payment logic, which is expected to
+                // interact with the handle payment contract to deposit
+                // sufficient token to cover the cost
+
+                // this is the limit on how much gas we will allow custom payment code to consume
+                // this notion was originally referred to as the "leash" in the early design of the
+                // system.
+                let custom_payment_gas_limit = Gas::new(
+                    // TODO: this should have it's own chainspec value; in the meantime
+                    // using a multiple of a small value.
+                    chainspec.transaction_config.native_transfer_minimum_motes * 5,
+                );
+                let pay_request = WasmV1Request::new(
+                    state_root_hash,
+                    protocol_version,
+                    block_time,
+                    txn,
+                    custom_payment_gas_limit,
+                    Phase::Payment,
+                );
+                let pay_result = execution_engine_v1.execute(&scratch_state, pay_request);
+                match artifacts.push_wasm_v1_result(txn_hash, txn_header, pay_result) {
+                    ExecutionArtifactOutcome::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                    }
+                    ExecutionArtifactOutcome::Effects(custom_pay_effects) => {
+                        effects.append(custom_pay_effects);
+                    }
+                }
+                // balance request should check the handle payment purse, not initiator's purse
+                BalanceIdentifier::Payment
+            } else {
+                initiator_addr.into()
+            }
+        };
+
+        let initial_balance_result = scratch_state.balance(BalanceRequest::new(
+            state_root_hash,
+            protocol_version,
+            balance_identifier.clone(),
+            balance_handling,
+        ));
+
+        let is_sufficient_balance = initial_balance_result.is_sufficient(cost.value());
+
+        match (txn.category(), is_sufficient_balance) {
+            (_, false) => {
+                debug!(%txn_hash, "skipping execution due to insufficient balance");
+            }
+            (TransactionCategory::Mint, _) => {
+                let transfer_result = scratch_state.transfer(TransferRequest::with_runtime_args(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    holds_epoch,
+                    protocol_version,
+                    txn_hash,
+                    initiator_addr,
+                    authorization_keys,
+                    runtime_args,
+                    cost,
+                ));
+                match artifacts.push_transfer_result(
+                    txn_hash,
+                    txn_header.clone(),
+                    transfer_result,
+                    cost,
+                ) {
+                    ExecutionArtifactOutcome::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                    }
+                    ExecutionArtifactOutcome::Effects(transfer_effects) => {
+                        effects.append(transfer_effects.clone());
+                    }
+                }
+            }
+            (TransactionCategory::Auction, _) => {
+                let auction_method = match AuctionMethod::from_parts(
+                    entry_point,
+                    &runtime_args,
+                    holds_epoch,
+                    chainspec,
+                ) {
+                    Ok(auction_method) => auction_method,
+                    Err(_) => {
+                        artifacts.push_auction_method_failure(txn_hash, txn_header.clone(), cost);
+                        continue;
+                    }
+                };
+                let bidding_result = scratch_state.bidding(BiddingRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    block_time,
+                    protocol_version,
+                    txn_hash,
+                    initiator_addr,
+                    authorization_keys,
+                    auction_method,
+                ));
+                match artifacts.push_bidding_result(
+                    txn_hash,
+                    txn_header.clone(),
+                    bidding_result,
+                    cost,
+                ) {
+                    ExecutionArtifactOutcome::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                    }
+                    ExecutionArtifactOutcome::Effects(bidding_effects) => {
+                        effects.append(bidding_effects.clone());
+                    }
+                }
+            }
+            (TransactionCategory::Standard, _) | (TransactionCategory::InstallUpgrade, _) => {
+                let wasm_1_request = WasmV1Request::new(
+                    state_root_hash,
+                    protocol_version,
+                    block_time,
+                    txn,
+                    gas_limit,
+                    Phase::Session,
+                );
+                let wasm_1_result = execution_engine_v1.execute(&scratch_state, wasm_1_request);
+                trace!(
+                    %txn_hash,
+                    %wasm_1_result,
+                    "transaction execution result"
+                );
+                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), wasm_1_result) {
+                    ExecutionArtifactOutcome::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                    }
+                    ExecutionArtifactOutcome::Effects(wasm_effects) => {
+                        effects.append(wasm_effects.clone());
+                    }
+                }
+            }
+        }
 
         // handle payment per the chainspec determined fee setting
         match chainspec.core_config.fee_handling {
             FeeHandling::NoFee => {
                 // this is the "fee elimination" model...a BalanceHold for the full cost is placed
                 // on the initiator's purse.
-                let hold_amount = cost;
                 let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
                     state_root_hash,
                     protocol_version,
-                    txn.initiator_addr().into(),
+                    balance_identifier,
                     BalanceHoldAddrTag::Gas,
-                    hold_amount,
+                    cost.value(),
                     block_time,
                     chainspec.core_config.balance_hold_interval,
                     insufficient_balance_handling,
                 ));
-                if hold_result.is_root_not_found() {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
-                let execution_result = {
-                    let hold_cost = Gas::zero(); // we don't charge for the hold itself.
-                    let hold_effects = hold_result.effects();
-                    if hold_result.is_fully_covered() {
-                        ExecutionResultV2::Success {
-                            effects: hold_effects,
-                            transfers: vec![],
-                            gas: hold_cost,
-                        }
-                    } else {
-                        let error_message = hold_result.error_message();
-                        debug!(%error_message);
-                        ExecutionResultV2::Failure {
-                            effects: hold_effects,
-                            transfers: vec![],
-                            error_message,
-                            gas: hold_cost,
-                        }
+                match artifacts.push_hold_result(txn_hash, txn_header.clone(), hold_result) {
+                    ExecutionArtifactOutcome::RootNotFound => {
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
                     }
-                };
-                execution_artifacts.push(ExecutionArtifact::new(
-                    txn_hash,
-                    txn_header.clone(),
-                    ExecutionResult::V2(execution_result),
-                    Messages::default(),
-                ));
-                if !hold_result.is_fully_covered() {
-                    continue;
+                    ExecutionArtifactOutcome::Effects(hold_effects) => {
+                        effects.append(hold_effects.clone())
+                    }
                 }
             }
             FeeHandling::PayToProposer => {
                 // this is the current mainnet mechanism...pay up front
                 // finalize at the end
                 // we have the proposer of this block...just deposit to them
+                // call handle_payment and done
+                // add data_provider.fee(.. pay_to_proposer), get effects and done
             }
             FeeHandling::Accumulate => {
                 // this is a variation on PayToProposer that was added for
@@ -180,85 +294,57 @@ pub fn execute_finalized_block(
                 // and distributed to administrative accounts as part of fee
                 // distribution. So, we just send the payment to the accumulator
                 // purse and move on.
+                // add data_provider.fee(.. accumulate), get effects and done
             }
             FeeHandling::Burn => {
                 // this is a new variation that is not currently supported.
                 // this is for future use...but it is very simple...the
                 // fees are simply burned, lowering total supply.
+                // add data_provider.fee(.. burn), get effects and done
             }
         }
 
-        let request = UserRequest::new(
-            state_root_hash,
-            block_time,
-            protocol_version,
-            txn,
-            (*executable_block.proposer).clone(),
-            native_runtime_config.clone(),
-            &system_costs,
-        )?;
-
-        let (exec_result_and_msgs, should_commit) = match request {
-            UserRequest::Execute(execute_request) => {
-                let exec_result_and_msgs = execute(
-                    &scratch_state,
-                    execution_engine_v1,
-                    metrics.clone(),
-                    execute_request,
-                )?;
-                trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
-                (exec_result_and_msgs, true)
-            }
-            UserRequest::Mint(transfer_request) => {
-                let gas = transfer_request.gas();
-                let transfer_result = scratch_state.transfer(transfer_request);
-                trace!(%txn_hash, ?transfer_result, "native transfer result");
-                let Some(exec_result) = EngineExecutionResult::from_transfer_result(transfer_result, gas) else {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                };
-                (ExecutionResultAndMessages::from(exec_result), true)
-            }
-            UserRequest::Auction(bidding_request) => {
-                // NOTE: native auction transactions auto-commit.
-                let gas = auction_gas(bidding_request.auction_method(), &system_costs);
-                let bidding_result = scratch_state.bidding(bidding_request);
-                trace!(?txn_hash, ?bidding_result, "native auction result");
-                if let BiddingResult::Success {
-                    post_state_hash, ..
-                } = &bidding_result
-                {
-                    state_root_hash = *post_state_hash;
-                }
-
-                let Some(exec_result) = EngineExecutionResult::from_bidding_result(bidding_result, gas) else {
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                };
-                (ExecutionResultAndMessages::from(exec_result), false)
-            }
-        };
-
-        if should_commit {
-            let new_state_root_hash = commit_execution_result(
-                &scratch_state,
-                metrics.clone(),
-                state_root_hash,
-                txn_hash,
-                &exec_result_and_msgs.execution_result,
-            )?;
-            state_root_hash = new_state_root_hash;
+        // commit effects
+        scratch_state.commit(state_root_hash, effects)?;
+        if let Some(metrics) = metrics.as_ref() {
+            metrics
+                .commit_effects
+                .observe(start.elapsed().as_secs_f64());
         }
-
-        let exec_result = ExecutionResult::from(exec_result_and_msgs.execution_result);
-        let msgs = exec_result_and_msgs.messages;
-        execution_artifacts.push(ExecutionArtifact::new(
-            txn_hash,
-            txn_header,
-            exec_result,
-            msgs,
-        ));
     }
 
-    // Pay out fees, if relevant.  This auto-commits
+    // calculate and store checksums for approvals and execution effects across the transactions in
+    // the block we do this so that the full set of approvals and the full set of effect meta
+    // data can be verified if necessary for a given block. the block synchronizer in particular
+    // depends on the existence of such checksums.
+    let txns_approvals_hashes = {
+        let txn_ids = executable_block
+            .transactions
+            .iter()
+            .map(Transaction::fetch_id)
+            .collect_vec();
+        let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
+            .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
+        let execution_results_checksum =
+            compute_execution_results_checksum(artifacts.execution_results())?;
+        let mut checksum_registry = ChecksumRegistry::new();
+        checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
+        checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
+
+        let mut effects = Effects::new();
+        effects.push(TransformV2::new(
+            Key::ChecksumRegistry,
+            TransformKindV2::Write(
+                CLValue::from_t(checksum_registry)
+                    .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
+                    .into(),
+            ),
+        ));
+        scratch_state.commit(state_root_hash, effects)?;
+        txn_ids.into_iter().map(|id| id.approvals_hash()).collect()
+    };
+
+    // Pay out block fees, if relevant. This auto-commits
     {
         let fee_req = FeeRequest::new(
             native_runtime_config.clone(),
@@ -286,11 +372,18 @@ pub fn execute_finalized_block(
         }
     }
 
+    // Update exec_block metric BEFORE determining per era things such as era rewards and step.
+    // the commit_step function handles the metrics for step
+    if let Some(metrics) = metrics.as_ref() {
+        metrics.exec_block.observe(start.elapsed().as_secs_f64());
+    }
+
     // Pay out  ̶b̶l̶o̶c̶k̶ e͇r͇a͇ rewards
     // NOTE: despite the name, these rewards are currently paid out per ERA not per BLOCK
     // at one point, they were going to be paid out per block (and might be in the future)
     // but it ended up settling on per era. the behavior is driven by Some / None
     // thus if in future the calling logic passes rewards per block it should just work as is.
+    // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
         let rewards_req = BlockRewardsRequest::new(
             native_runtime_config.clone(),
@@ -314,34 +407,9 @@ pub fn execute_finalized_block(
         }
     }
 
-    // Write the transaction approvals' and execution results' checksums to global state.
-    let execution_results_checksum = compute_execution_results_checksum(
-        execution_artifacts
-            .iter()
-            .map(|artifact| &artifact.execution_result),
-    )?;
-    let mut checksum_registry = ChecksumRegistry::new();
-    checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
-    checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    effects.push(TransformV2::new(
-        Key::ChecksumRegistry,
-        TransformKindV2::Write(
-            CLValue::from_t(checksum_registry)
-                .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
-                .into(),
-        ),
-    ));
-    scratch_state.commit(state_root_hash, effects)?;
-
-    if let Some(metrics) = metrics.as_ref() {
-        metrics.exec_block.observe(start.elapsed().as_secs_f64());
-    }
-
-    // If the finalized block has an era report, run the auction contract and get the upcoming era
-    // validators.
-    let maybe_step_effects_and_upcoming_era_validators = if let Some(era_report) =
-        &executable_block.era_report
-    {
+    // if era report is some, this is a switch block. a series of end-of-era extra processing must
+    // transpire before this block is entirely finished.
+    let step_outcome = if let Some(era_report) = &executable_block.era_report {
         let step_effects = match commit_step(
             native_runtime_config,
             &scratch_state,
@@ -356,7 +424,14 @@ pub fn execute_finalized_block(
                 return Err(BlockExecutionError::RootNotFound(state_root_hash))
             }
             StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
-            StepResult::Success { effects, .. } => effects,
+            StepResult::Success {
+                effects,
+                post_state_hash,
+                ..
+            } => {
+                state_root_hash = post_state_hash;
+                effects
+            }
         };
 
         state_root_hash = data_access_layer.write_scratch_to_db(state_root_hash, scratch_state)?;
@@ -365,11 +440,11 @@ pub fn execute_finalized_block(
         let era_validators_result = data_access_layer.era_validators(era_validators_req);
 
         let upcoming_era_validators = match era_validators_result {
-            EraValidatorsResult::AuctionNotFound => {
-                panic!("auction not found");
-            }
             EraValidatorsResult::RootNotFound => {
                 panic!("root not found");
+            }
+            EraValidatorsResult::AuctionNotFound => {
+                panic!("auction not found");
             }
             EraValidatorsResult::ValueNotFound(msg) => {
                 panic!("validator snapshot not found: {}", msg);
@@ -380,7 +455,7 @@ pub fn execute_finalized_block(
             EraValidatorsResult::Success { era_validators } => era_validators,
         };
 
-        Some(StepEffectsAndUpcomingEraValidators {
+        Some(StepOutcome {
             step_effects,
             upcoming_era_validators,
         })
@@ -391,15 +466,8 @@ pub fn execute_finalized_block(
         None
     };
 
-    // Flush once, after all transactions have been executed.
-    let flush_req = FlushRequest::new();
-    let flush_result = data_access_layer.flush(flush_req);
-    if let Err(gse) = flush_result.as_error() {
-        error!("failed to flush lmdb");
-        return Err(BlockExecutionError::Lmdb(gse));
-    }
-
-    // Pruning
+    // Pruning -- this is orthogonal to the contents of the block, but we deliberately do it
+    // at the end to avoid an read ordering issue during block execution.
     if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
@@ -459,16 +527,23 @@ pub fn execute_finalized_block(
         }
     }
 
+    // Flush once, after all data mutation.
+    let flush_req = FlushRequest::new();
+    let flush_result = data_access_layer.flush(flush_req);
+    if let Err(gse) = flush_result.as_error() {
+        error!("failed to flush lmdb");
+        return Err(BlockExecutionError::Lmdb(gse));
+    }
+
+    // the rest of this is post process, picking out data bits to return to caller
     let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
         let next_era_id = executable_block.era_id.successor();
-        maybe_step_effects_and_upcoming_era_validators
-            .as_ref()
-            .and_then(
-                |StepEffectsAndUpcomingEraValidators {
-                     upcoming_era_validators,
-                     ..
-                 }| upcoming_era_validators.get(&next_era_id).cloned(),
-            )
+        step_outcome.as_ref().and_then(
+            |StepOutcome {
+                 upcoming_era_validators,
+                 ..
+             }| upcoming_era_validators.get(&next_era_id).cloned(),
+        )
     };
 
     let era_end = match (
@@ -526,9 +601,8 @@ pub fn execute_finalized_block(
         executable_block.rewarded_signatures,
     ));
 
-    let approvals_hashes: Vec<ApprovalsHash> =
-        txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
-
+    // TODO: this should just use the data_access_layer.query mechanism to avoid
+    // leaking data provisioning abstraction
     let proof_of_checksum_registry = match data_access_layer.tracking_copy(state_root_hash)? {
         Some(tc) => match tc.reader().read_with_proof(&Key::ChecksumRegistry)? {
             Some(proof) => proof,
@@ -539,47 +613,18 @@ pub fn execute_finalized_block(
 
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         *block.hash(),
-        approvals_hashes,
+        txns_approvals_hashes,
         proof_of_checksum_registry,
     ));
 
-    Ok(BlockAndExecutionResults {
+    let execution_artifacts = artifacts.take();
+
+    Ok(BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
-        execution_results: execution_artifacts,
-        maybe_step_effects_and_upcoming_era_validators,
+        execution_artifacts,
+        step_outcome,
     })
-}
-
-/// Commits the execution results.
-fn commit_execution_result(
-    scratch_state: &ScratchGlobalState,
-    metrics: Option<Arc<Metrics>>,
-    state_root_hash: Digest,
-    txn_hash: TransactionHash,
-    execution_result: &ExecutionResultV2,
-) -> Result<Digest, BlockExecutionError> {
-    let start = Instant::now();
-    let effects = match execution_result {
-        ExecutionResultV2::Success { effects, gas, .. } => {
-            debug!(%txn_hash, %gas, "execution succeeded");
-            effects.clone()
-        }
-        ExecutionResultV2::Failure {
-            error_message,
-            effects,
-            gas,
-            ..
-        } => {
-            debug!(%txn_hash, %error_message, %gas, "execution failed");
-            effects.clone()
-        }
-    };
-    let commit_result = scratch_state.commit(state_root_hash, effects);
-    if let Some(metrics) = metrics {
-        metrics.apply_effect.observe(start.elapsed().as_secs_f64());
-    }
-    commit_result.map_err(BlockExecutionError::from)
 }
 
 /// Execute the transaction without committing the effects.
@@ -588,67 +633,34 @@ fn commit_execution_result(
 /// Returns effects of the execution.
 pub(super) fn speculatively_execute<S>(
     state_provider: &S,
+    chainspec: &Chainspec,
     execution_engine_v1: &ExecutionEngineV1,
-    execution_state: SpeculativeExecutionState,
-    native_runtime_config: NativeRuntimeConfig,
-    system_costs: SystemConfig,
-    txn: Transaction,
-) -> Result<SpeculativeExecutionResult, SpeculativeExecutionError>
+    block_header: BlockHeader,
+    transaction: Transaction,
+) -> SpeculativeExecutionResult
 where
     S: StateProvider,
 {
-    let SpeculativeExecutionState {
-        state_root_hash,
-        block_time,
-        protocol_version,
-    } = execution_state;
-
-    let request = UserRequest::new(
-        state_root_hash,
-        BlockTime::new(block_time.millis()),
-        protocol_version,
-        txn,
-        PublicKey::System,
-        native_runtime_config,
-        &system_costs,
-    )?;
-
-    match request {
-        UserRequest::Execute(execute_request) => {
-            execute(state_provider, execution_engine_v1, None, execute_request)
-                .map(|res_and_msgs| {
-                    SpeculativeExecutionResult::new(
-                        res_and_msgs.execution_result,
-                        res_and_msgs.messages,
-                    )
-                })
-                .map_err(SpeculativeExecutionError::from)
+    let state_root_hash = block_header.state_root_hash();
+    let protocol_version = block_header.protocol_version();
+    let block_time = block_header
+        .timestamp()
+        .saturating_add(chainspec.core_config.minimum_block_time);
+    let gas_limit = match transaction.gas_limit(&chainspec.system_costs_config, None) {
+        Ok(gas_limit) => gas_limit,
+        Err(_) => {
+            return SpeculativeExecutionResult::invalid_gas_limit(transaction);
         }
-        UserRequest::Mint(_) | UserRequest::Auction(_) => {
-            Err(SpeculativeExecutionError::NativeNotSupported)
-        }
-    }
-}
-
-fn execute<S>(
-    state_provider: &S,
-    execution_engine_v1: &ExecutionEngineV1,
-    metrics: Option<Arc<Metrics>>,
-    execute_request: ExecuteRequest,
-) -> Result<ExecutionResultAndMessages, engine_state::Error>
-where
-    S: StateProvider,
-{
-    trace!(?execute_request, "execute");
-    let start = Instant::now();
-    let result = execution_engine_v1
-        .exec(state_provider, execute_request)
-        .map(ExecutionResultAndMessages::from);
-    if let Some(metrics) = metrics {
-        metrics.run_execute.observe(start.elapsed().as_secs_f64());
-    }
-    trace!(?result, "execute result");
-    result
+    };
+    let request = WasmV1Request::new(
+        *state_root_hash,
+        protocol_version,
+        block_time.into(),
+        transaction,
+        gas_limit,
+        Phase::Session,
+    );
+    SpeculativeExecutionResult::WasmV1(execution_engine_v1.execute(state_provider, request))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -738,120 +750,4 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
-}
-
-enum UserRequest {
-    Execute(ExecuteRequest),
-    Mint(TransferRequest),
-    Auction(BiddingRequest),
-}
-
-impl UserRequest {
-    fn new(
-        state_hash: Digest,
-        block_time: BlockTime,
-        protocol_version: ProtocolVersion,
-        txn: Transaction,
-        proposer: PublicKey,
-        native_runtime_config: NativeRuntimeConfig,
-        system_costs: &SystemConfig,
-    ) -> Result<Self, NewUserRequestError> {
-        if !txn.is_native() {
-            let execute_req = ExecuteRequest::new(state_hash, block_time, txn, proposer)
-                .map_err(NewUserRequestError::Execute)?;
-            return Ok(UserRequest::Execute(execute_req));
-        }
-
-        let txn_hash = txn.hash();
-        let initiator_addr = txn.initiator_addr();
-        let authorization_keys = txn.signers();
-        let holds_epoch = Some(
-            block_time
-                .value()
-                .saturating_sub(native_runtime_config.balance_hold_interval()),
-        );
-
-        // Return early for native deploy, i.e. a transfer.
-        let v1_txn = match txn {
-            Transaction::Deploy(deploy) => {
-                if !deploy.is_transfer() {
-                    return Err(NewUserRequestError::ExpectedNativeTransferDeploy(txn_hash));
-                }
-                let transfer_req = TransferRequest::with_runtime_args(
-                    native_runtime_config,
-                    state_hash,
-                    holds_epoch,
-                    protocol_version,
-                    txn_hash,
-                    initiator_addr,
-                    authorization_keys,
-                    deploy.session().args().clone(),
-                    Gas::new(system_costs.mint_costs().transfer),
-                );
-                return Ok(UserRequest::Mint(transfer_req));
-            }
-            Transaction::V1(v1_txn) => v1_txn,
-        };
-
-        // Return early for native V1 mint transaction, i.e. a transfer.
-        let auction_method = match v1_txn.entry_point() {
-            TransactionEntryPoint::Custom(_) => {
-                return Err(NewUserRequestError::InvalidEntryPoint(txn_hash));
-            }
-            TransactionEntryPoint::Transfer => {
-                let transfer_req = TransferRequest::with_runtime_args(
-                    native_runtime_config,
-                    state_hash,
-                    holds_epoch,
-                    protocol_version,
-                    txn_hash,
-                    initiator_addr,
-                    authorization_keys,
-                    v1_txn.take_args(),
-                    Gas::new(system_costs.mint_costs().transfer),
-                );
-                return Ok(UserRequest::Mint(transfer_req));
-            }
-            TransactionEntryPoint::AddBid => {
-                AuctionMethod::new_add_bid(v1_txn.args(), holds_epoch)?
-            }
-            TransactionEntryPoint::WithdrawBid => AuctionMethod::new_withdraw_bid(v1_txn.args())?,
-            TransactionEntryPoint::Delegate => AuctionMethod::new_delegate(
-                v1_txn.args(),
-                native_runtime_config.max_delegators_per_validator(),
-                native_runtime_config.minimum_delegation_amount(),
-                holds_epoch,
-            )?,
-            TransactionEntryPoint::Undelegate => AuctionMethod::new_undelegate(v1_txn.args())?,
-            TransactionEntryPoint::Redelegate => AuctionMethod::new_redelegate(
-                v1_txn.args(),
-                native_runtime_config.minimum_delegation_amount(),
-            )?,
-            TransactionEntryPoint::ActivateBid => AuctionMethod::new_activate_bid(v1_txn.args())?,
-        };
-
-        // We're left with only native V1 auction transactions.
-        let bidding_req = BiddingRequest::new(
-            native_runtime_config,
-            state_hash,
-            block_time,
-            protocol_version,
-            txn_hash,
-            initiator_addr,
-            authorization_keys,
-            auction_method,
-        );
-        Ok(UserRequest::Auction(bidding_req))
-    }
-}
-
-fn auction_gas(method: &AuctionMethod, system_costs: &SystemConfig) -> Gas {
-    match method {
-        AuctionMethod::ActivateBid { .. } => Gas::new(system_costs.auction_costs().activate_bid),
-        AuctionMethod::AddBid { .. } => Gas::new(system_costs.auction_costs().add_bid),
-        AuctionMethod::WithdrawBid { .. } => Gas::new(system_costs.auction_costs().withdraw_bid),
-        AuctionMethod::Delegate { .. } => Gas::new(system_costs.auction_costs().delegate),
-        AuctionMethod::Undelegate { .. } => Gas::new(system_costs.auction_costs().undelegate),
-        AuctionMethod::Redelegate { .. } => Gas::new(system_costs.auction_costs().redelegate),
-    }
 }

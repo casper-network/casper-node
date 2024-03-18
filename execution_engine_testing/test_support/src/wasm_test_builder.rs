@@ -170,6 +170,7 @@ impl<S: ScratchProvider> WasmTestBuilder<S> {
 
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
     /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
+    #[allow(deprecated)]
     pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         if self.scratch_global_state.is_none() {
             self.scratch_global_state = Some(self.data_access_layer.get_scratch_global_state());
@@ -815,17 +816,11 @@ where
             authorization_keys,
             auction_method,
         );
-        let ret = self.data_access_layer().bidding(bidding_req);
-        if let BiddingResult::Success {
-            post_state_hash, ..
-        } = ret
-        {
-            self.post_state_hash = Some(post_state_hash);
-        }
-        ret
+        self.data_access_layer().bidding(bidding_req)
     }
 
     /// Runs an [`ExecuteRequest`].
+    #[allow(deprecated)]
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
         exec_request.state_hash = self.post_state_hash.expect("expected post_state_hash");
         let execution_result = self

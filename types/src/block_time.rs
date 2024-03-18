@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
-    CLType, CLTyped,
+    CLType, CLTyped, Timestamp,
 };
 
 #[cfg(feature = "datasize")]
@@ -44,6 +44,18 @@ impl BlockTime {
 impl From<BlockTime> for u64 {
     fn from(blocktime: BlockTime) -> Self {
         blocktime.0
+    }
+}
+
+impl From<BlockTime> for Timestamp {
+    fn from(value: BlockTime) -> Self {
+        Timestamp::from(value.0)
+    }
+}
+
+impl From<Timestamp> for BlockTime {
+    fn from(value: Timestamp) -> Self {
+        BlockTime::new(value.millis())
     }
 }
 

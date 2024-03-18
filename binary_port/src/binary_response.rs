@@ -1,18 +1,17 @@
-use crate::{
+use casper_storage::{block_store::record_id::RecordId, DbRawBytesSpec};
+use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     ProtocolVersion,
 };
-use alloc::vec::Vec;
+
+use crate::{
+    binary_response_header::BinaryResponseHeader,
+    error_code::ErrorCode,
+    payload_type::{PayloadEntity, PayloadType},
+};
 
 #[cfg(test)]
-use crate::testing::TestRng;
-
-use super::{
-    binary_response_header::BinaryResponseHeader,
-    payload_type::{PayloadEntity, PayloadType},
-    record_id::RecordId,
-    DbRawBytesSpec, ErrorCode,
-};
+use casper_types::testing::TestRng;
 
 /// The response used in the binary port protocol.
 #[derive(Debug, PartialEq)]
@@ -47,15 +46,12 @@ impl BinaryResponse {
         protocol_version: ProtocolVersion,
     ) -> Self {
         match spec {
-            Some(DbRawBytesSpec {
-                is_legacy,
-                raw_bytes,
-            }) => BinaryResponse {
+            Some(val) => BinaryResponse {
                 header: BinaryResponseHeader::new(
-                    Some(PayloadType::new_from_record_id(record_id, is_legacy)),
+                    Some(PayloadType::new_from_record_id(record_id, val.is_legacy())),
                     protocol_version,
                 ),
-                payload: raw_bytes,
+                payload: val.raw_bytes(),
             },
             None => BinaryResponse {
                 header: BinaryResponseHeader::new_error(ErrorCode::NotFound, protocol_version),
@@ -165,7 +161,7 @@ impl FromBytes for BinaryResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

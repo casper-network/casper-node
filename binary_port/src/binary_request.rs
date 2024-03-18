@@ -1,18 +1,16 @@
 use core::convert::TryFrom;
 
-use crate::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, Digest, ProtocolVersion, Timestamp, Transaction,
+    ProtocolVersion, Transaction,
 };
-use alloc::vec::Vec;
 
-use super::get_request::GetRequest;
+use crate::get_request::GetRequest;
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
-
-#[cfg(test)]
-use crate::{testing::TestRng, Block, TestBlockV1Builder};
 
 /// The header of a binary request.
 #[derive(Debug, PartialEq)]
@@ -92,16 +90,8 @@ pub enum BinaryRequest {
     },
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec {
-        /// State root on top of which to execute deploy.
-        state_root_hash: Digest,
-        /// Block time.
-        block_time: Timestamp,
-        /// Protocol version used when creating the original block.
-        protocol_version: ProtocolVersion,
         /// Transaction to execute.
         transaction: Transaction,
-        /// Block header of block at which we should perform speculative execution.
-        speculative_exec_at_block: BlockHeader,
     },
 }
 
@@ -122,18 +112,9 @@ impl BinaryRequest {
             BinaryRequestTag::TryAcceptTransaction => Self::TryAcceptTransaction {
                 transaction: Transaction::random(rng),
             },
-            BinaryRequestTag::TrySpeculativeExec => {
-                let block_v1 = TestBlockV1Builder::new().build(rng);
-                let block = Block::V1(block_v1);
-
-                Self::TrySpeculativeExec {
-                    state_root_hash: Digest::random(rng),
-                    block_time: Timestamp::random(rng),
-                    protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
-                    transaction: Transaction::random(rng),
-                    speculative_exec_at_block: block.take_header(),
-                }
-            }
+            BinaryRequestTag::TrySpeculativeExec => Self::TrySpeculativeExec {
+                transaction: Transaction::random(rng),
+            },
         }
     }
 }
@@ -149,19 +130,7 @@ impl ToBytes for BinaryRequest {
         match self {
             BinaryRequest::Get(inner) => inner.write_bytes(writer),
             BinaryRequest::TryAcceptTransaction { transaction } => transaction.write_bytes(writer),
-            BinaryRequest::TrySpeculativeExec {
-                transaction,
-                state_root_hash,
-                block_time,
-                protocol_version,
-                speculative_exec_at_block,
-            } => {
-                transaction.write_bytes(writer)?;
-                state_root_hash.write_bytes(writer)?;
-                block_time.write_bytes(writer)?;
-                protocol_version.write_bytes(writer)?;
-                speculative_exec_at_block.write_bytes(writer)
-            }
+            BinaryRequest::TrySpeculativeExec { transaction } => transaction.write_bytes(writer),
         }
     }
 
@@ -169,19 +138,7 @@ impl ToBytes for BinaryRequest {
         match self {
             BinaryRequest::Get(inner) => inner.serialized_length(),
             BinaryRequest::TryAcceptTransaction { transaction } => transaction.serialized_length(),
-            BinaryRequest::TrySpeculativeExec {
-                transaction,
-                state_root_hash,
-                block_time,
-                protocol_version,
-                speculative_exec_at_block,
-            } => {
-                transaction.serialized_length()
-                    + state_root_hash.serialized_length()
-                    + block_time.serialized_length()
-                    + protocol_version.serialized_length()
-                    + speculative_exec_at_block.serialized_length()
-            }
+            BinaryRequest::TrySpeculativeExec { transaction } => transaction.serialized_length(),
         }
     }
 }
@@ -204,20 +161,7 @@ impl TryFrom<(BinaryRequestTag, &[u8])> for BinaryRequest {
             }
             BinaryRequestTag::TrySpeculativeExec => {
                 let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
-                let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
-                let (block_time, remainder) = FromBytes::from_bytes(remainder)?;
-                let (protocol_version, remainder) = FromBytes::from_bytes(remainder)?;
-                let (speculative_exec_at_block, remainder) = FromBytes::from_bytes(remainder)?;
-                (
-                    BinaryRequest::TrySpeculativeExec {
-                        transaction,
-                        state_root_hash,
-                        block_time,
-                        protocol_version,
-                        speculative_exec_at_block,
-                    },
-                    remainder,
-                )
+                (BinaryRequest::TrySpeculativeExec { transaction }, remainder)
             }
         };
         if !remainder.is_empty() {
@@ -277,7 +221,7 @@ pub struct InvalidBinaryRequestTag(u8);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn header_bytesrepr_roundtrip() {

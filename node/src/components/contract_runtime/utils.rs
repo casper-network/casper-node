@@ -3,7 +3,7 @@ use crate::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionResults, ExecutionPreState, StepEffectsAndUpcomingEraValidators,
+        rewards, BlockAndExecutionArtifacts, ExecutionPreState, StepOutcome,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
@@ -99,11 +99,11 @@ pub(super) async fn exec_or_requeue<REv>(
         });
     }
 
-    let BlockAndExecutionResults {
+    let BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
-        execution_results,
-        maybe_step_effects_and_upcoming_era_validators,
+        execution_artifacts: execution_results,
+        step_outcome: maybe_step_effects_and_upcoming_era_validators,
     } = match run_intensive_task(move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
@@ -149,7 +149,7 @@ pub(super) async fn exec_or_requeue<REv>(
 
     let current_era_id = block.era_id();
 
-    if let Some(StepEffectsAndUpcomingEraValidators {
+    if let Some(StepOutcome {
         step_effects,
         mut upcoming_era_validators,
     }) = maybe_step_effects_and_upcoming_era_validators

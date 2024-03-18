@@ -18,5 +18,7 @@ pub mod tracking_copy;
 pub use address_generator::{AddressGenerator, AddressGeneratorBuilder};
 pub use tracking_copy::TrackingCopy;
 
+pub use block_store::{DbRawBytesSpec, RecordId, UnknownRecordId};
+
 #[cfg(test)]
 pub use self::tracking_copy::new_temporary_tracking_copy;

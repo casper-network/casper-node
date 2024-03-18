@@ -1234,14 +1234,6 @@ impl PartialOrd for Deploy {
 }
 
 impl ToBytes for Deploy {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.header.write_bytes(writer)?;
-        self.hash.write_bytes(writer)?;
-        self.payment.write_bytes(writer)?;
-        self.session.write_bytes(writer)?;
-        self.approvals.write_bytes(writer)
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -1254,6 +1246,14 @@ impl ToBytes for Deploy {
             + self.payment.serialized_length()
             + self.session.serialized_length()
             + self.approvals.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.header.write_bytes(writer)?;
+        self.hash.write_bytes(writer)?;
+        self.payment.write_bytes(writer)?;
+        self.session.write_bytes(writer)?;
+        self.approvals.write_bytes(writer)
     }
 }
 

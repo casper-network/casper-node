@@ -14,17 +14,16 @@ use tracing::info;
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::{
     block_provider::{BlockStoreTransaction, DataReader, DataWriter},
+    record_id::RecordId,
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
         LatestSwitchBlock, StateStore, StateStoreKey, Tip, TransactionFinalizedApprovals,
     },
-    BlockStoreError, BlockStoreProvider,
+    BlockStoreError, BlockStoreProvider, DbRawBytesSpec,
 };
 use casper_types::{
-    binary_port::{DbRawBytesSpec, RecordId},
-    execution::ExecutionResult,
-    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, EraId,
-    ProtocolVersion, Transaction, TransactionHash, Transfer,
+    execution::ExecutionResult, Approval, Block, BlockBody, BlockHash, BlockHeader,
+    BlockSignatures, Digest, EraId, ProtocolVersion, Transaction, TransactionHash, Transfer,
 };
 
 #[derive(DataSize, Debug)]

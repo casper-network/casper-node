@@ -236,6 +236,7 @@ impl Display for BalanceHoldError {
 }
 
 /// Result enum that represents all possible outcomes of a balance hold request.
+#[derive(Debug)]
 pub enum BalanceHoldResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,

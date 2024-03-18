@@ -2115,7 +2115,6 @@ where
         }
 
         let transfer_addr = self.context.new_transfer_addr()?;
-        // TODO - update once decision is made on recording transfers.
         let txn_hash = self.context.get_transaction_hash();
         let from = InitiatorAddr::AccountHash(self.context.get_caller());
         let fee = Gas::zero(); // TODO

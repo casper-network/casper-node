@@ -12,7 +12,7 @@ use core::{
     str::FromStr,
 };
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 
 #[cfg(doc)]
@@ -166,8 +166,9 @@ pub enum KeyTag {
 }
 
 impl KeyTag {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Returns a random `KeyTag`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..=24) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,

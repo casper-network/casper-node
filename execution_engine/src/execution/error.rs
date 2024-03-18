@@ -5,9 +5,7 @@ use thiserror::Error;
 use casper_storage::{global_state, tracking_copy::TrackingCopyError};
 
 use casper_types::{
-    addressable_entity::{
-        AddKeyFailure, EntityKind, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
-    },
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
@@ -54,9 +52,6 @@ pub enum Error {
     /// Forged reference error.
     #[error("Forged reference: {}", _0)]
     ForgedReference(URef),
-    /// Unable to find a [`URef`].
-    #[error("URef not found: {}", _0)]
-    URefNotFound(URef),
     /// Unable to find a function.
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
@@ -99,9 +94,6 @@ pub enum Error {
     /// Host buffer expected a value to be present.
     #[error("Expected return value")]
     ExpectedReturnValue,
-    /// Host buffer was not expected to contain a value.
-    #[error("Unexpected return value")]
-    UnexpectedReturnValue,
     /// Error calling a host function in a wrong context.
     #[error("Invalid context")]
     InvalidContext,
@@ -116,18 +108,12 @@ pub enum Error {
     /// Error converting a CLValue.
     #[error("{0}")]
     CLValue(CLValueError),
-    /// Unable to access host buffer.
-    #[error("Host buffer is empty")]
-    HostBufferEmpty,
     /// WASM bytes contains an unsupported "start" section.
     #[error("Unsupported Wasm start")]
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
     NoActiveEntityVersions(PackageHash),
-    /// Invalid entity version supplied.
-    #[error("Invalid entity version: {}", _0)]
-    InvalidEntityVersion(EntityVersionKey),
     /// Invalid entity version supplied.
     #[error("Disabled entity version: {}", _0)]
     DisabledEntityVersion(EntityVersionKey),
@@ -138,23 +124,17 @@ pub enum Error {
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
     /// Contract does
-    #[error("Error calling an abstract entry point: {}", _0)]
+    #[error("Error calling a template entry point: {}", _0)]
     TemplateMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),
-    /// Unable to convert a [`Key`] into an [`URef`].
-    #[error("Key is not a URef: {}", _0)]
-    KeyIsNotAURef(Key),
     /// Unexpected variant of a stored value.
     #[error("Unexpected variant of a stored value")]
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
     LockedEntity(PackageHash),
-    /// Unable to find a contract package by a specified hash address.
-    #[error("Invalid package: {}", _0)]
-    InvalidPackage(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidEntity(AddressableEntityHash),
@@ -170,18 +150,12 @@ pub enum Error {
     /// Error writing a dictionary item key which exceeded maximum allowed length.
     #[error("Dictionary item key exceeded maximum length")]
     DictionaryItemKeyExceedsLength,
-    /// Missing system entity registry.
-    #[error("Missing system entity registry")]
-    MissingSystemEntityRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
     /// An attempt to push to the runtime stack which is already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
-    /// An attempt to write a value to global state where its serialized size is too large.
-    #[error("Value too large")]
-    ValueTooLarge,
     /// The runtime stack is `None`.
     #[error("Runtime stack missing")]
     MissingRuntimeStack,
@@ -194,9 +168,6 @@ pub enum Error {
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
-    /// Invalid AddressableEntity kind.
-    #[error("Invalid entity kind: {0}")]
-    InvalidEntityKind(EntityKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,

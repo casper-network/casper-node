@@ -4,13 +4,12 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    binary_port::RecordId, bytesrepr, crypto, BlockBody, BlockHash, BlockHeader,
-    BlockValidationError, DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
-    TransactionHash,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use crate::types::VariantMismatch;
-use casper_storage::block_store::BlockStoreError;
+use casper_storage::{block_store::BlockStoreError, RecordId};
 
 /// A fatal storage component error.
 ///

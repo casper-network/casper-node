@@ -1,14 +1,13 @@
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::{
+use crate::{error_code::ErrorCode, payload_type::PayloadType};
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion,
 };
-use alloc::vec::Vec;
+
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
-
-use super::{ErrorCode, PayloadType};
 
 /// Header of the binary response.
 #[derive(Debug, PartialEq)]
@@ -122,7 +121,7 @@ impl FromBytes for BinaryResponseHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

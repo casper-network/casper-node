@@ -165,21 +165,21 @@ impl AuctionMethod {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BiddingRequest {
     /// The runtime config.
-    config: NativeRuntimeConfig,
+    pub(crate) config: NativeRuntimeConfig,
     /// State root hash.
-    state_hash: Digest,
+    pub(crate) state_hash: Digest,
     /// Block time represented as a unix timestamp.
-    block_time: BlockTime,
+    pub(crate) block_time: BlockTime,
     /// The protocol version.
-    protocol_version: ProtocolVersion,
+    pub(crate) protocol_version: ProtocolVersion,
     /// The auction method.
-    auction_method: AuctionMethod,
+    pub(crate) auction_method: AuctionMethod,
     /// Transaction hash.
-    transaction_hash: TransactionHash,
+    pub(crate) transaction_hash: TransactionHash,
     /// Base account.
-    initiator: InitiatorAddr,
+    pub(crate) initiator: InitiatorAddr,
     /// List of authorizing accounts.
-    authorization_keys: BTreeSet<AccountHash>,
+    pub(crate) authorization_keys: BTreeSet<AccountHash>,
 }
 
 impl BiddingRequest {
@@ -250,8 +250,6 @@ pub enum BiddingResult {
     Success {
         // The ret value, if any.
         ret: AuctionMethodRet,
-        /// State hash after bidding interaction is committed to the global state.
-        post_state_hash: Digest,
         /// Effects of bidding interaction.
         effects: Effects,
     },
@@ -263,5 +261,13 @@ impl BiddingResult {
     /// Is this a success.
     pub fn is_success(&self) -> bool {
         matches!(self, BiddingResult::Success { .. })
+    }
+
+    /// Effects.
+    pub fn effects(&self) -> Effects {
+        match self {
+            BiddingResult::RootNotFound | BiddingResult::Failure(_) => Effects::new(),
+            BiddingResult::Success { effects, .. } => effects.clone(),
+        }
     }
 }

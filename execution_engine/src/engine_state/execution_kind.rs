@@ -71,7 +71,7 @@ impl<'a> ExecutionKind<'a> {
         Ok(ExecutionKind::Standard(module_bytes))
     }
 
-    /// Returns a new contract variant of `ExecutionKind`.
+    /// Returns a new `Stored` variant of `ExecutionKind`.
     pub fn new_stored<R>(
         tracking_copy: &mut TrackingCopy<R>,
         target: &TransactionInvocationTarget,

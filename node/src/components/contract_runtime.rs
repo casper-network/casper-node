@@ -74,8 +74,8 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
 pub(crate) use types::{
-    BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionError,
-    SpeculativeExecutionState, StepEffectsAndUpcomingEraValidators,
+    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionArtifacts, ExecutionPreState,
+    SpeculativeExecutionResult, StepOutcome,
 };
 use utils::{exec_or_requeue, run_intensive_task};
 
@@ -560,23 +560,23 @@ impl ContractRuntime {
                 effects
             }
             ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
+                block_header,
                 transaction,
                 responder,
             } => {
-                let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
-                let data_access_layer = Arc::clone(&self.data_access_layer);
                 let native_runtime_config =
                     NativeRuntimeConfig::from_chainspec(self.chainspec.as_ref());
                 let system_costs = self.chainspec.system_costs_config;
+                let chainspec = Arc::clone(&self.chainspec);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
                 async move {
                     let result = run_intensive_task(move || {
                         speculatively_execute(
                             data_access_layer.as_ref(),
+                            chainspec.as_ref(),
                             execution_engine_v1.as_ref(),
-                            execution_prestate,
-                            native_runtime_config,
-                            system_costs,
+                            *block_header,
                             *transaction,
                         )
                     })

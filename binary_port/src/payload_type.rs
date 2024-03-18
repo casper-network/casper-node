@@ -1,6 +1,5 @@
 //! The payload type.
 
-use alloc::vec::Vec;
 use core::{convert::TryFrom, fmt};
 
 #[cfg(test)]
@@ -8,28 +7,27 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
-#[cfg(any(feature = "std", test))]
-use super::NodeStatus;
-use super::{
-    global_state_query_result::GlobalStateQueryResult,
-    record_id::RecordId,
-    type_wrappers::{
-        ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName, SpeculativeExecutionResult,
-    },
-    TransactionWithExecutionInfo, Uptime,
-};
+use casper_execution_engine::engine_state::WasmV1Result;
+use casper_storage::block_store::record_id::RecordId;
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::{
+use casper_types::testing::TestRng;
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, BlockSynchronizerStatus, Deploy, Peers, SignedBlock, StoredValue,
-    Transaction, Transfer,
+    BlockSignaturesV1, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, NextUpgrade, Peers,
+    SignedBlock, StoredValue, Transaction, Transfer,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{ChainspecRawBytes, NextUpgrade};
+
+use crate::{
+    global_state_query_result::GlobalStateQueryResult,
+    node_status::NodeStatus,
+    speculative_execution_result::SpeculativeExecutionResult,
+    type_wrappers::{
+        ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
+        ReactorStateName, TransactionWithExecutionInfo, Uptime,
+    },
+};
 
 /// A type of the payload being returned in a binary response.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -60,6 +58,8 @@ pub enum PayloadType {
     ExecutionResultV1,
     /// Execution result.
     ExecutionResult,
+    /// Wasm V1 execution result.
+    WasmV1Result,
     /// Transfers.
     Transfers,
     /// Finalized deploy approvals.
@@ -239,6 +239,7 @@ impl fmt::Display for PayloadType {
             PayloadType::StoredValues => write!(f, "StoredValues"),
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
             PayloadType::NodeStatus => write!(f, "NodeStatus"),
+            PayloadType::WasmV1Result => write!(f, "WasmV1Result"),
         }
     }
 }
@@ -277,12 +278,17 @@ const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
 const STORED_VALUES_TAG: u8 = 31;
 const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
 const NODE_STATUS_TAG: u8 = 33;
+const WASM_V1_RESULT_TAG: u8 = 34;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
         Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -321,12 +327,9 @@ impl ToBytes for PayloadType {
             PayloadType::StoredValues => STORED_VALUES_TAG,
             PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
             PayloadType::NodeStatus => NODE_STATUS_TAG,
+            PayloadType::WasmV1Result => WASM_V1_RESULT_TAG,
         }
         .write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
     }
 }
 
@@ -412,6 +415,10 @@ impl PayloadEntity for BlockSignaturesV1 {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignaturesV1;
 }
 
+impl PayloadEntity for WasmV1Result {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::WasmV1Result;
+}
+
 impl PayloadEntity for ExecutionResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResult;
 }
@@ -440,7 +447,6 @@ impl PayloadEntity for AvailableBlockRange {
     const PAYLOAD_TYPE: PayloadType = PayloadType::AvailableBlockRange;
 }
 
-#[cfg(any(feature = "std", test))]
 impl PayloadEntity for ChainspecRawBytes {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ChainspecRawBytes;
 }
@@ -465,12 +471,10 @@ impl PayloadEntity for SpeculativeExecutionResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::SpeculativeExecutionResult;
 }
 
-#[cfg(any(feature = "std", test))]
 impl PayloadEntity for NodeStatus {
     const PAYLOAD_TYPE: PayloadType = PayloadType::NodeStatus;
 }
 
-#[cfg(any(feature = "std", test))]
 impl PayloadEntity for NextUpgrade {
     const PAYLOAD_TYPE: PayloadType = PayloadType::NextUpgrade;
 }
@@ -502,7 +506,7 @@ impl PayloadEntity for ConsensusStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

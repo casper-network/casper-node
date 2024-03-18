@@ -1309,11 +1309,11 @@ async fn should_store_finalized_approvals() {
     // Run until the transaction gets executed.
     let has_stored_exec_results = |nodes: &Nodes| {
         nodes.values().all(|runner| {
-            runner
+            let read = runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&transaction_hash)
-                .is_some()
+                .read_execution_result(&transaction_hash);
+            read.is_some()
         })
     };
     fixture.run_until(has_stored_exec_results, ONE_MIN).await;

@@ -52,7 +52,7 @@ use crate::URef;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, TimeDiff, Timestamp,
+    Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use approval::Approval;
@@ -308,6 +308,63 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => deploy.is_transfer(),
             Transaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
+        }
+    }
+
+    /// Is this a transaction that should be sent to the v1 execution engine?
+    pub fn is_v1_wasm(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => !deploy.is_transfer(),
+            Transaction::V1(v1) => v1.is_v1_wasm(),
+        }
+    }
+
+    /// Should this transaction use standard payment processing?
+    pub fn is_standard_payment(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.payment().is_standard_payment(Phase::Payment),
+            Transaction::V1(v1) => {
+                if let PricingMode::Classic {
+                    standard_payment, ..
+                } = v1.pricing_mode()
+                {
+                    *standard_payment
+                } else {
+                    true
+                }
+            }
+        }
+    }
+
+    /// Authorization keys.
+    pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(transaction_v1) => transaction_v1
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+        }
+    }
+
+    /// The session args.
+    pub fn session_args(&self) -> &RuntimeArgs {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().args(),
+            Transaction::V1(transaction_v1) => transaction_v1.body().args(),
+        }
+    }
+
+    /// The entry point.
+    pub fn entry_point(&self) -> TransactionEntryPoint {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().entry_point_name().into(),
+            Transaction::V1(transaction_v1) => transaction_v1.entry_point().clone(),
         }
     }
 

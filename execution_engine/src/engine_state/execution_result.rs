@@ -375,7 +375,7 @@ impl ExecutionResult {
                     err,
                     ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart
                 ),
-                Error::WasmPreprocessing(_) | Error::WasmSerialization(_) => true,
+                Error::WasmPreprocessing(_) => true,
                 _ => false,
             },
             ExecutionResult::Success { .. } => false,

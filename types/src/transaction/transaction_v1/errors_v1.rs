@@ -143,6 +143,8 @@ pub enum InvalidTransaction {
         /// The attempted gas price.
         gas_price: u64,
     },
+    /// Unable to calculate gas limit.
+    UnableToCalculateGasLimit,
 }
 
 impl Display for InvalidTransaction {
@@ -260,6 +262,9 @@ impl Display for InvalidTransaction {
                     amount, gas_price
                 )
             }
+            InvalidTransaction::UnableToCalculateGasLimit => {
+                write!(formatter, "unable to calculate gas limit",)
+            }
         }
     }
 }
@@ -292,7 +297,8 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::EntryPointCannotBeCustom { .. }
             | InvalidTransaction::EntryPointMustBeCustom { .. }
             | InvalidTransaction::EmptyModuleBytes
-            | InvalidTransaction::GasPriceConversion { .. } => None,
+            | InvalidTransaction::GasPriceConversion { .. }
+            | InvalidTransaction::UnableToCalculateGasLimit => None,
         }
     }
 }

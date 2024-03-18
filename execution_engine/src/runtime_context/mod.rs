@@ -326,7 +326,7 @@ where
         self.entity_key
     }
 
-    /// Returns the initiater of the call chain.
+    /// Returns the initiator of the call chain.
     pub fn get_caller(&self) -> AccountHash {
         self.account_hash
     }

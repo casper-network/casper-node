@@ -21,7 +21,10 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_storage::data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult};
+use casper_storage::{
+    data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
@@ -31,7 +34,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PublicKey, SecretKey,
     StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind,
-    TransactionV1, TransactionV1Builder, URef, URefAddr, U512,
+    TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -730,11 +733,35 @@ impl reactor::Reactor for Reactor {
                     request: balance_request,
                     responder,
                 } => {
-                    let key = balance_request.identifier().as_key();
-
+                    let key = match balance_request.identifier() {
+                        BalanceIdentifier::Purse(uref) => Key::URef(*uref),
+                        BalanceIdentifier::Public(public_key) => {
+                            Key::Account(public_key.to_account_hash())
+                        }
+                        BalanceIdentifier::Account(account_hash) => Key::Account(*account_hash),
+                        BalanceIdentifier::Entity(entity_addr) => {
+                            Key::AddressableEntity(*entity_addr)
+                        }
+                        BalanceIdentifier::Internal(addr) => Key::Balance(*addr),
+                        BalanceIdentifier::Payment => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("payment".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                    };
                     let purse_addr = match balance_request.identifier().as_purse_addr() {
-                        None => URefAddr::default(),
                         Some(purse_addr) => purse_addr,
+                        None => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::UnexpectedKeyVariant(key),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
                     };
 
                     let proof = TrieMerkleProof::new(

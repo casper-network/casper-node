@@ -3,7 +3,7 @@ use std::{
     net::SocketAddr,
 };
 
-use casper_types::binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
+use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
 use tokio::net::TcpStream;
 
 use crate::effect::Responder;

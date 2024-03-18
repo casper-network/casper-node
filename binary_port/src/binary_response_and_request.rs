@@ -1,17 +1,13 @@
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use casper_storage::{block_store::record_id::RecordId, DbRawBytesSpec};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    ProtocolVersion,
+};
 
-use super::binary_response::BinaryResponse;
-#[cfg(any(feature = "testing", test))]
-use super::payload_type::PayloadEntity;
-use alloc::vec::Vec;
-
-#[cfg(any(feature = "testing", test))]
-use super::record_id::RecordId;
-#[cfg(any(feature = "testing", test))]
-use crate::ProtocolVersion;
+use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity};
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 /// The binary response along with the original binary request attached.
 #[derive(Debug, PartialEq)]
@@ -31,15 +27,12 @@ impl BinaryResponseAndRequest {
         }
     }
 
-    /// Returns a new binary response with specified data and no original request.
-    #[cfg(any(feature = "testing", test))]
+    /// Returns a new binary response with specified data and no original request.    
     pub fn new_test_response<A: PayloadEntity + ToBytes>(
         record_id: RecordId,
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
-        use super::DbRawBytesSpec;
-
         let response = BinaryResponse::from_db_raw_bytes(
             record_id,
             Some(DbRawBytesSpec::new_current(&data.to_bytes().unwrap())),
@@ -49,14 +42,11 @@ impl BinaryResponseAndRequest {
     }
 
     /// Returns a new binary response with specified legacy data and no original request.
-    #[cfg(any(feature = "testing", test))]
     pub fn new_legacy_test_response<A: PayloadEntity + serde::Serialize>(
         record_id: RecordId,
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
-        use super::DbRawBytesSpec;
-
         let response = BinaryResponse::from_db_raw_bytes(
             record_id,
             Some(DbRawBytesSpec::new_legacy(
@@ -143,7 +133,7 @@ impl From<BinaryResponseAndRequest> for BinaryResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

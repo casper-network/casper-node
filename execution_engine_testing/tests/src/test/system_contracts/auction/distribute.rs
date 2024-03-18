@@ -998,6 +998,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             },
         );
         assert!(undelegate_result.is_success(), "{:?}", undelegate_result);
+        builder.commit_transforms(builder.get_post_state_hash(), undelegate_result.effects());
         delegator_1_stake =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone());
 
@@ -1017,6 +1018,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             },
         );
         assert!(updelegate_result.is_success(), "{:?}", updelegate_result);
+        builder.commit_transforms(builder.get_post_state_hash(), undelegate_result.effects());
         delegator_2_stake =
             get_delegator_staked_amount(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone());
 
@@ -1044,6 +1046,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             auction_method,
         );
         assert!(bid_flip_result.is_success(), "{:?}", bid_flip_result);
+        builder.commit_transforms(builder.get_post_state_hash(), undelegate_result.effects());
         validator_stake = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();

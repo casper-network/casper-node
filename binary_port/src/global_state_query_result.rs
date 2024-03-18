@@ -1,17 +1,16 @@
 //! The result of the query for the global state value.
 
-use crate::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     global_state::TrieMerkleProof,
     Key, StoredValue,
 };
-use alloc::vec::Vec;
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 #[cfg(test)]
-use crate::{ByteCode, ByteCodeKind};
+use casper_types::{ByteCode, ByteCodeKind};
 
 /// Carries the successful result of the global state query.
 #[derive(Debug, PartialEq, Clone)]
@@ -38,7 +37,7 @@ impl GlobalStateQueryResult {
 
     #[cfg(test)]
     pub(crate) fn random_invalid(rng: &mut TestRng) -> Self {
-        use crate::{global_state::TrieMerkleProofStep, CLValue};
+        use casper_types::{global_state::TrieMerkleProofStep, CLValue};
         use rand::Rng;
         // Note: This does NOT create a logically-valid struct. Instance created by this function
         // should be used in `bytesrepr` tests only.
@@ -102,7 +101,7 @@ impl FromBytes for GlobalStateQueryResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

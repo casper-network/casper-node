@@ -1,24 +1,19 @@
-use crate::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     Block, BlockHash, Digest, EraId, PublicKey, Timestamp,
 };
-use alloc::vec::Vec;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-#[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use rand::Rng;
+use schemars::JsonSchema;
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 /// Minimal info about a `Block` needed to satisfy the node status request.
-#[derive(Debug, PartialEq, Eq)]
-#[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[cfg_attr(any(feature = "std", test), serde(deny_unknown_fields))]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MinimalBlockInfo {
     hash: BlockHash,
     timestamp: Timestamp,
@@ -111,7 +106,7 @@ impl From<Block> for MinimalBlockInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

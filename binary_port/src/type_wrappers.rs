@@ -1,17 +1,11 @@
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
+use std::collections::BTreeMap;
 
-use alloc::{
-    collections::BTreeMap,
-    string::{String, ToString},
-    vec::Vec,
-};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 
-use crate::{
+use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contract_messages::Messages,
-    execution::ExecutionResultV2,
     EraId, ExecutionInfo, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
 };
 
@@ -161,53 +155,6 @@ impl From<LastProgress> for Timestamp {
     }
 }
 
-/// Type representing results of the speculative execution.
-#[derive(Debug, PartialEq, Eq)]
-pub struct SpeculativeExecutionResult {
-    execution_result: ExecutionResultV2,
-    messages: Messages,
-}
-
-impl SpeculativeExecutionResult {
-    /// Constructs new speculative execution result.
-    pub fn new(execution_result: ExecutionResultV2, messages: Messages) -> Self {
-        Self {
-            execution_result,
-            messages,
-        }
-    }
-
-    /// Returns the inner value.
-    pub fn into_inner(self) -> (ExecutionResultV2, Messages) {
-        (self.execution_result, self.messages)
-    }
-}
-
-impl ToBytes for SpeculativeExecutionResult {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.execution_result.serialized_length() + self.messages.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.execution_result.write_bytes(writer)?;
-        self.messages.write_bytes(writer)
-    }
-}
-
-impl FromBytes for SpeculativeExecutionResult {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (execution_result, remainder) = ExecutionResultV2::from_bytes(bytes)?;
-        let (messages, remainder) = Messages::from_bytes(remainder)?;
-        Ok((Self::new(execution_result, messages), remainder))
-    }
-}
-
 /// Type representing results of the get full trie request.
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetTrieFullResult(Option<Bytes>);
@@ -308,13 +255,13 @@ impl ToBytes for TransactionWithExecutionInfo {
         Ok(buffer)
     }
 
+    fn serialized_length(&self) -> usize {
+        self.transaction.serialized_length() + self.execution_info.serialized_length()
+    }
+
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.transaction.write_bytes(writer)?;
         self.execution_info.write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.transaction.serialized_length() + self.execution_info.serialized_length()
     }
 }
 
@@ -342,7 +289,7 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn uptime_roundtrip() {
@@ -376,14 +323,6 @@ mod tests {
     fn last_progress_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&LastProgress::new(Timestamp::random(rng)));
-    }
-
-    #[test]
-    fn speculative_execution_result_roundtrip() {
-        let rng = &mut TestRng::new();
-        let result_and_msgs =
-            SpeculativeExecutionResult::new(ExecutionResultV2::random(rng), rng.random_vec(0..20));
-        bytesrepr::test_serialization_roundtrip(&result_and_msgs);
     }
 
     #[test]

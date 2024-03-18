@@ -162,22 +162,22 @@ impl TransactionAcceptor {
             );
         }
 
-        // If this has been received from the speculative exec server, use the block specified in
-        // the request, otherwise use the highest complete block.
-        if let Source::SpeculativeExec(block_header) = &event_metadata.source {
-            let account_key = match event_metadata.transaction.initiator_addr() {
-                InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
-                InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-            };
-            let block_header = block_header.clone();
-            return effect_builder
-                .get_addressable_entity(*block_header.state_root_hash(), account_key)
-                .event(move |result| Event::GetAddressableEntityResult {
-                    event_metadata,
-                    maybe_entity: result.into_option(),
-                    block_header,
-                });
-        }
+        // // If this has been received from the speculative exec server, use the block specified in
+        // // the request, otherwise use the highest complete block.
+        // if let Source::SpeculativeExec = &event_metadata.source {
+        //     let account_key = match event_metadata.transaction.initiator_addr() {
+        //         InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
+        //         InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
+        //     };
+        //
+        //     return effect_builder
+        //         .get_addressable_entity(*block_header.state_root_hash(), account_key)
+        //         .event(move |result| Event::GetAddressableEntityResult {
+        //             event_metadata,
+        //             maybe_entity: result.into_option(),
+        //             block_header,
+        //         });
+        // }
 
         effect_builder
             .get_highest_complete_block_header_from_storage()
@@ -354,6 +354,18 @@ impl TransactionAcceptor {
                         maybe_entity: result.into_option(),
                     })
             }
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Addr(entity_addr),
+            ) => {
+                let query_key = Key::AddressableEntity(entity_addr);
+                effect_builder
+                    .get_addressable_entity(*block_header.state_root_hash(), query_key)
+                    .event(move |result| Event::GetAddressableEntityResult {
+                        event_metadata,
+                        block_header,
+                        maybe_entity: result.into_option(),
+                    })
+            }
             ExecutableDeployItemIdentifier::Package(
                 ref contract_package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
@@ -458,6 +470,18 @@ impl TransactionAcceptor {
                         block_header,
                         is_payment: false,
                         contract_hash: entity_hash,
+                        maybe_entity: result.into_option(),
+                    })
+            }
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Addr(entity_addr),
+            ) => {
+                let key = Key::AddressableEntity(entity_addr);
+                effect_builder
+                    .get_addressable_entity(*block_header.state_root_hash(), key)
+                    .event(move |result| Event::GetAddressableEntityResult {
+                        event_metadata,
+                        block_header,
                         maybe_entity: result.into_option(),
                     })
             }
@@ -709,7 +733,7 @@ impl TransactionAcceptor {
 
         // If this has been received from the speculative exec server, we just want to call the
         // responder and finish.  Otherwise store the transaction and announce it if required.
-        if let Source::SpeculativeExec(_) = event_metadata.source {
+        if let Source::SpeculativeExec = event_metadata.source {
             if let Some(responder) = event_metadata.maybe_responder {
                 return responder.respond(Ok(())).ignore();
             }
@@ -738,9 +762,7 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
         } = event_metadata;
-        if !matches!(source, Source::SpeculativeExec(_)) {
-            self.metrics.observe_rejected(verification_start_timestamp);
-        }
+        self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
             // The client has submitted an invalid transaction
@@ -748,14 +770,11 @@ impl TransactionAcceptor {
             effects.extend(responder.respond(Err(error)).ignore());
         }
 
-        // If this has NOT been received from the speculative exec server, announce it.
-        if !matches!(source, Source::SpeculativeExec(_)) {
-            effects.extend(
-                effect_builder
-                    .announce_invalid_transaction(transaction, source)
-                    .ignore(),
-            );
-        }
+        effects.extend(
+            effect_builder
+                .announce_invalid_transaction(transaction, source)
+                .ignore(),
+        );
         effects
     }
 

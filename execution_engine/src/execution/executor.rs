@@ -78,11 +78,7 @@ impl Executor {
         };
 
         let address_generator = {
-            let hash_slice = match &txn_hash {
-                TransactionHash::Deploy(hash) => hash.as_ref(),
-                TransactionHash::V1(hash) => hash.as_ref(),
-            };
-            let generator = AddressGenerator::new(hash_slice, phase);
+            let generator = AddressGenerator::new(txn_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -180,11 +176,7 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         let address_generator = {
-            let hash_slice = match &txn_hash {
-                TransactionHash::Deploy(hash) => hash.as_ref(),
-                TransactionHash::V1(hash) => hash.as_ref(),
-            };
-            let generator = AddressGenerator::new(hash_slice, phase);
+            let generator = AddressGenerator::new(txn_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 

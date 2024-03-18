@@ -1,17 +1,15 @@
-use alloc::vec::Vec;
 use core::convert::TryFrom;
 
 #[cfg(test)]
 use rand::Rng;
 
+use crate::get_request::GetRequest;
 #[cfg(test)]
-use crate::testing::TestRng;
-use crate::{
+use casper_types::testing::TestRng;
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     BlockIdentifier, TransactionHash,
 };
-
-use super::GetRequest;
 
 /// Request for information from the node.
 #[derive(Clone, Debug, PartialEq)]
@@ -348,7 +346,7 @@ pub struct UnknownInformationRequestTag(u16);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn tag_roundtrip() {
