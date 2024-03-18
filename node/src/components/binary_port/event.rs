@@ -45,6 +45,9 @@ impl Display for Event {
                         write!(f, "get all items ({})", key_tag)
                     }
                     GetRequest::State(GlobalStateRequest::Trie { .. }) => write!(f, "get trie"),
+                    GetRequest::State(GlobalStateRequest::DictionaryItem { .. }) => {
+                        write!(f, "get dictionary item")
+                    }
                 },
                 BinaryRequest::TryAcceptTransaction { transaction, .. } => {
                     write!(f, "try accept transaction ({})", transaction.hash())

@@ -6,11 +6,11 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, BlockV2, Deploy, DeployId};
+use casper_types::{Block, BlockV2, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
-    effect::requests::DeployBufferRequest,
+    effect::requests::TransactionBufferRequest,
     types::FinalizedBlock,
 };
 
@@ -18,9 +18,9 @@ use crate::{
 pub(crate) enum Event {
     Initialize(Vec<Block>),
     #[from]
-    Request(DeployBufferRequest),
-    ReceiveDeployGossiped(DeployId),
-    StoredDeploy(DeployId, Option<Box<Deploy>>),
+    Request(TransactionBufferRequest),
+    ReceiveTransactionGossiped(TransactionId),
+    StoredTransaction(TransactionId, Option<Box<Transaction>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Arc<BlockV2>),
     VersionedBlock(Arc<Block>),
@@ -34,18 +34,18 @@ impl Display for Event {
             Event::Initialize(blocks) => {
                 write!(formatter, "initialize, {} blocks", blocks.len())
             }
-            Event::Request(DeployBufferRequest::GetAppendableBlock { .. }) => {
+            Event::Request(TransactionBufferRequest::GetAppendableBlock { .. }) => {
                 write!(formatter, "get appendable block request")
             }
-            Event::ReceiveDeployGossiped(deploy_id) => {
-                write!(formatter, "receive deploy gossiped {}", deploy_id)
+            Event::ReceiveTransactionGossiped(transaction_id) => {
+                write!(formatter, "receive transaction gossiped {}", transaction_id)
             }
-            Event::StoredDeploy(deploy_id, maybe_deploy) => {
+            Event::StoredTransaction(transaction_id, maybe_transaction) => {
                 write!(
                     formatter,
                     "{} stored: {:?}",
-                    deploy_id,
-                    maybe_deploy.is_some()
+                    transaction_id,
+                    maybe_transaction.is_some()
                 )
             }
             Event::BlockProposed(_) => {
@@ -65,7 +65,7 @@ impl Display for Event {
                 write!(formatter, "versioned block")
             }
             Event::Expire => {
-                write!(formatter, "expire deploys")
+                write!(formatter, "expire transactions")
             }
         }
     }

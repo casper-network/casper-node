@@ -129,9 +129,9 @@ max_ttl = '18 hours'
 # Maximum transaction size in bytes.  Size is of the transaction when serialized via ToBytes.
 max_transaction_size = 1_048_576
 # Maximum number of transfer transactions allowed in a block.
-block_max_transfer_count = 1000
+block_max_mint_count = 1000
 # Maximum number of staking transactions allowed in a block.
-block_max_staking_count = 200
+block_max_auction_count = 200
 # Maximum number of installer/upgrader transactions allowed in a block.
 block_max_install_upgrade_count = 2
 # Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.
@@ -142,6 +142,8 @@ block_max_approval_count = 2600
 max_block_size = 10_485_760
 # The upper limit of total gas of all transactions in a block.
 block_gas_limit = 4_000_000_000_000
+# Chainspec configured cost for native transfers.
+native_transfer_cost = 2_500_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
@@ -281,7 +283,8 @@ max_topics_per_contract = 128
 max_message_size = 1_024
 
 [system_costs]
-wasmless_transfer_cost = 100_000_000
+install_upgrade_gas_limit = 0
+standard_transaction_gas_limit = 0
 
 [system_costs.auction_costs]
 get_era_validators = 10_000

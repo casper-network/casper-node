@@ -262,11 +262,11 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // initialize deploy buffer from local storage; on a new node this is nearly a noop
+        // initialize transaction buffer from local storage; on a new node this is nearly a noop
         // but on a restarting node it can be relatively time consuming (depending upon TTL and
-        // how many deploys there have been within the TTL)
+        // how many transactions there have been within the TTL)
         if let Some(effects) = self
-            .deploy_buffer
+            .transaction_buffer
             .initialize_component(effect_builder, &self.storage)
         {
             return Some(effects);
@@ -291,6 +291,9 @@ impl MainReactor {
             return Some(effects);
         }
 
+        // bring up rpc and rest server last to defer complications (such as put_transaction) and
+        // for it to be able to answer to /status, which requires various other components to be
+        // initialized
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.rest_server,

@@ -432,6 +432,13 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(46), ApiError::MessageTooLarge);
     /// ```
     MessageTooLarge,
+    /// The maximum number of messages emitted per block was exceeded when trying to emit a
+    /// message.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(47), ApiError::MaxMessagesPerBlockExceeded);
+    /// ```
+    MaxMessagesPerBlockExceeded,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -594,6 +601,7 @@ impl From<ApiError> for u32 {
             ApiError::MessageTopicNotRegistered => 44,
             ApiError::MessageTopicFull => 45,
             ApiError::MessageTooLarge => 46,
+            ApiError::MaxMessagesPerBlockExceeded => 47,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -652,6 +660,7 @@ impl From<u32> for ApiError {
             44 => ApiError::MessageTopicNotRegistered,
             45 => ApiError::MessageTopicFull,
             46 => ApiError::MessageTooLarge,
+            47 => ApiError::MaxMessagesPerBlockExceeded,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -720,6 +729,9 @@ impl Debug for ApiError {
             }
             ApiError::MessageTopicFull => write!(f, "ApiError::MessageTopicFull")?,
             ApiError::MessageTooLarge => write!(f, "ApiError::MessageTooLarge")?,
+            ApiError::MaxMessagesPerBlockExceeded => {
+                write!(f, "ApiError::MaxMessagesPerBlockExceeded")?
+            }
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,

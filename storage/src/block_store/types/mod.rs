@@ -2,13 +2,15 @@ mod approvals_hashes;
 mod block_hash_height_and_era;
 mod deploy_metadata_v1;
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+    borrow::Cow,
+    collections::{BTreeSet, HashMap},
+};
 
 pub use approvals_hashes::{ApprovalsHashes, ApprovalsHashesValidationError};
 pub use block_hash_height_and_era::BlockHashHeightAndEra;
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, FinalizedApprovals, TransactionHash,
-    Transfer,
+    execution::ExecutionResult, Approval, Block, BlockHash, BlockHeader, TransactionHash, Transfer,
 };
 
 pub(crate) use approvals_hashes::LegacyApprovalsHashes;
@@ -18,7 +20,7 @@ pub type ExecutionResults = HashMap<TransactionHash, ExecutionResult>;
 
 pub struct TransactionFinalizedApprovals {
     pub transaction_hash: TransactionHash,
-    pub finalized_approvals: FinalizedApprovals,
+    pub finalized_approvals: BTreeSet<Approval>,
 }
 
 pub struct BlockExecutionResults {

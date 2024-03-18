@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    EraId, Timestamp,
+    EraId, TimeDiff, Timestamp,
 };
 
 const ERA_ID_TAG: u8 = 0;
@@ -64,6 +64,12 @@ impl ActivationPoint {
         } else {
             ActivationPoint::Genesis(Timestamp::random(rng))
         }
+    }
+}
+
+impl Default for ActivationPoint {
+    fn default() -> Self {
+        ActivationPoint::Genesis(Timestamp::now().saturating_add(TimeDiff::from_seconds(15)))
     }
 }
 

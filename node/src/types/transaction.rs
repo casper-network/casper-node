@@ -1,7 +1,5 @@
 mod deploy;
-mod transaction_hash_with_approvals;
-mod typed_transaction_hash;
+mod transaction_footprint;
 
-pub(crate) use deploy::{DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy};
-pub use transaction_hash_with_approvals::TransactionHashWithApprovals;
-pub(crate) use typed_transaction_hash::TypedTransactionHash;
+pub(crate) use deploy::LegacyDeploy;
+pub(crate) use transaction_footprint::{TransactionExt, TransactionFootprint};

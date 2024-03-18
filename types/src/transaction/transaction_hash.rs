@@ -16,10 +16,9 @@ use crate::{
 };
 
 #[cfg(any(feature = "testing", test))]
-use rand::Rng;
-
-#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -86,6 +85,15 @@ impl Display for TransactionHash {
         match self {
             TransactionHash::Deploy(hash) => Display::fmt(hash, formatter),
             TransactionHash::V1(hash) => Display::fmt(hash, formatter),
+        }
+    }
+}
+
+impl AsRef<[u8]> for TransactionHash {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            TransactionHash::Deploy(hash) => hash.as_ref(),
+            TransactionHash::V1(hash) => hash.as_ref(),
         }
     }
 }

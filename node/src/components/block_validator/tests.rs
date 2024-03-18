@@ -7,7 +7,8 @@ use rand::Rng;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng, Block,
     BlockSignatures, BlockSignaturesV2, Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem,
-    FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction, U512,
+    FinalitySignatureV2, RuntimeArgs, SecretKey, TestBlockBuilder, TimeDiff, Transaction,
+    TransactionV1, U512,
 };
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
         consensus::BlockContext,
         fetcher::{self, FetchItem},
     },
-    effect::{announcements::FatalAnnouncement, requests::StorageRequest},
+    effect::requests::StorageRequest,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::{BlockPayload, ValidatorMatrix},
     utils::{self, Loadable},
@@ -79,9 +80,9 @@ impl MockReactor {
                     validation_metadata: _,
                     responder,
                 }) => {
-                    if let Some(deploy) = context.get_deploy(id) {
+                    if let Some(transaction) = context.get_transaction(id) {
                         let response = FetchedData::FromPeer {
-                            item: Box::new(Transaction::Deploy(deploy)),
+                            item: Box::new(transaction),
                             peer,
                         };
                         responder.respond(Ok(response)).await;
@@ -133,33 +134,57 @@ impl MockReactor {
 
 pub(super) fn new_proposed_block_with_cited_signatures(
     timestamp: Timestamp,
-    transfer: Vec<TransactionHashWithApprovals>,
-    staking: Vec<TransactionHashWithApprovals>,
-    install_upgrade: Vec<TransactionHashWithApprovals>,
-    standard: Vec<TransactionHashWithApprovals>,
+    transfer: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    staking: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    install_upgrade: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    standard: Vec<(TransactionHash, BTreeSet<Approval>)>,
     cited_signatures: RewardedSignatures,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
-    let block_payload = BlockPayload::new(
-        transfer,
-        staking,
-        install_upgrade,
-        standard,
-        vec![],
-        cited_signatures,
-        true,
-    );
+    let transactions = {
+        let mut ret = BTreeMap::new();
+        ret.insert(
+            TransactionCategory::Mint,
+            transfer
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::Auction,
+            staking
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::InstallUpgrade,
+            install_upgrade
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret.insert(
+            TransactionCategory::Standard,
+            standard
+                .into_iter()
+                .map(|(txn_hash, approvals)| (txn_hash, approvals))
+                .collect(),
+        );
+        ret
+    };
+    let block_payload = BlockPayload::new(transactions, vec![], cited_signatures, true);
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
 pub(super) fn new_proposed_block(
     timestamp: Timestamp,
-    transfer: Vec<TransactionHashWithApprovals>,
-    staking: Vec<TransactionHashWithApprovals>,
-    install_upgrade: Vec<TransactionHashWithApprovals>,
-    standard: Vec<TransactionHashWithApprovals>,
+    transfer: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    staking: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    install_upgrade: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    standard: Vec<(TransactionHash, BTreeSet<Approval>)>,
 ) -> ProposedBlock<ClContext> {
     new_proposed_block_with_cited_signatures(
         timestamp,
@@ -171,7 +196,27 @@ pub(super) fn new_proposed_block(
     )
 }
 
-pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_v1_standard(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_standard(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_auction(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> TransactionV1 {
+    TransactionV1::random_staking(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_install_upgrade(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_legacy_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -198,7 +243,19 @@ pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff)
     )
 }
 
-pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_v1_transfer(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_legacy_transfer(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -224,6 +281,35 @@ pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     )
 }
 
+pub(super) fn new_mint(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+    if rng.gen() {
+        new_v1_transfer(rng, timestamp, ttl).into()
+    } else {
+        new_legacy_transfer(rng, timestamp, ttl).into()
+    }
+}
+
+pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+    if rng.gen() {
+        new_v1_standard(rng, timestamp, ttl).into()
+    } else {
+        new_legacy_deploy(rng, timestamp, ttl).into()
+    }
+}
+
+pub(super) fn new_non_transfer(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> Transaction {
+    match rng.gen_range(0..3) {
+        0 => new_standard(rng, timestamp, ttl),
+        1 => new_install_upgrade(rng, timestamp, ttl).into(),
+        2 => new_auction(rng, timestamp, ttl).into(),
+        _ => unreachable!(),
+    }
+}
+
 type SecretKeys = BTreeMap<PublicKey, Arc<SecretKey>>;
 
 struct ValidationContext {
@@ -234,16 +320,16 @@ struct ValidationContext {
     past_blocks: HashMap<u64, Block>,
     // blocks that will be "stored" during validation
     delayed_blocks: HashMap<u64, Block>,
-    deploys: HashMap<TransactionId, Deploy>,
-    transfers: HashMap<TransactionId, Deploy>,
+    transactions: HashMap<TransactionId, Transaction>,
+    transfers: HashMap<TransactionId, Transaction>,
     // map of block height → signatures for the block
     signatures: HashMap<u64, HashMap<PublicKey, FinalitySignatureV2>>,
     // map of signatures that aren't stored, but are fetchable
     fetchable_signatures: HashMap<FinalitySignatureId, FinalitySignature>,
 
     // fields defining the proposed block that will be validated
-    deploys_to_include: Vec<TransactionHashWithApprovals>,
-    transfers_to_include: Vec<TransactionHashWithApprovals>,
+    transactions_to_include: Vec<(TransactionHash, BTreeSet<Approval>)>,
+    transfers_to_include: Vec<(TransactionHash, BTreeSet<Approval>)>,
     signatures_to_include: HashMap<u64, BTreeSet<PublicKey>>,
     proposed_block_height: Option<u64>,
 }
@@ -256,11 +342,11 @@ impl ValidationContext {
             secret_keys: BTreeMap::new(),
             past_blocks: HashMap::new(),
             delayed_blocks: HashMap::new(),
-            deploys: HashMap::new(),
+            transactions: HashMap::new(),
             transfers: HashMap::new(),
             fetchable_signatures: HashMap::new(),
             signatures: HashMap::new(),
-            deploys_to_include: vec![],
+            transactions_to_include: vec![],
             transfers_to_include: vec![],
             signatures_to_include: HashMap::new(),
             proposed_block_height: None,
@@ -402,49 +488,51 @@ impl ValidationContext {
         self
     }
 
-    fn with_deploys(mut self, deploys: Vec<Deploy>) -> Self {
-        self.deploys.extend(
-            deploys
+    fn with_transactions(mut self, transactions: Vec<Transaction>) -> Self {
+        self.transactions.extend(
+            transactions
                 .into_iter()
-                .map(|deploy| (Transaction::Deploy(deploy.clone()).fetch_id(), deploy)),
+                .map(|transaction| (transaction.clone().fetch_id(), transaction)),
         );
         self
     }
 
-    fn with_transfers(mut self, transfers: Vec<Deploy>) -> Self {
+    fn with_transfers(mut self, transfers: Vec<Transaction>) -> Self {
         self.transfers.extend(
             transfers
                 .into_iter()
-                .map(|deploy| (Transaction::Deploy(deploy.clone()).fetch_id(), deploy)),
+                .map(|transaction| (transaction.clone().fetch_id(), transaction)),
         );
         self
     }
 
-    fn include_all_deploys(mut self) -> Self {
-        self.deploys_to_include
-            .extend(self.deploys.values().map(|deploy| {
-                TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone()))
-            }));
+    fn include_all_transactions(mut self) -> Self {
+        self.transactions_to_include.extend(
+            self.transactions
+                .values()
+                .map(|transaction| (transaction.hash(), transaction.approvals())),
+        );
         self
     }
 
     fn include_all_transfers(mut self) -> Self {
-        self.transfers_to_include
-            .extend(self.transfers.values().map(|deploy| {
-                TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone()))
-            }));
+        self.transfers_to_include.extend(
+            self.transfers
+                .values()
+                .map(|transaction| (transaction.hash(), transaction.approvals())),
+        );
         self
     }
 
-    fn include_deploys<I: IntoIterator<Item = TransactionHashWithApprovals>>(
+    fn include_transactions<I: IntoIterator<Item = (TransactionHash, BTreeSet<Approval>)>>(
         mut self,
-        deploys: I,
+        transactions: I,
     ) -> Self {
-        self.deploys_to_include.extend(deploys);
+        self.transactions_to_include.extend(transactions);
         self
     }
 
-    fn include_transfers<I: IntoIterator<Item = TransactionHashWithApprovals>>(
+    fn include_transfers<I: IntoIterator<Item = (TransactionHash, BTreeSet<Approval>)>>(
         mut self,
         transfers: I,
     ) -> Self {
@@ -452,8 +540,8 @@ impl ValidationContext {
         self
     }
 
-    fn get_deploy(&self, id: TransactionId) -> Option<Deploy> {
-        self.deploys
+    fn get_transaction(&self, id: TransactionId) -> Option<Transaction> {
+        self.transactions
             .get(&id)
             .cloned()
             .or_else(|| self.transfers.get(&id).cloned())
@@ -512,7 +600,7 @@ impl ValidationContext {
             self.transfers_to_include.to_vec(),
             vec![],
             vec![],
-            self.deploys_to_include.to_vec(),
+            self.transactions_to_include.to_vec(),
             rewarded_signatures,
         )
     }
@@ -563,16 +651,17 @@ impl ValidationContext {
             return validation_result.await.unwrap();
         }
 
-        // Otherwise the effects are either requests to fetch the block's deploys, or to fetch past
-        // blocks for the purpose of signature validation.
+        // Otherwise the effects are either requests to fetch the block's transactions, or to fetch
+        // past blocks for the purpose of signature validation.
         let event_futures: Vec<_> = effects.into_iter().map(tokio::spawn).collect();
 
-        // We make our mock reactor answer with the expected blocks and/or deploys and transfers:
+        // We make our mock reactor answer with the expected blocks and/or transactions and
+        // transfers:
         reactor.handle_requests(self).await;
 
-        // At this point we either responded with requested deploys, or the past blocks. This
+        // At this point we either responded with requested transactions, or the past blocks. This
         // should generate other events (`GotPastBlocksWithMetadata` in the case of past blocks, or
-        // a bunch of `TransactionFetched` in the case of deploys). We have to handle them.
+        // a bunch of `TransactionFetched` in the case of transactions). We have to handle them.
         let mut effects = Effects::new();
         for future in event_futures {
             let events = future.await.unwrap();
@@ -614,7 +703,7 @@ impl ValidationContext {
         }
 
         // Otherwise, we have more effects to handle. After the blocks have been returned, the
-        // validator should now ask for the deploys and signatures.
+        // validator should now ask for the transactions and signatures.
         // If some blocks have been delayed, this can be another request for past blocks.
         // Let's handle those requests.
         let event_futures: Vec<_> = effects.into_iter().map(tokio::spawn).collect();
@@ -682,7 +771,7 @@ impl ValidationContext {
     }
 }
 
-/// Verifies that a block without any deploys or transfers is valid.
+/// Verifies that a block without any transactions or transfers is valid.
 #[tokio::test]
 async fn empty_block() {
     let mut rng = TestRng::new();
@@ -690,48 +779,56 @@ async fn empty_block() {
     assert!(empty_context.validate_block(&mut rng, 1000.into()).await);
 }
 
-/// Verifies that the block validator checks deploy and transfer timestamps and ttl.
+/// Verifies that the block validator checks transaction and transfer timestamps and ttl.
 #[tokio::test]
 async fn ttl() {
-    // The ttl is 200 ms, and our deploys and transfers have timestamps 900 and 1000. So the block
-    // timestamp must be at least 1000 and at most 1100.
+    // The ttl is 200 ms, and our transactions and transfers have timestamps 900 and 1000. So the
+    // block timestamp must be at least 1000 and at most 1100.
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
-    let deploys = vec![
-        new_deploy(&mut rng, 1000.into(), ttl),
-        new_deploy(&mut rng, 900.into(), ttl),
+    let transactions = vec![
+        new_non_transfer(&mut rng, 1000.into(), ttl),
+        new_non_transfer(&mut rng, 900.into(), ttl),
     ];
-    let transfers = vec![
-        new_transfer(&mut rng, 1000.into(), ttl),
-        new_transfer(&mut rng, 900.into(), ttl),
+    let transfers: Vec<Transaction> = vec![
+        new_v1_transfer(&mut rng, 1000.into(), ttl).into(),
+        new_v1_transfer(&mut rng, 900.into(), ttl).into(),
     ];
 
-    let mut deploys_context = ValidationContext::new()
+    let mut transactions_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys.clone())
-        .include_all_deploys();
+        .with_transactions(transactions.clone())
+        .include_all_transactions();
     let mut transfers_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
         .with_transfers(transfers.clone())
         .include_all_transfers();
     let mut both_context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
+        .with_transactions(transactions)
         .with_transfers(transfers)
-        .include_all_deploys()
+        .include_all_transactions()
         .include_all_transfers();
 
-    // Both 1000 and 1100 are timestamps compatible with the deploys and transfers.
+    // Both 1000 and 1100 are timestamps compatible with the transactions and transfers.
     assert!(both_context.validate_block(&mut rng, 1000.into()).await);
     assert!(both_context.validate_block(&mut rng, 1100.into()).await);
 
-    // A block with timestamp 999 can't contain a transfer or deploy with timestamp 1000.
-    assert!(!deploys_context.validate_block(&mut rng, 999.into()).await);
+    // A block with timestamp 999 can't contain a transfer or transactions with timestamp 1000.
+    assert!(
+        !transactions_context
+            .validate_block(&mut rng, 999.into())
+            .await
+    );
     assert!(!transfers_context.validate_block(&mut rng, 999.into()).await);
     assert!(!both_context.validate_block(&mut rng, 999.into()).await);
 
-    // At time 1101, the deploy and transfer from time 900 have expired.
-    assert!(!deploys_context.validate_block(&mut rng, 1101.into()).await);
+    // At time 1101, the transactions and transfer from time 900 have expired.
+    assert!(
+        !transactions_context
+            .validate_block(&mut rng, 1101.into())
+            .await
+    );
     assert!(
         !transfers_context
             .validate_block(&mut rng, 1101.into())
@@ -740,77 +837,129 @@ async fn ttl() {
     assert!(!both_context.validate_block(&mut rng, 1101.into()).await);
 }
 
-/// Verifies that a block is invalid if it contains a transfer in the `deploy_hashes` or a
-/// non-transfer deploy in the `transfer_hashes`, or if it contains a replay.
+/// Verifies that a block is invalid if it contains a transfer in the deploys/transactions section
+/// or vice versa.
 #[tokio::test]
-async fn transfer_deploy_mixup_and_replay() {
+async fn transfer_transaction_mixup_and_replay() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
-    // First we make sure that our transfers and deploys would normally be valid.
-    let deploys = vec![deploy1.clone(), deploy2.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone()];
+    // First we make sure that our transfers and transactions would normally be valid.
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
+        .with_transactions(transactions)
         .with_transfers(transfers)
-        .include_all_deploys()
+        .include_all_transactions()
         .include_all_transfers();
     assert!(context.validate_block(&mut rng, timestamp).await);
 
-    // Now we hide a transfer in the deploys section. This should be invalid.
-    let deploys = vec![deploy1.clone(), deploy2.clone(), transfer2.clone()];
-    let transfers = vec![transfer1.clone()];
+    // Now we test for different invalid combinations of transactions and transfers:
+    // 1. Legacy transfer in the deploys/transactions section.
+    let transactions = vec![
+        transfer_legacy.clone(),
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
+        .with_transactions(transactions)
         .with_transfers(transfers)
-        .include_all_deploys()
+        .include_all_transactions()
+        .include_all_transfers();
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+    // 2. V1 transfer in the deploys/transactions section.
+    let transactions = vec![
+        transfer_v1.clone(),
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(transactions)
+        .with_transfers(transfers)
+        .include_all_transactions()
+        .include_all_transfers();
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+    // 3. Legacy deploy in the transfers section.
+    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(transactions)
+        .with_transfers(transfers)
+        .include_all_transactions()
+        .include_all_transfers();
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+    // 4. V1 transaction in the transfers section.
+    let transactions = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        transaction_v1.clone(),
+    ];
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(transactions)
+        .with_transfers(transfers)
+        .include_all_transactions()
         .include_all_transfers();
     assert!(!context.validate_block(&mut rng, timestamp).await);
 
-    // A regular deploy in the transfers section is also invalid.
-    let deploys = vec![deploy2.clone()];
-    let transfers = vec![transfer1.clone(), deploy1.clone(), transfer2.clone()];
+    // Each transaction must be unique
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
+        .with_transactions(transactions)
         .with_transfers(transfers)
-        .include_all_deploys()
-        .include_all_transfers();
-    assert!(!context.validate_block(&mut rng, timestamp).await);
-
-    // Each deploy must be unique
-    let deploys = vec![deploy1.clone(), deploy2.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone()];
-    let mut context = ValidationContext::new()
-        .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
-        .with_transfers(transfers)
-        .include_all_deploys()
+        .include_all_transactions()
         .include_all_transfers()
-        .include_deploys(vec![TransactionHashWithApprovals::from(
-            &Transaction::Deploy(deploy1.clone()),
-        )]);
+        .include_transactions(vec![(deploy_legacy.hash(), deploy_legacy.approvals())]);
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(transactions)
+        .with_transfers(transfers)
+        .include_all_transactions()
+        .include_all_transfers()
+        .include_transactions(vec![(transaction_v1.hash(), transaction_v1.approvals())]);
     assert!(!context.validate_block(&mut rng, timestamp).await);
 
     // And each transfer must be unique, too.
-    let deploys = vec![deploy1.clone(), deploy2.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone()];
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_v1.clone(), transfer_legacy.clone()];
     let mut context = ValidationContext::new()
         .with_num_validators(&mut rng, 1)
-        .with_deploys(deploys)
+        .with_transactions(transactions)
         .with_transfers(transfers)
-        .include_all_deploys()
+        .include_all_transactions()
         .include_all_transfers()
-        .include_transfers(vec![TransactionHashWithApprovals::from(
-            &Transaction::Deploy(transfer2.clone()),
-        )]);
+        .include_transfers(vec![(transfer_v1.hash(), transfer_v1.approvals())]);
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+    let transactions = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    let mut context = ValidationContext::new()
+        .with_num_validators(&mut rng, 1)
+        .with_transactions(transactions)
+        .with_transfers(transfers)
+        .include_all_transactions()
+        .include_all_transfers()
+        .include_transactions(vec![(transfer_legacy.hash(), transfer_legacy.approvals())]);
     assert!(!context.validate_block(&mut rng, timestamp).await);
 }
 
@@ -822,21 +971,21 @@ async fn should_fetch_from_multiple_peers() {
         let peer_count = 3;
         let mut rng = TestRng::new();
         let ttl = TimeDiff::from_seconds(200);
-        let deploys = (0..peer_count)
-            .map(|i| new_deploy(&mut rng, (900 + i).into(), ttl))
+        let transactions = (0..peer_count)
+            .map(|i| new_non_transfer(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
-            .map(|i| new_transfer(&mut rng, (1000 + i).into(), ttl))
+            .map(|i| Transaction::V1(new_v1_transfer(&mut rng, (1000 + i).into(), ttl)))
             .collect_vec();
 
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .map(|transfer| (transfer.hash(), transfer.approvals()))
             .collect_vec();
-        let standard_for_block = deploys
+        let standard_for_block = transactions
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .map(|transaction| (transaction.hash(), transaction.approvals()))
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
@@ -885,14 +1034,14 @@ async fn should_fetch_from_multiple_peers() {
             }
         }
 
-        // The effects are requests to fetch the block's deploys.  There are six fetch requests, all
-        // using the first peer.
+        // The effects are requests to fetch the block's transactions.  There are six fetch
+        // requests, all using the first peer.
         let fetch_results = fetch_effects.drain(..).map(tokio::spawn).collect_vec();
 
         // Provide the first deploy and transfer on first asking.
         let context = ValidationContext::new()
             .with_num_validators(&mut rng, 1)
-            .with_deploys(vec![deploys[0].clone()])
+            .with_transactions(vec![transactions[0].clone()])
             .with_transfers(vec![transfers[0].clone()]);
         reactor.handle_requests(&context).await;
 
@@ -900,10 +1049,10 @@ async fn should_fetch_from_multiple_peers() {
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // New fetch requests will be made using a different peer for all deploys not already
-            // registered as fetched.
+            // New fetch requests will be made using a different peer for all transactions not
+            // already registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
@@ -923,7 +1072,7 @@ async fn should_fetch_from_multiple_peers() {
         // Provide the first and second deploys and transfers which haven't already been fetched on
         // second asking.
         let context = context
-            .with_deploys(vec![deploys[1].clone()])
+            .with_transactions(vec![transactions[1].clone()])
             .with_transfers(vec![transfers[1].clone()]);
         reactor.handle_requests(&context).await;
 
@@ -931,10 +1080,10 @@ async fn should_fetch_from_multiple_peers() {
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // New fetch requests will be made using a different peer for all deploys not already
-            // registered as fetched.
+            // New fetch requests will be made using a different peer for all transactions not
+            // already registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
@@ -953,7 +1102,7 @@ async fn should_fetch_from_multiple_peers() {
 
         // Provide all deploys and transfers not already fetched on third asking.
         let context = context
-            .with_deploys(vec![deploys[2].clone()])
+            .with_transactions(vec![transactions[2].clone()])
             .with_transfers(vec![transfers[2].clone()]);
         reactor.handle_requests(&context).await;
 
@@ -961,10 +1110,10 @@ async fn should_fetch_from_multiple_peers() {
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFetched`.
+            // The event should be `TransactionFetched`.
             let event = events.pop().unwrap();
-            // Once the block is deemed valid (i.e. when the final missing deploy is successfully
-            // fetched) the effects will be three validation responses.
+            // Once the block is deemed valid (i.e. when the final missing transaction is
+            // successfully fetched) the effects will be three validation responses.
             effects.extend(block_validator.handle_event(effect_builder, &mut rng, event));
             assert!(effects.is_empty() || effects.len() == peer_count as usize);
         }
@@ -986,17 +1135,17 @@ async fn should_validate_block_with_signatures() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_deploys(vec![deploy1, deploy2])
-        .with_transfers(vec![transfer1, transfer2])
-        .include_all_deploys()
+        .with_transactions(vec![deploy_legacy, transaction_v1])
+        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .include_all_transactions()
         .include_all_transfers();
 
     let validators = context.get_validators();
@@ -1013,17 +1162,17 @@ async fn should_fetch_missing_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_deploys(vec![deploy1, deploy2])
-        .with_transfers(vec![transfer1, transfer2])
-        .include_all_deploys()
+        .with_transactions(vec![deploy_legacy, transaction_v1])
+        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .include_all_transactions()
         .include_all_transfers();
 
     let validators = context.get_validators();
@@ -1043,18 +1192,39 @@ async fn should_fail_if_unable_to_fetch_signature() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 5, 0.into())
-        .with_deploys(vec![deploy1, deploy2])
-        .with_transfers(vec![transfer1, transfer2])
-        .include_all_deploys()
+        .with_transactions(vec![deploy_legacy, transaction_v1])
+        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .include_all_transactions()
         .include_all_transfers();
+
+    let validators = context.get_validators();
+    let mut signing_validators = context.get_validators();
+    let _ = signing_validators.pop().expect("must pop"); // one validator will be missing from the set that signed
+
+    let mut context = context
+        .with_signatures_for_block(3, 5, &signing_validators)
+        .include_signatures(3, 5, &validators);
+
+    assert!(!context.validate_block(&mut rng, timestamp).await);
+}
+
+#[tokio::test]
+async fn should_fail_if_unable_to_fetch_signature_for_block_without_transactions() {
+    let mut rng = TestRng::new();
+    let timestamp = Timestamp::from(1000);
+
+    // No transactions in the block.
+    let context = ValidationContext::new()
+        .with_num_validators(&mut rng, 3)
+        .with_past_blocks(&mut rng, 0, 5, 0.into());
 
     let validators = context.get_validators();
     let mut signing_validators = context.get_validators();
@@ -1072,18 +1242,18 @@ async fn should_validate_with_delayed_block() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transfer(&mut rng, timestamp, ttl));
 
     let context = ValidationContext::new()
         .with_num_validators(&mut rng, 3)
         .with_past_blocks(&mut rng, 0, 4, 0.into())
         .with_delayed_blocks(&mut rng, 5, 5, 0.into())
-        .with_deploys(vec![deploy1, deploy2])
-        .with_transfers(vec![transfer1, transfer2])
-        .include_all_deploys()
+        .with_transactions(vec![deploy_legacy, transaction_v1])
+        .with_transfers(vec![transfer_legacy, transfer_v1])
+        .include_all_transactions()
         .include_all_transfers();
 
     let validators = context.get_validators();

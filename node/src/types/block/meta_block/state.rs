@@ -32,7 +32,7 @@ impl From<bool> for StateChange {
 #[derive(Clone, Copy, Eq, PartialEq, Default, Serialize, Debug, DataSize)]
 pub(crate) struct State {
     pub(super) stored: bool,
-    pub(super) sent_to_deploy_buffer: bool,
+    pub(super) sent_to_transaction_buffer: bool,
     pub(super) updated_validator_matrix: bool,
     pub(super) gossiped: bool,
     pub(super) executed: bool,
@@ -72,7 +72,7 @@ impl State {
     pub(crate) fn new_after_historical_sync() -> Self {
         State {
             stored: true,
-            sent_to_deploy_buffer: false,
+            sent_to_transaction_buffer: false,
             updated_validator_matrix: true,
             gossiped: true,
             executed: true,
@@ -109,9 +109,9 @@ impl State {
         outcome
     }
 
-    pub(crate) fn register_as_sent_to_deploy_buffer(&mut self) -> StateChange {
-        let outcome = StateChange::from(self.sent_to_deploy_buffer);
-        self.sent_to_deploy_buffer = true;
+    pub(crate) fn register_as_sent_to_transaction_buffer(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.sent_to_transaction_buffer);
+        self.sent_to_transaction_buffer = true;
         outcome
     }
 
@@ -184,7 +184,7 @@ impl State {
     pub(super) fn merge(mut self, other: State) -> Result<Self, MergeMismatchError> {
         let State {
             ref mut stored,
-            ref mut sent_to_deploy_buffer,
+            ref mut sent_to_transaction_buffer,
             ref mut updated_validator_matrix,
             ref mut gossiped,
             ref mut executed,
@@ -199,7 +199,7 @@ impl State {
         } = self;
 
         *stored |= other.stored;
-        *sent_to_deploy_buffer |= other.sent_to_deploy_buffer;
+        *sent_to_transaction_buffer |= other.sent_to_transaction_buffer;
         *updated_validator_matrix |= other.updated_validator_matrix;
         *gossiped |= other.gossiped;
         *executed |= other.executed;
@@ -217,7 +217,7 @@ impl State {
 
     pub(crate) fn verify_complete(&self) -> bool {
         self.stored
-            && self.sent_to_deploy_buffer
+            && self.sent_to_transaction_buffer
             && self.updated_validator_matrix
             && self.gossiped
             && self.executed
@@ -244,7 +244,7 @@ mod tests {
     fn should_merge() {
         let all_true = State {
             stored: true,
-            sent_to_deploy_buffer: true,
+            sent_to_transaction_buffer: true,
             updated_validator_matrix: true,
             gossiped: true,
             executed: true,

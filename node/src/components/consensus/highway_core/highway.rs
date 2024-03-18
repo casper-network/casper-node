@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use datasize::DataSize;
 use thiserror::Error;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -462,7 +462,7 @@ impl<C: Context> Highway<C> {
             timestamp,
         )
         .unwrap_or_else(|| {
-            debug!("ignoring `propose` event: validator has been deactivated");
+            warn!("ignoring `propose` event: validator has been deactivated");
             vec![]
         })
     }

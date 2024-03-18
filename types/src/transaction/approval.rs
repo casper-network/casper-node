@@ -7,12 +7,11 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::TransactionV1Hash;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, PublicKey, SecretKey, Signature,
+    crypto, PublicKey, SecretKey, Signature, TransactionHash,
 };
 
 /// A struct containing a signature of a transaction hash and the public key of the signer.
@@ -20,14 +19,14 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct TransactionV1Approval {
+pub struct Approval {
     signer: PublicKey,
     signature: Signature,
 }
 
-impl TransactionV1Approval {
+impl Approval {
     /// Creates an approval by signing the given transaction hash using the given secret key.
-    pub fn create(hash: &TransactionV1Hash, secret_key: &SecretKey) -> Self {
+    pub fn create(hash: &TransactionHash, secret_key: &SecretKey) -> Self {
         let signer = PublicKey::from(secret_key);
         let signature = crypto::sign(hash, secret_key, &signer);
         Self { signer, signature }
@@ -48,22 +47,22 @@ impl TransactionV1Approval {
         &self.signature
     }
 
-    /// Returns a random `TransactionV1Approval`.
+    /// Returns a random `Approval`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = TransactionV1Hash::random(rng);
+        let hash = TransactionHash::random(rng);
         let secret_key = SecretKey::random(rng);
-        TransactionV1Approval::create(&hash, &secret_key)
+        Approval::create(&hash, &secret_key)
     }
 }
 
-impl Display for TransactionV1Approval {
+impl Display for Approval {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "approval({})", self.signer)
     }
 }
 
-impl ToBytes for TransactionV1Approval {
+impl ToBytes for Approval {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.signer.write_bytes(writer)?;
         self.signature.write_bytes(writer)
@@ -80,11 +79,11 @@ impl ToBytes for TransactionV1Approval {
     }
 }
 
-impl FromBytes for TransactionV1Approval {
+impl FromBytes for Approval {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (signer, remainder) = PublicKey::from_bytes(bytes)?;
         let (signature, remainder) = Signature::from_bytes(remainder)?;
-        let approval = TransactionV1Approval { signer, signature };
+        let approval = Approval { signer, signature };
         Ok((approval, remainder))
     }
 }
@@ -96,7 +95,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let approval = TransactionV1Approval::random(rng);
+        let approval = Approval::random(rng);
         bytesrepr::test_serialization_roundtrip(&approval);
     }
 }

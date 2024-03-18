@@ -237,7 +237,7 @@ impl Reactor for MockReactor {
                 let effects = Effects::new();
                 let state = meta_block.mut_state();
                 assert!(state.is_stored());
-                state.register_as_sent_to_deploy_buffer();
+                state.register_as_sent_to_transaction_buffer();
                 if !state.is_executed() {
                     return effects;
                 }

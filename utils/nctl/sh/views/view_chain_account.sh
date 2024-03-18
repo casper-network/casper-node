@@ -23,8 +23,14 @@ source "$NCTL"/sh/utils/main.sh
 NODE_ADDRESS=$(get_node_address_rpc)
 STATE_ROOT_HASH=${STATE_ROOT_HASH:-$(get_state_root_hash)}
 
-$(get_path_to_client) query-global-state \
+ADDRESSABLE_ENTITY=$($(get_path_to_client) query-global-state \
     --node-address "$NODE_ADDRESS" \
     --state-root-hash "$STATE_ROOT_HASH" \
     --key "$ACCOUNT_KEY" \
-    | jq '.result'
+     | jq -r '.result.stored_value.CLValue.parsed')
+
+$(get_path_to_client) query-global-state \
+    --node-address "$NODE_ADDRESS" \
+    --state-root-hash "$STATE_ROOT_HASH" \
+    --key "$ADDRESSABLE_ENTITY" \
+    | jq -r '.result'

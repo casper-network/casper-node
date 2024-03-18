@@ -55,7 +55,7 @@ function main()
     fi
 
     log "... sending deploy"
-    DEPLOY_RESULT =$($PATH_TO_CLIENT put-deploy \
+    DEPLOY_RESULT=$($PATH_TO_CLIENT put-deploy \
                                  --chain-name "$CHAIN_NAME" \
                                  --node-address "$NODE_ADDRESS" \
                                  --payment-amount "$GAS_PAYMENT" \
@@ -65,7 +65,7 @@ function main()
                                  --session-arg "$(get_cl_arg_u512 'amount' "$AMOUNT")" \
                                  --session-arg "$(get_cl_arg_opt_uref 'unbond_purse' "$BIDDER_MAIN_PURSE_UREF")" \
                                  --session-path "$PATH_TO_CONTRACT")
-    if [ ! -z "DEPLOY_RESULT" ]; then
+    if [ -z "$DEPLOY_RESULT" ]; then
         log "failed to get deploy result"
         log "... node address: $NODE_ADDRESS"
         exit 1
@@ -74,10 +74,7 @@ function main()
     fi
 
     log "... getting deploy hash"
-    DEPLOY_HASH=$("$DEPLOY_RESULT"
-            | jq '.result.deploy_hash' \
-            | sed -e 's/^"//' -e 's/"$//'
-        )
+    DEPLOY_HASH=$(echo $DEPLOY_RESULT | jq -r '.result.deploy_hash')
 
     if [ "$QUIET" != "TRUE" ]; then
         log "deploy dispatched:"

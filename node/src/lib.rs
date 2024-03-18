@@ -55,12 +55,13 @@ pub(crate) use components::{
     binary_port::Config as BinaryPortConfig, block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
     block_validator::Config as BlockValidatorConfig, consensus::Config as ConsensusConfig,
-    contract_runtime::Config as ContractRuntimeConfig, deploy_buffer::Config as DeployBufferConfig,
+    contract_runtime::Config as ContractRuntimeConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig, network::Config as NetworkConfig,
     rest_server::Config as RestServerConfig,
     transaction_acceptor::Config as TransactionAcceptorConfig,
+    transaction_buffer::Config as TransactionBufferConfig,
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub use components::{

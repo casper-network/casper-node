@@ -8,12 +8,12 @@ const DEFAULT_EXPIRY_CHECK_INTERVAL: &str = "1min";
 #[derive(Copy, Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// The interval of checking for expired deploys.
+    /// The interval of checking for expired transactions.
     pub expiry_check_interval: TimeDiff,
 }
 
 impl Config {
-    /// Returns the interval of checking for expired deploys.
+    /// Returns the interval of checking for expired transactions.
     pub fn expiry_check_interval(&self) -> TimeDiff {
         self.expiry_check_interval
     }
