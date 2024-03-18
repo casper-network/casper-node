@@ -333,12 +333,20 @@ where
 
         self.net_metrics.broadcast_requests.inc();
 
+        // Determine whether we should restrict broadcasts at all.
         let validators = self.validator_matrix.active_or_upcoming_validators();
-
-        let state = conman.read_state();
-
-        for (consensus_key, &peer_id) in state.key_index().iter() {
-            if !self.config.use_validator_broadcast || validators.contains(consensus_key) {
+        if self.config.use_validator_broadcast && !validators.is_empty() {
+            let state = conman.read_state();
+            for (consensus_key, &peer_id) in state.key_index().iter() {
+                if !self.config.use_validator_broadcast || validators.contains(consensus_key) {
+                    self.send_message(&*state, peer_id, channel, payload.clone(), None)
+                }
+            }
+        } else {
+            // We were asked to not use validator broadcasting, or do not have a list of validators
+            // available. Broadcast to everyone instead.
+            let state = conman.read_state();
+            for &peer_id in state.routing_table().iter() {
                 self.send_message(&*state, peer_id, channel, payload.clone(), None)
             }
         }
