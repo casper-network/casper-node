@@ -1,11 +1,9 @@
-use alloc::{string::String, vec::Vec};
-
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
 
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest, GlobalStateIdentifier, Key, KeyTag,
 };
@@ -43,7 +41,7 @@ pub enum GlobalStateRequest {
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match TestRng::gen_range(rng, 0..3) {
             0 => {
                 let path_count = rng.gen_range(10..20);
                 let state_identifier = if rng.gen() {
@@ -173,7 +171,7 @@ impl FromBytes for GlobalStateRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

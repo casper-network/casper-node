@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash, PublicKey,
-    SecretKey, Transfer, TransferAddr, U512,
+    SecretKey, TransactionHash, Transfer, TransferAddr, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -105,7 +105,7 @@ fn should_record_wasmless_transfer() {
         .get_transfer(transfers[0])
         .expect("should have transfer");
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
+    assert_eq!(transfer.transaction_hash, deploy_hash.into());
     assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(transfer.to, Some(*ALICE_ADDR));
     assert_eq!(transfer.source, default_account.main_purse());
@@ -170,7 +170,7 @@ fn should_record_wasm_transfer() {
         .get_transfer(transfers[0])
         .expect("should have transfer");
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
+    assert_eq!(transfer.transaction_hash, deploy_hash.into());
     assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
@@ -236,7 +236,7 @@ fn should_record_wasm_transfer_with_id() {
         .get_transfer(transfers[0])
         .expect("should have transfer");
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
+    assert_eq!(transfer.transaction_hash, deploy_hash.into());
     assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
@@ -347,7 +347,7 @@ fn should_record_wasm_transfers() {
     assert_eq!(transfers.len(), EXPECTED_LENGTH);
 
     assert!(transfers.contains(&Transfer {
-        deploy_hash,
+        transaction_hash: deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
@@ -358,7 +358,7 @@ fn should_record_wasm_transfers() {
     }));
 
     assert!(transfers.contains(&Transfer {
-        deploy_hash,
+        transaction_hash: deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
@@ -369,7 +369,7 @@ fn should_record_wasm_transfers() {
     }));
 
     assert!(transfers.contains(&Transfer {
-        deploy_hash,
+        transaction_hash: deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
@@ -510,7 +510,7 @@ fn should_record_wasm_transfers_with_subcall() {
     };
 
     let session_expected_alice = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: transfer_deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
@@ -521,7 +521,7 @@ fn should_record_wasm_transfers_with_subcall() {
     };
 
     let session_expected_bob = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: transfer_deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
@@ -532,7 +532,7 @@ fn should_record_wasm_transfers_with_subcall() {
     };
 
     let session_expected_carol = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: transfer_deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
@@ -560,7 +560,7 @@ fn should_record_wasm_transfers_with_subcall() {
     }
 
     let stored_expected_alice = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: TransactionHash::Deploy(transfer_deploy_hash),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*ALICE_ADDR),
         source: contract_purse,
@@ -571,7 +571,7 @@ fn should_record_wasm_transfers_with_subcall() {
     };
 
     let stored_expected_bob = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: TransactionHash::Deploy(transfer_deploy_hash),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*BOB_ADDR),
         source: contract_purse,
@@ -582,7 +582,7 @@ fn should_record_wasm_transfers_with_subcall() {
     };
 
     let stored_expected_carol = Transfer {
-        deploy_hash: transfer_deploy_hash,
+        transaction_hash: transfer_deploy_hash.into(),
         from: *DEFAULT_ACCOUNT_ADDR,
         to: Some(*CAROL_ADDR),
         source: contract_purse,

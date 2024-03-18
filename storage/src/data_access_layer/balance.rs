@@ -1,15 +1,18 @@
 //! Types for balance queries.
 use crate::data_access_layer::BalanceHoldRequest;
 use casper_types::{
-    account::AccountHash, global_state::TrieMerkleProof, system::mint::BalanceHoldAddrTag,
+    account::AccountHash,
+    global_state::TrieMerkleProof,
+    system::{handle_payment::PAYMENT_PURSE_KEY, mint::BalanceHoldAddrTag, HANDLE_PAYMENT},
     AccessRights, BlockTime, Digest, EntityAddr, InitiatorAddr, Key, ProtocolVersion, PublicKey,
     StoredValue, URef, URefAddr, U512,
 };
 use std::collections::BTreeMap;
+use tracing::error;
 
 use crate::{
     global_state::state::StateReader,
-    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError},
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
     TrackingCopy,
 };
 
@@ -31,28 +34,18 @@ pub enum BalanceIdentifier {
     Account(AccountHash),
     Entity(EntityAddr),
     Internal(URefAddr),
+    Payment,
 }
 
 impl BalanceIdentifier {
-    /// Self as key.
-    pub fn as_key(&self) -> Key {
-        match self {
-            BalanceIdentifier::Purse(uref) => Key::URef(*uref),
-            BalanceIdentifier::Public(public_key) => Key::Account(public_key.to_account_hash()),
-            BalanceIdentifier::Account(account_hash) => Key::Account(*account_hash),
-            BalanceIdentifier::Entity(entity_addr) => Key::AddressableEntity(*entity_addr),
-            BalanceIdentifier::Internal(addr) => Key::Balance(*addr),
-        }
-    }
-
-    // #[cfg(test)]
     pub fn as_purse_addr(&self) -> Option<URefAddr> {
         match self {
             BalanceIdentifier::Purse(uref) => Some(uref.addr()),
             BalanceIdentifier::Internal(addr) => Some(*addr),
             BalanceIdentifier::Public(_)
             | BalanceIdentifier::Account(_)
-            | BalanceIdentifier::Entity(_) => None,
+            | BalanceIdentifier::Entity(_)
+            | BalanceIdentifier::Payment => None,
         }
     }
 
@@ -87,6 +80,27 @@ impl BalanceIdentifier {
                 }
             }
             BalanceIdentifier::Internal(addr) => URef::new(*addr, AccessRights::READ),
+            BalanceIdentifier::Payment => {
+                let system_contract_registry = tc.get_system_entity_registry()?;
+
+                let handle_payment_hash =
+                    system_contract_registry
+                        .get(HANDLE_PAYMENT)
+                        .ok_or_else(|| {
+                            error!("Missing system handle payment contract hash");
+                            TrackingCopyError::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+                        })?;
+
+                let named_keys =
+                    tc.get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
+                let named_key = named_keys.get(PAYMENT_PURSE_KEY).ok_or(
+                    TrackingCopyError::NamedKeyNotFound(PAYMENT_PURSE_KEY.to_string()),
+                )?;
+                let uref = named_key
+                    .as_uref()
+                    .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
+                *uref
+            }
         };
         Ok(purse_uref)
     }

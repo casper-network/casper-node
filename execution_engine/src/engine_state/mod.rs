@@ -2,36 +2,52 @@
 pub mod deploy_item;
 pub mod engine_config;
 mod error;
+pub mod executable_item;
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
+mod wasm_v1;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use num_traits::Zero;
+
 use once_cell::sync::Lazy;
+
 use tracing::error;
 
 use casper_storage::{
-    data_access_layer::TransferRequest,
+    data_access_layer::TransferRequest, system::runtime_native::TransferConfig,
+    tracking_copy::FeesPurseHandling,
+};
+
+use casper_storage::{
     global_state::state::StateProvider,
-    system::runtime_native::TransferConfig,
-    tracking_copy::{FeesPurseHandling, TrackingCopyEntityExt, TrackingCopyExt},
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
 
 use casper_types::{
-    system::{
-        handle_payment::{self},
-        HANDLE_PAYMENT,
-    },
-    BlockTime, DeployInfo, Digest, EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, Motes,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, TransactionHash, U512,
+    DeployInfo, EntityAddr, FeeHandling, Key, Motes, PublicKey, RuntimeArgs, StoredValue,
+    TransactionHash,
 };
 
+use casper_types::{Phase, U512};
+
+use casper_types::{BlockTime, Digest, Gas, ProtocolVersion};
+
+use crate::engine_state::execution_result::ExecutionResults;
+
+use casper_types::system::{
+    handle_payment::{self},
+    HANDLE_PAYMENT,
+};
+
+use casper_types::ExecutableDeployItem;
+
+use crate::execution::{DirectSystemContractCall, ExecError};
+
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, execution_result::ExecutionResults},
-    execution::{DirectSystemContractCall, ExecError, Executor},
-    runtime::RuntimeStack,
+    engine_state::execution_kind::ExecutionKind, execution::Executor, runtime::RuntimeStack,
 };
 
 pub use self::{
@@ -41,9 +57,11 @@ pub use self::{
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     error::Error,
+    executable_item::{ExecutableItem, ExecutableItemIdentifier},
     execute_request::ExecuteRequest,
     execution_result::{ExecutionResult, ForcedTransferResult},
 };
+pub use wasm_v1::{WasmV1Request, WasmV1Result};
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -69,7 +87,7 @@ pub struct ExecutionEngineV1 {
 }
 
 impl ExecutionEngineV1 {
-    /// Creates new engine state.
+    /// Creates new execution engine.
     pub fn new(config: EngineConfig) -> ExecutionEngineV1 {
         ExecutionEngineV1 { config }
     }
@@ -79,6 +97,121 @@ impl ExecutionEngineV1 {
         &self.config
     }
 
+    /// Executes wasm, and that's all. Does not commit or handle payment or anything else.
+    pub fn execute(
+        &self,
+        state_provider: &impl StateProvider,
+        request: WasmV1Request,
+    ) -> WasmV1Result {
+        let executable_item = match ExecutableItem::try_from(request.transaction().clone()) {
+            Ok(executable_item) => executable_item,
+            Err(_) => return WasmV1Result::invalid_executable_item(request),
+        };
+        let phase = request.phase();
+        match phase {
+            Phase::System | Phase::FinalizePayment => {
+                return WasmV1Result::precondition_failure(
+                    request,
+                    Error::Deprecated(format!(
+                        "execution of phase {:?} is no longer supported",
+                        phase
+                    )),
+                );
+            }
+            Phase::Payment => {
+                if !executable_item.is_module_bytes() {
+                    return WasmV1Result::precondition_failure(
+                        request,
+                        Error::Deprecated(format!(
+                            "direct execution in phase {:?} is no longer supported",
+                            phase
+                        )),
+                    );
+                }
+                // module bytes is allowed
+            }
+            Phase::Session => {
+                // noop
+            }
+        };
+
+        let state_hash = request.state_hash();
+        let tc = match state_provider.tracking_copy(state_hash) {
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return WasmV1Result::root_not_found(request, state_hash),
+            Err(gse) => {
+                return WasmV1Result::precondition_failure(
+                    request,
+                    Error::TrackingCopy(TrackingCopyError::Storage(gse)),
+                )
+            }
+        };
+        let protocol_version = request.protocol_version();
+        let transaction = request.transaction();
+        let account_hash = transaction.initiator_addr().account_hash();
+        let authorization_keys = &transaction.authorization_keys();
+        let (entity, entity_hash) = {
+            match tc.borrow_mut().get_authorized_addressable_entity(
+                protocol_version,
+                account_hash,
+                authorization_keys,
+                &self.config().administrative_accounts,
+            ) {
+                Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
+                Err(tce) => {
+                    return WasmV1Result::precondition_failure(request, Error::TrackingCopy(tce))
+                }
+            }
+        };
+        let mut named_keys = match tc
+            .borrow_mut()
+            .get_named_keys(entity.entity_addr(entity_hash))
+            .map_err(Into::into)
+        {
+            Ok(named_keys) => named_keys,
+            Err(tce) => {
+                return WasmV1Result::precondition_failure(request, Error::TrackingCopy(tce))
+            }
+        };
+        let execution_kind = match ExecutionKind::from_executable_item(
+            tc.clone(),
+            &named_keys,
+            executable_item.clone(),
+            &protocol_version,
+            phase,
+        ) {
+            Ok(execution_kind) => execution_kind,
+            Err(ese) => return WasmV1Result::precondition_failure(request, ese),
+        };
+
+        let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
+        let runtime_args = executable_item.args().clone();
+        let transaction_hash = transaction.hash();
+
+        let execution_result = Executor::new(self.config().clone()).exec(
+            execution_kind,
+            runtime_args,
+            entity_hash,
+            &entity,
+            &mut named_keys,
+            access_rights,
+            authorization_keys.clone(),
+            account_hash,
+            request.blocktime(),
+            transaction_hash,
+            request.gas_limit(),
+            protocol_version,
+            Rc::clone(&tc),
+            phase,
+            RuntimeStack::from_account_hash(
+                account_hash,
+                self.config.max_runtime_call_stack_height() as usize,
+            ),
+        );
+
+        WasmV1Result::execution_result(request, execution_result)
+    }
+
     /// Runs a deploy execution request.
     ///
     /// For each deploy stored in the request it will execute it.
@@ -86,6 +219,8 @@ impl ExecutionEngineV1 {
     /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
     ///
     /// Return execution results which contains results from each deploy ran.
+
+    #[deprecated(since = "6.0.0", note = "please use `execute` instead")]
     pub fn exec(
         &self,
         state_provider: &impl StateProvider,
@@ -129,6 +264,7 @@ impl ExecutionEngineV1 {
     /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
     ///
     /// Returns an [`ExecutionResult`] for a successful native transfer.
+
     #[allow(clippy::too_many_arguments)]
     fn transfer(
         &self,
@@ -203,6 +339,7 @@ impl ExecutionEngineV1 {
     /// in the request.
     ///
     /// Returns [`ExecutionResult`], or an error condition.
+
     #[allow(clippy::too_many_arguments)]
     fn deploy(
         &self,
@@ -214,7 +351,11 @@ impl ExecutionEngineV1 {
         proposer: PublicKey,
     ) -> Result<ExecutionResult, Error> {
         let tracking_copy = match state_provider.tracking_copy(prestate_hash) {
-            Err(gse) => return Ok(ExecutionResult::precondition_failure(Error::Storage(gse))),
+            Err(gse) => {
+                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                    TrackingCopyError::Storage(gse),
+                )))
+            }
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -270,7 +411,7 @@ impl ExecutionEngineV1 {
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        let session_execution_kind = match ExecutionKind::new(
+        let session_execution_kind = match ExecutionKind::from_executable_deploy_item(
             Rc::clone(&tracking_copy),
             &entity_named_keys,
             session,
@@ -454,7 +595,7 @@ impl ExecutionEngineV1 {
                     }
                 }
             } else {
-                let payment_execution_kind = match ExecutionKind::new(
+                let payment_execution_kind = match ExecutionKind::from_executable_deploy_item(
                     Rc::clone(&tracking_copy),
                     &entity_named_keys,
                     payment,
@@ -476,7 +617,7 @@ impl ExecutionEngineV1 {
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
-                    deploy_hash,
+                    deploy_hash.into(),
                     payment_gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
@@ -642,7 +783,7 @@ impl ExecutionEngineV1 {
                 authorization_keys.clone(),
                 account_hash,
                 blocktime,
-                deploy_hash,
+                deploy_hash.into(),
                 session_gas_limit,
                 protocol_version,
                 Rc::clone(&session_tracking_copy),
@@ -656,17 +797,16 @@ impl ExecutionEngineV1 {
         {
             let transfers = session_result.transfers();
             let cost = payment_result_cost.value() + session_result.cost().value();
-            let deploy_info = DeployInfo::new(
+            let info = DeployInfo::new(
                 deploy_hash,
                 transfers,
                 account_hash,
                 entity.main_purse(),
                 cost,
             );
-            session_tracking_copy.borrow_mut().write(
-                Key::DeployInfo(deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
-            );
+            session_tracking_copy
+                .borrow_mut()
+                .write(Key::DeployInfo(deploy_hash), StoredValue::DeployInfo(info));
         }
 
         // Session execution was zero cost or provided wasm was malformed.
@@ -790,7 +930,7 @@ impl ExecutionEngineV1 {
                     authorization_keys,
                     system_account_hash,
                     blocktime,
-                    deploy_hash,
+                    deploy_hash.into(),
                     gas_limit,
                     protocol_version,
                     finalization_tc,

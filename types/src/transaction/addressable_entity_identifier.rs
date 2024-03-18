@@ -15,11 +15,12 @@ use super::{ExecutableDeployItem, TransactionTarget};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AddressableEntityHash,
+    AddressableEntityHash, EntityAddr,
 };
 
 const HASH_TAG: u8 = 0;
 const NAME_TAG: u8 = 1;
+const ADDR_TAG: u8 = 2;
 
 /// Identifier for the contract object within a [`TransactionTarget::Stored`] or an
 /// [`ExecutableDeployItem`].
@@ -39,6 +40,8 @@ pub enum AddressableEntityIdentifier {
     Hash(AddressableEntityHash),
     /// The name identifying the addressable entity.
     Name(String),
+    /// The entity address
+    Addr(EntityAddr),
 }
 
 impl AddressableEntityIdentifier {
@@ -46,7 +49,11 @@ impl AddressableEntityIdentifier {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         if rng.gen() {
-            AddressableEntityIdentifier::Hash(AddressableEntityHash::new(rng.gen()))
+            if rng.gen() {
+                AddressableEntityIdentifier::Hash(AddressableEntityHash::new(rng.gen()))
+            } else {
+                AddressableEntityIdentifier::Addr(EntityAddr::new_with_tag(rng.gen(), rng.gen()))
+            }
         } else {
             AddressableEntityIdentifier::Name(rng.random_string(1..21))
         }
@@ -58,6 +65,9 @@ impl Display for AddressableEntityIdentifier {
         match self {
             AddressableEntityIdentifier::Hash(hash) => write!(formatter, "entity-hash({})", hash),
             AddressableEntityIdentifier::Name(name) => write!(formatter, "entity-name({})", name),
+            AddressableEntityIdentifier::Addr(entity_addr) => {
+                write!(formatter, "entity-addr({})", entity_addr)
+            }
         }
     }
 }
@@ -73,6 +83,10 @@ impl ToBytes for AddressableEntityIdentifier {
                 NAME_TAG.write_bytes(writer)?;
                 name.write_bytes(writer)
             }
+            AddressableEntityIdentifier::Addr(entity_addr) => {
+                ADDR_TAG.write_bytes(writer)?;
+                entity_addr.write_bytes(writer)
+            }
         }
     }
 
@@ -87,6 +101,7 @@ impl ToBytes for AddressableEntityIdentifier {
             + match self {
                 AddressableEntityIdentifier::Hash(hash) => hash.serialized_length(),
                 AddressableEntityIdentifier::Name(name) => name.serialized_length(),
+                AddressableEntityIdentifier::Addr(addr) => addr.serialized_length(),
             }
     }
 }
@@ -102,6 +117,10 @@ impl FromBytes for AddressableEntityIdentifier {
             NAME_TAG => {
                 let (name, remainder) = String::from_bytes(remainder)?;
                 Ok((AddressableEntityIdentifier::Name(name), remainder))
+            }
+            ADDR_TAG => {
+                let (addr, remainder) = EntityAddr::from_bytes(remainder)?;
+                Ok((AddressableEntityIdentifier::Addr(addr), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

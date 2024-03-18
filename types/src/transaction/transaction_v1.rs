@@ -38,7 +38,7 @@ use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
     TransactionSessionKind,
 };
 pub use errors_v1::{
@@ -217,6 +217,18 @@ impl TransactionV1 {
     /// This transaction goes into the misc / standard category.
     pub fn is_standard(&self) -> bool {
         self.body().is_standard()
+    }
+
+    /// Does this transaction have wasm targeting the v1 vm.
+    pub fn is_v1_wasm(&self) -> bool {
+        match self.target() {
+            TransactionTarget::Native => false,
+            TransactionTarget::Stored { runtime, .. }
+            | TransactionTarget::Session { runtime, .. } => {
+                matches!(runtime, TransactionRuntime::VmCasperV1)
+                    && (self.is_standard() || self.is_install_or_upgrade())
+            }
+        }
     }
 
     /// Returns the approvals for this transaction.
@@ -552,6 +564,7 @@ impl GasLimited for TransactionV1 {
             PricingMode::Classic {
                 payment_amount,
                 gas_price: user_specified_price,
+                ..
             } => {
                 let actual_price = match gas_price {
                     Some(system_specified_price) => {

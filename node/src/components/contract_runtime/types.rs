@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use casper_execution_engine::engine_state::WasmV1Result;
 use datasize::DataSize;
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -11,9 +12,9 @@ use casper_storage::{
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
-    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, InvalidTransaction,
-    ProtocolVersion, PublicKey, Timestamp, TransactionHash, TransactionHeader, TransactionV1Hash,
-    TransactionV1Header, U512,
+    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, InvalidDeploy,
+    InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
+    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -71,8 +72,7 @@ pub(crate) struct ExecutionArtifacts {
 
 pub(crate) enum ExecutionArtifactOutcome {
     RootNotFound,
-    Failure,
-    Success(Effects),
+    Effects(Effects),
 }
 
 impl ExecutionArtifacts {
@@ -81,8 +81,168 @@ impl ExecutionArtifacts {
         ExecutionArtifacts { artifacts }
     }
 
-    pub fn push(&mut self, execution_artifact: ExecutionArtifact) {
-        self.artifacts.push(execution_artifact);
+    pub fn push_wasm_v1_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        wasm_v1_result: WasmV1Result,
+    ) -> ExecutionArtifactOutcome {
+        trace!(?transaction_hash, ?wasm_v1_result, "native transfer result");
+        let effects = wasm_v1_result.effects().clone();
+        let result = {
+            if let Some(error) = wasm_v1_result.error() {
+                if let casper_execution_engine::engine_state::Error::RootNotFound(_) = error {
+                    return ExecutionArtifactOutcome::RootNotFound;
+                }
+                ExecutionResultV2::Failure {
+                    effects: effects.clone(),
+                    transfers: wasm_v1_result.transfers().clone(),
+                    cost: wasm_v1_result.consumed().value(),
+                    error_message: format!("{:?}", error),
+                }
+            } else {
+                ExecutionResultV2::Success {
+                    effects: effects.clone(),
+                    transfers: wasm_v1_result.transfers().clone(),
+                    cost: wasm_v1_result.consumed().value(),
+                }
+            }
+        };
+        self.artifacts.push(ExecutionArtifact::new(
+            transaction_hash,
+            transaction_header,
+            ExecutionResult::V2(result),
+            wasm_v1_result.messages().clone(),
+        ));
+
+        ExecutionArtifactOutcome::Effects(effects)
+    }
+
+    pub fn push_transfer_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        transfer_result: TransferResult,
+        cost: U512,
+    ) -> ExecutionArtifactOutcome {
+        trace!(
+            ?transaction_hash,
+            ?transfer_result,
+            "native transfer result"
+        );
+        match transfer_result {
+            TransferResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
+            TransferResult::Failure(transfer_error) => {
+                self.push_failure(
+                    transaction_hash,
+                    transaction_header,
+                    format!("{:?}", transfer_error),
+                );
+                debug!(%transfer_error);
+                ExecutionArtifactOutcome::Effects(Effects::new())
+            }
+            TransferResult::Success {
+                effects: transfer_effects,
+                transfers,
+            } => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Success {
+                        effects: transfer_effects.clone(),
+                        cost,
+                        transfers,
+                    }),
+                    Messages::default(),
+                ));
+                ExecutionArtifactOutcome::Effects(transfer_effects)
+            }
+        }
+    }
+
+    pub fn push_bidding_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        bidding_result: BiddingResult,
+        cost: U512,
+    ) -> ExecutionArtifactOutcome {
+        trace!(?transaction_hash, ?bidding_result, "bidding result");
+        match bidding_result {
+            BiddingResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
+            BiddingResult::Failure(tce) => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Failure {
+                        effects: Effects::new(),
+                        cost,
+                        transfers: vec![],
+                        error_message: format!("{:?}", tce),
+                    }),
+                    Messages::default(),
+                ));
+                debug!(%tce);
+                ExecutionArtifactOutcome::Effects(Effects::new())
+            }
+            BiddingResult::Success {
+                effects: bidding_effects,
+                ..
+            } => {
+                self.artifacts.push(ExecutionArtifact::new(
+                    transaction_hash,
+                    transaction_header,
+                    ExecutionResult::V2(ExecutionResultV2::Success {
+                        effects: bidding_effects.clone(),
+                        cost,
+                        transfers: vec![],
+                    }),
+                    Messages::default(),
+                ));
+                ExecutionArtifactOutcome::Effects(bidding_effects)
+            }
+        }
+    }
+
+    pub fn push_hold_result(
+        &mut self,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
+        hold_result: BalanceHoldResult,
+    ) -> ExecutionArtifactOutcome {
+        trace!(?transaction_hash, ?hold_result, "balance hold result");
+        if hold_result.is_root_not_found() {
+            return ExecutionArtifactOutcome::RootNotFound;
+        }
+        let hold_cost = U512::zero(); // we don't charge for the hold itself.
+        let hold_effects = hold_result.effects();
+        if !hold_result.is_fully_covered() {
+            let error_message = hold_result.error_message();
+            self.artifacts.push(ExecutionArtifact::new(
+                transaction_hash,
+                transaction_header,
+                ExecutionResult::V2(ExecutionResultV2::Failure {
+                    effects: hold_effects.clone(),
+                    transfers: vec![],
+                    cost: hold_cost,
+                    error_message: error_message.clone(),
+                }),
+                Messages::default(),
+            ));
+            debug!(%error_message);
+        } else {
+            self.artifacts.push(ExecutionArtifact::new(
+                transaction_hash,
+                transaction_header,
+                ExecutionResult::V2(ExecutionResultV2::Success {
+                    effects: hold_effects.clone(),
+                    transfers: vec![],
+                    cost: hold_cost,
+                }),
+                Messages::default(),
+            ));
+        }
+        ExecutionArtifactOutcome::Effects(hold_effects)
     }
 
     pub fn push_invalid_transaction(
@@ -118,124 +278,6 @@ impl ExecutionArtifacts {
         );
         debug!(%transaction_hash, "{:?}", msg);
         self.artifacts.push(artifact);
-    }
-
-    pub fn push_transfer_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        transfer_result: TransferResult,
-        cost: U512,
-    ) -> ExecutionArtifactOutcome {
-        trace!(
-            ?transaction_hash,
-            ?transfer_result,
-            "native transfer result"
-        );
-        match transfer_result {
-            TransferResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
-            TransferResult::Failure(transfer_error) => {
-                self.push_failure(
-                    transaction_hash,
-                    transaction_header,
-                    format!("{:?}", transfer_error),
-                );
-                debug!(%transfer_error);
-                ExecutionArtifactOutcome::Failure
-            }
-            TransferResult::Success {
-                effects: transfer_effects,
-                transfers,
-            } => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Success {
-                        effects: transfer_effects.clone(),
-                        cost,
-                        transfers,
-                    }),
-                    Messages::default(),
-                ));
-                ExecutionArtifactOutcome::Success(transfer_effects)
-            }
-        }
-    }
-
-    pub fn push_bidding_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        bidding_result: BiddingResult,
-        cost: U512,
-    ) -> ExecutionArtifactOutcome {
-        trace!(?transaction_hash, ?bidding_result, "bidding result");
-        match bidding_result {
-            BiddingResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
-            BiddingResult::Failure(tce) => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Failure {
-                        effects: Effects::new(),
-                        cost,
-                        transfers: vec![],
-                        error_message: format!("{:?}", tce),
-                    }),
-                    Messages::default(),
-                ));
-                debug!(%tce);
-                ExecutionArtifactOutcome::Failure
-            }
-            BiddingResult::Success {
-                effects: bidding_effects,
-                ..
-            } => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Success {
-                        effects: bidding_effects.clone(),
-                        cost,
-                        transfers: vec![],
-                    }),
-                    Messages::default(),
-                ));
-                ExecutionArtifactOutcome::Success(bidding_effects)
-            }
-        }
-    }
-
-    pub fn push_hold_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        hold_result: BalanceHoldResult,
-    ) -> ExecutionArtifactOutcome {
-        trace!(?transaction_hash, ?hold_result, "balance hold result");
-        if hold_result.is_root_not_found() {
-            return ExecutionArtifactOutcome::RootNotFound;
-        }
-        if !hold_result.is_fully_covered() {
-            let error_message = hold_result.error_message();
-            self.push_failure(transaction_hash, transaction_header, error_message.clone());
-            debug!(%error_message);
-            ExecutionArtifactOutcome::Failure
-        } else {
-            let hold_cost = U512::zero(); // we don't charge for the hold itself.
-            let hold_effects = hold_result.effects();
-            self.artifacts.push(ExecutionArtifact::new(
-                transaction_hash,
-                transaction_header,
-                ExecutionResult::V2(ExecutionResultV2::Success {
-                    effects: hold_effects.clone(),
-                    transfers: vec![],
-                    cost: hold_cost,
-                }),
-                Messages::default(),
-            ));
-            ExecutionArtifactOutcome::Success(hold_effects)
-        }
     }
 
     fn push_failure(
@@ -293,6 +335,7 @@ impl ExecutionArtifact {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn deploy(
         deploy_hash: DeployHash,
         header: DeployHeader,
@@ -338,15 +381,24 @@ pub struct BlockAndExecutionArtifacts {
     pub(crate) step_outcome: Option<StepOutcome>,
 }
 
-#[derive(DataSize, Debug, Clone, Serialize)]
-/// Wrapper for speculative execution prestate.
-pub struct SpeculativeExecutionState {
-    /// State root on top of which to execute deploy.
-    pub state_root_hash: Digest,
-    /// Block time.
-    pub block_time: Timestamp,
-    /// Protocol version used when creating the original block.
-    pub protocol_version: ProtocolVersion,
+/// Type representing results of the speculative execution.
+#[derive(Debug)]
+pub enum SpeculativeExecutionResult {
+    InvalidTransaction(InvalidTransaction),
+    WasmV1(WasmV1Result),
+}
+
+impl SpeculativeExecutionResult {
+    pub fn invalid_gas_limit(transaction: Transaction) -> Self {
+        match transaction {
+            Transaction::Deploy(_) => SpeculativeExecutionResult::InvalidTransaction(
+                InvalidTransaction::Deploy(InvalidDeploy::UnableToCalculateGasLimit),
+            ),
+            Transaction::V1(_) => SpeculativeExecutionResult::InvalidTransaction(
+                InvalidTransaction::V1(InvalidTransactionV1::UnableToCalculateGasLimit),
+            ),
+        }
+    }
 }
 
 /// State to use to construct the next block in the blockchain. Includes the state root hash for the

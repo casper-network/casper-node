@@ -22,7 +22,7 @@ use casper_types::{
     AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    PublicKey, SecretKey, StoredValue, TransactionHash, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -70,7 +70,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     };
 
     let transfer = Transfer::new(
-        DeployHash::from_raw([44; 32]),
+        TransactionHash::from_raw([44; 32]),
         AccountHash::new([100; 32]),
         Some(AccountHash::new([101; 32])),
         URef::new([10; 32], AccessRights::WRITE),

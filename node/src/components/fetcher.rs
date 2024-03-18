@@ -134,7 +134,7 @@ where
                 Source::PeerGossiped(peer) | Source::Peer(peer) => {
                     self.got_from_peer(effect_builder, peer, item)
                 }
-                Source::Client | Source::SpeculativeExec(_) | Source::Ourself => Effects::new(),
+                Source::Client | Source::SpeculativeExec | Source::Ourself => Effects::new(),
             },
             Event::GotInvalidRemotely { .. } => Effects::new(),
             Event::AbsentRemotely { id, peer } => {

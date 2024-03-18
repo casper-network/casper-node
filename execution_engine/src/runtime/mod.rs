@@ -50,7 +50,7 @@ use casper_types::{
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
+    CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
     StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
@@ -2116,10 +2116,19 @@ where
 
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
-            let deploy_hash: DeployHash = self.context.get_deploy_hash();
+            let transaction_hash = self.context.get_transaction_hash();
             let from: AccountHash = self.context.get_caller();
             let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
+            Transfer::new(
+                transaction_hash,
+                from,
+                maybe_to,
+                source,
+                target,
+                amount,
+                fee,
+                id,
+            )
         };
         {
             let transfers = self.context.transfers_mut();

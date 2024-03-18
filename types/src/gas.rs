@@ -1,5 +1,7 @@
 //! The `gas` module is used for working with Gas including converting to and from Motes.
 
+use alloc::vec::Vec;
+
 use core::{
     fmt,
     iter::Sum,
@@ -11,7 +13,10 @@ use datasize::DataSize;
 use num::Zero;
 use serde::{Deserialize, Serialize};
 
-use crate::{Motes, U512};
+use crate::{
+    bytesrepr::{self, Error, FromBytes, ToBytes},
+    Motes, U512,
+};
 
 /// The `Gas` struct represents a `U512` amount of gas.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -125,6 +130,28 @@ impl From<u64> for Gas {
     fn from(gas: u64) -> Self {
         let gas_u512: U512 = gas.into();
         Gas::new(gas_u512)
+    }
+}
+
+impl ToBytes for Gas {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.0)
+    }
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for Gas {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (gas, bytes) = U512::from_bytes(bytes)?;
+        Ok((Gas::new(gas), bytes))
     }
 }
 

@@ -9,7 +9,6 @@ use serde::Serialize;
 use std::{collections::BTreeSet, marker::PhantomData};
 
 use casper_types::{
-    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     Approval, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
@@ -20,6 +19,7 @@ use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
 use crate::block_store::{
     error::BlockStoreError,
     types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
+    DbRawBytesSpec,
 };
 
 pub(crate) trait VersionedKey: ToBytes {

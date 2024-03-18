@@ -1,12 +1,13 @@
 use alloc::vec::Vec;
 use core::num::ParseIntError;
-#[cfg(test)]
+
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -28,8 +29,9 @@ pub enum BlockIdentifier {
 }
 
 impl BlockIdentifier {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..1) {
             0 => Self::Hash(BlockHash::random(rng)),
             1 => Self::Height(rng.gen()),

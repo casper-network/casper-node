@@ -1,5 +1,4 @@
 //! Runtime stacks.
-
 use casper_types::{account::AccountHash, system::Caller, PublicKey};
 
 /// A runtime stack frame.

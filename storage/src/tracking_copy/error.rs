@@ -78,6 +78,9 @@ pub enum Error {
     /// Not authorized.
     #[error("Authorization error")]
     Authorization,
+    /// The value wasn't found.
+    #[error("Value not found")]
+    ValueNotFound(String),
 }
 
 impl Error {

@@ -1,17 +1,15 @@
-use crate::{
+use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AvailableBlockRange, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey, TimeDiff,
     Timestamp,
 };
-use alloc::{string::String, vec::Vec};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
 
-#[cfg(test)]
-use crate::testing::TestRng;
-
-use super::{type_wrappers::ReactorStateName, MinimalBlockInfo};
+use crate::{minimal_block_info::MinimalBlockInfo, type_wrappers::ReactorStateName};
 
 /// Status information about the node.
 #[derive(Debug, PartialEq)]
@@ -161,7 +159,7 @@ impl ToBytes for NodeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

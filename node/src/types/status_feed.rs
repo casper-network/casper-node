@@ -8,10 +8,10 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_binary_port::ConsensusStatus;
 use casper_types::{
-    binary_port::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block, BlockHash,
-    BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
 use crate::{

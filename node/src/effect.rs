@@ -114,22 +114,20 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{
-    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-    BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+use casper_binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, Uptime,
 };
-
-use casper_storage::data_access_layer::{
-    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
-    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_storage::{
+    data_access_layer::{
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
+    DbRawBytesSpec, RecordId,
 };
 use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
     execution::{Effects as ExecutionEffects, ExecutionResult},
     package::Package,
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
@@ -152,7 +150,6 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -164,7 +161,9 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 
-use crate::effect::requests::TransactionBufferRequest;
+use crate::{
+    contract_runtime::SpeculativeExecutionResult, effect::requests::TransactionBufferRequest,
+};
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
@@ -926,7 +925,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-        speculative_exec_at_block: Option<Box<BlockHeader>>,
+        is_speculative: bool,
     ) -> Result<(), transaction_acceptor::Error>
     where
         REv: From<AcceptTransactionRequest>,
@@ -934,7 +933,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             },
             QueueKind::Api,
@@ -2220,15 +2219,15 @@ impl<REv> EffectBuilder<REv> {
     /// used for debugging & discovery purposes.
     pub(crate) async fn speculatively_execute(
         self,
-        execution_prestate: SpeculativeExecutionState,
+        block_header: Box<BlockHeader>,
         transaction: Box<Transaction>,
-    ) -> Result<SpeculativeExecutionResult, engine_state::Error>
+    ) -> SpeculativeExecutionResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
+                block_header,
                 transaction,
                 responder,
             },

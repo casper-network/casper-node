@@ -59,10 +59,10 @@ use std::{
     sync::Arc,
 };
 
+use casper_storage::DbRawBytesSpec;
 #[cfg(test)]
 use casper_types::SignedBlock;
 use casper_types::{
-    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,

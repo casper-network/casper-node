@@ -16,8 +16,8 @@ use casper_types::{
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter, ProtocolVersion, PublicKey,
-    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
-    U512, UREF_ADDR_LENGTH,
+    SecretKey, TransactionHash, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
+    TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -622,7 +622,7 @@ fn deserialize_bid(delegators_len: u32, b: &mut Bencher) {
 
 fn sample_transfer() -> Transfer {
     Transfer::new(
-        DeployHash::default(),
+        TransactionHash::Deploy(DeployHash::default()),
         AccountHash::default(),
         None,
         URef::default(),

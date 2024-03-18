@@ -4,11 +4,9 @@ use derive_more::From;
 use rand::Rng;
 use serde::Serialize;
 
-use casper_types::{
-    binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest},
-    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, TestBlockBuilder, Timestamp, Transaction,
-    TransactionV1Builder,
-};
+use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
+
+use casper_types::{Digest, GlobalStateIdentifier, KeyTag, Transaction, TransactionV1Builder};
 
 use crate::{
     components::binary_port::event::Event as BinaryPortEvent,
@@ -28,9 +26,8 @@ use futures::channel::oneshot::{self, Receiver};
 use prometheus::Registry;
 use thiserror::Error as ThisError;
 
-use casper_types::{
-    binary_port::ErrorCode, testing::TestRng, Chainspec, ChainspecRawBytes, ProtocolVersion,
-};
+use casper_binary_port::ErrorCode;
+use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes, ProtocolVersion};
 
 use crate::{
     components::{
@@ -373,12 +370,6 @@ fn trie_request() -> BinaryRequest {
 fn try_speculative_exec_request(rng: &mut TestRng) -> BinaryRequest {
     BinaryRequest::TrySpeculativeExec {
         transaction: Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap()),
-        state_root_hash: Digest::hash([1u8; 32]),
-        block_time: Timestamp::random(rng),
-        protocol_version: ProtocolVersion::from_parts(2, 0, 0),
-        speculative_exec_at_block: BlockHeader::V2(
-            TestBlockBuilder::new().build(rng).take_header(),
-        ),
     }
 }
 

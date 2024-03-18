@@ -19,7 +19,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, serde_helpers, CLType, CLTyped, DeployHash, URef, U512,
+    checksummed_hex, CLType, CLTyped, TransactionHash, URef, U512,
 };
 
 /// The length of a transfer address.
@@ -33,15 +33,7 @@ pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
-    #[serde(with = "serde_helpers::deploy_hash_as_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "DeployHash",
-            description = "Hex-encoded Deploy hash of Deploy that created the transfer."
-        )
-    )]
-    pub deploy_hash: DeployHash,
+    pub transaction_hash: TransactionHash,
     /// Account from which transfer was executed
     pub from: AccountHash,
     /// Account to which funds are transferred
@@ -62,7 +54,7 @@ impl Transfer {
     /// Creates a [`Transfer`].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         from: AccountHash,
         to: Option<AccountHash>,
         source: URef,
@@ -72,7 +64,7 @@ impl Transfer {
         id: Option<u64>,
     ) -> Self {
         Transfer {
-            deploy_hash,
+            transaction_hash,
             from,
             to,
             source,
@@ -86,7 +78,7 @@ impl Transfer {
 
 impl FromBytes for Transfer {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (deploy_hash, rem) = FromBytes::from_bytes(bytes)?;
+        let (transaction_hash, rem) = FromBytes::from_bytes(bytes)?;
         let (from, rem) = AccountHash::from_bytes(rem)?;
         let (to, rem) = <Option<AccountHash>>::from_bytes(rem)?;
         let (source, rem) = URef::from_bytes(rem)?;
@@ -96,7 +88,7 @@ impl FromBytes for Transfer {
         let (id, rem) = <Option<u64>>::from_bytes(rem)?;
         Ok((
             Transfer {
-                deploy_hash,
+                transaction_hash,
                 from,
                 to,
                 source,
@@ -113,7 +105,7 @@ impl FromBytes for Transfer {
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.deploy_hash.write_bytes(&mut result)?;
+        self.transaction_hash.write_bytes(&mut result)?;
         self.from.write_bytes(&mut result)?;
         self.to.write_bytes(&mut result)?;
         self.source.write_bytes(&mut result)?;
@@ -125,7 +117,7 @@ impl ToBytes for Transfer {
     }
 
     fn serialized_length(&self) -> usize {
-        self.deploy_hash.serialized_length()
+        self.transaction_hash.serialized_length()
             + self.from.serialized_length()
             + self.to.serialized_length()
             + self.source.serialized_length()
@@ -136,7 +128,7 @@ impl ToBytes for Transfer {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.deploy_hash.write_bytes(writer)?;
+        self.transaction_hash.write_bytes(writer)?;
         self.from.write_bytes(writer)?;
         self.to.write_bytes(writer)?;
         self.source.write_bytes(writer)?;
@@ -326,7 +318,7 @@ pub mod gens {
     use crate::{
         deploy_info::gens::{account_hash_arb, deploy_hash_arb},
         gens::{u512_arb, uref_arb},
-        Transfer,
+        TransactionHash, Transfer,
     };
 
     /// Creates an arbitrary [`Transfer`]
@@ -343,7 +335,7 @@ pub mod gens {
         )
             .prop_map(|(deploy_hash, from, to, source, target, amount, gas, id)| {
                 Transfer {
-                    deploy_hash,
+                    transaction_hash: TransactionHash::Deploy(deploy_hash),
                     from,
                     to,
                     source,

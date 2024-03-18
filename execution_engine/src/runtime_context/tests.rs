@@ -20,7 +20,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, DeployHash, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
     PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    SystemEntityRegistry, Tagged, URef, KEY_HASH_LENGTH, U256, U512,
+    SystemEntityRegistry, Tagged, TransactionHash, URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -153,7 +153,7 @@ fn new_runtime_context<'a>(
         TEST_ENGINE_CONFIG.clone(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw([1u8; 32]),
+        TransactionHash::Deploy(DeployHash::from_raw([1u8; 32])),
         Phase::Session,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
@@ -419,7 +419,7 @@ fn contract_key_addable_valid() {
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::Deploy(DeployHash::from_raw(DEPLOY_HASH)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
@@ -476,7 +476,7 @@ fn contract_key_addable_invalid() {
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::Deploy(DeployHash::from_raw(DEPLOY_HASH)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),

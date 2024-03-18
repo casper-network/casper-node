@@ -34,8 +34,8 @@ use casper_types::{
         },
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    Account, AddressableEntity, CLValue, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, Key, KeyTag, Phase, PublicKey,
+    RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
 };
 
 use crate::{
@@ -662,11 +662,10 @@ pub trait StateProvider {
         };
         let protocol_version = request.protocol_version();
         let balance_identifier = request.identifier();
-        let purse_uref = match balance_identifier.purse_uref(&mut tc, protocol_version) {
-            Ok(value) => value,
+        let purse_key = match balance_identifier.purse_uref(&mut tc, protocol_version) {
+            Ok(value) => value.into(),
             Err(tce) => return BalanceResult::Failure(tce),
         };
-        let purse_key = purse_uref.into();
         let (purse_balance_key, purse_addr) = match tc.get_purse_balance_key(purse_key) {
             Ok(key @ Key::Balance(addr)) => (key, addr),
             Ok(key) => return BalanceResult::Failure(TrackingCopyError::UnexpectedKeyVariant(key)),
@@ -1438,21 +1437,21 @@ pub trait StateProvider {
 
         let transfers = runtime.into_transfers();
 
-        {
-            // TODO: this lexical block needs to be updated with the new versioned transaction types
-            let deploy_hash = DeployHash::new(request.transaction_hash().digest());
-            let deploy_info = casper_types::DeployInfo::new(
-                deploy_hash,
-                &transfers,
-                source_account_hash,
-                entity.main_purse(),
-                request.cost(),
-            );
-            tc.borrow_mut().write(
-                Key::DeployInfo(deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
-            );
-        }
+        // TODO: i really don't want us to write this data into global state.
+        // perhaps we can put it into normal storage instead?
+        // {
+        //     let transaction_info = casper_types::TransactionInfo::new(
+        //         request.transaction_hash(),
+        //         &transfers,
+        //         source_account_hash,
+        //         entity.main_purse(),
+        //         request.cost(),
+        //     );
+        //     tc.borrow_mut().write(
+        //         Key::TransactionInfo(request.transaction_hash()),
+        //         StoredValue::TransactionInfo(transaction_info),
+        //     );
+        // }
 
         let effects = tc.borrow_mut().effects();
 

@@ -2,9 +2,10 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
+use casper_binary_port::ErrorCode as BinaryPortErrorCode;
 use casper_types::{
-    binary_port, AddressableEntityHash, BlockHash, BlockHeader, Digest, EntityVersion,
-    InitiatorAddr, InvalidTransaction, PackageHash, Timestamp,
+    AddressableEntityHash, BlockHash, BlockHeader, Digest, EntityVersion, InitiatorAddr,
+    InvalidTransaction, PackageHash, Timestamp,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -64,7 +65,7 @@ impl Error {
     }
 }
 
-impl From<Error> for binary_port::ErrorCode {
+impl From<Error> for BinaryPortErrorCode {
     fn from(err: Error) -> Self {
         match err {
             Error::EmptyBlockchain
@@ -72,7 +73,7 @@ impl From<Error> for binary_port::ErrorCode {
             | Error::Parameters { .. }
             | Error::Expired { .. }
             | Error::ExpectedDeploy
-            | Error::ExpectedTransactionV1 => binary_port::ErrorCode::InvalidTransaction,
+            | Error::ExpectedTransactionV1 => BinaryPortErrorCode::InvalidTransaction,
         }
     }
 }

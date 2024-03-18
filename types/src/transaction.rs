@@ -49,7 +49,7 @@ use crate::Gas;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, TimeDiff, Timestamp,
+    Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
 #[cfg(feature = "json-schema")]
 use crate::{account::ACCOUNT_HASH_LENGTH, URef};
@@ -339,14 +339,24 @@ impl Transaction {
     pub fn is_v1_wasm(&self) -> bool {
         match self {
             Transaction::Deploy(deploy) => !deploy.is_transfer(),
-            Transaction::V1(v1) => match v1.target() {
-                TransactionTarget::Native => false,
-                TransactionTarget::Stored { runtime, .. }
-                | TransactionTarget::Session { runtime, .. } => {
-                    matches!(runtime, TransactionRuntime::VmCasperV1)
-                        && (v1.is_standard() || v1.is_install_or_upgrade())
+            Transaction::V1(v1) => v1.is_v1_wasm(),
+        }
+    }
+
+    /// Should this transaction use standard payment processing?
+    pub fn is_standard_payment(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.payment().is_standard_payment(Phase::Payment),
+            Transaction::V1(v1) => {
+                if let PricingMode::Classic {
+                    standard_payment, ..
+                } = v1.pricing_mode()
+                {
+                    *standard_payment
+                } else {
+                    true
                 }
-            },
+            }
         }
     }
 

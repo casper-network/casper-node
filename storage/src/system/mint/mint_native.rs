@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, DeployHash, Digest, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, TransactionHash, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Key, Phase, PublicKey, StoredValue,
+    SystemEntityRegistry, Transfer, TransferAddr, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -217,28 +217,27 @@ where
         if self.phase() != Phase::Session {
             return Ok(());
         }
+        let transaction_hash = match self.id() {
+            Id::Transaction(transaction_hash) => *transaction_hash,
+            Id::Seed(_) => return Err(Error::RecordTransferFailure),
+        };
+
         let transfer_addr = TransferAddr::new(self.address_generator().create_address());
         let key = Key::Transfer(transfer_addr); // <-- a new key variant needed to deal w/ versioned transaction hash
                                                 //let transaction_hash = self.transaction_hash();
         let transfer = {
-            // the below line is incorrect; new transaction hash is not currently supported here
-            // ...the transfer struct needs to be upgraded to TransactionHash
-            let deploy_hash = match self.id() {
-                Id::Transaction(transaction) => {
-                    match transaction {
-                        TransactionHash::Deploy(deploy_hash) => *deploy_hash,
-                        TransactionHash::V1(hash) => {
-                            // TODO: this is bogus...update when new transfer record is available
-                            let hash = hash.inner();
-                            DeployHash::new(*hash)
-                        }
-                    }
-                }
-                Id::Seed(seed) => DeployHash::new(Digest::hash(seed)),
-            };
             let from: AccountHash = self.get_caller();
             let fee: U512 = U512::zero();
-            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
+            Transfer::new(
+                transaction_hash,
+                from,
+                maybe_to,
+                source,
+                target,
+                amount,
+                fee,
+                id,
+            )
         };
         self.push_transfer(transfer_addr);
 

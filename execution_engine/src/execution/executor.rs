@@ -13,7 +13,7 @@ use casper_types::{
     system::{handle_payment, mint, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
     DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    URef, U512,
+    TransactionHash, URef, U512,
 };
 
 use crate::{
@@ -60,7 +60,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -78,7 +78,7 @@ impl Executor {
         };
 
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
+            let generator = AddressGenerator::new(transaction_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -95,7 +95,7 @@ impl Executor {
             tracking_copy,
             blocktime,
             protocol_version,
-            deploy_hash,
+            transaction_hash,
             phase,
             args.clone(),
             gas_limit,
@@ -148,7 +148,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -161,7 +161,7 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
+            let generator = AddressGenerator::new(transaction_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -224,7 +224,7 @@ impl Executor {
             tracking_copy,
             blocktime,
             protocol_version,
-            deploy_hash,
+            transaction_hash,
             phase,
             runtime_args.clone(),
             gas_limit,
@@ -285,7 +285,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         phase: Phase,
         runtime_args: RuntimeArgs,
         gas_limit: Gas,
@@ -310,7 +310,7 @@ impl Executor {
             self.config.clone(),
             blocktime,
             protocol_version,
-            deploy_hash,
+            transaction_hash,
             phase,
             runtime_args,
             gas_limit,
@@ -447,7 +447,7 @@ impl Executor {
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            TransactionHash::Deploy(deploy_hash),
             payment_gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),
@@ -483,7 +483,7 @@ impl Executor {
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            TransactionHash::Deploy(deploy_hash),
             gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),

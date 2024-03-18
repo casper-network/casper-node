@@ -31,9 +31,9 @@ use casper_types::{
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
-    GrantedAccess, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, Transfer,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
+    KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -52,7 +52,7 @@ pub struct RuntimeContext<'a, R> {
     args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
     blocktime: BlockTime,
-    deploy_hash: DeployHash,
+    transaction_hash: TransactionHash,
     gas_limit: Gas,
     gas_counter: Gas,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -92,7 +92,7 @@ where
         engine_config: EngineConfig,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         phase: Phase,
         runtime_args: RuntimeArgs,
         gas_limit: Gas,
@@ -118,7 +118,7 @@ where
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -151,7 +151,7 @@ where
 
         let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
-        let deploy_hash = self.deploy_hash;
+        let transaction_hash = self.transaction_hash;
         let phase = self.phase;
 
         let gas_limit = self.gas_limit;
@@ -171,7 +171,7 @@ where
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -253,9 +253,9 @@ where
         self.blocktime
     }
 
-    /// Returns the deploy hash.
-    pub fn get_deploy_hash(&self) -> DeployHash {
-        self.deploy_hash
+    /// Returns the transaction hash.
+    pub fn get_transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
     }
 
     /// Extends access rights with a new map.
@@ -312,7 +312,7 @@ where
         self.entity_key
     }
 
-    /// Returns the initiater of the call chain.
+    /// Returns the initiator of the call chain.
     pub fn get_caller(&self) -> AccountHash {
         self.account_hash
     }

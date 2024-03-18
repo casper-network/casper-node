@@ -5,7 +5,7 @@ use rand::Rng;
 use serde::Serialize;
 
 #[cfg(test)]
-use crate::testing::TestRng;
+use casper_types::testing::TestRng;
 
 /// An identifier of a record type.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
@@ -31,7 +31,7 @@ pub enum RecordId {
 
 impl RecordId {
     #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => RecordId::BlockHeader,
             1 => RecordId::BlockBody,
@@ -92,7 +92,7 @@ pub struct UnknownRecordId(u16);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn tag_roundtrip() {

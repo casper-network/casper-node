@@ -1,17 +1,11 @@
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
+use std::collections::BTreeMap;
 
-use alloc::{
-    collections::BTreeMap,
-    string::{String, ToString},
-    vec::Vec,
-};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 
-use crate::{
+use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contract_messages::Messages,
-    execution::ExecutionResultV2,
     EraId, ExecutionInfo, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
 };
 
@@ -161,22 +155,6 @@ impl From<LastProgress> for Timestamp {
     }
 }
 
-/// Type representing results of the speculative execution.
-#[derive(Debug, PartialEq, Eq)]
-pub struct SpeculativeExecutionResult(Option<(ExecutionResultV2, Messages)>);
-
-impl SpeculativeExecutionResult {
-    /// Constructs new speculative execution result.
-    pub fn new(value: Option<(ExecutionResultV2, Messages)>) -> Self {
-        Self(value)
-    }
-
-    /// Returns the inner value.
-    pub fn into_inner(self) -> Option<(ExecutionResultV2, Messages)> {
-        self.0
-    }
-}
-
 /// Type representing results of the get full trie request.
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetTrieFullResult(Option<Bytes>);
@@ -277,13 +255,13 @@ impl ToBytes for TransactionWithExecutionInfo {
         Ok(buffer)
     }
 
+    fn serialized_length(&self) -> usize {
+        self.transaction.serialized_length() + self.execution_info.serialized_length()
+    }
+
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.transaction.write_bytes(writer)?;
         self.execution_info.write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.transaction.serialized_length() + self.execution_info.serialized_length()
     }
 }
 
@@ -303,7 +281,6 @@ impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
 impl_bytesrepr_for_type_wrapper!(ReactorStateName);
 impl_bytesrepr_for_type_wrapper!(LastProgress);
-impl_bytesrepr_for_type_wrapper!(SpeculativeExecutionResult);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
 
 #[cfg(test)]
@@ -312,7 +289,7 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn uptime_roundtrip() {
@@ -346,19 +323,6 @@ mod tests {
     fn last_progress_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&LastProgress::new(Timestamp::random(rng)));
-    }
-
-    #[test]
-    fn speculative_execution_result_roundtrip() {
-        let rng = &mut TestRng::new();
-        if rng.gen_bool(0.5) {
-            bytesrepr::test_serialization_roundtrip(&SpeculativeExecutionResult::new(None));
-        } else {
-            bytesrepr::test_serialization_roundtrip(&SpeculativeExecutionResult::new(Some((
-                ExecutionResultV2::random(rng),
-                rng.random_vec(0..20),
-            ))));
-        }
     }
 
     #[test]
