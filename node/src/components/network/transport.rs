@@ -174,11 +174,27 @@ where
     }
 
     fn route_established(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>) {
-        todo!()
+        if let Some(consensus_key) = consensus_key {
+            tokio::spawn(self.event_queue.schedule::<Event<P>>(
+                Event::RouteEstablished {
+                    peer_id: Box::new(peer_id),
+                    consensus_key,
+                },
+                QueueKind::NetworkInternal,
+            ));
+        }
     }
 
     fn route_lost(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>) {
-        todo!()
+        if let Some(consensus_key) = consensus_key {
+            tokio::spawn(self.event_queue.schedule::<Event<P>>(
+                Event::RouteLost {
+                    peer_id: Box::new(peer_id),
+                    consensus_key,
+                },
+                QueueKind::NetworkInternal,
+            ));
+        }
     }
 
     #[inline(always)]
