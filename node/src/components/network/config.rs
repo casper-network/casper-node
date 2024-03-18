@@ -119,7 +119,7 @@ pub struct Config {
     pub bubble_timeouts: bool,
     /// The maximum time a peer is allowed to take to receive a fatal error.
     pub error_timeout: TimeDiff,
-    /// Whether to restrict broadcasts of values
+    /// Whether to restrict broadcasts of certain values to validators.
     pub use_validator_broadcast: bool,
 }
 
