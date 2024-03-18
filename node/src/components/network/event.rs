@@ -1,10 +1,8 @@
 use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
-    sync::Arc,
 };
 
-use casper_types::PublicKey;
 use derive_more::From;
 use serde::Serialize;
 use static_assertions::const_assert;
@@ -30,6 +28,7 @@ where
     P: Serialize,
 {
     Initialize,
+
     /// Received network message.
     IncomingMessage {
         peer_id: Box<NodeId>,
@@ -40,35 +39,33 @@ where
         #[serde(skip)]
         ticket: Ticket,
     },
+
     /// Incoming network request.
     #[from]
     NetworkRequest {
         #[serde(skip_serializing)]
         req: Box<NetworkRequest<P>>,
     },
+
     /// Incoming network info request.
     #[from]
     NetworkInfoRequest {
         #[serde(skip_serializing)]
         req: Box<NetworkInfoRequest>,
     },
+
     /// The node should gossip its own public listening address.
     GossipOurAddress,
+
     /// Internet metrics should be updated.
     SyncMetrics,
+
     /// We received a peer's public listening address via gossip.
     PeerAddressReceived(GossipedAddress),
+
     /// Blocklist announcement.
     #[from]
     BlocklistAnnouncement(PeerBehaviorAnnouncement),
-    RouteEstablished {
-        peer_id: Box<NodeId>,
-        consensus_key: Arc<PublicKey>,
-    },
-    RouteLost {
-        peer_id: Box<NodeId>,
-        consensus_key: Arc<PublicKey>,
-    },
 }
 
 impl From<NetworkRequest<ProtocolMessage>> for Event<ProtocolMessage> {
@@ -106,22 +103,6 @@ where
             Event::BlocklistAnnouncement(ann) => {
                 write!(f, "handling blocklist announcement: {}", ann)
             }
-            Event::RouteEstablished {
-                peer_id,
-                consensus_key,
-            } => write!(
-                f,
-                "established route to {} with consensus key {}",
-                peer_id, consensus_key
-            ),
-            Event::RouteLost {
-                peer_id,
-                consensus_key,
-            } => write!(
-                f,
-                "lost route to {} with consensus key {}",
-                peer_id, consensus_key
-            ),
         }
     }
 }

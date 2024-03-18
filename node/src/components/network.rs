@@ -626,21 +626,6 @@ where
             .collect()
     }
 
-    fn handle_route_established(
-        &mut self,
-        peer_id: NodeId,
-        consensus_key: Arc<PublicKey>,
-    ) -> Effects<Event<P>> {
-        todo!()
-    }
-    fn handle_route_lost(
-        &mut self,
-        peer_id: NodeId,
-        consensus_key: Arc<PublicKey>,
-    ) -> Effects<Event<P>> {
-        todo!()
-    }
-
     /// Get a randomly sampled subset of connected peers
     pub(crate) fn connected_peers_random(&self, rng: &mut NodeRng, count: usize) -> Vec<NodeId> {
         let Some(ref conman) = self.conman else {
@@ -822,14 +807,6 @@ where
                     );
                     Effects::new()
                 }
-                Event::RouteEstablished {
-                    peer_id,
-                    consensus_key,
-                } => self.handle_route_established(*peer_id, consensus_key),
-                Event::RouteLost {
-                    peer_id,
-                    consensus_key,
-                } => self.handle_route_lost(*peer_id, consensus_key),
             },
             ComponentState::Initialized => match event {
                 Event::Initialize => {
@@ -934,14 +911,6 @@ where
                         Effects::new()
                     }
                 },
-                Event::RouteEstablished {
-                    peer_id,
-                    consensus_key,
-                } => self.handle_route_established(*peer_id, consensus_key),
-                Event::RouteLost {
-                    peer_id,
-                    consensus_key,
-                } => self.handle_route_lost(*peer_id, consensus_key),
             },
         }
     }
