@@ -137,7 +137,7 @@ function do_stop_network() {
     ACTIVATE_ERA="$(get_chain_era)"
     log "emergency upgrade activation era = $ACTIVATE_ERA"
     local ERA_ID=$((ACTIVATE_ERA - 1))
-    local BLOCK=$(get_switch_block "1" "32" "" "$ERA_ID")
+    local BLOCK=$(get_switch_block_v1 "1" "32" "" "$ERA_ID")
     # read the latest global state hash
     STATE_HASH=$(echo "$BLOCK" | jq -r '.header.state_root_hash')
     # save the LFB hash to use as the trusted hash for the restart
@@ -194,7 +194,7 @@ function do_prepare_upgrade() {
 
     local PATH_TO_NET=$(get_path_to_net)
 
-    _generate_global_state_update "$TEST_PROTOCOL_VERSION" "$STATE_HASH" "1" "$(get_count_of_genesis_nodes)"
+    _generate_global_state_update "$TEST_PROTOCOL_VERSION" "$STATE_HASH" "2" "$(get_count_of_genesis_nodes)"
 
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
@@ -370,6 +370,6 @@ done
 
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 TEST_PROTOCOL_VERSION="1_4_8"
-TEST_PROTOCOL_VERSION_2="1_5_0"
+TEST_PROTOCOL_VERSION_2="2_0_0"
 
 main
