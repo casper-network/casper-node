@@ -346,7 +346,7 @@ where
             // We were asked to not use validator broadcasting, or do not have a list of validators
             // available. Broadcast to everyone instead.
             let state = conman.read_state();
-            for &peer_id in state.routing_table().iter() {
+            for &peer_id in state.routing_table().keys() {
                 self.send_message(&*state, peer_id, channel, payload.clone(), None)
             }
         }
