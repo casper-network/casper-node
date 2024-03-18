@@ -141,6 +141,10 @@ pub(crate) struct ConManState {
     routing_table: HashMap<NodeId, Route>,
     /// A mapping of `NodeId`s to details about their bans.
     banlist: HashMap<NodeId, Sentence>,
+    /// A mapping of known consensus keys to node IDs.
+    ///
+    /// Tracks how a specific validator key is reachable.
+    key_index: HashMap<Arc<PublicKey>, NodeId>,
 }
 
 impl ConManState {
@@ -1008,6 +1012,10 @@ impl ActiveRoute {
             error!("should never encounter residual route");
         }
 
+        if let Some(ref ck) = consensus_key {
+            state.key_index.insert(ck.clone(), peer_id);
+        }
+
         ctx.protocol_handler
             .route_established(peer_id, consensus_key.clone());
 
@@ -1055,6 +1063,11 @@ impl Drop for ActiveRoute {
             .route_lost(self.peer_id, self.consensus_key.take());
 
         let mut guard = self.ctx.state.write().expect("lock poisoned");
+
+        if let Some(ref ck) = self.consensus_key {
+            guard.key_index.remove(ck);
+        }
+
         if guard.routing_table.remove(&self.peer_id).is_none() {
             error!("routing table should only be touched by active route");
         }
