@@ -1007,7 +1007,12 @@ impl ActiveRoute {
         }
 
         if let Some(ref ck) = consensus_key {
-            state.key_index.insert(ck.clone(), peer_id);
+            if let Some(old) = state.key_index.insert(ck.clone(), peer_id) {
+                rate_limited!(
+                    RESIDUAL_CONSENSUS_KEY,
+                    |dropped| warn!(%old, new=%peer_id, consensus_key=%ck, dropped, "consensus key moved peers while connected")
+                );
+            }
         }
 
         Self {
@@ -1052,7 +1057,10 @@ impl Drop for ActiveRoute {
         let mut guard = self.ctx.state.write().expect("lock poisoned");
 
         if let Some(ref ck) = self.consensus_key {
-            guard.key_index.remove(ck);
+            // Ensure we are removing the same value we put in.
+            if guard.key_index.get(ck) == Some(&self.peer_id) {
+                guard.key_index.remove(ck);
+            }
         }
 
         if guard.routing_table.remove(&self.peer_id).is_none() {
