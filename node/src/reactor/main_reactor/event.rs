@@ -15,19 +15,19 @@ use crate::{
     components::{
         binary_port, block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
-        block_validator, consensus, contract_runtime, deploy_buffer, diagnostics_port,
-        event_stream_server, fetcher, gossiper,
+        block_validator, consensus, contract_runtime, diagnostics_port, event_stream_server,
+        fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor, upgrade_watcher,
+        rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
+        transaction_buffer, upgrade_watcher,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
-            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
-            UpgradeWatcherAnnouncement,
+            ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
+            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
+            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -38,10 +38,10 @@ use crate::{
         requests::{
             AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
-            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-            MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, RestRequest,
-            SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            ConsensusRequest, ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest,
+            MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+            ReactorInfoRequest, RestRequest, SetNodeStopRequest, StorageRequest,
+            SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
             UpgradeWatcherRequest,
         },
     },
@@ -196,9 +196,9 @@ pub(crate) enum MainEvent {
     #[from]
     TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
-    DeployBuffer(#[serde(skip_serializing)] deploy_buffer::Event),
+    TransactionBuffer(#[serde(skip_serializing)] transaction_buffer::Event),
     #[from]
-    DeployBufferAnnouncement(#[serde(skip_serializing)] DeployBufferAnnouncement),
+    TransactionBufferAnnouncement(#[serde(skip_serializing)] TransactionBufferAnnouncement),
     #[from]
     LegacyDeployFetcher(#[serde(skip_serializing)] fetcher::Event<LegacyDeploy>),
     #[from]
@@ -208,7 +208,7 @@ pub(crate) enum MainEvent {
     #[from]
     TransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Transaction>),
     #[from]
-    DeployBufferRequest(DeployBufferRequest),
+    TransactionBufferRequest(TransactionBufferRequest),
     #[from]
     ContractRuntime(contract_runtime::Event),
     #[from]
@@ -269,7 +269,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::ReactorCrank => "ReactorCrank",
             MainEvent::Network(_) => "Network",
             MainEvent::SyncLeaper(_) => "SyncLeaper",
-            MainEvent::DeployBuffer(_) => "DeployBuffer",
+            MainEvent::TransactionBuffer(_) => "TransactionBuffer",
             MainEvent::Storage(_) => "Storage",
             MainEvent::RestServer(_) => "RestServer",
             MainEvent::EventStreamServer(_) => "EventStreamServer",
@@ -306,7 +306,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
-            MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
+            MainEvent::TransactionBufferRequest(_) => "TransactionBufferRequest",
             MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
@@ -323,7 +323,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
-            MainEvent::DeployBufferAnnouncement(_) => "DeployBufferAnnouncement",
+            MainEvent::TransactionBufferAnnouncement(_) => "TransactionBufferAnnouncement",
             MainEvent::FinalitySignatureFetcherAnnouncement(_) => {
                 "FinalitySignatureFetcherAnnouncement"
             }
@@ -374,7 +374,7 @@ impl Display for MainEvent {
             MainEvent::Storage(event) => write!(f, "storage: {}", event),
             MainEvent::Network(event) => write!(f, "network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
-            MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
+            MainEvent::TransactionBuffer(event) => write!(f, "transaction buffer: {}", event),
             MainEvent::RestServer(event) => write!(f, "rest server: {}", event),
             MainEvent::EventStreamServer(event) => {
                 write!(f, "event stream server: {}", event)
@@ -474,8 +474,8 @@ impl Display for MainEvent {
             MainEvent::AddressGossiperCrank(request) => {
                 write!(f, "begin address gossip request: {}", request)
             }
-            MainEvent::DeployBufferRequest(req) => {
-                write!(f, "deploy buffer request: {}", req)
+            MainEvent::TransactionBufferRequest(req) => {
+                write!(f, "transaction buffer request: {}", req)
             }
             MainEvent::BlockValidatorRequest(req) => {
                 write!(f, "block validator request: {}", req)
@@ -504,8 +504,8 @@ impl Display for MainEvent {
             MainEvent::AddressGossiperAnnouncement(ann) => {
                 write!(f, "address gossiper announcement: {}", ann)
             }
-            MainEvent::DeployBufferAnnouncement(ann) => {
-                write!(f, "deploy buffer announcement: {}", ann)
+            MainEvent::TransactionBufferAnnouncement(ann) => {
+                write!(f, "transaction buffer announcement: {}", ann)
             }
             MainEvent::UpgradeWatcherAnnouncement(ann) => {
                 write!(f, "chainspec loader announcement: {}", ann)

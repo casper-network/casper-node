@@ -1,7 +1,7 @@
 //! Block validator
 //!
-//! The block validator checks whether all the deploys included in the block payload exist, either
-//! locally or on the network.
+//! The block validator checks whether all the transactions included in the block payload exist,
+//! either locally or on the network.
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
@@ -22,8 +22,9 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Chainspec, DeployApprovalsHash, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionId,
+    Approval, ApprovalsHash, Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionCategory,
+    TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -38,10 +39,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{
-        BlockWithMetadata, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
-        TransactionHashWithApprovals, ValidatorMatrix,
-    },
+    types::{BlockWithMetadata, NodeId, TransactionExt, ValidatorMatrix},
     NodeRng,
 };
 pub use config::Config;
@@ -55,36 +53,36 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn deploys(&self) -> Vec<DeployHashWithApprovals> {
-        self.value()
-            .standard()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+    /// How many transactions are being tracked?
+    pub(crate) fn transaction_count(&self) -> usize {
+        self.value().count(None)
     }
 
-    fn transfers(&self) -> Vec<DeployHashWithApprovals> {
+    /// How many standard transactions?
+    pub(crate) fn standard_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Standard))
+    }
+
+    /// How many mint transactions?
+    pub(crate) fn mint_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Mint))
+    }
+
+    /// How many auction transactions?
+    pub(crate) fn auction_count(&self) -> usize {
+        self.value().count(Some(TransactionCategory::Auction))
+    }
+
+    /// How many install / upgrade transactions?
+    pub(crate) fn install_upgrade_count(&self) -> usize {
         self.value()
-            .transfer()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+            .count(Some(TransactionCategory::InstallUpgrade))
+    }
+
+    pub(crate) fn all_transactions(
+        &self,
+    ) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        self.value().all_transactions()
     }
 }
 
@@ -98,12 +96,14 @@ enum MaybeHandled {
 
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidator {
-    /// Chainspec loaded for deploy validation.
+    /// Component configuration.
+    config: Config,
+    /// Chainspec loaded for transaction validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
+    /// Validator matrix.
     #[data_size(skip)]
     validator_matrix: ValidatorMatrix,
-    config: Config,
     /// State of validation of a specific block.
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
     /// Requests awaiting storing of a block, keyed by the height of the block being awaited.
@@ -162,12 +162,12 @@ impl BlockValidator {
             let effects = match state.start_fetching() {
                 MaybeStartFetching::Start {
                     holder,
-                    missing_deploys,
+                    missing_transactions,
                     missing_signatures,
-                } => fetch_deploys_and_signatures(
+                } => fetch_transactions_and_signatures(
                     effect_builder,
                     holder,
-                    missing_deploys,
+                    missing_transactions,
                     missing_signatures,
                 ),
                 MaybeStartFetching::Ongoing => {
@@ -462,16 +462,16 @@ impl BlockValidator {
         let effects = match state.start_fetching() {
             MaybeStartFetching::Start {
                 holder,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
-            } => fetch_deploys_and_signatures(
+            } => fetch_transactions_and_signatures(
                 effect_builder,
                 holder,
-                missing_deploys,
+                missing_transactions,
                 missing_signatures,
             ),
             MaybeStartFetching::ValidationSucceeded => {
-                debug!("no deploys - block validation complete");
+                debug!("no transactions - block validation complete");
                 debug_assert!(maybe_responder.is_some());
                 respond(true, maybe_responder)
             }
@@ -525,7 +525,7 @@ impl BlockValidator {
     fn handle_transaction_fetched<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        dt_hash: DeployOrTransferHash,
+        transaction_hash: TransactionHash,
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
     where
@@ -536,52 +536,44 @@ impl BlockValidator {
     {
         match &result {
             Ok(FetchedData::FromPeer { peer, .. }) => {
-                debug!(%dt_hash, %peer, "fetched deploy from peer")
+                debug!(%transaction_hash, %peer, "fetched transaction from peer")
             }
-            Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched deploy locally"),
-            Err(error) => warn!(%dt_hash, %error, "could not fetch deploy"),
+            Ok(FetchedData::FromStorage { .. }) => {
+                debug!(%transaction_hash, "fetched transaction locally")
+            }
+            Err(error) => warn!(%transaction_hash, %error, "could not fetch transaction"),
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                let item = match *item {
-                    Transaction::Deploy(deploy) => deploy,
-                    Transaction::V1(_) => unreachable!("we only fetch deploys for now"),
-                };
-                if DeployOrTransferHash::new(&item) != dt_hash {
-                    warn!(
-                        deploy = %item,
-                        expected_deploy_or_transfer_hash = %dt_hash,
-                        actual_deploy_or_transfer_hash = %DeployOrTransferHash::new(&item),
-                        "deploy has incorrect deploy-or-transfer hash"
-                    );
+                let item_hash = item.hash();
+                if item_hash != transaction_hash {
                     // Hard failure - change state to Invalid.
                     let responders = self
                         .validation_states
                         .values_mut()
-                        .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        .flat_map(|state| state.try_mark_invalid(&transaction_hash));
                     return respond(false, responders);
                 }
-                let deploy_footprint = match item.footprint() {
-                    Ok(footprint) => footprint,
-                    Err(error) => {
+                let transaction_footprint = match item.footprint(&self.chainspec) {
+                    Some(footprint) => footprint,
+                    None => {
                         warn!(
-                            deploy = %item,
-                            %dt_hash,
-                            %error,
-                            "could not convert deploy",
+                            %transaction_hash,
+                            "could not convert transaction",
                         );
                         // Hard failure - change state to Invalid.
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                            .flat_map(|state| state.try_mark_invalid(&transaction_hash));
                         return respond(false, responders);
                     }
                 };
 
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
-                    let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
+                    let responders = state
+                        .try_add_transaction_footprint(&transaction_hash, &transaction_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
                         effects.extend(respond(is_valid, responders));
@@ -602,18 +594,18 @@ impl BlockValidator {
                             match state.start_fetching() {
                                 MaybeStartFetching::Start {
                                     holder,
-                                    missing_deploys,
+                                    missing_transactions,
                                     missing_signatures,
                                 } => {
                                     debug!(
                                         %holder,
-                                        missing_deploys_len = missing_deploys.len(),
-                                        "fetching missing deploys from different peer"
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions from different peer"
                                     );
-                                    effects.extend(fetch_deploys_and_signatures(
+                                    effects.extend(fetch_transactions_and_signatures(
                                         effect_builder,
                                         holder,
-                                        missing_deploys,
+                                        missing_transactions,
                                         missing_signatures,
                                     ));
                                 }
@@ -637,7 +629,7 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                            .flat_map(|state| state.try_mark_invalid(&transaction_hash));
                         respond(false, responders)
                     }
                 }
@@ -693,19 +685,19 @@ impl BlockValidator {
                             match state.start_fetching() {
                                 MaybeStartFetching::Start {
                                     holder,
-                                    missing_deploys,
+                                    missing_transactions,
                                     missing_signatures,
                                 } => {
                                     debug!(
                                         %holder,
-                                        missing_deploys_len = missing_deploys.len(),
-                                        "fetching missing deploys and signatures from different \
+                                        missing_transactions_len = missing_transactions.len(),
+                                        "fetching missing transactions and signatures from different \
                                         peer"
                                     );
-                                    effects.extend(fetch_deploys_and_signatures(
+                                    effects.extend(fetch_transactions_and_signatures(
                                         effect_builder,
                                         holder,
-                                        missing_deploys,
+                                        missing_transactions,
                                         missing_signatures,
                                     ));
                                 }
@@ -737,6 +729,64 @@ impl BlockValidator {
     }
 }
 
+fn fetch_transactions_and_signatures<REv>(
+    effect_builder: EffectBuilder<REv>,
+    holder: NodeId,
+    missing_transactions: HashMap<TransactionHash, ApprovalsHash>,
+    missing_signatures: HashSet<FinalitySignatureId>,
+) -> Effects<Event>
+where
+    REv: From<Event>
+        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
+        + Send,
+{
+    let mut effects: Effects<Event> = Effects::new();
+    for (transaction_hash, approvals_hash) in missing_transactions {
+        let transaction_id = match transaction_hash {
+            TransactionHash::Deploy(deploy_hash) => {
+                TransactionId::new(deploy_hash.into(), approvals_hash)
+            }
+            TransactionHash::V1(v1_hash) => TransactionId::new(v1_hash.into(), approvals_hash),
+        };
+        effects.extend(
+            effect_builder
+                .fetch::<Transaction>(transaction_id, holder, Box::new(EmptyValidationMetadata))
+                .event(move |result| Event::TransactionFetched {
+                    transaction_hash,
+                    result,
+                }),
+        );
+    }
+
+    for missing_signature in missing_signatures {
+        effects.extend(
+            effect_builder
+                .fetch::<FinalitySignature>(
+                    Box::new(missing_signature.clone()),
+                    holder,
+                    Box::new(EmptyValidationMetadata),
+                )
+                .event(move |result| Event::FinalitySignatureFetched {
+                    finality_signature_id: Box::new(missing_signature),
+                    result,
+                }),
+        )
+    }
+
+    effects
+}
+
+fn respond(
+    is_valid: bool,
+    responders: impl IntoIterator<Item = Responder<bool>>,
+) -> Effects<Event> {
+    responders
+        .into_iter()
+        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .collect()
+}
+
 impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
@@ -748,6 +798,10 @@ where
         + Send,
 {
     type Event = Event;
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 
     fn handle_event(
         &mut self,
@@ -776,9 +830,10 @@ where
             Event::BlockStored(stored_block_height) => {
                 self.handle_block_stored(effect_builder, stored_block_height)
             }
-            Event::TransactionFetched { dt_hash, result } => {
-                self.handle_transaction_fetched(effect_builder, dt_hash, result)
-            }
+            Event::TransactionFetched {
+                transaction_hash,
+                result,
+            } => self.handle_transaction_fetched(effect_builder, transaction_hash, result),
             Event::FinalitySignatureFetched {
                 finality_signature_id,
                 result,
@@ -789,63 +844,4 @@ where
             ),
         }
     }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
-    }
-}
-
-fn fetch_deploys_and_signatures<REv>(
-    effect_builder: EffectBuilder<REv>,
-    holder: NodeId,
-    missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
-    missing_signatures: HashSet<FinalitySignatureId>,
-) -> Effects<Event>
-where
-    REv: From<Event>
-        + From<FetcherRequest<Transaction>>
-        + From<FetcherRequest<FinalitySignature>>
-        + Send,
-{
-    let mut effects: Effects<Event> = missing_deploys
-        .into_iter()
-        .flat_map(|(dt_hash, approvals_hash)| {
-            let txn_id = TransactionId::Deploy {
-                deploy_hash: dt_hash.into(),
-                approvals_hash,
-            };
-            effect_builder
-                .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
-                .event(move |result| Event::TransactionFetched { dt_hash, result })
-        })
-        .collect();
-
-    effects.extend(
-        missing_signatures
-            .into_iter()
-            .flat_map(|finality_signature_id| {
-                effect_builder
-                    .fetch::<FinalitySignature>(
-                        Box::new(finality_signature_id.clone()),
-                        holder,
-                        Box::new(EmptyValidationMetadata),
-                    )
-                    .event(move |result| Event::FinalitySignatureFetched {
-                        finality_signature_id: Box::new(finality_signature_id),
-                        result,
-                    })
-            }),
-    );
-
-    effects
-}
-
-fn respond(
-    is_valid: bool,
-    responders: impl IntoIterator<Item = Responder<bool>>,
-) -> Effects<Event> {
-    responders
-        .into_iter()
-        .flat_map(|responder| responder.respond(is_valid).ignore())
-        .collect()
 }

@@ -436,6 +436,12 @@ pub enum ConsensusProtocolName {
     Zug,
 }
 
+impl Default for ConsensusProtocolName {
+    fn default() -> Self {
+        ConsensusProtocolName::Zug
+    }
+}
+
 impl Serialize for ConsensusProtocolName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -522,6 +528,12 @@ impl Serialize for LegacyRequiredFinality {
             LegacyRequiredFinality::Any => "Any",
         }
         .serialize(serializer)
+    }
+}
+
+impl Default for LegacyRequiredFinality {
+    fn default() -> Self {
+        LegacyRequiredFinality::Any
     }
 }
 

@@ -38,8 +38,7 @@ use casper_types::{
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicOperation,
-        MessageTopicSummary,
+        Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
     contracts::ContractPackage,
     crypto,
@@ -50,8 +49,8 @@ use casper_types::{
         handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
+    AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
+    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
     StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
@@ -3517,7 +3516,7 @@ where
         };
 
         let current_blocktime = self.context.get_blocktime();
-        let message_index = if prev_topic_summary.blocktime() != current_blocktime {
+        let topic_message_index = if prev_topic_summary.blocktime() != current_blocktime {
             for index in 1..prev_topic_summary.message_count() {
                 self.context
                     .prune_gs_unsafe(Key::message(entity_addr, topic_name_hash, index));
@@ -3527,27 +3526,41 @@ where
             prev_topic_summary.message_count()
         };
 
-        let Some(message_count) = message_index.checked_add(1) else {
+        let block_message_index: u64 = match self.context.read_gs(&Key::BlockMessageCount)? {
+            Some(stored_value) => {
+                let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
+                    CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
+                )
+                .map_err(ExecError::CLValue)?;
+                if prev_block_time == current_blocktime {
+                    prev_count
+                } else {
+                    0
+                }
+            }
+            None => 0,
+        };
+
+        let Some(topic_message_count) = topic_message_index.checked_add(1) else {
             return Ok(Err(ApiError::MessageTopicFull));
         };
-        let new_topic_summary = MessageTopicSummary::new(message_count, current_blocktime);
 
-        let message_key = Key::message(entity_addr, topic_name_hash, message_index);
-        let message_checksum = MessageChecksum(crypto::blake2b(
-            message.to_bytes().map_err(ExecError::BytesRepr)?,
-        ));
+        let Some(block_message_count) = block_message_index.checked_add(1) else {
+            return Ok(Err(ApiError::MaxMessagesPerBlockExceeded));
+        };
 
         self.context.metered_emit_message(
             topic_key,
-            new_topic_summary,
-            message_key,
-            message_checksum,
+            current_blocktime,
+            block_message_count,
+            topic_message_count,
             Message::new(
                 entity_addr,
                 message,
                 topic_name.to_string(),
                 topic_name_hash,
-                message_index,
+                topic_message_index,
+                block_message_index,
             ),
         )?;
         Ok(Ok(()))

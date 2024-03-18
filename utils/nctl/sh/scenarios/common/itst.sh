@@ -417,7 +417,7 @@ function assert_node_proposed() {
 
     while true; do
         OUTPUT=$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc)")
-        PROPOSER=$(echo "$OUTPUT" | jq -r '.result.block.body.proposer')
+        PROPOSER=$(echo "$OUTPUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
 
         if [ "$PROPOSER" == "$PUBLIC_KEY_HEX" ]; then
             log "Node-$NODE_ID created a block!"
@@ -455,7 +455,7 @@ function assert_no_proposal_walkback() {
 
     while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$COMPARE_NODE") -b "$CHECK_HASH")
-        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block.body.proposer')
+        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
         if [ "$PROPOSER" = "$PUBLIC_KEY_HEX" ]; then
             log "ERROR: Node proposal found!"
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"

@@ -29,9 +29,9 @@ use casper_types::{
     binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key,
-    ProtocolVersion, PublicKey, Transaction, TransactionApprovalsHash, U512,
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    ApprovalsHash, BlockV2, CLValue, Chainspec, ChecksumRegistry, DeployHash, Digest, EraEndV2,
+    EraId, Key, ProtocolVersion, PublicKey, Transaction, U512,
 };
 
 use crate::{
@@ -88,7 +88,7 @@ pub fn execute_finalized_block(
         .collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
-    let approvals_hashes: Vec<TransactionApprovalsHash> =
+    let approvals_hashes: Vec<ApprovalsHash> =
         txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
 
     let scratch_state = data_access_layer.get_scratch_global_state();
@@ -313,9 +313,9 @@ pub fn execute_finalized_block(
         )?;
         checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
 
-        effects.push(Transform::new(
+        effects.push(TransformV2::new(
             Key::ChecksumRegistry,
-            TransformKind::Write(
+            TransformKindV2::Write(
                 CLValue::from_t(checksum_registry)
                     .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                     .into(),
@@ -513,8 +513,8 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*executable_block.proposer).clone(),
-        executable_block.transfer,
-        executable_block.staking,
+        executable_block.mint,
+        executable_block.auction,
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
@@ -533,7 +533,7 @@ pub fn execute_finalized_block(
             Err(gse) => return Err(BlockExecutionError::Lmdb(gse)),
         };
 
-        Box::new(ApprovalsHashes::new_v2(
+        Box::new(ApprovalsHashes::new(
             *block.hash(),
             approvals_hashes,
             proof_of_checksum_registry,

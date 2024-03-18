@@ -5,8 +5,8 @@
 //!
 //! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
 //! where `Ev` is the event's type, as every effect must have its return value either wrapped in an
-//! event through [`EffectExt::event`](crate::effect::EffectExt::event) or ignored using
-//! [`EffectExt::ignore`](crate::effect::EffectExt::ignore). As an example, the
+//! event through [`EffectExt::event`](EffectExt::event) or ignored using
+//! [`EffectExt::ignore`](EffectExt::ignore). As an example, the
 //! [`handle_event`](crate::components::Component::handle_event) function of a component always
 //! returns `Effect<Self::Event>`.
 //!
@@ -34,7 +34,7 @@
 //!
 //!   Component events are also created from the return values of effects: While effects do not
 //!   return events themselves when called, their return values are turned first into component
-//!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
+//!   events through the [`event`](EffectExt) method. In a second step, inside the
 //!   reactors routing code, `wrap_effect` will then convert from component to reactor event.
 //!
 //! # Using effects
@@ -76,10 +76,10 @@
 //! Announcements are often dispatched to multiple components by the reactor; since that usually
 //! involves a [`clone`](`Clone::clone`), they should be kept light.
 //!
-//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
-//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, instead
-//! it simply returns an effect that produces an announcement.
+//! A good example is the arrival of a new transaction passed in by a client. Depending on the setup
+//! it may be stored, buffered or, in certain testing setups, just discarded. None of this is a
+//! concern of the component that talks to the client and deserializes the incoming transaction
+//! though, instead it simply returns an effect that produces an announcement.
 //!
 //! **Requests** are complex events that are used when a component needs something from other
 //! components. Typically, an effect (which uses [`EffectBuilder::make_request`] in its
@@ -98,7 +98,7 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
@@ -132,11 +132,11 @@ use casper_types::{
     },
     execution::{Effects as ExecutionEffects, ExecutionResult},
     package::Package,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
-    BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
-    FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade,
-    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion,
+    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    U512,
 };
 
 use crate::{
@@ -164,21 +164,21 @@ use crate::{
 };
 use casper_storage::block_store::types::ApprovalsHashes;
 
+use crate::effect::requests::TransactionBufferRequest;
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
+    ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
-    TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -806,14 +806,14 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces which deploys have expired.
-    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    /// Announces which transactions have expired.
+    pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
-        REv: From<DeployBufferAnnouncement>,
+        REv: From<TransactionBufferAnnouncement>,
     {
         self.event_queue
             .schedule(
-                DeployBufferAnnouncement::DeploysExpired(hashes),
+                TransactionBufferAnnouncement::TransactionsExpired(hashes),
                 QueueKind::Validation,
             )
             .await;
@@ -905,9 +905,9 @@ impl<REv> EffectBuilder<REv> {
 
     /// Request that a block with a specific height be marked completed.
     ///
-    /// Completion means that the block itself (along with its header) and all of its deploys have
-    /// been persisted to storage and its global state root hash is missing no dependencies in the
-    /// global state.
+    /// Completion means that the block itself (along with its header) and all of its transactions
+    /// have been persisted to storage and its global state root hash is missing no dependencies
+    /// in the global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
         REv: From<MarkBlockCompletedRequest>,
@@ -1226,6 +1226,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_latest_switch_block_header_from_storage(self) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLatestSwitchBlockHeader { responder },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
         self,
         era_id: EraId,
@@ -1536,7 +1547,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transactions_from_storage(
         self,
         transaction_hashes: Vec<TransactionHash>,
-    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
+    ) -> SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1626,8 +1637,8 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Stores the given execution results for the deploys in the given block in the linear block
-    /// store.
+    /// Stores the given execution results for the transactions in the given block in the linear
+    /// block store.
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
@@ -1757,13 +1768,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes the timestamp of a future block for which deploys are to be proposed.
+    /// Passes the timestamp of a future block for which transactions are to be proposed.
     pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<TransactionBufferRequest>,
     {
         self.make_request(
-            |responder| DeployBufferRequest::GetAppendableBlock {
+            |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
                 responder,
             },
@@ -1805,7 +1816,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network and the block is
+    /// Checks whether the transactions included in the block exist on the network and the block is
     /// valid.
     pub(crate) async fn validate_block(
         self,
@@ -2200,7 +2211,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn store_finalized_approvals(
         self,
         transaction_hash: TransactionHash,
-        finalized_approvals: FinalizedApprovals,
+        finalized_approvals: BTreeSet<Approval>,
     ) -> bool
     where
         REv: From<StorageRequest>,

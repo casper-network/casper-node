@@ -7,7 +7,7 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use super::DeployApproval;
+use super::Approval;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -15,23 +15,23 @@ use crate::{
     Digest,
 };
 
-/// The cryptographic hash of the bytesrepr-encoded set of approvals for a single deploy.
+/// The cryptographic hash of the bytesrepr-encoded set of approvals for a single [``].
 #[derive(
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
-pub struct DeployApprovalsHash(Digest);
+pub struct ApprovalsHash(pub Digest);
 
-impl DeployApprovalsHash {
-    /// The number of bytes in a `DeployApprovalsHash` digest.
+impl ApprovalsHash {
+    /// The number of bytes in a `ApprovalsHash` digest.
     pub const LENGTH: usize = Digest::LENGTH;
 
-    /// Constructs a new `DeployApprovalsHash` by bytesrepr-encoding `approvals` and creating a
-    /// [`Digest`] of this.
-    pub fn compute(approvals: &BTreeSet<DeployApproval>) -> Result<Self, bytesrepr::Error> {
+    /// Constructs a new `ApprovalsHash` by bytesrepr-encoding `approvals` and creating
+    /// a [`Digest`] of this.
+    pub fn compute(approvals: &BTreeSet<Approval>) -> Result<Self, bytesrepr::Error> {
         let digest = Digest::hash(approvals.to_bytes()?);
-        Ok(DeployApprovalsHash(digest))
+        Ok(ApprovalsHash(digest))
     }
 
     /// Returns the wrapped inner digest.
@@ -39,46 +39,46 @@ impl DeployApprovalsHash {
         &self.0
     }
 
-    /// Returns a new `DeployApprovalsHash` directly initialized with the provided bytes; no
+    /// Returns a new `ApprovalsHash` directly initialized with the provided bytes; no
     /// hashing is done.
     #[cfg(any(feature = "testing", test))]
     pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
-        DeployApprovalsHash(Digest::from_raw(raw_digest))
+        ApprovalsHash(Digest::from_raw(raw_digest))
     }
 
-    /// Returns a random `DeployApprovalsHash`.
+    /// Returns a random `ApprovalsHash`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
-        DeployApprovalsHash(hash)
+        ApprovalsHash(hash)
     }
 }
 
-impl From<DeployApprovalsHash> for Digest {
-    fn from(deploy_hash: DeployApprovalsHash) -> Self {
-        deploy_hash.0
+impl From<ApprovalsHash> for Digest {
+    fn from(hash: ApprovalsHash) -> Self {
+        hash.0
     }
 }
 
-impl From<Digest> for DeployApprovalsHash {
+impl From<Digest> for ApprovalsHash {
     fn from(digest: Digest) -> Self {
         Self(digest)
     }
 }
 
-impl Display for DeployApprovalsHash {
+impl Display for ApprovalsHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "approvals-hash({})", self.0,)
+        write!(formatter, "transaction-v1-approvals-hash({})", self.0,)
     }
 }
 
-impl AsRef<[u8]> for DeployApprovalsHash {
+impl AsRef<[u8]> for ApprovalsHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl ToBytes for DeployApprovalsHash {
+impl ToBytes for ApprovalsHash {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.0.write_bytes(writer)
     }
@@ -92,9 +92,9 @@ impl ToBytes for DeployApprovalsHash {
     }
 }
 
-impl FromBytes for DeployApprovalsHash {
+impl FromBytes for ApprovalsHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        Digest::from_bytes(bytes).map(|(inner, remainder)| (DeployApprovalsHash(inner), remainder))
+        Digest::from_bytes(bytes).map(|(inner, remainder)| (ApprovalsHash(inner), remainder))
     }
 }
 
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let hash = DeployApprovalsHash::random(rng);
+        let hash = ApprovalsHash::random(rng);
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

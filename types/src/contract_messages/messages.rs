@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, AddressableEntityHash, Key,
+    checksummed_hex, crypto, AddressableEntityHash, Key,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -199,7 +199,9 @@ pub struct Message {
     /// The hash of the name of the topic.
     topic_name_hash: TopicNameHash,
     /// Message index in the topic.
-    index: u32,
+    topic_index: u32,
+    /// Message index in the block.
+    block_index: u64,
 }
 
 impl Message {
@@ -209,14 +211,16 @@ impl Message {
         message: MessagePayload,
         topic_name: String,
         topic_name_hash: TopicNameHash,
-        index: u32,
+        topic_index: u32,
+        block_index: u64,
     ) -> Self {
         Self {
             entity_addr: source,
             message,
             topic_name,
             topic_name_hash,
-            index,
+            topic_index,
+            block_index,
         }
     }
 
@@ -241,14 +245,19 @@ impl Message {
     }
 
     /// Returns the index of the message in the topic.
-    pub fn index(&self) -> u32 {
-        self.index
+    pub fn topic_index(&self) -> u32 {
+        self.topic_index
+    }
+
+    /// Returns the index of the message relative to other messages emitted in the block.
+    pub fn block_index(&self) -> u64 {
+        self.block_index
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the checksum record for the message in global state.
     pub fn message_key(&self) -> Key {
-        Key::message(self.entity_addr, self.topic_name_hash, self.index)
+        Key::message(self.entity_addr, self.topic_name_hash, self.topic_index)
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
@@ -256,6 +265,14 @@ impl Message {
     /// state.
     pub fn topic_key(&self) -> Key {
         Key::message_topic(self.entity_addr, self.topic_name_hash)
+    }
+
+    /// Returns the checksum of the message.
+    pub fn checksum(&self) -> Result<MessageChecksum, bytesrepr::Error> {
+        let input = (&self.block_index, &self.message).to_bytes()?;
+        let checksum = crypto::blake2b(input);
+
+        Ok(MessageChecksum(checksum))
     }
 }
 
@@ -266,7 +283,8 @@ impl ToBytes for Message {
         buffer.append(&mut self.message.to_bytes()?);
         buffer.append(&mut self.topic_name.to_bytes()?);
         buffer.append(&mut self.topic_name_hash.to_bytes()?);
-        buffer.append(&mut self.index.to_bytes()?);
+        buffer.append(&mut self.topic_index.to_bytes()?);
+        buffer.append(&mut self.block_index.to_bytes()?);
         Ok(buffer)
     }
 
@@ -275,7 +293,8 @@ impl ToBytes for Message {
             + self.message.serialized_length()
             + self.topic_name.serialized_length()
             + self.topic_name_hash.serialized_length()
-            + self.index.serialized_length()
+            + self.topic_index.serialized_length()
+            + self.block_index.serialized_length()
     }
 }
 
@@ -285,14 +304,16 @@ impl FromBytes for Message {
         let (message, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name, rem) = FromBytes::from_bytes(rem)?;
         let (topic_name_hash, rem) = FromBytes::from_bytes(rem)?;
-        let (index, rem) = FromBytes::from_bytes(rem)?;
+        let (topic_index, rem) = FromBytes::from_bytes(rem)?;
+        let (block_index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
                 entity_addr,
                 message,
                 topic_name,
                 topic_name_hash,
-                index,
+                topic_index,
+                block_index,
             },
             rem,
         ))
@@ -311,7 +332,8 @@ impl Distribution<Message> for Standard {
             message,
             topic_name,
             topic_name_hash,
-            index: rng.gen(),
+            topic_index: rng.gen(),
+            block_index: rng.gen(),
         }
     }
 }
@@ -339,6 +361,7 @@ mod tests {
             "test_topic".to_string(),
             TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
             10,
+            111,
         );
         bytesrepr::test_serialization_roundtrip(&message);
     }
