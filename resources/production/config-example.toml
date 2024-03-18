@@ -227,6 +227,9 @@ bubble_timeouts = true
 # The maximum time a peer is allowed to take to receive a fatal error.
 error_timeout = '10 seconds'
 
+# Whether to restrict broadcasts of values most likely only relevant for validators to only those.
+use_validator_broadcast = false
+
 # Identity of a node
 #
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
