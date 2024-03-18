@@ -237,17 +237,6 @@ pub(crate) trait ProtocolHandler: Send + Sync {
         stream: TcpStream,
     ) -> Result<ProtocolHandshakeOutcome, ConnectionError>;
 
-    /// A new route has been established.
-    ///
-    /// This hook is called when a new route has been established. For every call there will eventually be exactly one call of [`ProtocolHandler::route_lost`] as well.
-    fn route_established(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>);
-
-    /// An existing route has been lost.
-    ///
-    /// Only called exactly once for every preceding call of `route_established` when said route
-    /// is disconnected.
-    fn route_lost(&self, peer_id: NodeId, consensus_key: Option<Arc<PublicKey>>);
-
     /// Process one incoming request.
     async fn handle_incoming_request(
         &self,
@@ -1016,9 +1005,6 @@ impl ActiveRoute {
             state.key_index.insert(ck.clone(), peer_id);
         }
 
-        ctx.protocol_handler
-            .route_established(peer_id, consensus_key.clone());
-
         Self {
             ctx,
             peer_id,
@@ -1058,10 +1044,6 @@ impl ActiveRoute {
 
 impl Drop for ActiveRoute {
     fn drop(&mut self) {
-        self.ctx
-            .protocol_handler
-            .route_lost(self.peer_id, self.consensus_key.take());
-
         let mut guard = self.ctx.state.write().expect("lock poisoned");
 
         if let Some(ref ck) = self.consensus_key {
