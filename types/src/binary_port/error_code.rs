@@ -41,6 +41,9 @@ pub enum ErrorCode {
     /// Received an unsupported type of request.
     #[cfg_attr(feature = "std", error("unsupported request"))]
     UnsupportedRequest = 11,
+    /// Dictionary URef not found.
+    #[cfg_attr(feature = "std", error("dictionary URef not found"))]
+    DictionaryURefNotFound = 12,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -60,6 +63,7 @@ impl TryFrom<u8> for ErrorCode {
             9 => Ok(ErrorCode::QueryFailedToExecute),
             10 => Ok(ErrorCode::BadRequest),
             11 => Ok(ErrorCode::UnsupportedRequest),
+            12 => Ok(ErrorCode::DictionaryURefNotFound),
             _ => Err(UnknownErrorCode),
         }
     }
