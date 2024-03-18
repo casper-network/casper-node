@@ -120,10 +120,10 @@ def start_network():
     invoke(command)
 
     for node in range(1, 11):
-        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/2_0_0/chainspec.toml".format(
             node)
         chainspec = toml.load(path_to_chainspec)
-        chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
+        chainspec['transactions']['block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
 
     command = "RUST_LOG=debug nctl-start"
