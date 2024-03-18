@@ -167,6 +167,11 @@ impl ConManState {
     pub(crate) fn banlist(&self) -> &HashMap<NodeId, Sentence> {
         &self.banlist
     }
+
+    /// Returns a reference to the key index of this [`ConManState`].
+    pub(crate) fn key_index(&self) -> &HashMap<Arc<PublicKey>, NodeId> {
+        &self.key_index
+    }
 }
 
 /// Record of punishment for a peers malicious behavior.

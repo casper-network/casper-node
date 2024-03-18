@@ -333,11 +333,12 @@ where
 
         self.net_metrics.broadcast_requests.inc();
 
+        let validators = self.validator_matrix.active_or_upcoming_validators();
+
         let state = conman.read_state();
 
-        for &peer_id in state.routing_table().keys() {
-            // TODO: Filter by validator state.
-            if true {
+        for (consensus_key, &peer_id) in state.key_index().iter() {
+            if validators.contains(consensus_key) {
                 self.send_message(&*state, peer_id, channel, payload.clone(), None)
             }
         }
