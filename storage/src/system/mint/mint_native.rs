@@ -219,7 +219,9 @@ where
         }
         let transaction_hash = match self.id() {
             Id::Transaction(transaction_hash) => *transaction_hash,
-            Id::Seed(_) => return Err(Error::RecordTransferFailure),
+            // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
+            // so return Ok and move on.
+            Id::Seed(_) => return Ok(()),
         };
 
         let transfer_addr = TransferAddr::new(self.address_generator().create_address());
