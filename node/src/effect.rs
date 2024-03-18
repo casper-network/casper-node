@@ -695,7 +695,7 @@ impl<REv> EffectBuilder<REv> {
                 payload: Box::new(payload),
                 message_queued_responder: Some(AutoClosingResponder::from_opt_responder(responder)),
             },
-            QueueKind::NetworkOutgoing,
+            QueueKind::Network,
         )
         .await;
 
@@ -729,7 +729,7 @@ impl<REv> EffectBuilder<REv> {
                     payload: Box::new(payload),
                     message_queued_responder: None,
                 },
-                QueueKind::NetworkOutgoing,
+                QueueKind::Network,
             )
             .await
     }
@@ -748,7 +748,7 @@ impl<REv> EffectBuilder<REv> {
                     auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
                 }
             },
-            QueueKind::NetworkOutgoing,
+            QueueKind::Network,
         )
         .await;
     }
@@ -778,7 +778,7 @@ impl<REv> EffectBuilder<REv> {
                 exclude,
                 auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
-            QueueKind::NetworkOutgoing,
+            QueueKind::Network,
         )
         .await
         .unwrap_or_default()
