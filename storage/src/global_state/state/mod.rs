@@ -38,6 +38,9 @@ use crate::{
     data_access_layer::{
         bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
         era_validators::EraValidatorsResult,
+        forced_undelegate::{
+            ForcedUndelegateError, ForcedUndelegateRequest, ForcedUndelegateResult,
+        },
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         transfer::{TransferRequest, TransferRequestArgs, TransferResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceIdentifier,
@@ -603,6 +606,78 @@ pub trait CommitProvider: StateProvider {
             };
         }
         FeeResult::Failure(FeeError::NoFeesDistributed)
+    }
+
+    /// Forcibly unbonds delegator bids which fall outside configured delegation limits.
+    fn forced_undelegate(&self, request: ForcedUndelegateRequest) -> ForcedUndelegateResult {
+        let state_hash = request.state_hash();
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return ForcedUndelegateResult::RootNotFound,
+            Err(err) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let config = request.config();
+        let protocol_version = request.protocol_version();
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(bre),
+                    ))
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(tce));
+            }
+        };
+
+        if let Err(auction_error) = runtime.forced_undelegate() {
+            error!(
+                "forced undelegation failed due to auction error {:?}",
+                auction_error
+            );
+            return ForcedUndelegateResult::Failure(ForcedUndelegateError::Auction(auction_error));
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => ForcedUndelegateResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => ForcedUndelegateResult::Failure(ForcedUndelegateError::TrackingCopy(
+                TrackingCopyError::Storage(gse),
+            )),
+        }
     }
 
     /// Direct biddings.

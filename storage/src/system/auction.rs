@@ -379,6 +379,50 @@ pub trait Auction:
         Ok(updated_stake)
     }
 
+    /// Unbond delegator bids which fall outside validator-configured delegation limits.
+    fn forced_undelegate(&mut self) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            return Err(Error::InvalidCaller);
+        }
+
+        let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+        let validator_bids = detail::get_validator_bids(self)?;
+
+        // Forcibly undelegate bids outside a validator's delegation limits
+        for (validator_public_key, validator_bid) in validator_bids.iter() {
+            let minimum_delegation_amount = U512::from(validator_bid.minimum_delegation_amount());
+            let maximum_delegation_amount = U512::from(validator_bid.maximum_delegation_amount());
+
+            let mut delegators = read_delegator_bids(self, validator_public_key)?;
+            for delegator in delegators.iter_mut() {
+                let staked_amount = delegator.staked_amount();
+                if staked_amount < minimum_delegation_amount
+                    || staked_amount > maximum_delegation_amount
+                {
+                    let delegator_public_key = delegator.delegator_public_key().clone();
+                    detail::create_unbonding_purse(
+                        self,
+                        validator_public_key.clone(),
+                        delegator_public_key.clone(),
+                        *delegator.bonding_purse(),
+                        delegator.staked_amount(),
+                        None,
+                    )?;
+                    delegator
+                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)?;
+                    let delegator_bid_addr = BidAddr::new_from_public_keys(
+                        validator_public_key,
+                        Some(&delegator_public_key),
+                    );
+
+                    debug!("pruning delegator bid {}", delegator_bid_addr);
+                    self.prune_bid(delegator_bid_addr)
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Slashes each validator.
     ///
     /// This can be only invoked through a system call.

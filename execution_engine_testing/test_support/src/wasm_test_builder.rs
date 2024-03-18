@@ -18,6 +18,9 @@ use casper_execution_engine::engine_state::{
     execute_request::ExecuteRequest, execution_result::ExecutionResult, Error, ExecutionEngineV1,
     DEFAULT_MAX_QUERY_DEPTH,
 };
+use casper_storage::data_access_layer::forced_undelegate::{
+    ForcedUndelegateRequest, ForcedUndelegateResult,
+};
 use casper_storage::{
     data_access_layer::{
         BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
@@ -925,6 +928,35 @@ where
         }
 
         distribute_block_rewards_result
+    }
+
+    /// Undelegates delegator bids violating configured delegation limits.
+    pub fn forced_undelegate(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        time: u64,
+    ) -> ForcedUndelegateResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let native_runtime_config = self.native_runtime_config();
+        let forced_undelegate_req = ForcedUndelegateRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            time,
+        );
+        let forced_undelegate_result = self
+            .data_access_layer
+            .forced_undelegate(forced_undelegate_req);
+
+        if let ForcedUndelegateResult::Success {
+            post_state_hash, ..
+        } = forced_undelegate_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        forced_undelegate_result
     }
 
     /// Expects a successful run

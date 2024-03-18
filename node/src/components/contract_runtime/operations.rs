@@ -11,6 +11,7 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
+        forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
         AuctionMethod, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
         FeeResult, FlushRequest, PruneRequest, PruneResult, StepRequest, StepResult,
@@ -336,6 +337,27 @@ pub fn execute_finalized_block(
     let maybe_step_effects_and_upcoming_era_validators = if let Some(era_report) =
         &executable_block.era_report
     {
+        // force undelegate delegators outside delegation limits before the auction runs
+        let forced_undelegate_req = ForcedUndelegateRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+        );
+        match scratch_state.forced_undelegate(forced_undelegate_req) {
+            ForcedUndelegateResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            ForcedUndelegateResult::Failure(err) => {
+                return Err(BlockExecutionError::ForcedUndelegate(err))
+            }
+            ForcedUndelegateResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
+        }
+
         let step_effects = match commit_step(
             native_runtime_config,
             &scratch_state,
