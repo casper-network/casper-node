@@ -108,6 +108,6 @@ function get_main_purse_uref()
     source "$NCTL"/sh/views/view_chain_account.sh \
         account-key="$ACCOUNT_KEY" \
         root-hash="$STATE_ROOT_HASH" \
-        | jq '.stored_value.Account.main_purse' \
+        | jq '.stored_value.AddressableEntity.main_purse' \
         | sed -e 's/^"//' -e 's/"$//'
 }
