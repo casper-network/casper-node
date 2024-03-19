@@ -49,7 +49,7 @@ use casper_types::{
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
-    contract_runtime::utils::EraPrice,
+    contract_runtime::types::EraPrice,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
