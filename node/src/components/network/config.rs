@@ -35,6 +35,9 @@ const DEFAULT_BUBBLE_TIMEOUTS: bool = true;
 /// Default value for error timeout.
 const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
 
+/// Default value for validator broadcast.
+const DEFAULT_USE_VALIDATOR_BROADCAST: bool = true;
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -53,6 +56,7 @@ impl Default for Config {
             conman: Default::default(),
             bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
             error_timeout: DEFAULT_ERROR_TIMEOUT,
+            use_validator_broadcast: DEFAULT_USE_VALIDATOR_BROADCAST,
         }
     }
 }
@@ -115,6 +119,8 @@ pub struct Config {
     pub bubble_timeouts: bool,
     /// The maximum time a peer is allowed to take to receive a fatal error.
     pub error_timeout: TimeDiff,
+    /// Whether to restrict broadcasts of certain values to validators.
+    pub use_validator_broadcast: bool,
 }
 
 #[cfg(test)]

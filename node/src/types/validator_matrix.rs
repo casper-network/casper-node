@@ -246,21 +246,6 @@ impl ValidatorMatrix {
         self.is_validator_in_era(era_id, &self.public_signing_key)
     }
 
-    /// Determine if the active validator is in a current or upcoming set of active validators.
-    ///
-    /// The set is not guaranteed to be minimal, as it will include validators up to `auction_delay
-    /// + 1` back eras from the highest era known.
-    #[inline]
-    pub(crate) fn is_active_or_upcoming_validator(&self, public_key: &PublicKey) -> bool {
-        // This function is potentially expensive and could be memoized, with the cache being
-        // invalidated when the max value of the `BTreeMap` changes.
-        self.read_inner()
-            .values()
-            .rev()
-            .take(self.auction_delay as usize + 1)
-            .any(|validator_weights| validator_weights.is_validator(public_key))
-    }
-
     /// Return the set of active or upcoming validators.
     ///
     /// The set is not guaranteed to be minimal, as it will include validators up to `auction_delay

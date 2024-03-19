@@ -141,6 +141,10 @@ pub(crate) struct ConManState {
     routing_table: HashMap<NodeId, Route>,
     /// A mapping of `NodeId`s to details about their bans.
     banlist: HashMap<NodeId, Sentence>,
+    /// A mapping of known consensus keys to node IDs.
+    ///
+    /// Tracks how a specific validator key is reachable.
+    key_index: HashMap<Arc<PublicKey>, NodeId>,
 }
 
 impl ConManState {
@@ -162,6 +166,11 @@ impl ConManState {
     /// Returns a reference to the banlist of this [`ConManState`].
     pub(crate) fn banlist(&self) -> &HashMap<NodeId, Sentence> {
         &self.banlist
+    }
+
+    /// Returns a reference to the key index of this [`ConManState`].
+    pub(crate) fn key_index(&self) -> &HashMap<Arc<PublicKey>, NodeId> {
+        &self.key_index
     }
 }
 
@@ -205,6 +214,8 @@ struct ActiveRoute {
     ctx: Arc<ConManContext>,
     /// The peer ID for which the route is registered.
     peer_id: NodeId,
+    /// Consensus key associated with route.
+    consensus_key: Option<Arc<PublicKey>>,
 }
 
 /// External integration.
@@ -981,12 +992,13 @@ impl ActiveRoute {
         direction: Direction,
         consensus_key: Option<Box<PublicKey>>,
     ) -> Self {
+        let consensus_key = consensus_key.map(Arc::from);
         let route = Route {
             peer: peer_id,
             client: rpc_client,
             remote_addr,
             direction,
-            consensus_key: consensus_key.map(Arc::from),
+            consensus_key: consensus_key.clone(),
             since: Instant::now(),
         };
 
@@ -994,7 +1006,20 @@ impl ActiveRoute {
             error!("should never encounter residual route");
         }
 
-        Self { ctx, peer_id }
+        if let Some(ref ck) = consensus_key {
+            if let Some(old) = state.key_index.insert(ck.clone(), peer_id) {
+                rate_limited!(
+                    RESIDUAL_CONSENSUS_KEY,
+                    |dropped| warn!(%old, new=%peer_id, consensus_key=%ck, dropped, "consensus key moved peers while connected")
+                );
+            }
+        }
+
+        Self {
+            ctx,
+            peer_id,
+            consensus_key,
+        }
     }
 
     /// Serve data received from an active route.
@@ -1030,6 +1055,14 @@ impl ActiveRoute {
 impl Drop for ActiveRoute {
     fn drop(&mut self) {
         let mut guard = self.ctx.state.write().expect("lock poisoned");
+
+        if let Some(ref ck) = self.consensus_key {
+            // Ensure we are removing the same value we put in.
+            if guard.key_index.get(ck) == Some(&self.peer_id) {
+                guard.key_index.remove(ck);
+            }
+        }
+
         if guard.routing_table.remove(&self.peer_id).is_none() {
             error!("routing table should only be touched by active route");
         }

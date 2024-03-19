@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add `network.maximum_frame_size` to the chainspec
 * Add `tcp_connect_timeout`, `setup_timeout`, `tcp_connect_attempts`, `tcp_connect_base_backoff`, `significant_error_backoff`, `permanent_error_backoff`, `successful_reconnect_delay`, `flaky_connection_threshold`, `max_incoming_connections` and `max_outgoing_connections` to the `network.conman` section in the config.
+* `use_validator_broadcast` can now be configured to control the node's broadcast behavior.
 
 ### Changed
 * The node's connection model has changed, now only establishing a single connection per peer. The direction of the connection is chosen based on the randomly generated `NodeID`s.
