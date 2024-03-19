@@ -45,6 +45,7 @@ use std::{
     marker::PhantomData,
     mem,
     net::{SocketAddr, TcpListener},
+    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -53,8 +54,8 @@ use bincode::Options;
 use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use itertools::Itertools;
 
+use itertools::Itertools;
 use juliet::rpc::{JulietRpcClient, RequestGuard};
 use prometheus::Registry;
 use rand::{
@@ -371,11 +372,12 @@ where
         };
         let state = conman.read_state();
 
-        // Construct an iterator over all eligable connected peers, sans exclusion list.
-        let connected_peers = state
+        // Collect all connected peers sans exclusion list.
+        let connected_peers: Vec<_> = state
             .routing_table()
             .keys()
-            .filter(|node_id| !exclude.contains(node_id));
+            .filter(|node_id| !exclude.contains(node_id))
+            .collect();
 
         let mut chosen: Vec<NodeId> = match gossip_target {
             GossipTarget::Mixed(era_id) => {
@@ -390,19 +392,17 @@ where
 
                     // Create two separate batches, first all non-validators, second all validators.
                     let mut first = connected_peers
-                        .filter(|node_id| connected_era_validators.contains(node_id))
-                        .cloned()
+                        .iter()
+                        .filter(|&node_id| !connected_era_validators.contains(node_id))
+                        .map(Deref::deref)
                         .choose_multiple(rng, count);
 
-                    let mut second = connected_era_validators
-                        .into_iter()
-                        .choose_multiple(rng, count);
+                    let mut second = connected_era_validators.iter().choose_multiple(rng, count);
 
+                    // Shuffle, then sample.
                     if rng.gen() {
                         mem::swap(&mut first, &mut second);
                     }
-
-                    // Shuffle, then sample.
                     first.shuffle(rng);
                     second.shuffle(rng);
 
@@ -410,6 +410,7 @@ where
                         .into_iter()
                         .interleave(second.into_iter())
                         .take(count)
+                        .cloned()
                         .collect()
                 } else {
                     // TODO: warn! about failing to select
@@ -424,8 +425,7 @@ where
         };
 
         if chosen.is_empty() {
-            chosen = connected_peers.cloned().choose_multiple(rng, count);
-            chosen.shuffle(rng);
+            chosen.extend(connected_peers.choose_multiple(rng, count).cloned());
         }
 
         for &peer_id in &chosen {
