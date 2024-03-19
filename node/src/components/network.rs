@@ -367,7 +367,7 @@ where
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
         let Some(ref conman) = self.conman else {
-            error!("should never attempt to gossip on unintialized component");
+            error!("should never attempt to gossip on uninitialized component");
             return Default::default();
         };
         let state = conman.read_state();
