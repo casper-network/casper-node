@@ -194,7 +194,7 @@ function do_prepare_upgrade() {
 
     local PATH_TO_NET=$(get_path_to_net)
 
-    _generate_global_state_update "$TEST_PROTOCOL_VERSION" "$STATE_HASH" "2" "$(get_count_of_genesis_nodes)"
+    _generate_global_state_update "$TEST_PROTOCOL_VERSION" "$STATE_HASH" "1" "$(get_count_of_genesis_nodes)"
 
     for NODE_ID in $(seq 1 "$(get_count_of_nodes)"); do
         local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
