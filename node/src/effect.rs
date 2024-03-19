@@ -1624,7 +1624,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Stores the given execution results for the transactions in the given block in the linear
     /// block store.
-    pub(crate) async fn put_execution_results_to_storage(
+    pub(crate) async fn put_execution_artifacts_to_storage(
         self,
         block_hash: BlockHash,
         block_height: u64,

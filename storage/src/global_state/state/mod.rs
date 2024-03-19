@@ -278,7 +278,7 @@ pub trait CommitProvider: StateProvider {
                 }
             };
 
-            crate::system::runtime_native::Id::Seed(bytes)
+            Id::Seed(bytes)
         };
 
         let config = request.config();
@@ -375,7 +375,7 @@ pub trait CommitProvider: StateProvider {
                 }
             };
 
-            crate::system::runtime_native::Id::Seed(bytes)
+            Id::Seed(bytes)
         };
 
         // this runtime uses the system's context
@@ -539,7 +539,7 @@ pub trait CommitProvider: StateProvider {
                     }
                 };
 
-                crate::system::runtime_native::Id::Seed(bytes)
+                Id::Seed(bytes)
             };
 
             let config = request.config();
@@ -1377,7 +1377,7 @@ pub trait StateProvider {
                 }
             };
 
-        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
+        let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
             protocol_version,

@@ -218,23 +218,27 @@ where
         if self.phase() != Phase::Session {
             return Ok(());
         }
-        let transfer_addr = TransferAddr::from(TransferV2Addr::new(
-            self.address_generator().create_address(),
-        ));
-        let key = Key::Transfer(transfer_addr);
         let txn_hash = match self.id() {
             Id::Transaction(txn_hash) => *txn_hash,
-            Id::Seed(_) => return Err(Error::RecordTransferFailure),
+            // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
+            // so return Ok and move on.
+            Id::Seed(_) => return Ok(()),
         };
         let from = InitiatorAddr::AccountHash(self.get_caller());
         let fee = Gas::zero(); // TODO
         let transfer = Transfer::V2(TransferV2::new(
             txn_hash, from, maybe_to, source, target, amount, fee, id,
         ));
+
+        let transfer_addr = TransferAddr::from(TransferV2Addr::new(
+            self.address_generator().create_address(),
+        ));
         self.push_transfer(transfer_addr);
-        self.tracking_copy()
-            .borrow_mut()
-            .write(key, StoredValue::Transfer(transfer));
+
+        self.tracking_copy().borrow_mut().write(
+            Key::Transfer(transfer_addr),
+            StoredValue::Transfer(transfer),
+        );
         Ok(())
     }
 }

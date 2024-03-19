@@ -316,7 +316,8 @@ impl From<NetworkInfoRequest> for Event {
 }
 
 impl From<StorageRequest> for Event {
-    fn from(_request: StorageRequest) -> Self {
+    fn from(request: StorageRequest) -> Self {
+        println!("{}", request);
         unreachable!()
     }
 }
