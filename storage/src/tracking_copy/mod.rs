@@ -593,6 +593,9 @@ where
                                     .into_not_found_result("Failed to parse CLValue as String"))
                             }
                         },
+                        None if path.is_empty() => {
+                            return Ok(TrackingCopyQueryResult::Success { value, proofs })
+                        }
                         None => return Ok(query.into_not_found_result("No visited names")),
                     }
                 }

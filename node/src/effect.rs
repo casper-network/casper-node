@@ -1226,6 +1226,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_latest_switch_block_header_from_storage(self) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLatestSwitchBlockHeader { responder },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
         self,
         era_id: EraId,
