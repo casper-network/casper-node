@@ -380,7 +380,7 @@ where
             .collect();
 
         let mut chosen: Vec<NodeId> = match gossip_target {
-            GossipTarget::Mixed(era_id) => {
+            GossipTarget::Mixed(era_id) if self.config.use_mixed_gossip => {
                 if let Some(known_era_validators) = self.validator_matrix.era_validators(era_id) {
                     // We have the validators for the given era by consensus key, map to node ID.
                     let connected_era_validators: HashSet<NodeId> = known_era_validators
@@ -423,6 +423,10 @@ where
                     // Fall through, keeping `chosen` empty.
                     Vec::new()
                 }
+            }
+            GossipTarget::Mixed(_) => {
+                // Mixed mode gossip is disabled.
+                Vec::new()
             }
             GossipTarget::All => {
                 // Simply fall through, since `GossipTarget::All` is also our fallback mode.
