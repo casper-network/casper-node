@@ -413,7 +413,13 @@ where
                         .cloned()
                         .collect()
                 } else {
-                    // TODO: warn! about failing to select
+                    rate_limited!(
+                        ERA_NOT_READY,
+                        5,
+                        Duration::from_secs(10),
+                        |dropped| warn!(%gossip_target, dropped, "failed to select mixed target for era gossip")
+                    );
+
                     // Fall through, keeping `chosen` empty.
                     Vec::new()
                 }
