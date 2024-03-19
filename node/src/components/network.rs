@@ -425,7 +425,7 @@ where
                 }
             }
             GossipTarget::Mixed(_) => {
-                // Mixed mode gossip is disabled.
+                // Mixed mode gossip is disabled through config.
                 Vec::new()
             }
             GossipTarget::All => {
