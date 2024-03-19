@@ -296,7 +296,12 @@ function get_switch_block() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK=$(echo "$JSON_OUT" | jq '.result.block')
+        VERSIONED_BLOCK="$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
         local ERA_END="$(echo "$BLOCK" | jq '.header.era_end')"
         local ERA_ID="$(echo "$BLOCK" | jq '.header.era_id')"
         if [ "$ERA_END" = "null" ] || { [ -n "$ERA" ] && [ "$ERA_ID" != "$ERA" ]; }; then
@@ -417,11 +422,18 @@ function assert_node_proposed() {
 
     while true; do
         OUTPUT=$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc)")
-        PROPOSER=$(echo "$OUTPUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
+        VERSIONED_BLOCK="$(echo "$OUTPUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
+
+        PROPOSER=$(echo "$BLOCK" | jq -r '.body.proposer')
 
         if [ "$PROPOSER" == "$PUBLIC_KEY_HEX" ]; then
             log "Node-$NODE_ID created a block!"
-            log "$OUTPUT"
+            log "$VERSIONED_BLOCK"
             log "Proposer: $PROPOSER"
             break;
         else
@@ -455,7 +467,13 @@ function assert_no_proposal_walkback() {
 
     while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$COMPARE_NODE") -b "$CHECK_HASH")
-        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
+        VERSIONED_BLOCK="$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
+        PROPOSER=$(echo "$BLOCK" | jq -r '.body.proposer')
         if [ "$PROPOSER" = "$PUBLIC_KEY_HEX" ]; then
             log "ERROR: Node proposal found!"
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
@@ -464,7 +482,7 @@ function assert_no_proposal_walkback() {
         else
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
             unset CHECK_HASH
-            CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            CHECK_HASH=$(echo $BLOCK | jq -r '.header.parent_hash')
             # normalize
             CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
             log "Checking next hash: $CHECK_HASH"
