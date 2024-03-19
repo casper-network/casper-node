@@ -316,6 +316,38 @@ function get_switch_block() {
     fi
 }
 
+# Gets the header of the switch block of the given era from a V1 node without using casper-client.
+function get_switch_block_v1() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local BLOCK_HASH=${3}
+    local ERA=${4}
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
+            '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{}}')
+    else
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
+            '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{"block_identifier":{"Hash":"'$BLOCK_HASH'"}}}')
+    fi
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        local BLOCK=$(echo "$JSON_OUT" | jq '.result.block')
+        local ERA_END="$(echo "$BLOCK" | jq '.header.era_end')"
+        local ERA_ID="$(echo "$BLOCK" | jq '.header.era_id')"
+        if [ "$ERA_END" = "null" ] || { [ -n "$ERA" ] && [ "$ERA_ID" != "$ERA" ]; }; then
+            PARENT=$(echo "$BLOCK" | jq -r '.header.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            get_switch_block_v1 "$NODE_ID" "$WALKBACK" "$PARENT" "$ERA"
+        else
+            echo "$BLOCK"
+        fi
+    else
+        echo "null"
+    fi
+}
+
 function get_switch_block_equivocators() {
     local NODE_ID=${1}
     # Number of blocks to walkback before erroring out
