@@ -15,6 +15,22 @@ where
     registry: Registry,
 }
 
+/// A metric that has been deprecated, but is kept around for backwards API compatibility.
+#[derive(Debug)]
+pub(crate) struct DeprecatedMetric(RegisteredMetric<IntCounter>);
+
+impl DeprecatedMetric {
+    /// Creates a new deprecated metric.
+    #[inline(always)]
+    pub(crate) fn new<S1: Into<String>, S2: Into<String>>(
+        registry: Registry,
+        name: S1,
+        help: S2,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(DeprecatedMetric(registry.new_int_counter(name, help)?))
+    }
+}
+
 impl<T> RegisteredMetric<T>
 where
     T: Collector + 'static,
@@ -156,6 +172,13 @@ pub(crate) trait RegistryExt {
         name: S1,
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error>;
+
+    /// Creates a new deprecated metric, registered to this registry.
+    fn new_deprecated<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<DeprecatedMetric, prometheus::Error>;
 }
 
 impl RegistryExt for Registry {
@@ -200,5 +223,13 @@ impl RegistryExt for Registry {
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), IntGauge::new(name, help)?)
+    }
+    fn new_deprecated<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<DeprecatedMetric, prometheus::Error> {
+        let help = format!("(DEPRECATED) {}", help.into());
+        DeprecatedMetric::new(self.clone(), name, help)
     }
 }
