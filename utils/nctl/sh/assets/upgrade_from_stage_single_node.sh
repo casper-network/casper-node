@@ -233,6 +233,10 @@ function _setup_asset_node_configs()
     if [ "$(echo $PROTOCOL_VERSION | tr -d '_')" -ge "142" ]; then
         sed -i '/unit_hashes_folder/d' "$PATH_TO_CONFIG_FILE"
     fi
+
+    # Sidecar isn't managed by the casper node launcher, so we need to restart it manually
+    PROCESS_NAME=$(get_process_name_of_sidecar_in_group "$NODE_ID")
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" restart "$PROCESS_NAME" > /dev/null 2>&1
 }
 
 #######################################
