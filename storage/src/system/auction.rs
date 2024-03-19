@@ -94,6 +94,9 @@ pub trait Auction:
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
         {
+            if validator_bid.inactive() {
+                validator_bid.activate();
+            }
             validator_bid.increase_stake(amount)?;
             validator_bid.with_delegation_rate(delegation_rate);
             (*validator_bid.bonding_purse(), validator_bid)
