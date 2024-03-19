@@ -50,7 +50,7 @@ use casper_storage::block_store::{
 
 use std::{
     borrow::Cow,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -149,6 +149,8 @@ pub struct Storage {
     max_ttl: MaxTtl,
     /// The hash of the chain name.
     chain_name_hash: ChainNameDigest,
+    /// The utilization of blocks.
+    utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -285,6 +287,7 @@ impl Storage {
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
             max_ttl,
+            utilization_tracker: BTreeMap::new(),
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
         };
@@ -987,6 +990,17 @@ impl Storage {
                 let maybe_data: Option<DbRawBytesSpec> = txn.read((record_id, key))?;
                 responder.respond(maybe_data).ignore()
             }
+            StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                transaction_count,
+                responder,
+            } => {
+                let utilization =
+                    self.get_block_utilization_score(era_id, block_height, transaction_count);
+
+                responder.respond(utilization).ignore()
+            }
         })
     }
 
@@ -1035,6 +1049,8 @@ impl Storage {
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
+        let transaction_hash_count = block.transaction_count();
+        let era_id = block.era_id();
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1044,6 +1060,21 @@ impl Storage {
             exec_results: execution_results,
         })?;
         txn.commit()?;
+
+        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
+            block_score.insert(block.height(), transaction_hash_count);
+        };
+
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(block_score) => {
+                block_score.insert(block.height(), transaction_hash_count);
+            }
+            None => {
+                let mut block_score = BTreeMap::new();
+                block_score.insert(block.height(), transaction_hash_count);
+                self.utilization_tracker.insert(era_id, block_score);
+            }
+        }
 
         Ok(true)
     }
@@ -1239,7 +1270,7 @@ impl Storage {
     }
 
     /// Retrieves the highest complete block header from storage, if one exists. May return an
-    /// LMDB error.       
+    /// LMDB error.
     fn get_highest_complete_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
@@ -1924,6 +1955,38 @@ impl Storage {
         }
         Ok(Some(ret))
     }
+
+    fn get_block_utilization_score(
+        &mut self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)> {
+        let ret = match self.utilization_tracker.get_mut(&era_id) {
+            Some(utilization) => {
+                utilization.entry(block_height).or_insert(transaction_count);
+
+                let transaction_count = utilization.values().into_iter().sum();
+                let block_count = utilization.keys().len() as u64;
+
+                Some((transaction_count, block_count))
+            }
+            None => {
+                let mut utilization = BTreeMap::new();
+                utilization.insert(block_height, transaction_count);
+
+                self.utilization_tracker.insert(era_id, utilization);
+
+                let block_count = 1u64;
+                Some((transaction_count, block_count))
+            }
+        };
+
+        self.utilization_tracker
+            .retain(|key_era_id, _| key_era_id.value() + 2 >= era_id.value());
+
+        ret
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -2233,5 +2296,16 @@ impl Storage {
             block_height: block_hash_and_height.block_height,
             execution_result,
         })
+    }
+
+    pub(crate) fn get_utilization_for_era(&self, era_id: EraId) -> Option<u64> {
+        let era_utilization = match self.utilization_tracker.get(&era_id) {
+            Some(utilization) => utilization,
+            None => return None,
+        };
+
+        let total_utilization: u64 = era_utilization.values().sum();
+
+        Some(total_utilization)
     }
 }

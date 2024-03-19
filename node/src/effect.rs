@@ -1051,6 +1051,21 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn announce_new_era_gas_price(self, era_id: EraId, next_era_gas_price: u8)
+    where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::NextEraGasPrice {
+                    era_id,
+                    next_era_gas_price,
+                },
+                QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
     /// Begins gossiping an item.
     pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source, target: GossipTarget)
     where
@@ -1129,6 +1144,27 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlock {
                 block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_utilization(
+        self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                transaction_count,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1526,6 +1562,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_current_gas_price(self, era_id: EraId) -> Option<u8>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraGasPrice { era_id, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     pub(crate) async fn put_transaction_to_storage(self, transaction: Transaction) -> bool
     where
         REv: From<StorageRequest>,
@@ -1769,13 +1816,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which transactions are to be proposed.
-    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
+    pub(crate) async fn request_appendable_block(
+        self,
+        timestamp: Timestamp,
+        era_id: EraId,
+    ) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
     {
         self.make_request(
             |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
+                era_id,
                 responder,
             },
             QueueKind::Consensus,

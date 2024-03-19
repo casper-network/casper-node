@@ -53,6 +53,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         [23; Digest::LENGTH],
     )))];
     let rewarded_signatures = RewardedSignatures::default();
+    let current_gas_price = 1u8;
     BlockV2::new(
         parent_hash,
         parent_seed,
@@ -69,6 +70,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         installer_upgrader_hashes,
         other_hashes,
         rewarded_signatures,
+        current_gas_price,
     )
 });
 
@@ -107,6 +109,7 @@ impl BlockV2 {
         install_upgrade: Vec<TransactionHash>,
         standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
+        current_gas_price: u8,
     ) -> Self {
         let body = BlockBodyV2::new(
             proposer,
@@ -129,6 +132,7 @@ impl BlockV2 {
             era_id,
             height,
             protocol_version,
+            current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
             OnceCell::new(),
         );

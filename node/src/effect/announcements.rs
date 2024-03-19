@@ -375,6 +375,10 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The validators for the eras after the `era_that_is_ending` era.
         upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     },
+    NextEraGasPrice {
+        era_id: EraId,
+        next_era_gas_price: u8,
+    },
 }
 
 impl Display for ContractRuntimeAnnouncement {
@@ -390,6 +394,16 @@ impl Display for ContractRuntimeAnnouncement {
                     f,
                     "upcoming era validators after current {}.",
                     era_that_is_ending,
+                )
+            }
+            ContractRuntimeAnnouncement::NextEraGasPrice {
+                era_id,
+                next_era_gas_price,
+            } => {
+                write!(
+                    f,
+                    "Calculated gas price {} for era {}",
+                    next_era_gas_price, era_id
                 )
             }
         }
