@@ -320,10 +320,10 @@ function get_switch_block_v1() {
     local ERA=${4}
 
     if [ -z "$BLOCK_HASH" ]; then
-        JSON_OUT=$(curl $(get_node_address_rpc "$NODE_ID")/rpc -s -H "Content-Type: application/json" -d \
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
             '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{}}')
     else
-        JSON_OUT=$(curl $(get_node_address_rpc "$NODE_ID")/rpc -s -H "Content-Type: application/json" -d \
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
             '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{"block_identifier":{"Hash":"'$BLOCK_HASH'"}}}')
     fi
 
