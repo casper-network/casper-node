@@ -36,7 +36,7 @@ const DEFAULT_BUBBLE_TIMEOUTS: bool = true;
 const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
 
 /// Default value for validator broadcast.
-const DEFAULT_USE_VALIDATOR_BROADCAST: bool = false;
+const DEFAULT_USE_VALIDATOR_BROADCAST: bool = true;
 
 impl Default for Config {
     fn default() -> Self {

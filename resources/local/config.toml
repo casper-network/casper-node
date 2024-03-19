@@ -228,7 +228,7 @@ bubble_timeouts = true
 error_timeout = '10 seconds'
 
 # Whether to restrict broadcasts of values most likely only relevant for validators to only those.
-use_validator_broadcast = false
+use_validator_broadcast = true
 
 # Identity of a node
 #
