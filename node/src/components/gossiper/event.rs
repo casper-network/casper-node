@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 
 use derive_more::From;
 use serde::Serialize;
@@ -29,7 +26,7 @@ pub(crate) enum Event<T: GossipItem> {
     GossipedTo {
         item_id: T::Id,
         requested_count: usize,
-        peers: HashSet<NodeId>,
+        peers: Vec<NodeId>,
     },
     /// The timeout for waiting for a gossip response has elapsed and we should check the response
     /// arrived.

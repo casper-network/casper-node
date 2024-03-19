@@ -365,7 +365,7 @@ where
         gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
-    ) -> HashSet<NodeId> {
+    ) -> Vec<NodeId> {
         let Some(ref conman) = self.conman else {
             error!("should never attempt to gossip on uninitialized component");
             return Default::default();
@@ -451,8 +451,7 @@ where
             self.send_message(&state, peer_id, channel, payload.clone(), None);
         }
 
-        // TODO: We should actually return just the Vec instead.
-        chosen.into_iter().collect()
+        chosen
     }
 
     /// Queues a message to be sent to a specific node.

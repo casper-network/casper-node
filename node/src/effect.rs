@@ -772,7 +772,7 @@ impl<REv> EffectBuilder<REv> {
         gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
-    ) -> HashSet<NodeId>
+    ) -> Vec<NodeId>
     where
         REv: From<NetworkRequest<P>>,
         P: Send,
