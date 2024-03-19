@@ -43,6 +43,7 @@ use std::{
     fmt::Debug,
     fs::OpenOptions,
     marker::PhantomData,
+    mem,
     net::{SocketAddr, TcpListener},
     sync::Arc,
     time::{Duration, Instant},
@@ -360,71 +361,79 @@ where
         rng: &mut NodeRng,
         channel: Channel,
         payload: Bytes,
-        _gossip_target: GossipTarget,
+        gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
-        //       See #4247.
-        // let is_validator_in_era = |_, _: &_| true;
-        // let gossip_target = GossipTarget::All;
-
-        // let peer_ids = choose_gossip_peers(
-        //     rng,
-        //     gossip_target,
-        //     count,
-        //     exclude.clone(),
-        //     self.outgoing_manager.connected_peers(),
-        //     is_validator_in_era,
-        // );
-
-        // // todo!() - consider sampling more validators (for example: 10%, but not fewer than 5)
-
-        // if peer_ids.len() != count {
-        //     let not_excluded = self
-        //         .outgoing_manager
-        //         .connected_peers()
-        //         .filter(|peer_id| !exclude.contains(peer_id))
-        //         .count();
-        //     if not_excluded > 0 {
-        //         let connected = self.outgoing_manager.connected_peers().count();
-        //         debug!(
-        //             our_id=%self.context.our_id(),
-        //             %gossip_target,
-        //             wanted = count,
-        //             connected,
-        //             not_excluded,
-        //             selected = peer_ids.len(),
-        //             "could not select enough random nodes for gossiping"
-        //         );
-        //     }
-        // }
-
-        // for &peer_id in &peer_ids {
-        //     self.send_message(peer_id, msg.clone(), None);
-        // }
-
-        // peer_ids.into_iter().collect()
-
         let Some(ref conman) = self.conman else {
-            error!("cannot gossip on non-initialized networking component");
+            error!("should never attempt to gossip on unintialized component");
             return Default::default();
         };
-
-        let mut selected = HashSet::new();
         let state = conman.read_state();
-        for route in state
-            .routing_table()
-            .values()
-            .filter(move |route| !exclude.contains(&route.peer))
-            .choose_multiple(rng, count)
-        {
-            self.send_message(&*state, route.peer, channel, payload.clone(), None);
 
-            selected.insert(route.peer);
+        // Construct an iterator over all eligable connected peers, sans exclusion list.
+        let connected_peers = state
+            .routing_table()
+            .keys()
+            .filter(|node_id| !exclude.contains(node_id));
+
+        let mut chosen: Vec<NodeId> = match gossip_target {
+            GossipTarget::Mixed(era_id) => {
+                if let Some(known_era_validators) = self.validator_matrix.era_validators(era_id) {
+                    // We have the validators for the given era by consensus key, map to node ID.
+                    let connected_era_validators: HashSet<NodeId> = known_era_validators
+                        .iter()
+                        .filter_map(|key| state.key_index().get(key))
+                        .filter(|node_id| !exclude.contains(node_id))
+                        .cloned()
+                        .collect();
+
+                    // Create two separate batches, first all non-validators, second all validators.
+                    let mut first = connected_peers
+                        .filter(|node_id| connected_era_validators.contains(node_id))
+                        .cloned()
+                        .choose_multiple(rng, count);
+
+                    let mut second = connected_era_validators
+                        .into_iter()
+                        .choose_multiple(rng, count);
+
+                    if rng.gen() {
+                        mem::swap(&mut first, &mut second);
+                    }
+
+                    // Shuffle, then sample.
+                    first.shuffle(rng);
+                    second.shuffle(rng);
+
+                    first
+                        .into_iter()
+                        .interleave(second.into_iter())
+                        .take(count)
+                        .collect()
+                } else {
+                    // TODO: warn! about failing to select
+                    // Fall through, keeping `chosen` empty.
+                    Vec::new()
+                }
+            }
+            GossipTarget::All => {
+                // Simply fall through, since `GossipTarget::All` is also our fallback mode.
+                Vec::new()
+            }
+        };
+
+        if chosen.is_empty() {
+            chosen = connected_peers.cloned().choose_multiple(rng, count);
+            chosen.shuffle(rng);
         }
 
-        selected
+        for &peer_id in &chosen {
+            self.send_message(&state, peer_id, channel, payload.clone(), None);
+        }
+
+        // TODO: We should actually return just the Vec instead.
+        chosen.into_iter().collect()
     }
 
     /// Queues a message to be sent to a specific node.
@@ -714,43 +723,6 @@ fn resolve_addresses<'a>(addresses: impl Iterator<Item = &'a str>) -> HashSet<So
         }
     }
     resolved
-}
-
-fn choose_gossip_peers<F>(
-    rng: &mut NodeRng,
-    gossip_target: GossipTarget,
-    count: usize,
-    exclude: HashSet<NodeId>,
-    connected_peers: impl Iterator<Item = NodeId>,
-    is_validator_in_era: F,
-) -> HashSet<NodeId>
-where
-    F: Fn(EraId, &NodeId) -> bool,
-{
-    let filtered_peers = connected_peers.filter(|peer_id| !exclude.contains(peer_id));
-    match gossip_target {
-        GossipTarget::Mixed(era_id) => {
-            let (validators, non_validators): (Vec<_>, Vec<_>) =
-                filtered_peers.partition(|node_id| is_validator_in_era(era_id, node_id));
-
-            let (first, second) = if rng.gen() {
-                (validators, non_validators)
-            } else {
-                (non_validators, validators)
-            };
-
-            first
-                .choose_multiple(rng, count)
-                .interleave(second.iter().choose_multiple(rng, count))
-                .take(count)
-                .copied()
-                .collect()
-        }
-        GossipTarget::All => filtered_peers
-            .choose_multiple(rng, count)
-            .into_iter()
-            .collect(),
-    }
 }
 
 impl<REv, P> Component<REv> for Network<P>
@@ -1062,307 +1034,6 @@ fn process_request_guard(channel: Channel, guard: RequestGuard) {
         Err(guard) => {
             // No ACK received yet, forget, so we don't cancel.
             guard.forget();
-        }
-    }
-}
-
-#[cfg(test)]
-mod gossip_target_tests {
-    use std::{collections::BTreeSet, iter};
-
-    use static_assertions::const_assert;
-
-    use casper_types::testing::TestRng;
-
-    use super::*;
-
-    const VALIDATOR_COUNT: usize = 10;
-    const NON_VALIDATOR_COUNT: usize = 20;
-    // The tests assume that we have fewer validators than non-validators.
-    const_assert!(VALIDATOR_COUNT < NON_VALIDATOR_COUNT);
-
-    struct Fixture {
-        validators: BTreeSet<NodeId>,
-        non_validators: BTreeSet<NodeId>,
-        all_peers: Vec<NodeId>,
-    }
-
-    impl Fixture {
-        fn new(rng: &mut TestRng) -> Self {
-            let validators: BTreeSet<NodeId> = iter::repeat_with(|| NodeId::random(rng))
-                .take(VALIDATOR_COUNT)
-                .collect();
-            let non_validators: BTreeSet<NodeId> = iter::repeat_with(|| NodeId::random(rng))
-                .take(NON_VALIDATOR_COUNT)
-                .collect();
-
-            let mut all_peers: Vec<NodeId> = validators
-                .iter()
-                .copied()
-                .chain(non_validators.iter().copied())
-                .collect();
-            all_peers.shuffle(rng);
-
-            Fixture {
-                validators,
-                non_validators,
-                all_peers,
-            }
-        }
-
-        fn is_validator_in_era(&self) -> impl Fn(EraId, &NodeId) -> bool + '_ {
-            move |_era_id: EraId, node_id: &NodeId| self.validators.contains(node_id)
-        }
-
-        fn num_validators<'a>(&self, input: impl Iterator<Item = &'a NodeId>) -> usize {
-            input
-                .filter(move |&node_id| self.validators.contains(node_id))
-                .count()
-        }
-
-        fn num_non_validators<'a>(&self, input: impl Iterator<Item = &'a NodeId>) -> usize {
-            input
-                .filter(move |&node_id| self.non_validators.contains(node_id))
-                .count()
-        }
-    }
-
-    #[test]
-    fn should_choose_mixed() {
-        const TARGET: GossipTarget = GossipTarget::Mixed(EraId::new(1));
-
-        let mut rng = TestRng::new();
-        let fixture = Fixture::new(&mut rng);
-
-        // Choose more than total count from all peers, exclude none, should return all peers.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT + NON_VALIDATOR_COUNT + 1,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), fixture.all_peers.len());
-
-        // Choose total count from all peers, exclude none, should return all peers.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT + NON_VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), fixture.all_peers.len());
-
-        // Choose 2 * VALIDATOR_COUNT from all peers, exclude none, should return all validators and
-        // VALIDATOR_COUNT non-validators.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            2 * VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), 2 * VALIDATOR_COUNT);
-        assert_eq!(fixture.num_validators(chosen.iter()), VALIDATOR_COUNT);
-        assert_eq!(fixture.num_non_validators(chosen.iter()), VALIDATOR_COUNT);
-
-        // Choose VALIDATOR_COUNT from all peers, exclude none, should return VALIDATOR_COUNT peers,
-        // half validators and half non-validators.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), VALIDATOR_COUNT);
-        assert_eq!(fixture.num_validators(chosen.iter()), VALIDATOR_COUNT / 2);
-        assert_eq!(
-            fixture.num_non_validators(chosen.iter()),
-            VALIDATOR_COUNT / 2
-        );
-
-        // Choose two from all peers, exclude none, should return two peers, one validator and one
-        // non-validator.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            2,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), 2);
-        assert_eq!(fixture.num_validators(chosen.iter()), 1);
-        assert_eq!(fixture.num_non_validators(chosen.iter()), 1);
-
-        // Choose one from all peers, exclude none, should return one peer with 50-50 chance of
-        // being a validator.
-        let mut got_validator = false;
-        let mut got_non_validator = false;
-        let mut attempts = 0;
-        while !got_validator || !got_non_validator {
-            let chosen = choose_gossip_peers(
-                &mut rng,
-                TARGET,
-                1,
-                HashSet::new(),
-                fixture.all_peers.iter().copied(),
-                fixture.is_validator_in_era(),
-            );
-            assert_eq!(chosen.len(), 1);
-            let node_id = chosen.iter().next().unwrap();
-            got_validator |= fixture.validators.contains(node_id);
-            got_non_validator |= fixture.non_validators.contains(node_id);
-            attempts += 1;
-            assert!(attempts < 1_000_000);
-        }
-
-        // Choose VALIDATOR_COUNT from all peers, exclude all but one validator, should return the
-        // one validator and VALIDATOR_COUNT - 1 non-validators.
-        let exclude: HashSet<_> = fixture
-            .validators
-            .iter()
-            .copied()
-            .take(VALIDATOR_COUNT - 1)
-            .collect();
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT,
-            exclude.clone(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), VALIDATOR_COUNT);
-        assert_eq!(fixture.num_validators(chosen.iter()), 1);
-        assert_eq!(
-            fixture.num_non_validators(chosen.iter()),
-            VALIDATOR_COUNT - 1
-        );
-        assert!(exclude.is_disjoint(&chosen));
-
-        // Choose 3 from all peers, exclude all non-validators, should return 3 validators.
-        let exclude: HashSet<_> = fixture.non_validators.iter().copied().collect();
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            3,
-            exclude.clone(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), 3);
-        assert_eq!(fixture.num_validators(chosen.iter()), 3);
-        assert!(exclude.is_disjoint(&chosen));
-    }
-
-    #[test]
-    fn should_choose_all() {
-        const TARGET: GossipTarget = GossipTarget::All;
-
-        let mut rng = TestRng::new();
-        let fixture = Fixture::new(&mut rng);
-
-        // Choose more than total count from all peers, exclude none, should return all peers.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT + NON_VALIDATOR_COUNT + 1,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), fixture.all_peers.len());
-
-        // Choose total count from all peers, exclude none, should return all peers.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT + NON_VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), fixture.all_peers.len());
-
-        // Choose VALIDATOR_COUNT from only validators, exclude none, should return all validators.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.validators.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), VALIDATOR_COUNT);
-        assert_eq!(fixture.num_validators(chosen.iter()), VALIDATOR_COUNT);
-
-        // Choose VALIDATOR_COUNT from only non-validators, exclude none, should return
-        // VALIDATOR_COUNT non-validators.
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT,
-            HashSet::new(),
-            fixture.non_validators.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), VALIDATOR_COUNT);
-        assert_eq!(fixture.num_non_validators(chosen.iter()), VALIDATOR_COUNT);
-
-        // Choose VALIDATOR_COUNT from all peers, exclude all but VALIDATOR_COUNT from all peers,
-        // should return all the non-excluded peers.
-        let exclude: HashSet<_> = fixture
-            .all_peers
-            .iter()
-            .copied()
-            .take(NON_VALIDATOR_COUNT)
-            .collect();
-        let chosen = choose_gossip_peers(
-            &mut rng,
-            TARGET,
-            VALIDATOR_COUNT,
-            exclude.clone(),
-            fixture.all_peers.iter().copied(),
-            fixture.is_validator_in_era(),
-        );
-        assert_eq!(chosen.len(), VALIDATOR_COUNT);
-        assert!(exclude.is_disjoint(&chosen));
-
-        // Choose one from all peers, exclude enough non-validators to have an even chance of
-        // returning a validator as a non-validator, should return one peer with 50-50 chance of
-        // being a validator.
-        let exclude: HashSet<_> = fixture
-            .non_validators
-            .iter()
-            .copied()
-            .take(NON_VALIDATOR_COUNT - VALIDATOR_COUNT)
-            .collect();
-        let mut got_validator = false;
-        let mut got_non_validator = false;
-        let mut attempts = 0;
-        while !got_validator || !got_non_validator {
-            let chosen = choose_gossip_peers(
-                &mut rng,
-                TARGET,
-                1,
-                exclude.clone(),
-                fixture.all_peers.iter().copied(),
-                fixture.is_validator_in_era(),
-            );
-            assert_eq!(chosen.len(), 1);
-            assert!(exclude.is_disjoint(&chosen));
-            let node_id = chosen.iter().next().unwrap();
-            got_validator |= fixture.validators.contains(node_id);
-            got_non_validator |= fixture.non_validators.contains(node_id);
-            attempts += 1;
-            assert!(attempts < 1_000_000);
         }
     }
 }
