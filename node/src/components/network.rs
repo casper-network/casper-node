@@ -428,6 +428,15 @@ where
             chosen.extend(connected_peers.choose_multiple(rng, count).cloned());
         }
 
+        if chosen.len() != count {
+            rate_limited!(
+                GOSSIP_SELECTION_FELL_SHORT,
+                5,
+                Duration::from_secs(60),
+                |dropped| warn!(%gossip_target, wanted=count, got=chosen.len(), dropped, "gossip selection fell short")
+            );
+        }
+
         for &peer_id in &chosen {
             self.send_message(&state, peer_id, channel, payload.clone(), None);
         }
