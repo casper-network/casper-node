@@ -956,28 +956,13 @@ where
         + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
+    #[inline(always)]
     fn handle_validators(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
     ) -> Effects<Self::Event> {
-        // If we receive an updated set of validators, recalculate validator status for every
-        // existing connection.
-
-        let _active_validators = self.validator_matrix.active_or_upcoming_validators();
-
-        // Update the validator status for every connection.
-        // for (public_key, status) in self.incoming_validator_status.iter_mut() {
-        //     // If there is only a `Weak` ref, we lost the connection to the validator, but the
-        //     // disconnection has not reached us yet.
-        //     if let Some(arc) = status.upgrade() {
-        //         arc.store(
-        //             active_validators.contains(public_key),
-        //             std::sync::atomic::Ordering::Relaxed,
-        //         )
-        //     }
-        // }
-        // TODO: Restore functionality.
+        // TODO: Not used at the moment, consider removing this in the future.
 
         Effects::default()
     }
