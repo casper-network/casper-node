@@ -193,7 +193,7 @@ impl WasmV1Request {
     /// Creates a new request from a deploy item for use as custom payment.
     //
     // TODO - deprecate?
-    pub fn new_payment_from_deploy_item(
+    pub fn new_custom_payment_from_deploy_item(
         state_hash: Digest,
         block_time: BlockTime,
         gas_limit: Gas,
@@ -302,6 +302,14 @@ impl WasmV1Result {
             consumed: Gas::zero(),
             error: Some(EngineError::InvalidExecutableItem(error)),
         }
+    }
+
+    /// Returns `true` if this is a precondition failure.
+    ///
+    /// Precondition variant is further described as an execution failure which does not have any
+    /// effects, and has a gas cost of 0.
+    pub fn has_precondition_failure(&self) -> bool {
+        self.error.is_some() && self.consumed == Gas::zero() && self.effects.is_empty()
     }
 
     /// From an execution result.
@@ -515,7 +523,8 @@ impl TryFrom<TransactionV1> for PaymentInfo {
     fn try_from(v1_txn: TransactionV1) -> Result<Self, Self::Error> {
         let (hash, header, body, _approvals) = v1_txn.destructure();
         let (_args, target, _entry_point, _scheduling) = body.destructure();
-        // TODO - check this is using the correct value (i.e. we don't need to account for gas_price here).
+        // TODO - check this is using the correct value (i.e. we don't need to account for gas_price
+        // here).
         let payment_amount = match header.pricing_mode() {
             PricingMode::Classic {
                 payment_amount,

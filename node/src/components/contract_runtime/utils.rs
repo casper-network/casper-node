@@ -20,10 +20,10 @@ use casper_storage::{
 };
 use casper_types::{Chainspec, EraId, Key};
 use once_cell::sync::Lazy;
-use std::fmt::Debug;
 use std::{
     cmp,
     collections::{BTreeMap, HashMap},
+    fmt::Debug,
     ops::Range,
     sync::{Arc, Mutex},
 };

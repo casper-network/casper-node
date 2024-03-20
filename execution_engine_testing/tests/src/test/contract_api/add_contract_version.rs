@@ -1,20 +1,15 @@
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_SECRET_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_SECRET_KEY, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{Error as StateError, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_execution_engine::{engine_state::Error as StateError, execution::ExecError};
 use casper_types::{
-    ApiError, BlockTime, Digest, RuntimeArgs, Transaction, TransactionSessionKind,
-    TransactionV1Builder,
+    ApiError, BlockTime, RuntimeArgs, Transaction, TransactionSessionKind, TransactionV1Builder,
 };
 
 const CONTRACT: &str = "do_nothing_stored.wasm";
 const ENTRY_POINT: &str = "call";
 const CHAIN_NAME: &str = "a";
-const STATE_HASH: Digest = Digest::from_raw([1; 32]);
 const BLOCK_TIME: BlockTime = BlockTime::new(10);
 
 #[ignore]
@@ -42,13 +37,9 @@ fn try_add_contract_version(kind: TransactionSessionKind, should_succeed: bool) 
         .build()
         .unwrap();
 
-    let txn_request = ExecuteRequest::new(
-        STATE_HASH,
-        BLOCK_TIME,
-        Transaction::from(txn),
-        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-    )
-    .unwrap();
+    let txn_request = ExecuteRequestBuilder::from_transaction(Transaction::from(txn))
+        .with_block_time(BLOCK_TIME)
+        .build();
 
     builder.exec(txn_request);
 

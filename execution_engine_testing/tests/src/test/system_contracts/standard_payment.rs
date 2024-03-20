@@ -133,7 +133,7 @@ fn should_forward_payment_execution_runtime_error() {
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::User(100))));
 }
 
@@ -198,12 +198,12 @@ fn should_forward_payment_execution_gas_limit_error() {
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        exec_result.gas(),
+        exec_result.consumed(),
         payment_gas_limit,
         "cost should equal gas limit"
     );
@@ -242,12 +242,12 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        exec_result.gas(),
+        exec_result.consumed(),
         session_gas_limit,
         "cost should equal gas limit"
     );
@@ -292,7 +292,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let gas = exec_result.gas();
+    let gas = exec_result.consumed();
     let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes.value() + modified_balance;
@@ -302,12 +302,12 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        exec_result.gas(),
+        exec_result.consumed(),
         session_gas_limit,
         "cost should equal gas limit"
     );

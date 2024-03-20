@@ -843,7 +843,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .get_last_exec_result()
         .expect("failed to get exec results");
 
-    let error = exec_result.as_error().unwrap();
+    let error = exec_result.error().unwrap();
     assert!(
         matches!(
             error,

@@ -1,13 +1,10 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    utils, DeployItemBuilder, ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    engine_state::{self, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::Bytes,

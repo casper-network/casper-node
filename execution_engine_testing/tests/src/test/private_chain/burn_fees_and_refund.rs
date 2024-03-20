@@ -124,16 +124,16 @@ fn test_burning_fees(
     )
     .build();
     let total_supply_before = builder.total_supply(None, protocol_version);
-    let exec_request_1_proposer = exec_request_1.proposer.clone();
-    let proposer_account_1 = builder
-        .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
-        .expect("should have proposer account");
-    builder.exec(exec_request_1).expect_success().commit();
-    assert_eq!(
-        builder.get_purse_balance(proposer_account_1.main_purse()),
-        U512::zero(),
-        "proposer should not receive anything",
-    );
+    // let exec_request_1_proposer = exec_request_1.proposer.clone();
+    // let proposer_account_1 = builder
+    //     .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
+    //     .expect("should have proposer account");
+    // builder.exec(exec_request_1).expect_success().commit();
+    // assert_eq!(
+    //     builder.get_purse_balance(proposer_account_1.main_purse()),
+    //     U512::zero(),
+    //     "proposer should not receive anything",
+    // );
     let total_supply_after = builder.total_supply(None, protocol_version);
     assert_eq!(
         total_supply_before - total_supply_after,

@@ -1,10 +1,9 @@
 use rand::Rng;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    TransferRequestBuilder, DEFAULT_PAYMENT,
+    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequest, ExecuteRequestBuilder,
+    LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
 };
-use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_storage::data_access_layer::TransferRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,

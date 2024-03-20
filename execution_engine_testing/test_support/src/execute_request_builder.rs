@@ -5,14 +5,22 @@ use casper_execution_engine::engine_state::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, AddressableEntityHash, BlockTime, Digest, EntityVersion,
-    Gas, InitiatorAddr, PackageHash, Phase, RuntimeArgs, TransactionHash, TransactionV1Hash,
-    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
+    Gas, InitiatorAddr, PackageHash, Phase, RuntimeArgs, Transaction, TransactionHash,
+    TransactionV1Hash, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
 };
 
 use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
 
-/// Builds a [`WasmV1Request`] for use as session code, and an optional custom payment
-/// `WasmV1Request`.
+/// A request comprising a [`WasmV1Request`] for use as session code, and an optional custom
+/// payment `WasmV1Request`.
+pub struct ExecuteRequest {
+    /// The session request.
+    pub session: WasmV1Request,
+    /// The optional custom payment request.
+    pub custom_payment: Option<WasmV1Request>,
+}
+
+/// Builds an [`ExecuteRequest`].
 #[derive(Debug)]
 pub struct ExecuteRequestBuilder {
     state_hash: Digest,
@@ -38,6 +46,53 @@ impl ExecuteRequestBuilder {
     /// The default value used for `WasmV1Request::entry_point`.
     pub const DEFAULT_ENTRY_POINT: &'static str = "call";
 
+    /// Converts a `Transaction` into an `ExecuteRequestBuilder`.
+    pub fn from_transaction(txn: Transaction) -> Self {
+        let authorization_keys = txn.authorization_keys();
+        let session = WasmV1Request::new_session(
+            Self::DEFAULT_STATE_HASH,
+            BlockTime::new(DEFAULT_BLOCK_TIME),
+            Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+            txn.clone(),
+        )
+        .unwrap();
+
+        let payment: Option<ExecutableItem>;
+        let payment_gas_limit: Gas;
+        let payment_args: RuntimeArgs;
+        if txn.is_standard_payment() {
+            payment = None;
+            payment_gas_limit = Gas::zero();
+            payment_args = RuntimeArgs::new();
+        } else {
+            let request = WasmV1Request::new_custom_payment(
+                Self::DEFAULT_STATE_HASH,
+                BlockTime::new(DEFAULT_BLOCK_TIME),
+                Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+                txn,
+            )
+            .unwrap();
+            payment = Some(request.executable_item);
+            payment_gas_limit = request.gas_limit;
+            payment_args = request.args;
+        }
+
+        ExecuteRequestBuilder {
+            state_hash: session.state_hash,
+            block_time: session.block_time,
+            transaction_hash: session.transaction_hash,
+            initiator_addr: session.initiator_addr,
+            payment,
+            payment_gas_limit,
+            payment_args,
+            session: session.executable_item,
+            session_gas_limit: session.gas_limit,
+            session_entry_point: session.entry_point,
+            session_args: session.args,
+            authorization_keys,
+        }
+    }
+
     /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
     pub fn from_deploy_item(deploy_item: DeployItem) -> Self {
         let authorization_keys = deploy_item.authorization_keys.clone();
@@ -57,7 +112,7 @@ impl ExecuteRequestBuilder {
             payment_gas_limit = Gas::zero();
             payment_args = RuntimeArgs::new();
         } else {
-            let request = WasmV1Request::new_payment_from_deploy_item(
+            let request = WasmV1Request::new_custom_payment_from_deploy_item(
                 Self::DEFAULT_STATE_HASH,
                 BlockTime::new(DEFAULT_BLOCK_TIME),
                 Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
@@ -195,8 +250,8 @@ impl ExecuteRequestBuilder {
     }
 
     /// Sets the block time of the [`WasmV1Request`].
-    pub fn with_block_time(mut self, block_time: u64) -> Self {
-        self.block_time = BlockTime::new(block_time);
+    pub fn with_block_time<T: Into<BlockTime>>(mut self, block_time: T) -> Self {
+        self.block_time = block_time.into();
         self
     }
 
@@ -208,7 +263,7 @@ impl ExecuteRequestBuilder {
 
     /// Consumes self and returns a session `WasmV1Request` and an optional custom payment
     /// `WasmV1Request`.
-    pub fn build(self) -> (WasmV1Request, Option<WasmV1Request>) {
+    pub fn build(self) -> ExecuteRequest {
         let ExecuteRequestBuilder {
             state_hash,
             block_time,
@@ -224,7 +279,7 @@ impl ExecuteRequestBuilder {
             authorization_keys,
         } = self;
 
-        let maybe_payment = payment.map(|executable_item| WasmV1Request {
+        let maybe_custom_payment = payment.map(|executable_item| WasmV1Request {
             state_hash,
             block_time,
             transaction_hash,
@@ -248,6 +303,9 @@ impl ExecuteRequestBuilder {
             authorization_keys,
         };
 
-        (session, maybe_payment)
+        ExecuteRequest {
+            session,
+            custom_payment: maybe_custom_payment,
+        }
     }
 }

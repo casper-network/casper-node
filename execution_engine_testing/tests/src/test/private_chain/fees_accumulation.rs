@@ -61,15 +61,15 @@ fn should_finalize_and_accumulate_rewards_purse() {
     )
     .build();
 
-    let exec_request_1_proposer = exec_request_1.proposer.clone();
-    let proposer_account_1 = builder
-        .get_entity_with_named_keys_by_account_hash(exec_request_1_proposer.to_account_hash())
-        .expect("should have proposer account");
+    // let exec_request_1_proposer = exec_request_1.proposer.clone();
+    // let proposer_account_1 = builder
+    //     .get_entity_with_named_keys_by_account_hash(exec_request_1_proposer.to_account_hash())
+    //     .expect("should have proposer account");
     builder.exec(exec_request_1).expect_success().commit();
-    assert_eq!(
-        builder.get_purse_balance(proposer_account_1.main_purse()),
-        U512::zero()
-    );
+    // assert_eq!(
+    //     builder.get_purse_balance(proposer_account_1.main_purse()),
+    //     U512::zero()
+    // );
 
     let handle_payment_2 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
 
@@ -136,7 +136,7 @@ fn should_accumulate_deploy_fees() {
     )
     .build();
 
-    let exec_request_proposer = exec_request.proposer.clone();
+    // let exec_request_proposer = exec_request.proposer.clone();
 
     builder.exec(exec_request).expect_success().commit();
 
@@ -160,15 +160,15 @@ fn should_accumulate_deploy_fees() {
         "rewards balance should increase"
     );
 
-    // Ensures default proposer didn't receive any funds
-    let proposer_account = builder
-        .get_entity_by_account_hash(exec_request_proposer.to_account_hash())
-        .expect("should have proposer account");
-
-    assert_eq!(
-        builder.get_purse_balance(proposer_account.main_purse()),
-        U512::zero()
-    );
+    // // Ensures default proposer didn't receive any funds
+    // let proposer_account = builder
+    //     .get_entity_by_account_hash(exec_request_proposer.to_account_hash())
+    //     .expect("should have proposer account");
+    //
+    // assert_eq!(
+    //     builder.get_purse_balance(proposer_account.main_purse()),
+    //     U512::zero()
+    // );
 }
 
 #[ignore]

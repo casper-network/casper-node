@@ -838,7 +838,7 @@ fn should_release_founder_stake() {
         let error = builder
             .get_last_exec_result()
             .expect("should have last exec result")
-            .as_error()
+            .error()
             .cloned()
             .expect("should have error");
         assert_matches!(
@@ -2356,7 +2356,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     let error = builder
         .get_last_exec_result()
         .expect("should have last exec result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -2426,7 +2426,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     let error = builder
         .get_last_exec_result()
         .expect("should have last exec result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -2553,7 +2553,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     let error = builder
         .get_last_exec_result()
         .expect("should have last exec result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -2615,7 +2615,7 @@ fn should_release_vfta_holder_stake() {
         let error = builder
             .get_last_exec_result()
             .expect("should have last exec result")
-            .as_error()
+            .error()
             .cloned()
             .expect("should have error");
 

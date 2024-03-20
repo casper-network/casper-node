@@ -7,7 +7,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::engine_state::{execution_result::ExecutionResult, Error};
+use casper_execution_engine::engine_state::{Error, WasmV1Result};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{bytesrepr::Bytes, GenesisAccount, GenesisConfig, GenesisConfigBuilder};
 
@@ -163,10 +163,10 @@ pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> GenesisReque
 /// # Panics
 /// * Panics if the result does not have a precondition failure.
 /// * Panics if result.as_error() is `None`.
-pub fn get_precondition_failure(exec_result: &ExecutionResult) -> &Error {
+pub fn get_precondition_failure(exec_result: &WasmV1Result) -> &Error {
     assert!(
         exec_result.has_precondition_failure(),
         "should be a precondition failure"
     );
-    exec_result.as_error().expect("should have an error")
+    exec_result.error().expect("should have an error")
 }

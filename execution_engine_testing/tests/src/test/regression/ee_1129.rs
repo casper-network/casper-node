@@ -93,7 +93,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -153,7 +153,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -199,7 +199,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -245,7 +245,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -289,7 +289,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -340,7 +340,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -389,7 +389,7 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
     assert!(
@@ -442,7 +442,7 @@ fn should_not_panic_when_calling_module_without_memory() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 

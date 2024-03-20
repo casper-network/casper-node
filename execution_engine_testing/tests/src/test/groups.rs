@@ -168,7 +168,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -231,7 +231,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -348,7 +348,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -535,7 +535,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -584,7 +584,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
     let exec_request_3 = {
@@ -657,7 +657,7 @@ fn should_not_call_uncallable_session_from_deploy() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
     let exec_request_3 = {
@@ -747,7 +747,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 

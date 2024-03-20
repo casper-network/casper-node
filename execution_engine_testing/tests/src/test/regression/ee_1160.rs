@@ -35,7 +35,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
 
     let last_result = builder.get_exec_result_owned(0).unwrap();
 
-    assert!(last_result.as_error().is_none(), "{:?}", last_result);
+    assert!(last_result.error().is_none(), "{:?}", last_result);
     assert!(!last_result.transfers().is_empty());
 
     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
@@ -88,7 +88,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
     //assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 
     assert!(
-        last_result.as_error().is_some(),
+        last_result.error().is_some(),
         "Expected error but last result is {:?}",
         last_result
     );
@@ -135,7 +135,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
     // assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 
     assert!(
-        last_result.as_error().is_some(),
+        last_result.error().is_some(),
         "Expected error but last result is {:?}",
         last_result
     );

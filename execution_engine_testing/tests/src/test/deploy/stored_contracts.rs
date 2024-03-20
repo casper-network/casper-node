@@ -60,7 +60,7 @@ fn install_custom_payment(
         .into_package_hash()
         .expect("should be a hash");
 
-    let exec_cost = builder.get_last_exec_result().unwrap().gas().value();
+    let exec_cost = builder.get_last_exec_result().unwrap().consumed().value();
 
     (default_account, package_hash, exec_cost)
 }

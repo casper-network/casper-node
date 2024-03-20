@@ -1625,7 +1625,8 @@
               "type": "object",
               "required": [
                 "gas_price",
-                "payment_amount"
+                "payment_amount",
+                "standard_payment"
               ],
               "properties": {
                 "payment_amount": {
@@ -1639,6 +1640,10 @@
                   "type": "integer",
                   "format": "uint64",
                   "minimum": 0.0
+                },
+                "standard_payment": {
+                  "description": "Standard payment.",
+                  "type": "boolean"
                 }
               },
               "additionalProperties": false

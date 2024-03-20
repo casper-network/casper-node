@@ -129,7 +129,7 @@ fn should_record_wasm_transfer() {
     )
     .build();
 
-    let txn_hash = transfer_request.transaction_hash;
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -196,7 +196,7 @@ fn should_record_wasm_transfer_with_id() {
     )
     .build();
 
-    let txn_hash = transfer_request.transaction_hash;
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -273,7 +273,7 @@ fn should_record_wasm_transfers() {
     )
     .build();
 
-    let txn_hash = transfer_request.transaction_hash;
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -415,7 +415,7 @@ fn should_record_wasm_transfers_with_subcall() {
     )
     .build();
 
-    let transfer_txn_hash = transfer_request.transaction_hash;
+    let transfer_txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(store_request).commit().expect_success();
     builder.exec(transfer_request).commit().expect_success();

@@ -33,7 +33,7 @@ fn should_run_ee_532_non_existent_account_regression_test() {
         "expected precondition failure"
     );
 
-    let message = deploy_result.as_error().map(|err| format!("{}", err));
+    let message = deploy_result.error().map(|err| format!("{}", err));
     assert_eq!(
         message,
         Some(format!(

@@ -1,10 +1,7 @@
 use num_traits::One;
 
-use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
-use casper_execution_engine::{
-    engine_state::{Error as CoreError, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_engine_test_support::{ExecuteRequest, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
+use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
     addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
     CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue,

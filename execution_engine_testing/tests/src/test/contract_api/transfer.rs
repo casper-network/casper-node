@@ -463,9 +463,9 @@ fn should_fail_when_insufficient_funds() {
     let exec_result = builder
         .get_exec_result_owned(2)
         .expect("should have exec response");
-    let exec_result = exec_result.as_error().expect("should have error");
-    let error = assert_matches!(exec_result, EngineError::Exec(ExecError::Revert(e)) => *e, "{:?}", exec_result);
-    assert_eq!(error, ApiError::from(mint::Error::InsufficientFunds));
+    let exec_result = exec_result.error().expect("should have error");
+    let error = assert_matches!(exec_result, EngineError::Exec(ExecError::Revert(e)) => e, "{:?}", exec_result);
+    assert_eq!(*error, ApiError::from(mint::Error::InsufficientFunds));
 }
 
 #[ignore]

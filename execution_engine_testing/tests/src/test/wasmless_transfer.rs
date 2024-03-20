@@ -509,9 +509,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         .get_last_exec_result()
         .expect("Expected to be called after run()");
 
-    assert!(result.is_failure(), "was expected to fail");
-
-    let error = result.as_error().expect("should have error");
+    let error = result.error().expect("should have error");
 
     let account_1_closing_balance = builder.get_purse_balance(account_1_purse);
 

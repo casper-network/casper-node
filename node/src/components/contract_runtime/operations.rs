@@ -24,7 +24,7 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, Phase, ProtocolVersion, PublicKey,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
     Transaction, TransactionCategory, U512,
 };
 
@@ -79,6 +79,11 @@ pub fn execute_finalized_block(
 
     let scratch_state = data_access_layer.get_scratch_global_state();
 
+    let txn_ids = executable_block
+        .transactions
+        .iter()
+        .map(Transaction::fetch_id)
+        .collect_vec();
     let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
@@ -137,7 +142,7 @@ pub fn execute_finalized_block(
                         WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
                     }
                 };
-                match artifacts.push_wasm_v1_result(txn_hash, txn_header, pay_result) {
+                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), pay_result) {
                     ExecutionArtifactOutcome::RootNotFound => {
                         return Err(BlockExecutionError::RootNotFound(state_root_hash))
                     }
@@ -148,7 +153,7 @@ pub fn execute_finalized_block(
                 // balance request should check the handle payment purse, not initiator's purse
                 BalanceIdentifier::Payment
             } else {
-                initiator_addr.into()
+                initiator_addr.clone().into()
             }
         };
 
@@ -159,101 +164,109 @@ pub fn execute_finalized_block(
             balance_handling,
         ));
 
-        let is_sufficient_balance = initial_balance_result.is_sufficient(cost.value());
-
-        match (txn.category(), is_sufficient_balance) {
-            (_, false) => {
-                debug!(%txn_hash, "skipping execution due to insufficient balance");
-            }
-            (TransactionCategory::Mint, _) => {
-                let transfer_result = scratch_state.transfer(TransferRequest::with_runtime_args(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    holds_epoch,
-                    protocol_version,
-                    txn_hash,
-                    initiator_addr,
-                    authorization_keys,
-                    runtime_args,
-                    cost,
-                ));
-                match artifacts.push_transfer_result(
-                    txn_hash,
-                    txn_header.clone(),
-                    transfer_result,
-                    cost,
-                ) {
-                    ExecutionArtifactOutcome::RootNotFound => {
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
+        if initial_balance_result.is_sufficient(cost.value()) {
+            match txn.category() {
+                TransactionCategory::Mint => {
+                    let transfer_result =
+                        scratch_state.transfer(TransferRequest::with_runtime_args(
+                            native_runtime_config.clone(),
+                            state_root_hash,
+                            holds_epoch,
+                            protocol_version,
+                            txn_hash,
+                            initiator_addr,
+                            authorization_keys,
+                            runtime_args,
+                            cost,
+                        ));
+                    match artifacts.push_transfer_result(
+                        txn_hash,
+                        txn_header.clone(),
+                        transfer_result,
+                        cost,
+                    ) {
+                        ExecutionArtifactOutcome::RootNotFound => {
+                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                        }
+                        ExecutionArtifactOutcome::Effects(transfer_effects) => {
+                            effects.append(transfer_effects.clone());
+                        }
                     }
-                    ExecutionArtifactOutcome::Effects(transfer_effects) => {
-                        effects.append(transfer_effects.clone());
+                }
+                TransactionCategory::Auction => {
+                    let auction_method = match AuctionMethod::from_parts(
+                        entry_point,
+                        &runtime_args,
+                        holds_epoch,
+                        chainspec,
+                    ) {
+                        Ok(auction_method) => auction_method,
+                        Err(_) => {
+                            artifacts.push_auction_method_failure(
+                                txn_hash,
+                                txn_header.clone(),
+                                cost,
+                            );
+                            continue;
+                        }
+                    };
+                    let bidding_result = scratch_state.bidding(BiddingRequest::new(
+                        native_runtime_config.clone(),
+                        state_root_hash,
+                        block_time,
+                        protocol_version,
+                        txn_hash,
+                        initiator_addr,
+                        authorization_keys,
+                        auction_method,
+                    ));
+                    match artifacts.push_bidding_result(
+                        txn_hash,
+                        txn_header.clone(),
+                        bidding_result,
+                        cost,
+                    ) {
+                        ExecutionArtifactOutcome::RootNotFound => {
+                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                        }
+                        ExecutionArtifactOutcome::Effects(bidding_effects) => {
+                            effects.append(bidding_effects.clone());
+                        }
+                    }
+                }
+                TransactionCategory::Standard | TransactionCategory::InstallUpgrade => {
+                    let wasm_v1_result = match WasmV1Request::new_session(
+                        state_root_hash,
+                        block_time,
+                        gas_limit,
+                        txn.clone(),
+                    ) {
+                        Ok(wasm_v1_request) => {
+                            execution_engine_v1.execute(&scratch_state, wasm_v1_request)
+                        }
+                        Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+                    };
+                    trace!(
+                        %txn_hash,
+                        ?wasm_v1_result,
+                        "transaction execution result"
+                    );
+                    match artifacts.push_wasm_v1_result(
+                        txn_hash,
+                        txn_header.clone(),
+                        wasm_v1_result,
+                    ) {
+                        ExecutionArtifactOutcome::RootNotFound => {
+                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                        }
+                        ExecutionArtifactOutcome::Effects(wasm_effects) => {
+                            effects.append(wasm_effects.clone());
+                        }
                     }
                 }
             }
-            (TransactionCategory::Auction, _) => {
-                let auction_method = match AuctionMethod::from_parts(
-                    entry_point,
-                    &runtime_args,
-                    holds_epoch,
-                    chainspec,
-                ) {
-                    Ok(auction_method) => auction_method,
-                    Err(_) => {
-                        artifacts.push_auction_method_failure(txn_hash, txn_header.clone(), cost);
-                        continue;
-                    }
-                };
-                let bidding_result = scratch_state.bidding(BiddingRequest::new(
-                    native_runtime_config.clone(),
-                    state_root_hash,
-                    block_time,
-                    protocol_version,
-                    txn_hash,
-                    initiator_addr,
-                    authorization_keys,
-                    auction_method,
-                ));
-                match artifacts.push_bidding_result(
-                    txn_hash,
-                    txn_header.clone(),
-                    bidding_result,
-                    cost,
-                ) {
-                    ExecutionArtifactOutcome::RootNotFound => {
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                    }
-                    ExecutionArtifactOutcome::Effects(bidding_effects) => {
-                        effects.append(bidding_effects.clone());
-                    }
-                }
-            }
-            (TransactionCategory::Standard, _) | (TransactionCategory::InstallUpgrade, _) => {
-                let wasm_v1_result = match WasmV1Request::new_session(
-                    state_root_hash,
-                    block_time,
-                    gas_limit,
-                    txn.clone(),
-                ) {
-                    Ok(wasm_v1_request) => {
-                        execution_engine_v1.execute(&scratch_state, wasm_v1_request)
-                    }
-                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
-                };
-                trace!(
-                    %txn_hash,
-                    ?wasm_v1_result,
-                    "transaction execution result"
-                );
-                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), wasm_v1_result) {
-                    ExecutionArtifactOutcome::RootNotFound => {
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                    }
-                    ExecutionArtifactOutcome::Effects(wasm_effects) => {
-                        effects.append(wasm_effects.clone());
-                    }
-                }
-            }
+        } else {
+            debug!(%txn_hash, "skipping execution due to insufficient balance");
         }
 
         // handle payment per the chainspec determined fee setting
@@ -317,11 +330,6 @@ pub fn execute_finalized_block(
     // data can be verified if necessary for a given block. the block synchronizer in particular
     // depends on the existence of such checksums.
     let txns_approvals_hashes = {
-        let txn_ids = executable_block
-            .transactions
-            .iter()
-            .map(Transaction::fetch_id)
-            .collect_vec();
         let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
             .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
         let execution_results_checksum =
@@ -641,7 +649,6 @@ where
     S: StateProvider,
 {
     let state_root_hash = block_header.state_root_hash();
-    let protocol_version = block_header.protocol_version();
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
@@ -651,15 +658,16 @@ where
             return SpeculativeExecutionResult::invalid_gas_limit(transaction);
         }
     };
-    let request = WasmV1Request::new(
+    let wasm_v1_result = match WasmV1Request::new_session(
         *state_root_hash,
-        protocol_version,
         block_time.into(),
-        transaction,
         gas_limit,
-        Phase::Session,
-    );
-    SpeculativeExecutionResult::WasmV1(execution_engine_v1.execute(state_provider, request))
+        transaction,
+    ) {
+        Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
+        Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+    };
+    SpeculativeExecutionResult::WasmV1(wasm_v1_result)
 }
 
 #[allow(clippy::too_many_arguments)]

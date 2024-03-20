@@ -9,17 +9,20 @@ use casper_types::{
     bytesrepr::FromBytes,
     execution::Effects,
     system::{auction, auction::DelegationRate},
-    BlockTime, CLTyped, CLValue, CLValueError, Digest, InitiatorAddr, ProtocolVersion, PublicKey,
-    RuntimeArgs, TransactionHash, U512,
+    BlockTime, CLTyped, CLValue, CLValueError, Chainspec, Digest, InitiatorAddr, ProtocolVersion,
+    PublicKey, RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
 };
 
 use crate::{
     system::runtime_native::Config as NativeRuntimeConfig, tracking_copy::TrackingCopyError,
 };
 
-/// An error returned when constructing an [`AuctionMethod`] using invalid runtime args.
+/// An error returned when constructing an [`AuctionMethod`].
 #[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
-pub enum InvalidAuctionRuntimeArgs {
+pub enum AuctionMethodError {
+    /// Provided entry point is not one of the Auction ones.
+    #[error("invalid entry point for auction: {0}")]
+    InvalidEntryPoint(TransactionEntryPoint),
     /// Required arg missing.
     #[error("missing '{0}' arg")]
     MissingArg(String),
@@ -71,15 +74,42 @@ pub enum AuctionMethod {
 }
 
 impl AuctionMethod {
-    pub fn new_activate_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    pub fn from_parts(
+        entry_point: TransactionEntryPoint,
+        runtime_args: &RuntimeArgs,
+        holds_epoch: Option<u64>,
+        chainspec: &Chainspec,
+    ) -> Result<Self, AuctionMethodError> {
+        match entry_point {
+            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
+                Err(AuctionMethodError::InvalidEntryPoint(entry_point))
+            }
+            TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
+            TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args, holds_epoch),
+            TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
+            TransactionEntryPoint::Delegate => Self::new_delegate(
+                runtime_args,
+                chainspec.core_config.max_delegators_per_validator,
+                chainspec.core_config.minimum_delegation_amount,
+                holds_epoch,
+            ),
+            TransactionEntryPoint::Undelegate => Self::new_undelegate(runtime_args),
+            TransactionEntryPoint::Redelegate => Self::new_redelegate(
+                runtime_args,
+                chainspec.core_config.minimum_delegation_amount,
+            ),
+        }
+    }
+
+    fn new_activate_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         Ok(Self::ActivateBid { validator })
     }
 
-    pub fn new_add_bid(
+    fn new_add_bid(
         runtime_args: &RuntimeArgs,
         holds_epoch: Option<u64>,
-    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -91,18 +121,18 @@ impl AuctionMethod {
         })
     }
 
-    pub fn new_withdraw_bid(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    fn new_withdraw_bid(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         Ok(Self::WithdrawBid { public_key, amount })
     }
 
-    pub fn new_delegate(
+    fn new_delegate(
         runtime_args: &RuntimeArgs,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
         holds_epoch: Option<u64>,
-    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    ) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -117,7 +147,7 @@ impl AuctionMethod {
         })
     }
 
-    pub fn new_undelegate(runtime_args: &RuntimeArgs) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    fn new_undelegate(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -129,10 +159,10 @@ impl AuctionMethod {
         })
     }
 
-    pub fn new_redelegate(
+    fn new_redelegate(
         runtime_args: &RuntimeArgs,
         minimum_delegation_amount: u64,
-    ) -> Result<Self, InvalidAuctionRuntimeArgs> {
+    ) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
@@ -150,15 +180,14 @@ impl AuctionMethod {
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
-    ) -> Result<T, InvalidAuctionRuntimeArgs> {
+    ) -> Result<T, AuctionMethodError> {
         let arg: &CLValue = args
             .get(name)
-            .ok_or_else(|| InvalidAuctionRuntimeArgs::MissingArg(name.to_string()))?;
-        arg.to_t()
-            .map_err(|error| InvalidAuctionRuntimeArgs::CLValue {
-                arg: name.to_string(),
-                error,
-            })
+            .ok_or_else(|| AuctionMethodError::MissingArg(name.to_string()))?;
+        arg.to_t().map_err(|error| AuctionMethodError::CLValue {
+            arg: name.to_string(),
+            error,
+        })
     }
 }
 

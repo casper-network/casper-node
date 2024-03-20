@@ -722,7 +722,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         let _error = builder
             .get_last_exec_result()
             .expect("should have results")
-            .as_error()
+            .error()
             .unwrap_or_else(|| panic!("should have error while executing {}", entrypoint));
 
         let transaction_fee =

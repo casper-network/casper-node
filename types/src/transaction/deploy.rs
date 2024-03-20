@@ -48,8 +48,8 @@ use crate::{
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
-    AddressableEntityHash, Gas, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
-    DEFAULT_MIN_TRANSFER_MOTES, U512,
+    AddressableEntityHash, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
+    DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -58,7 +58,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Motes, SystemConfig};
+use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, SystemConfig, U512};
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_category::DeployCategory;

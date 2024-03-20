@@ -281,7 +281,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     let exec_result = builder
         .get_exec_result_owned(1)
         .expect("should have a response")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
     assert!(

@@ -38,10 +38,7 @@ use casper_storage::{
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::{
-        genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError,
-        runtime_native::Config as NativeRuntimeConfig,
-    },
+    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig};
@@ -562,9 +559,6 @@ impl ContractRuntime {
                 transaction,
                 responder,
             } => {
-                let native_runtime_config =
-                    NativeRuntimeConfig::from_chainspec(self.chainspec.as_ref());
-                let system_costs = self.chainspec.system_costs_config;
                 let chainspec = Arc::clone(&self.chainspec);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);

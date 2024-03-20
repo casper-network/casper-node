@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use tracing::{debug, trace};
 
-use casper_storage::data_access_layer::{BiddingResult, TransferResult};
+use casper_storage::data_access_layer::BiddingResult;
 use casper_types::{
     bytesrepr::FromBytes,
     contract_messages::Messages,
@@ -15,8 +15,7 @@ use casper_types::{
 use super::Error;
 use crate::execution::ExecError;
 
-/// Represents the result of an execution specified by
-/// [`crate::engine_state::ExecuteRequest`].
+/// Represents the result of an execution.
 #[derive(Clone, Debug)]
 pub enum ExecutionResult {
     /// An error condition that happened during execution

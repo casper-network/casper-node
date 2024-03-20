@@ -81,7 +81,7 @@ fn should_raise_auth_failure_with_invalid_key() {
         "{:?}",
         deploy_result
     );
-    let message = format!("{}", deploy_result.as_error().unwrap());
+    let message = format!("{}", deploy_result.error().unwrap());
 
     assert_eq!(
         message,
@@ -130,7 +130,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
         .expect("should have exec response");
 
     assert!(deploy_result.has_precondition_failure());
-    let message = format!("{}", deploy_result.as_error().unwrap());
+    let message = format!("{}", deploy_result.error().unwrap());
 
     assert_eq!(
         message,
@@ -229,7 +229,7 @@ fn should_raise_deploy_authorization_failure() {
             .expect("should have exec response");
 
         assert!(deploy_result.has_precondition_failure());
-        let message = format!("{}", deploy_result.as_error().unwrap());
+        let message = format!("{}", deploy_result.error().unwrap());
         assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
     let exec_request_6 = {
@@ -285,7 +285,7 @@ fn should_raise_deploy_authorization_failure() {
             .expect("should have exec response");
 
         assert!(deploy_result.has_precondition_failure());
-        let message = format!("{}", deploy_result.as_error().unwrap());
+        let message = format!("{}", deploy_result.error().unwrap());
         assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
 
@@ -448,7 +448,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
         "{:?}",
         deploy_result
     );
-    let message = format!("{}", deploy_result.as_error().unwrap());
+    let message = format!("{}", deploy_result.error().unwrap());
     assert!(message.contains(&format!(
         "{}",
         TrackingCopyError::DeploymentAuthorizationFailure
@@ -514,7 +514,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     let response = builder
         .get_exec_result_owned(3)
         .expect("should have response");
-    let error = response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert!(matches!(
         error,
         Error::Transfer(TransferError::TrackingCopy(

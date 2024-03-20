@@ -53,9 +53,15 @@ impl From<BlockTime> for Timestamp {
     }
 }
 
+impl From<u64> for BlockTime {
+    fn from(value: u64) -> Self {
+        BlockTime(value)
+    }
+}
+
 impl From<Timestamp> for BlockTime {
     fn from(value: Timestamp) -> Self {
-        BlockTime::new(value.millis())
+        BlockTime(value.millis())
     }
 }
 

@@ -62,7 +62,7 @@ fn should_charge_for_user_error(
 
     assert_eq!(payment_purse_balance, U512::zero());
 
-    response.as_error().cloned().expect("should have error")
+    response.error().cloned().expect("should have error")
 }
 
 // TODO: reenable when new payment logic is added

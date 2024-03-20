@@ -3,14 +3,11 @@ use casper_wasm::builder;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    LOCAL_GENESIS_REQUEST,
+    DeployItemBuilder, ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    UpgradeRequestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{Error, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
     MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig,
@@ -105,7 +102,7 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -157,7 +154,7 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -180,7 +177,7 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -201,7 +198,7 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -224,7 +221,7 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));
 }
 
@@ -251,7 +248,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     let exec_result = &builder
         .get_exec_result_owned(0)
         .expect("should have exec response");
-    let error = exec_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));
 
     //

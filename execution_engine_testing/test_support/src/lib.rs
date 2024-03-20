@@ -31,7 +31,7 @@ use casper_types::{
 pub use chainspec_config::ChainspecConfig;
 use chainspec_config::PRODUCTION_PATH;
 pub use deploy_item_builder::DeployItemBuilder;
-pub use execute_request_builder::ExecuteRequestBuilder;
+pub use execute_request_builder::{ExecuteRequest, ExecuteRequestBuilder};
 pub use step_request_builder::StepRequestBuilder;
 pub use transfer_request_builder::TransferRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;

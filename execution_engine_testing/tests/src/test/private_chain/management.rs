@@ -1,17 +1,14 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequest, ExecuteRequestBuilder, LmdbWasmTestBuilder,
     TransferRequestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::{
-    engine_state::{Error, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::{AccountHash, Weight},

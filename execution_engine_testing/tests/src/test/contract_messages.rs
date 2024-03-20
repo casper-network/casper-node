@@ -5,7 +5,6 @@ use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_BLOCK_TIME, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::ExecutionResult;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
@@ -950,14 +949,17 @@ fn should_produce_per_block_message_ordering() {
         .expect("should have at least one topic");
 
     let assert_last_message_block_index = |expected_index: u64| {
-        match builder.borrow().get_last_exec_result().unwrap() {
-            ExecutionResult::Failure { .. } => {
-                panic!("Expected that the message was emitted but the request did not produce successful execution effects");
-            }
-            ExecutionResult::Success { messages, .. } => {
-                assert_eq!(messages.get(0).unwrap().block_index(), expected_index);
-            }
-        };
+        assert_eq!(
+            builder
+                .borrow()
+                .get_last_exec_result()
+                .unwrap()
+                .messages()
+                .get(0)
+                .unwrap()
+                .block_index(),
+            expected_index
+        )
     };
 
     let query_message_count = || -> Option<(BlockTime, u64)> {

@@ -142,7 +142,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -157,7 +157,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (Error::Exec(ExecError::InvalidContext), Error::Exec(ExecError::InvalidContext)) => (),
@@ -469,7 +469,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -485,7 +485,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg1Type::cl_type();
     let found = gh_1470_regression::Arg3Type::cl_type();
@@ -572,7 +572,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -588,7 +588,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg3Type::cl_type();
     let found = gh_1470_regression::Arg4Type::cl_type();
