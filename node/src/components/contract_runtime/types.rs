@@ -2,11 +2,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 use serde::Serialize;
-use thiserror::Error;
 use tracing::{debug, trace};
 
-use casper_binary_port::ErrorCode as BinaryPortErrorCode;
-use casper_execution_engine::engine_state::{Error as EngineStateError, WasmV1Result};
+use casper_execution_engine::engine_state::WasmV1Result;
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{BalanceHoldResult, BiddingResult, EraValidatorsRequest, TransferResult},
@@ -386,7 +384,7 @@ pub struct BlockAndExecutionArtifacts {
 #[derive(Debug)]
 pub enum SpeculativeExecutionResult {
     InvalidTransaction(InvalidTransaction),
-    WasmV1(WasmV1Result),
+    WasmV1(casper_binary_port::SpeculativeExecutionResult),
 }
 
 impl SpeculativeExecutionResult {
@@ -461,30 +459,5 @@ impl ExecutionPreState {
     /// next `Block`, where additional entropy will be introduced.
     pub fn parent_seed(&self) -> Digest {
         self.parent_seed
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum SpeculativeExecutionError {
-    // /// An error that occurred while constructing the execution request.
-    // #[error(transparent)]
-    // NewRequest(#[from] NewUserRequestError),
-    /// An error that occurred while constructing the execution request.
-    #[error(transparent)]
-    EngineState(#[from] EngineStateError),
-    /// Native transactions are not supported.
-    #[error("native transactions cannot be speculatively executed")]
-    NativeNotSupported,
-}
-
-impl From<SpeculativeExecutionError> for BinaryPortErrorCode {
-    fn from(error: SpeculativeExecutionError) -> Self {
-        match error {
-            // SpeculativeExecutionError::NewRequest(_) => BinaryPortErrorCode::InvalidTransaction,
-            SpeculativeExecutionError::EngineState(error) => error.into(),
-            SpeculativeExecutionError::NativeNotSupported => {
-                BinaryPortErrorCode::UnsupportedRequest
-            }
-        }
     }
 }

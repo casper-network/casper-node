@@ -7,8 +7,6 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
-use casper_execution_engine::engine_state::WasmV1Result;
-use casper_storage::block_store::record_id::RecordId;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -27,6 +25,7 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, TransactionWithExecutionInfo, Uptime,
     },
+    RecordId,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -413,10 +412,6 @@ impl PayloadEntity for BlockSignatures {
 
 impl PayloadEntity for BlockSignaturesV1 {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignaturesV1;
-}
-
-impl PayloadEntity for WasmV1Result {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::WasmV1Result;
 }
 
 impl PayloadEntity for ExecutionResult {

@@ -16,7 +16,8 @@ use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RawBytesSpec, RecordId,
+    Uptime,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -27,7 +28,6 @@ use casper_storage::{
         QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
         TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
     },
-    DbRawBytesSpec, RecordId,
 };
 use casper_types::{
     execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
@@ -340,7 +340,7 @@ pub(crate) enum StorageRequest {
         key: Vec<u8>,
         /// Responder to call with the result.  Returns `None` if the data doesn't exist in
         /// local storage.
-        responder: Responder<Option<DbRawBytesSpec>>,
+        responder: Responder<Option<RawBytesSpec>>,
     },
     GetBlockHeaderByHeight {
         /// Height of block to get header of.

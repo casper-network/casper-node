@@ -52,7 +52,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let session = WasmV1Request::new_session(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
-            Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+            Gas::new(5_000_000_000_000_u64), // TODO - set proper value
             txn,
         )
         .unwrap();
@@ -68,7 +68,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             let request = WasmV1Request::new_custom_payment(
                 Self::DEFAULT_STATE_HASH,
                 BlockTime::new(DEFAULT_BLOCK_TIME),
-                Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+                Gas::new(5_000_000_000_000_u64), // TODO - set proper value
                 txn,
             )
             .unwrap();
@@ -99,7 +99,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let session = WasmV1Request::new_session_from_deploy_item(
             Self::DEFAULT_STATE_HASH,
             BlockTime::new(DEFAULT_BLOCK_TIME),
-            Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+            Gas::new(5_000_000_000_000_u64), // TODO - set proper value
             deploy_item,
         )
         .unwrap();
@@ -115,7 +115,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             let request = WasmV1Request::new_custom_payment_from_deploy_item(
                 Self::DEFAULT_STATE_HASH,
                 BlockTime::new(DEFAULT_BLOCK_TIME),
-                Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+                Gas::new(5_000_000_000_000_u64), // TODO - set proper value
                 deploy_item,
             )
             .unwrap();

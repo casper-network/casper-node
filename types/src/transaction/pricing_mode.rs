@@ -37,7 +37,7 @@ pub enum PricingMode {
     Classic {
         /// User-specified payment amount.
         payment_amount: u64,
-        /// User-specified gas_price tolerance (minimum 1).
+        /// User-specified gas_price (minimum 1).
         gas_price: u64,
         /// Standard payment.
         standard_payment: bool,

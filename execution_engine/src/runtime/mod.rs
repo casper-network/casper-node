@@ -51,9 +51,9 @@ use casper_types::{
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
     CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
-    HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    HostFunctionCost, Key, NamedArg, Package, PackageHash, PackageStatus, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Tagged, TransferResult, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -2100,30 +2100,30 @@ where
     /// Records a transfer.
     fn record_transfer(
         &mut self,
-        maybe_to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        id: Option<u64>,
+        _maybe_to: Option<AccountHash>,
+        _source: URef,
+        _target: URef,
+        _amount: U512,
+        _id: Option<u64>,
     ) -> Result<(), ExecError> {
-        if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
-            return Err(ExecError::InvalidContext);
-        }
-
-        if self.context.phase() != Phase::Session {
-            return Ok(());
-        }
-
-        let transfer_addr = self.context.new_transfer_addr()?;
-        let txn_hash = self.context.get_transaction_hash();
-        let from = InitiatorAddr::AccountHash(self.context.get_caller());
-        let fee = Gas::zero(); // TODO
-        let transfer = Transfer::V2(TransferV2::new(
-            txn_hash, from, maybe_to, source, target, amount, fee, id,
-        ));
-        self.context.transfers_mut().push(transfer_addr);
-        self.context
-            .write_transfer(Key::Transfer(transfer_addr), transfer);
+        // if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
+        //     return Err(ExecError::InvalidContext);
+        // }
+        //
+        // if self.context.phase() != Phase::Session {
+        //     return Ok(());
+        // }
+        //
+        // let transfer_addr = self.context.new_transfer_addr()?;
+        // let txn_hash = self.context.get_transaction_hash();
+        // let from = InitiatorAddr::AccountHash(self.context.get_caller());
+        // let fee = Gas::zero(); // TODO
+        // let transfer = Transfer::V2(TransferV2::new(
+        //     txn_hash, from, maybe_to, source, target, amount, fee, id,
+        // ));
+        // self.context.transfers_mut().push(transfer_addr);
+        // self.context
+        //     .write_transfer(Key::Transfer(transfer_addr), transfer);
         Ok(())
     }
 

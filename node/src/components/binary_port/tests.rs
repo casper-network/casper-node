@@ -6,7 +6,10 @@ use serde::Serialize;
 
 use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
 
-use casper_types::{Digest, GlobalStateIdentifier, KeyTag, Transaction, TransactionV1Builder};
+use casper_types::{
+    BlockHeader, Digest, GlobalStateIdentifier, KeyTag, Timestamp, Transaction,
+    TransactionV1Builder,
+};
 
 use crate::{
     components::binary_port::event::Event as BinaryPortEvent,
@@ -54,7 +57,7 @@ struct TestCase {
 }
 
 #[tokio::test]
-async fn should_execute_enabled_functions() {
+async fn should_enqueue_requests_for_enabled_functions() {
     let mut rng = TestRng::new();
 
     let get_all_values_enabled = TestCase {
@@ -258,6 +261,25 @@ impl Reactor for MockReactor {
                 Effects::new()
             }
             Event::AcceptTransactionRequest(req) => req.responder.respond(Ok(())).ignore(),
+            Event::StorageRequest(StorageRequest::GetHighestCompleteBlockHeader { responder }) => {
+                let block_header_v2 = casper_types::BlockHeaderV2::new(
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Timestamp::now(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                    Default::default(),
+                );
+                responder
+                    .respond(Some(BlockHeader::V2(block_header_v2)))
+                    .ignore()
+            }
+            Event::StorageRequest(req) => panic!("unexpected storage req {}", req),
         }
     }
 }
@@ -283,6 +305,7 @@ enum Event {
     ReactorInfoRequest(ReactorInfoRequest),
     #[from]
     AcceptTransactionRequest(AcceptTransactionRequest),
+    StorageRequest(StorageRequest),
 }
 
 impl From<ChainspecRawBytesRequest> for Event {
@@ -317,8 +340,7 @@ impl From<NetworkInfoRequest> for Event {
 
 impl From<StorageRequest> for Event {
     fn from(request: StorageRequest) -> Self {
-        println!("{}", request);
-        unreachable!()
+        Event::StorageRequest(request)
     }
 }
 
@@ -335,6 +357,9 @@ impl Display for Event {
             }
             Event::AcceptTransactionRequest(request) => {
                 write!(formatter, "accept transaction request: {:?}", request)
+            }
+            Event::StorageRequest(request) => {
+                write!(formatter, "storage request: {:?}", request)
             }
         }
     }

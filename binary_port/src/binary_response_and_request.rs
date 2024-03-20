@@ -1,11 +1,11 @@
-use casper_storage::{block_store::record_id::RecordId, DbRawBytesSpec};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     ProtocolVersion,
 };
 
-use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity};
+use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, RawBytesSpec};
 
+use crate::record_id::RecordId;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
@@ -33,9 +33,9 @@ impl BinaryResponseAndRequest {
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
-        let response = BinaryResponse::from_db_raw_bytes(
+        let response = BinaryResponse::from_raw_bytes(
             record_id,
-            Some(DbRawBytesSpec::new_current(&data.to_bytes().unwrap())),
+            Some(RawBytesSpec::new_current(&data.to_bytes().unwrap())),
             protocol_version,
         );
         Self::new(response, &[])
@@ -47,11 +47,9 @@ impl BinaryResponseAndRequest {
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
-        let response = BinaryResponse::from_db_raw_bytes(
+        let response = BinaryResponse::from_raw_bytes(
             record_id,
-            Some(DbRawBytesSpec::new_legacy(
-                &bincode::serialize(data).unwrap(),
-            )),
+            Some(RawBytesSpec::new_legacy(&bincode::serialize(data).unwrap())),
             protocol_version,
         );
         Self::new(response, &[])

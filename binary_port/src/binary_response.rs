@@ -1,4 +1,3 @@
-use casper_storage::{block_store::record_id::RecordId, DbRawBytesSpec};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     ProtocolVersion,
@@ -10,6 +9,7 @@ use crate::{
     payload_type::{PayloadEntity, PayloadType},
 };
 
+use crate::{raw_bytes_spec::RawBytesSpec, record_id::RecordId};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
@@ -39,10 +39,10 @@ impl BinaryResponse {
         }
     }
 
-    /// Creates new binary response from raw DB bytes.
-    pub fn from_db_raw_bytes(
+    /// Creates new binary response from raw bytes.
+    pub fn from_raw_bytes(
         record_id: RecordId,
-        spec: Option<DbRawBytesSpec>,
+        spec: Option<RawBytesSpec>,
         protocol_version: ProtocolVersion,
     ) -> Self {
         match spec {

@@ -115,7 +115,8 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RawBytesSpec, RecordId,
+    Uptime,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -126,7 +127,6 @@ use casper_storage::{
         QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
         TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
     },
-    DbRawBytesSpec, RecordId,
 };
 use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult},
@@ -1168,7 +1168,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         record_id: RecordId,
         key: Vec<u8>,
-    ) -> Option<DbRawBytesSpec>
+    ) -> Option<RawBytesSpec>
     where
         REv: From<StorageRequest>,
     {

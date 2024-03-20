@@ -8,7 +8,7 @@ use crate::{
             runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
             system_provider::SystemProvider, Mint,
         },
-        runtime_native::{Id, RuntimeNative},
+        runtime_native::RuntimeNative,
     },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
 };
@@ -16,9 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, Transfer, TransferAddr, TransferV2, TransferV2Addr, URef,
-    U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Key, Phase, PublicKey, StoredValue,
+    SystemEntityRegistry, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -209,36 +208,36 @@ where
 {
     fn record_transfer(
         &mut self,
-        maybe_to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        id: Option<u64>,
+        _maybe_to: Option<AccountHash>,
+        _source: URef,
+        _target: URef,
+        _amount: U512,
+        _id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.phase() != Phase::Session {
-            return Ok(());
-        }
-        let txn_hash = match self.id() {
-            Id::Transaction(txn_hash) => *txn_hash,
-            // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
-            // so return Ok and move on.
-            Id::Seed(_) => return Ok(()),
-        };
-        let from = InitiatorAddr::AccountHash(self.get_caller());
-        let fee = Gas::zero(); // TODO
-        let transfer = Transfer::V2(TransferV2::new(
-            txn_hash, from, maybe_to, source, target, amount, fee, id,
-        ));
-
-        let transfer_addr = TransferAddr::from(TransferV2Addr::new(
-            self.address_generator().create_address(),
-        ));
-        self.push_transfer(transfer_addr);
-
-        self.tracking_copy().borrow_mut().write(
-            Key::Transfer(transfer_addr),
-            StoredValue::Transfer(transfer),
-        );
+        // if self.phase() != Phase::Session {
+        //     return Ok(());
+        // }
+        // let txn_hash = match self.id() {
+        //     Id::Transaction(txn_hash) => *txn_hash,
+        //     // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
+        //     // so return Ok and move on.
+        //     Id::Seed(_) => return Ok(()),
+        // };
+        // let from = InitiatorAddr::AccountHash(self.get_caller());
+        // let fee = Gas::zero(); // TODO
+        // let transfer = Transfer::V2(TransferV2::new(
+        //     txn_hash, from, maybe_to, source, target, amount, fee, id,
+        // ));
+        //
+        // let transfer_addr = TransferAddr::from(TransferV2Addr::new(
+        //     self.address_generator().create_address(),
+        // ));
+        // self.push_transfer(transfer_addr);
+        //
+        // self.tracking_copy().borrow_mut().write(
+        //     Key::Transfer(transfer_addr),
+        //     StoredValue::Transfer(transfer),
+        // );
         Ok(())
     }
 }

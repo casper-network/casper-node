@@ -14,7 +14,8 @@ use crate::{
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
 
-use casper_execution_engine::engine_state::ExecutionEngineV1;
+use casper_binary_port::SpeculativeExecutionResult;
+use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
@@ -295,6 +296,22 @@ pub(super) fn calculate_prune_eras(
     }
 
     Some(range.map(EraId::new).map(Key::EraInfo).collect())
+}
+
+pub(crate) fn spec_exec_from_wasm_v1_result(
+    wasm_v1_result: WasmV1Result,
+) -> SpeculativeExecutionResult {
+    let transfers = wasm_v1_result.transfers().to_owned();
+    let limit = wasm_v1_result.limit().to_owned();
+    let consumed = wasm_v1_result.consumed().to_owned();
+    let effects = wasm_v1_result.effects().to_owned();
+    let messages = wasm_v1_result.messages().to_owned();
+    let error_msg = wasm_v1_result
+        .error()
+        .to_owned()
+        .map(|err| format!("{:?}", err));
+
+    SpeculativeExecutionResult::new(transfers, limit, consumed, effects, messages, error_msg)
 }
 
 #[cfg(test)]

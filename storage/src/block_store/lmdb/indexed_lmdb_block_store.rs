@@ -3,7 +3,9 @@ use std::{
     collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
 };
 
-use super::{lmdb_block_store::LmdbBlockStore, lmdb_ext::LmdbExtError, temp_map::TempMap};
+use super::{
+    lmdb_block_store::LmdbBlockStore, lmdb_ext::LmdbExtError, temp_map::TempMap, DbTableId,
+};
 use datasize::DataSize;
 use lmdb::{
     Environment, RoTransaction, RwCursor, RwTransaction, Transaction as LmdbTransaction, WriteFlags,
@@ -14,7 +16,6 @@ use tracing::info;
 use super::versioned_databases::VersionedDatabases;
 use crate::block_store::{
     block_provider::{BlockStoreTransaction, DataReader, DataWriter},
-    record_id::RecordId,
     types::{
         ApprovalsHashes, BlockExecutionResults, BlockHashHeightAndEra, BlockHeight, BlockTransfers,
         LatestSwitchBlock, StateStore, StateStoreKey, Tip, TransactionFinalizedApprovals,
@@ -897,30 +898,30 @@ impl<'s, 't> DataReader<StateStoreKey, Vec<u8>> for IndexedLmdbBlockStoreReadTra
     }
 }
 
-impl<'s, 't> DataReader<(RecordId, Vec<u8>), DbRawBytesSpec>
+impl<'s, 't> DataReader<(DbTableId, Vec<u8>), DbRawBytesSpec>
     for IndexedLmdbBlockStoreReadTransaction<'s, 't>
 {
     fn read(
         &self,
-        (id, key): (RecordId, Vec<u8>),
+        (id, key): (DbTableId, Vec<u8>),
     ) -> Result<Option<DbRawBytesSpec>, BlockStoreError> {
         let store = &self.block_store.block_store;
         let res = match id {
-            RecordId::BlockHeader => store.block_header_dbs.get_raw(&self.txn, &key),
-            RecordId::BlockBody => store.block_body_dbs.get_raw(&self.txn, &key),
-            RecordId::ApprovalsHashes => store.approvals_hashes_dbs.get_raw(&self.txn, &key),
-            RecordId::BlockMetadata => store.block_metadata_dbs.get_raw(&self.txn, &key),
-            RecordId::Transaction => store.transaction_dbs.get_raw(&self.txn, &key),
-            RecordId::ExecutionResult => store.execution_result_dbs.get_raw(&self.txn, &key),
-            RecordId::Transfer => store.transfer_dbs.get_raw(&self.txn, &key),
-            RecordId::FinalizedTransactionApprovals => store
+            DbTableId::BlockHeader => store.block_header_dbs.get_raw(&self.txn, &key),
+            DbTableId::BlockBody => store.block_body_dbs.get_raw(&self.txn, &key),
+            DbTableId::ApprovalsHashes => store.approvals_hashes_dbs.get_raw(&self.txn, &key),
+            DbTableId::BlockMetadata => store.block_metadata_dbs.get_raw(&self.txn, &key),
+            DbTableId::Transaction => store.transaction_dbs.get_raw(&self.txn, &key),
+            DbTableId::ExecutionResult => store.execution_result_dbs.get_raw(&self.txn, &key),
+            DbTableId::Transfer => store.transfer_dbs.get_raw(&self.txn, &key),
+            DbTableId::FinalizedTransactionApprovals => store
                 .finalized_transaction_approvals_dbs
                 .get_raw(&self.txn, &key),
         };
         res.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))
     }
 
-    fn exists(&mut self, key: (RecordId, Vec<u8>)) -> Result<bool, BlockStoreError> {
+    fn exists(&mut self, key: (DbTableId, Vec<u8>)) -> Result<bool, BlockStoreError> {
         self.read(key).map(|res| res.is_some())
     }
 }

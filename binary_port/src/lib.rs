@@ -11,6 +11,8 @@ mod information_request;
 mod minimal_block_info;
 mod node_status;
 mod payload_type;
+mod raw_bytes_spec;
+pub mod record_id;
 mod speculative_execution_result;
 mod state_request;
 mod type_wrappers;
@@ -26,6 +28,8 @@ pub use information_request::{InformationRequest, InformationRequestTag};
 pub use minimal_block_info::MinimalBlockInfo;
 pub use node_status::NodeStatus;
 pub use payload_type::{PayloadEntity, PayloadType};
+pub use raw_bytes_spec::RawBytesSpec;
+pub use record_id::{RecordId, UnknownRecordId};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
