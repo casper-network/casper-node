@@ -1,12 +1,12 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use casper_execution_engine::engine_state::WasmV1Result;
 use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, trace};
 
-use casper_execution_engine::engine_state::Error as EngineStateError;
+use casper_binary_port::ErrorCode as BinaryPortErrorCode;
+use casper_execution_engine::engine_state::{Error as EngineStateError, WasmV1Result};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{BalanceHoldResult, BiddingResult, EraValidatorsRequest, TransferResult},
@@ -15,11 +15,9 @@ use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, Gas, InvalidDeploy,
-    InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Timestamp, Transaction,
+    InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
     TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, U512,
 };
-
-use crate::contract_runtime::NewUserRequestError;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,7 +302,7 @@ impl ExecutionArtifacts {
         self.artifacts.push(execution_artifact);
     }
 
-    pub fn execution_results(&self) -> impl Iterator<Item = &ExecutionResult> {
+    pub fn execution_results(&self) -> impl Iterator<Item = &ExecutionResult> + Clone {
         self.artifacts
             .iter()
             .map(|artifact| &artifact.execution_result)
@@ -468,9 +466,9 @@ impl ExecutionPreState {
 
 #[derive(Debug, Error)]
 pub enum SpeculativeExecutionError {
-    /// An error that occurred while constructing the execution request.
-    #[error(transparent)]
-    NewRequest(#[from] NewUserRequestError),
+    // /// An error that occurred while constructing the execution request.
+    // #[error(transparent)]
+    // NewRequest(#[from] NewUserRequestError),
     /// An error that occurred while constructing the execution request.
     #[error(transparent)]
     EngineState(#[from] EngineStateError),
@@ -479,13 +477,13 @@ pub enum SpeculativeExecutionError {
     NativeNotSupported,
 }
 
-impl From<SpeculativeExecutionError> for binary_port::ErrorCode {
+impl From<SpeculativeExecutionError> for BinaryPortErrorCode {
     fn from(error: SpeculativeExecutionError) -> Self {
         match error {
-            SpeculativeExecutionError::NewRequest(_) => binary_port::ErrorCode::InvalidTransaction,
+            // SpeculativeExecutionError::NewRequest(_) => BinaryPortErrorCode::InvalidTransaction,
             SpeculativeExecutionError::EngineState(error) => error.into(),
             SpeculativeExecutionError::NativeNotSupported => {
-                binary_port::ErrorCode::UnsupportedRequest
+                BinaryPortErrorCode::UnsupportedRequest
             }
         }
     }

@@ -6,10 +6,11 @@ use casper_storage::{
 };
 use casper_types::{
     addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey, Key,
-    PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget,
+    PackageHash, ProtocolVersion, StoredValue, TransactionInvocationTarget, TransactionSessionKind,
 };
 
-use crate::{engine_state::error::Error, execution::ExecError};
+use super::{Error, ExecutableItem};
+use crate::execution::ExecError;
 
 /// The type of execution about to be performed.
 #[derive(Clone, Debug)]
@@ -37,46 +38,52 @@ pub(crate) enum ExecutionKind<'a> {
 }
 
 impl<'a> ExecutionKind<'a> {
-    /// Returns a new `Standard` variant of `ExecutionKind`.
-    pub fn new_standard(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Standard(module_bytes)
-    }
-
-    /// Returns a new `Installer` variant of `ExecutionKind`.
-    pub fn new_installer(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Installer(module_bytes)
-    }
-
-    /// Returns a new `Upgrader` variant of `ExecutionKind`.
-    pub fn new_upgrader(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Upgrader(module_bytes)
-    }
-
-    /// Returns a new `Isolated` variant of `ExecutionKind`.
-    pub fn new_isolated(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Isolated(module_bytes)
-    }
-
-    /// Returns a new `Deploy` variant of `ExecutionKind`.
-    pub fn new_deploy(module_bytes: &'a Bytes) -> Self {
-        ExecutionKind::Deploy(module_bytes)
-    }
-
-    /// Returns a new `Standard` variant of `ExecutionKind`, returning an error if the module bytes
-    /// are empty.
-    pub fn new_standard_for_payment(module_bytes: &'a Bytes) -> Result<Self, Error> {
-        if module_bytes.is_empty() {
-            return Err(Error::EmptyCustomPaymentModuleBytes);
-        }
-        Ok(ExecutionKind::Standard(module_bytes))
-    }
-
-    /// Returns a new `Stored` variant of `ExecutionKind`.
-    pub fn new_stored<R>(
+    pub(crate) fn new<R>(
         tracking_copy: &mut TrackingCopy<R>,
+        named_keys: &NamedKeys,
+        executable_item: &'a ExecutableItem,
+        entry_point: String,
+        protocol_version: ProtocolVersion,
+    ) -> Result<Self, Error>
+    where
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    {
+        match executable_item {
+            ExecutableItem::Stored(target) => Self::new_stored(
+                tracking_copy,
+                named_keys,
+                target,
+                entry_point,
+                protocol_version,
+            ),
+            ExecutableItem::CustomPayment(module_bytes)
+            | ExecutableItem::SessionModuleBytes {
+                kind: TransactionSessionKind::Standard,
+                module_bytes,
+            } => Ok(ExecutionKind::Standard(module_bytes)),
+            ExecutableItem::SessionModuleBytes {
+                kind: TransactionSessionKind::Installer,
+                module_bytes,
+            } => Ok(ExecutionKind::Installer(module_bytes)),
+            ExecutableItem::SessionModuleBytes {
+                kind: TransactionSessionKind::Upgrader,
+                module_bytes,
+            } => Ok(ExecutionKind::Upgrader(module_bytes)),
+            ExecutableItem::SessionModuleBytes {
+                kind: TransactionSessionKind::Isolated,
+                module_bytes,
+            } => Ok(ExecutionKind::Isolated(module_bytes)),
+            ExecutableItem::DeploySessionModuleBytes(module_bytes) => {
+                Ok(ExecutionKind::Deploy(module_bytes))
+            }
+        }
+    }
+
+    fn new_stored<R>(
+        tracking_copy: &mut TrackingCopy<R>,
+        named_keys: &NamedKeys,
         target: &TransactionInvocationTarget,
         entry_point: String,
-        named_keys: &NamedKeys,
         protocol_version: ProtocolVersion,
     ) -> Result<Self, Error>
     where

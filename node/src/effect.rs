@@ -144,7 +144,7 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
-        contract_runtime::{SpeculativeExecutionError, SpeculativeExecutionResult},
+        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,

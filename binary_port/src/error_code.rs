@@ -88,7 +88,7 @@ impl From<EngineError> for ErrorCode {
         match err {
             EngineError::RootNotFound(_) => ErrorCode::RootNotFound,
             EngineError::Deploy => ErrorCode::InvalidTransaction,
-            EngineError::InvalidItemVariant(_) => ErrorCode::InvalidItemVariant,
+            EngineError::InvalidExecutableItem(_) => ErrorCode::InvalidItemVariant,
             EngineError::WasmPreprocessing(_) => ErrorCode::WasmPreprocessing,
             EngineError::InvalidProtocolVersion(_) => ErrorCode::UnsupportedProtocolVersion,
             EngineError::Deprecated(_) => ErrorCode::FunctionDisabled,

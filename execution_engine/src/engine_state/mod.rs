@@ -2,13 +2,11 @@
 pub mod deploy_item;
 pub mod engine_config;
 mod error;
-pub mod executable_item;
-pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 mod wasm_v1;
 
-use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use once_cell::sync::Lazy;
 
@@ -16,7 +14,7 @@ use casper_storage::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
-use casper_types::{Phase, ProtocolVersion, U512};
+use casper_types::{ProtocolVersion, U512};
 
 use crate::{execution::Executor, runtime::RuntimeStack};
 pub use deploy_item::DeployItem;
@@ -25,13 +23,9 @@ pub use engine_config::{
     DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 pub use error::Error;
-pub use executable_item::{ExecutableItem, ExecutableItemIdentifier};
-pub use execute_request::{
-    ExecuteRequest, NewRequestError, Payment, PaymentInfo, Session, SessionInfo,
-};
 use execution_kind::ExecutionKind;
 pub use execution_result::{ExecutionResult, ForcedTransferResult};
-pub use wasm_v1::{WasmV1Request, WasmV1Result};
+pub use wasm_v1::{ExecutableItem, InvalidRequest, WasmV1Request, WasmV1Result};
 
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
@@ -82,47 +76,18 @@ impl ExecutionEngineV1 {
         state_provider: &impl StateProvider,
         WasmV1Request {
             state_hash,
-            protocol_version,
             block_time,
-            transaction,
+            transaction_hash,
             gas_limit,
-            phase,
+            initiator_addr,
+            executable_item,
+            entry_point,
+            args,
+            authorization_keys,
         }: WasmV1Request,
     ) -> WasmV1Result {
-        let account_hash = transaction.initiator_addr().account_hash();
-        let authorization_keys = &transaction.authorization_keys();
-        let transaction_hash = transaction.hash();
-        let executable_item = match ExecutableItem::try_from(transaction) {
-            Ok(executable_item) => executable_item,
-            Err(_) => return WasmV1Result::invalid_executable_item(gas_limit),
-        };
-        match phase {
-            Phase::System | Phase::FinalizePayment => {
-                return WasmV1Result::precondition_failure(
-                    gas_limit,
-                    Error::Deprecated(format!(
-                        "execution of phase {:?} is no longer supported",
-                        phase
-                    )),
-                );
-            }
-            Phase::Payment => {
-                if !executable_item.is_module_bytes() {
-                    return WasmV1Result::precondition_failure(
-                        gas_limit,
-                        Error::Deprecated(format!(
-                            "direct execution in phase {:?} is no longer supported",
-                            phase
-                        )),
-                    );
-                }
-                // module bytes is allowed
-            }
-            Phase::Session => {
-                // noop
-            }
-        };
-
+        let account_hash = initiator_addr.account_hash();
+        let protocol_version = self.config.protocol_version();
         let tc = match state_provider.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return WasmV1Result::root_not_found(gas_limit, state_hash),
@@ -137,7 +102,7 @@ impl ExecutionEngineV1 {
             match tc.borrow_mut().get_authorized_addressable_entity(
                 protocol_version,
                 account_hash,
-                authorization_keys,
+                &authorization_keys,
                 &self.config().administrative_accounts,
             ) {
                 Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
@@ -156,28 +121,27 @@ impl ExecutionEngineV1 {
                 return WasmV1Result::precondition_failure(gas_limit, Error::TrackingCopy(tce))
             }
         };
-        let execution_kind = match ExecutionKind::from_executable_item(
-            tc.clone(),
+        let phase = executable_item.phase();
+        let execution_kind = match ExecutionKind::new(
+            &mut *tc.borrow_mut(),
             &named_keys,
-            executable_item.clone(),
-            &protocol_version,
-            phase,
+            &executable_item,
+            entry_point,
+            protocol_version,
         ) {
             Ok(execution_kind) => execution_kind,
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
 
         let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
-        let runtime_args = executable_item.args().clone();
-
         let execution_result = Executor::new(self.config().clone()).exec(
             execution_kind,
-            runtime_args,
+            args,
             entity_hash,
             &entity,
             &mut named_keys,
             access_rights,
-            authorization_keys.clone(),
+            authorization_keys,
             account_hash,
             block_time,
             transaction_hash,
@@ -191,6 +155,6 @@ impl ExecutionEngineV1 {
             ),
         );
 
-        WasmV1Result::execution_result(gas_limit, execution_result)
+        WasmV1Result::from_execution_result(gas_limit, execution_result)
     }
 }

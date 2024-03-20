@@ -5,17 +5,13 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{
-    Error as EngineStateError, NewRequestError as NewExecuteRequestError,
-};
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
-    data_access_layer::{
-        bidding::InvalidAuctionRuntimeArgs, BlockRewardsError, FeeError, StepError,
-    },
+    data_access_layer::{BlockRewardsError, FeeError, StepError},
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, TransactionHash, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -45,23 +41,6 @@ pub(crate) enum ContractRuntimeError {
     /// Chunking error.
     #[error("failed to chunk the data {0}")]
     ChunkingError(#[source] ChunkingError),
-}
-
-/// Error returned if constructing a new user request fails.
-#[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
-pub enum NewUserRequestError {
-    /// The transaction is a native one, but the wrapped deploy is not a transfer.
-    #[error("native transaction of deploy variant is not a transfer")]
-    ExpectedNativeTransferDeploy(TransactionHash),
-    /// The transaction is a native version 1 variant, but has a custom entry point.
-    #[error("cannot use custom variant for entry point in native transaction v1 {0}")]
-    InvalidEntryPoint(TransactionHash),
-    /// The transaction is a native auction one, but the runtime args are invalid.
-    #[error(transparent)]
-    InvalidAuctionRuntimeArgs(#[from] InvalidAuctionRuntimeArgs),
-    /// Error constructing a new execution request.
-    #[error(transparent)]
-    Execute(#[from] NewExecuteRequestError),
 }
 
 /// An error during block execution.
@@ -150,9 +129,6 @@ pub enum BlockExecutionError {
     /// A root state hash was not found.
     #[error("Root state hash not found in global state.")]
     RootNotFound(Digest),
-    /// An error that occurred while constructing the execution request.
-    #[error(transparent)]
-    NewRequest(#[from] NewUserRequestError),
     /// Missing checksum registry.
     #[error("Missing checksum registry")]
     MissingChecksumRegistry,

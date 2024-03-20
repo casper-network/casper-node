@@ -1,99 +1,91 @@
-use std::{collections::BTreeSet, convert::TryFrom, iter};
+use std::collections::BTreeSet;
 
 use casper_execution_engine::engine_state::{
-    deploy_item::DeployItem, execute_request::ExecuteRequest, Payment, PaymentInfo, Session,
-    SessionInfo,
+    deploy_item::DeployItem, ExecutableItem, WasmV1Request,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, AddressableEntityHash, BlockTime, DeployHash, Digest,
-    EntityVersion, InitiatorAddr, PackageHash, PublicKey, RuntimeArgs, TransactionHash,
-    TransactionV1Hash,
+    account::AccountHash, runtime_args, AddressableEntityHash, BlockTime, Digest, EntityVersion,
+    Gas, InitiatorAddr, PackageHash, Phase, RuntimeArgs, TransactionHash, TransactionV1Hash,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
 };
 
-use crate::{
-    DeployItemBuilder, ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_BLOCK_TIME, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-};
+use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
 
-/// Builds an [`ExecuteRequest`].
+/// Builds a [`WasmV1Request`] for use as session code, and an optional custom payment
+/// `WasmV1Request`.
 #[derive(Debug)]
 pub struct ExecuteRequestBuilder {
     state_hash: Digest,
     block_time: BlockTime,
     transaction_hash: TransactionHash,
-    gas_price: u64,
     initiator_addr: InitiatorAddr,
-    payment: Payment,
-    payment_entry_point: String,
+    payment: Option<ExecutableItem>,
+    payment_gas_limit: Gas,
     payment_args: RuntimeArgs,
-    session: Option<Session>,
+    session: ExecutableItem,
+    session_gas_limit: Gas,
     session_entry_point: String,
     session_args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
-    proposer: PublicKey,
-}
-
-impl Default for ExecuteRequestBuilder {
-    fn default() -> Self {
-        ExecuteRequestBuilder {
-            state_hash: Self::DEFAULT_STATE_HASH,
-            block_time: BlockTime::new(DEFAULT_BLOCK_TIME),
-            transaction_hash: Self::DEFAULT_TRANSACTION_HASH,
-            gas_price: DEFAULT_GAS_PRICE,
-            initiator_addr: InitiatorAddr::PublicKey(DEFAULT_ACCOUNT_PUBLIC_KEY.clone()),
-            payment: Self::DEFAULT_PAYMENT,
-            payment_entry_point: Self::DEFAULT_PAYMENT_ENTRY_POINT.to_string(),
-            payment_args: runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT },
-            session: None,
-            session_entry_point: Self::DEFAULT_SESSION_ENTRY_POINT.to_string(),
-            session_args: RuntimeArgs::new(),
-            authorization_keys: iter::once(*DEFAULT_ACCOUNT_ADDR).collect(),
-            proposer: DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        }
-    }
 }
 
 impl ExecuteRequestBuilder {
-    /// The default value used for `ExecuteRequest::state_hash`.
+    /// The default value used for `WasmV1Request::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
-    /// The default value used for `ExecuteRequest::transaction_hash`.
+    /// The default value used for `WasmV1Request::transaction_hash`.
     pub const DEFAULT_TRANSACTION_HASH: TransactionHash =
         TransactionHash::V1(TransactionV1Hash::from_raw([2; 32]));
-    /// The default value used for `ExecuteRequest::payment`.
-    pub const DEFAULT_PAYMENT: Payment = Payment::Standard;
-    /// The default value used for `ExecuteRequest::payment_entry_point`.
-    pub const DEFAULT_PAYMENT_ENTRY_POINT: &'static str = "call";
-    /// The default value used for `ExecuteRequest::session_entry_point`.
-    pub const DEFAULT_SESSION_ENTRY_POINT: &'static str = "call";
-
-    /// Returns a new `ExecuteRequestBuilder` with default values.
-    pub fn new() -> Self {
-        Self::default()
-    }
+    /// The default value used for `WasmV1Request::entry_point`.
+    pub const DEFAULT_ENTRY_POINT: &'static str = "call";
 
     /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
     pub fn from_deploy_item(deploy_item: DeployItem) -> Self {
-        let session_info =
-            SessionInfo::try_from((deploy_item.session, DeployHash::default())).unwrap();
-        let payment_info =
-            PaymentInfo::try_from((deploy_item.payment, DeployHash::default())).unwrap();
+        let authorization_keys = deploy_item.authorization_keys.clone();
+        let session = WasmV1Request::new_session_from_deploy_item(
+            Self::DEFAULT_STATE_HASH,
+            BlockTime::new(DEFAULT_BLOCK_TIME),
+            Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+            deploy_item.clone(),
+        )
+        .unwrap();
+
+        let payment: Option<ExecutableItem>;
+        let payment_gas_limit: Gas;
+        let payment_args: RuntimeArgs;
+        if deploy_item.payment.is_standard_payment(Phase::Payment) {
+            payment = None;
+            payment_gas_limit = Gas::zero();
+            payment_args = RuntimeArgs::new();
+        } else {
+            let request = WasmV1Request::new_payment_from_deploy_item(
+                Self::DEFAULT_STATE_HASH,
+                BlockTime::new(DEFAULT_BLOCK_TIME),
+                Gas::new(DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT), // TODO - set proper value
+                deploy_item,
+            )
+            .unwrap();
+            payment = Some(request.executable_item);
+            payment_gas_limit = request.gas_limit;
+            payment_args = request.args;
+        }
 
         ExecuteRequestBuilder {
-            transaction_hash: TransactionHash::Deploy(deploy_item.deploy_hash),
-            gas_price: deploy_item.gas_price,
-            initiator_addr: InitiatorAddr::AccountHash(deploy_item.address),
-            payment: payment_info.payment,
-            payment_entry_point: payment_info.entry_point,
-            payment_args: payment_info.args,
-            session: Some(session_info.session),
-            session_entry_point: session_info.entry_point,
-            session_args: session_info.args,
-            authorization_keys: deploy_item.authorization_keys,
-            ..Self::default()
+            state_hash: session.state_hash,
+            block_time: session.block_time,
+            transaction_hash: session.transaction_hash,
+            initiator_addr: session.initiator_addr,
+            payment,
+            payment_gas_limit,
+            payment_args,
+            session: session.executable_item,
+            session_gas_limit: session.gas_limit,
+            session_entry_point: session.entry_point,
+            session_args: session.args,
+            authorization_keys,
         }
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with standard dependencies.
+    /// Returns an [`WasmV1Request`] derived from a deploy with standard dependencies.
     pub fn standard(
         account_hash: AccountHash,
         session_file: &str,
@@ -110,7 +102,7 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with session module bytes.
+    /// Returns an [`WasmV1Request`] derived from a deploy with session module bytes.
     pub fn module_bytes(
         account_hash: AccountHash,
         module_bytes: Vec<u8>,
@@ -127,7 +119,7 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
+    /// Returns an [`WasmV1Request`] derived from a deploy with a session item that will call a
     /// stored contract by hash.
     pub fn contract_call_by_hash(
         sender: AccountHash,
@@ -144,7 +136,7 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
+    /// Returns an [`WasmV1Request`] derived from a deploy with a session item that will call a
     /// stored contract by name.
     pub fn contract_call_by_name(
         sender: AccountHash,
@@ -161,7 +153,7 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
+    /// Returns an [`WasmV1Request`] derived from a deploy with a session item that will call a
     /// versioned stored contract by hash.
     pub fn versioned_contract_call_by_hash(
         sender: AccountHash,
@@ -184,7 +176,7 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
+    /// Returns an [`WasmV1Request`] derived from a deploy with a session item that will call a
     /// versioned stored contract by name.
     pub fn versioned_contract_call_by_name(
         sender: AccountHash,
@@ -202,42 +194,60 @@ impl ExecuteRequestBuilder {
         Self::from_deploy_item(deploy_item)
     }
 
-    /// Sets the block time of the [`ExecuteRequest`].
+    /// Sets the block time of the [`WasmV1Request`].
     pub fn with_block_time(mut self, block_time: u64) -> Self {
         self.block_time = BlockTime::new(block_time);
         self
     }
 
-    /// Sets the proposer used by the [`ExecuteRequest`].
-    pub fn with_proposer(mut self, proposer: PublicKey) -> Self {
-        self.proposer = proposer;
-        self
-    }
-
-    /// Sets the authorization keys used by the [`ExecuteRequest`].
+    /// Sets the authorization keys used by the [`WasmV1Request`].
     pub fn with_authorization_keys(mut self, authorization_keys: BTreeSet<AccountHash>) -> Self {
         self.authorization_keys = authorization_keys;
         self
     }
 
-    /// Consumes self and returns an `ExecuteRequest`.
-    pub fn build(self) -> ExecuteRequest {
-        ExecuteRequest {
-            state_hash: self.state_hash,
-            block_time: self.block_time,
-            transaction_hash: self.transaction_hash,
-            gas_price: self.gas_price,
-            initiator_addr: self.initiator_addr,
-            payment: self.payment,
-            payment_entry_point: self.payment_entry_point,
-            payment_args: self.payment_args,
-            session: self
-                .session
-                .expect("builder must have been provided with a valid session item"),
-            session_entry_point: self.session_entry_point,
-            session_args: self.session_args,
-            authorization_keys: self.authorization_keys,
-            proposer: self.proposer,
-        }
+    /// Consumes self and returns a session `WasmV1Request` and an optional custom payment
+    /// `WasmV1Request`.
+    pub fn build(self) -> (WasmV1Request, Option<WasmV1Request>) {
+        let ExecuteRequestBuilder {
+            state_hash,
+            block_time,
+            transaction_hash,
+            initiator_addr,
+            payment,
+            payment_gas_limit,
+            payment_args,
+            session,
+            session_gas_limit,
+            session_entry_point,
+            session_args,
+            authorization_keys,
+        } = self;
+
+        let maybe_payment = payment.map(|executable_item| WasmV1Request {
+            state_hash,
+            block_time,
+            transaction_hash,
+            gas_limit: payment_gas_limit,
+            initiator_addr: initiator_addr.clone(),
+            executable_item,
+            entry_point: Self::DEFAULT_ENTRY_POINT.to_string(),
+            args: payment_args,
+            authorization_keys: authorization_keys.clone(),
+        });
+
+        let session = WasmV1Request {
+            state_hash,
+            block_time,
+            transaction_hash,
+            gas_limit: session_gas_limit,
+            initiator_addr,
+            executable_item: session,
+            entry_point: session_entry_point,
+            args: session_args,
+            authorization_keys,
+        };
+
+        (session, maybe_payment)
     }
 }

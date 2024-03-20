@@ -3,18 +3,15 @@ use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::engine_state::{
-    self, execution_result::ExecutionResultAndMessages, ExecuteRequest, ExecutionEngineV1,
-    ExecutionResult as EngineExecutionResult, WasmV1Request,
-};
+use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, WasmV1Result};
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldRequest, BalanceIdentifier,
-        BalanceRequest, BiddingRequest, BiddingResult, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, InsufficientBalanceHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
+        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
+        InsufficientBalanceHandling, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -26,18 +23,16 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
-    ApprovalsHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
-    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, Phase,
-    ProtocolVersion, PublicKey, SystemConfig, Transaction, TransactionCategory,
-    TransactionEntryPoint, TransactionHash, TransactionHeader, U512,
+    BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, Phase, ProtocolVersion, PublicKey,
+    Transaction, TransactionCategory, U512,
 };
 
 use super::{
     types::{ExecutionArtifactOutcome, SpeculativeExecutionResult, StepOutcome},
     utils::calculate_prune_eras,
-    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionArtifact, ExecutionArtifacts,
-    ExecutionPreState, Metrics, NewUserRequestError, APPROVALS_CHECKSUM_NAME,
-    EXECUTION_RESULTS_CHECKSUM_NAME,
+    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionArtifacts, ExecutionPreState,
+    Metrics, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 use crate::{
     components::fetcher::FetchItem,
@@ -88,7 +83,7 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
 
-    for txn in &executable_block.transactions {
+    for txn in executable_block.transactions {
         let mut effects = Effects::new();
         let initiator_addr = txn.initiator_addr();
         let txn_hash = txn.hash();
@@ -131,15 +126,17 @@ pub fn execute_finalized_block(
                     // using a multiple of a small value.
                     chainspec.transaction_config.native_transfer_minimum_motes * 5,
                 );
-                let pay_request = WasmV1Request::new(
+                let pay_result = match WasmV1Request::new_custom_payment(
                     state_root_hash,
-                    protocol_version,
                     block_time,
-                    txn,
                     custom_payment_gas_limit,
-                    Phase::Payment,
-                );
-                let pay_result = execution_engine_v1.execute(&scratch_state, pay_request);
+                    txn.clone(),
+                ) {
+                    Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
+                    Err(error) => {
+                        WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
+                    }
+                };
                 match artifacts.push_wasm_v1_result(txn_hash, txn_header, pay_result) {
                     ExecutionArtifactOutcome::RootNotFound => {
                         return Err(BlockExecutionError::RootNotFound(state_root_hash))
@@ -232,21 +229,23 @@ pub fn execute_finalized_block(
                 }
             }
             (TransactionCategory::Standard, _) | (TransactionCategory::InstallUpgrade, _) => {
-                let wasm_1_request = WasmV1Request::new(
+                let wasm_v1_result = match WasmV1Request::new_session(
                     state_root_hash,
-                    protocol_version,
                     block_time,
-                    txn,
                     gas_limit,
-                    Phase::Session,
-                );
-                let wasm_1_result = execution_engine_v1.execute(&scratch_state, wasm_1_request);
+                    txn.clone(),
+                ) {
+                    Ok(wasm_v1_request) => {
+                        execution_engine_v1.execute(&scratch_state, wasm_v1_request)
+                    }
+                    Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+                };
                 trace!(
                     %txn_hash,
-                    %wasm_1_result,
+                    ?wasm_v1_result,
                     "transaction execution result"
                 );
-                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), wasm_1_result) {
+                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), wasm_v1_result) {
                     ExecutionArtifactOutcome::RootNotFound => {
                         return Err(BlockExecutionError::RootNotFound(state_root_hash))
                     }

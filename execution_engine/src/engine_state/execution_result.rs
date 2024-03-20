@@ -317,28 +317,6 @@ impl ExecutionResult {
         (None, self)
     }
 
-    /// Converts a transfer result to an execution result.
-    pub fn from_transfer_result(transfer_result: TransferResult, gas: Gas) -> Option<Self> {
-        match transfer_result {
-            TransferResult::RootNotFound => None,
-            TransferResult::Success { transfers, effects } => Some(ExecutionResult::Success {
-                transfers,
-                gas,
-                effects,
-                messages: Messages::default(),
-            }),
-            TransferResult::Failure(te) => {
-                Some(ExecutionResult::Failure {
-                    error: Error::Transfer(te),
-                    transfers: vec![],
-                    gas,
-                    effects: Effects::default(), // currently not returning effects on failure
-                    messages: Messages::default(),
-                })
-            }
-        }
-    }
-
     /// Converts a bidding result to an execution result.
     pub fn from_bidding_result(bidding_result: BiddingResult, gas: Gas) -> Option<Self> {
         match bidding_result {

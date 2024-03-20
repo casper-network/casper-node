@@ -115,6 +115,9 @@ pub enum Error {
     #[error("No active contract versions for contract package")]
     NoActiveEntityVersions(PackageHash),
     /// Invalid entity version supplied.
+    #[error("Invalid entity version: {}", _0)]
+    InvalidEntityVersion(EntityVersionKey),
+    /// Invalid entity version supplied.
     #[error("Disabled entity version: {}", _0)]
     DisabledEntityVersion(EntityVersionKey),
     /// Invalid entity version supplied.

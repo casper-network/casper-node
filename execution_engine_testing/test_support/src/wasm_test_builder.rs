@@ -17,8 +17,7 @@ use num_traits::{CheckedMul, Zero};
 use tempfile::TempDir;
 
 use casper_execution_engine::engine_state::{
-    execute_request::ExecuteRequest, execution_result::ExecutionResult, Error, ExecutionEngineV1,
-    DEFAULT_MAX_QUERY_DEPTH,
+    Error, ExecutionEngineV1, WasmV1Request, WasmV1Result, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
@@ -126,7 +125,7 @@ pub struct WasmTestBuilder<S> {
     execution_engine: Rc<ExecutionEngineV1>,
     /// The chainspec.
     chainspec: ChainspecConfig,
-    exec_results: Vec<ExecutionResult>,
+    exec_results: Vec<WasmV1Result>,
     upgrade_results: Vec<ProtocolUpgradeResult>,
     prune_results: Vec<PruneResult>,
     genesis_hash: Option<Digest>,
@@ -171,7 +170,7 @@ impl<S: ScratchProvider> WasmTestBuilder<S> {
     /// Execute and commit transforms from an ExecuteRequest into a scratch global state.
     /// You MUST call write_scratch_to_lmdb to flush these changes to LmdbGlobalState.
     #[allow(deprecated)]
-    pub fn scratch_exec_and_commit(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+    pub fn scratch_exec_and_commit(&mut self, mut exec_request: WasmV1Request) -> &mut Self {
         if self.scratch_global_state.is_none() {
             self.scratch_global_state = Some(self.data_access_layer.get_scratch_global_state());
         }
@@ -184,10 +183,7 @@ impl<S: ScratchProvider> WasmTestBuilder<S> {
         exec_request.state_hash = self.post_state_hash.expect("expected post_state_hash");
 
         // First execute the request against our scratch global state.
-        let execution_result = self
-            .execution_engine
-            .exec(cached_state, exec_request)
-            .unwrap();
+        let execution_result = self.execution_engine.execute(cached_state, exec_request);
         let _post_state_hash = cached_state
             .commit(
                 self.post_state_hash.expect("requires a post_state_hash"),
@@ -558,7 +554,7 @@ impl LmdbWasmTestBuilder {
         let gas = transfer_request.gas();
         let transfer_result = self.data_access_layer.transfer(transfer_request);
 
-        let execution_result = ExecutionResult::from_transfer_result(transfer_result, gas).unwrap();
+        let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas).unwrap();
         let effects = execution_result.effects().clone();
         self.effects.push(effects.clone());
         self.exec_results.push(execution_result);
@@ -819,17 +815,39 @@ where
         self.data_access_layer().bidding(bidding_req)
     }
 
-    /// Runs an [`ExecuteRequest`].
-    #[allow(deprecated)]
-    pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
-        exec_request.state_hash = self.post_state_hash.expect("expected post_state_hash");
-        let execution_result = self
+    /// Runs an optional custom payment [`WasmV1Request`] and a session `WasmV1Request`.
+    ///
+    /// If the custom payment is `Some` and its execution fails, the session request is not
+    /// attempted.
+    pub fn exec(
+        &mut self,
+        mut session: WasmV1Request,
+        custom_payment: Option<WasmV1Request>,
+    ) -> &mut Self {
+        let mut effects = Effects::new();
+        if let Some(mut payment) = custom_payment {
+            payment.state_hash = self.post_state_hash.expect("expected post_state_hash");
+            let payment_result = self
+                .execution_engine
+                .execute(self.data_access_layer.as_ref(), payment);
+            // If executing payment code failed, record this and exit without attempting session
+            // execution.
+            effects = payment_result.effects().clone();
+            let payment_failed = payment_result.error().is_some();
+            self.exec_results.push(payment_result);
+            if payment_failed {
+                self.effects.push(effects);
+                return self;
+            }
+        }
+        session.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let session_result = self
             .execution_engine
-            .exec(self.data_access_layer.as_ref(), exec_request)
-            .unwrap();
+            .execute(self.data_access_layer.as_ref(), session);
         // Cache transformations
-        self.effects.push(execution_result.effects().clone());
-        self.exec_results.push(execution_result);
+        effects.append(session_result.effects().clone());
+        self.effects.push(effects);
+        self.exec_results.push(session_result);
         self
     }
 
@@ -882,7 +900,7 @@ where
         evicted_validators: Vec<PublicKey>,
     ) -> &mut Self {
         let auction = self.get_auction_contract_hash();
-        let run_request = ExecuteRequestBuilder::contract_call_by_hash(
+        let (session, maybe_payment) = ExecuteRequestBuilder::contract_call_by_hash(
             *SYSTEM_ADDR,
             auction,
             METHOD_RUN_AUCTION,
@@ -892,7 +910,7 @@ where
             },
         )
         .build();
-        self.exec(run_request).expect_success().commit()
+        self.exec(session, maybe_payment).expect_success().commit()
     }
 
     /// Increments engine state.
@@ -999,7 +1017,7 @@ where
         let exec_result = self
             .get_last_exec_result()
             .expect("Expected to be called after exec()");
-        if exec_result.is_failure() {
+        if exec_result.error().is_some() {
             panic!(
                 "Expected successful execution result, but instead got: {:#?}",
                 exec_result,
@@ -1013,7 +1031,7 @@ where
         let exec_result = self
             .get_last_exec_result()
             .expect("Expected to be called after exec()");
-        if exec_result.is_success() {
+        if exec_result.error().is_none() {
             panic!(
                 "Expected failed execution result, but instead got: {:?}",
                 exec_result,
@@ -1027,7 +1045,8 @@ where
     pub fn is_error(&self) -> bool {
         self.get_last_exec_result()
             .expect("Expected to be called after exec()")
-            .is_failure()
+            .error()
+            .is_some()
     }
 
     /// Returns an `engine_state::Error` if the last exec had an error, otherwise `None`.
@@ -1035,7 +1054,7 @@ where
     pub fn get_error(&self) -> Option<Error> {
         self.get_last_exec_result()
             .expect("Expected to be called after exec()")
-            .as_error()
+            .error()
             .cloned()
     }
 
@@ -1044,8 +1063,8 @@ where
     pub fn get_error_message(&self) -> Option<String> {
         self.get_last_exec_result()
             .expect("Expected to be called after exec()")
-            .as_error()
-            .map(Error::to_string)
+            .error()
+            .map(|error| error.to_string())
     }
 
     /// Gets `Effects` of all previous runs.
@@ -1135,12 +1154,12 @@ where
     }
 
     /// Returns the last results execs.
-    pub fn get_last_exec_result(&self) -> Option<ExecutionResult> {
+    pub fn get_last_exec_result(&self) -> Option<WasmV1Result> {
         self.exec_results.last().cloned()
     }
 
     /// Returns the owned results of a specific exec.
-    pub fn get_exec_result_owned(&self, index: usize) -> Option<ExecutionResult> {
+    pub fn get_exec_result_owned(&self, index: usize) -> Option<WasmV1Result> {
         self.exec_results.get(index).cloned()
     }
 
@@ -1406,13 +1425,16 @@ where
     pub fn exec_cost(&self, index: usize) -> Gas {
         self.exec_results
             .get(index)
-            .map(ExecutionResult::gas)
+            .map(WasmV1Result::consumed)
             .unwrap()
     }
 
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
-        self.exec_results.last().map(ExecutionResult::gas).unwrap()
+        self.exec_results
+            .last()
+            .map(WasmV1Result::consumed)
+            .unwrap()
     }
 
     /// Assert that last error is the expected one.

@@ -5,6 +5,7 @@ use thiserror::Error;
 use casper_storage::{system::transfer::TransferError, tracking_copy::TrackingCopyError};
 use casper_types::{bytesrepr, system::mint, ApiError, Digest, Key, ProtocolVersion};
 
+use super::InvalidRequest;
 use crate::{
     execution::ExecError,
     runtime::{stack, PreprocessingError},
@@ -50,9 +51,6 @@ pub enum Error {
     /// Invalid deploy item variant.
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
-    /// Empty module bytes cannot be used for custom payment.
-    #[error("empty module bytes cannot be used for custom payment")]
-    EmptyCustomPaymentModuleBytes,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),
@@ -69,8 +67,8 @@ pub enum Error {
     #[error("Deprecated: {0}")]
     Deprecated(String),
     /// Could not derive a valid item to execute.
-    #[error("Invalid executable item")]
-    InvalidExecutableItem,
+    #[error("Invalid executable item: {0}")]
+    InvalidExecutableItem(#[from] InvalidRequest),
 }
 
 impl Error {
