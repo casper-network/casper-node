@@ -89,25 +89,23 @@ fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
         .expect_success()
         .commit();
 
-    let refund_purse_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_deploy_hash([2; 32])
-            .with_session_code("do_nothing.wasm", RuntimeArgs::default())
-            .with_payment_code(
-                "refund_purse.wasm",
-                runtime_args! {
-                    ARG_PAYMENT_AMOUNT => *DEFAULT_PAYMENT,
-                    mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
-                    ARG_PURSE_NAME_1 => LOCAL_REFUND_PURSE_1,
-                    ARG_PURSE_NAME_2 => LOCAL_REFUND_PURSE_2,
-                },
-            )
-            .with_authorization_keys(&[account_hash])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_deploy_hash([2; 32])
+        .with_session_code("do_nothing.wasm", RuntimeArgs::default())
+        .with_payment_code(
+            "refund_purse.wasm",
+            runtime_args! {
+                ARG_PAYMENT_AMOUNT => *DEFAULT_PAYMENT,
+                mint::ARG_AMOUNT => *DEFAULT_PAYMENT,
+                ARG_PURSE_NAME_1 => LOCAL_REFUND_PURSE_1,
+                ARG_PURSE_NAME_2 => LOCAL_REFUND_PURSE_2,
+            },
+        )
+        .with_authorization_keys(&[account_hash])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let refund_purse_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(refund_purse_request).expect_success().commit();
 }

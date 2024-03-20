@@ -537,7 +537,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();

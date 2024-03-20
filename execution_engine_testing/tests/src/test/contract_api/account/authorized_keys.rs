@@ -48,22 +48,20 @@ fn should_raise_auth_failure_with_invalid_key() {
     // Error::Authorization
     assert_ne!(*DEFAULT_ACCOUNT_ADDR, KEY_1);
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(1)
-                },
-            )
-            .with_deploy_hash([1u8; 32])
-            .with_authorization_keys(&[KEY_1])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
+                ARG_DEPLOY_THRESHOLD => Weight::new(1)
+            },
+        )
+        .with_deploy_hash([1u8; 32])
+        .with_authorization_keys(&[KEY_1])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
@@ -101,22 +99,20 @@ fn should_raise_auth_failure_with_invalid_keys() {
     assert_ne!(*DEFAULT_ACCOUNT_ADDR, KEY_2);
     assert_ne!(*DEFAULT_ACCOUNT_ADDR, KEY_3);
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(1)
-                },
-            )
-            .with_deploy_hash([1u8; 32])
-            .with_authorization_keys(&[KEY_2, KEY_1, KEY_3])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
+                ARG_DEPLOY_THRESHOLD => Weight::new(1)
+            },
+        )
+        .with_deploy_hash([1u8; 32])
+        .with_authorization_keys(&[KEY_2, KEY_1, KEY_3])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     // Basic deploy with single key
     let mut builder = LmdbWasmTestBuilder::default();
@@ -201,23 +197,21 @@ fn should_raise_deploy_authorization_failure() {
         .expect_success()
         .commit();
 
-    let exec_request_5 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            // Next deploy will see deploy threshold == 4, keymgmnt == 5
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(5),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(4)
-                }, //args
-            )
-            .with_deploy_hash([5u8; 32])
-            .with_authorization_keys(&[KEY_1])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        // Next deploy will see deploy threshold == 4, keymgmnt == 5
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(5),
+                ARG_DEPLOY_THRESHOLD => Weight::new(4)
+            }, //args
+        )
+        .with_deploy_hash([5u8; 32])
+        .with_authorization_keys(&[KEY_1])
+        .build();
+    let exec_request_5 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     // With deploy threshold == 3 using single secondary key
     // with weight == 2 should raise deploy authorization failure.
@@ -232,23 +226,21 @@ fn should_raise_deploy_authorization_failure() {
         let message = format!("{}", deploy_result.error().unwrap());
         assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
-    let exec_request_6 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            // change deployment threshold to 4
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(6),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(5)
-                },
-            )
-            .with_deploy_hash([6u8; 32])
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, KEY_1, KEY_2, KEY_3])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        // change deployment threshold to 4
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(6),
+                ARG_DEPLOY_THRESHOLD => Weight::new(5)
+            },
+        )
+        .with_deploy_hash([6u8; 32])
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, KEY_1, KEY_2, KEY_3])
+        .build();
+    let exec_request_6 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
     // identity key (w: 1) and KEY_1 (w: 2) passes threshold of 3
     builder
         .clear_results()
@@ -256,23 +248,21 @@ fn should_raise_deploy_authorization_failure() {
         .expect_success()
         .commit();
 
-    let exec_request_7 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            // change deployment threshold to 4
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(0)
-                }, //args
-            )
-            .with_deploy_hash([6u8; 32])
-            .with_authorization_keys(&[KEY_2, KEY_1])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        // change deployment threshold to 4
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
+                ARG_DEPLOY_THRESHOLD => Weight::new(0)
+            }, //args
+        )
+        .with_deploy_hash([6u8; 32])
+        .with_authorization_keys(&[KEY_2, KEY_1])
+        .build();
+    let exec_request_7 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     // deployment threshold is now 4
     // failure: KEY_2 weight + KEY_1 weight < deployment threshold
@@ -289,23 +279,21 @@ fn should_raise_deploy_authorization_failure() {
         assert!(message.contains(&format!("{}", ExecError::DeploymentAuthorizationFailure)))
     }
 
-    let exec_request_8 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            // change deployment threshold to 4
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(0)
-                }, //args
-            )
-            .with_deploy_hash([8u8; 32])
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, KEY_1, KEY_2, KEY_3])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        // change deployment threshold to 4
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
+                ARG_DEPLOY_THRESHOLD => Weight::new(0)
+            }, //args
+        )
+        .with_deploy_hash([8u8; 32])
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, KEY_1, KEY_2, KEY_3])
+        .build();
+    let exec_request_8 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     // success: identity key weight + KEY_1 weight + KEY_2 weight >= deployment
     // threshold
@@ -350,22 +338,20 @@ fn should_authorize_deploy_with_multiple_keys() {
 
     // KEY_1 (w: 2) KEY_2 (w: 2) each passes default threshold of 1
 
-    let exec_request_3 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(0),
-                },
-            )
-            .with_deploy_hash([36; 32])
-            .with_authorization_keys(&[KEY_2, KEY_1])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
+                ARG_DEPLOY_THRESHOLD => Weight::new(0),
+            },
+        )
+        .with_deploy_hash([36; 32])
+        .with_authorization_keys(&[KEY_2, KEY_1])
+        .build();
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     builder.exec(exec_request_3).expect_success().commit();
 }
@@ -418,26 +404,24 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let exec_request_3 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT,
-            })
-            .with_session_code(
-                CONTRACT_SET_ACTION_THRESHOLDS,
-                runtime_args! {
-                    ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
-                    ARG_DEPLOY_THRESHOLD => Weight::new(0)
-                },
-            )
-            .with_deploy_hash([3u8; 32])
-            .with_authorization_keys(&[
-                KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1,
-            ])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT,
+        })
+        .with_session_code(
+            CONTRACT_SET_ACTION_THRESHOLDS,
+            runtime_args! {
+                ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
+                ARG_DEPLOY_THRESHOLD => Weight::new(0)
+            },
+        )
+        .with_deploy_hash([3u8; 32])
+        .with_authorization_keys(&[
+            KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1, KEY_1,
+        ])
+        .build();
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
     builder.clear_results().exec(exec_request_3).commit();
     let deploy_result = builder
         .get_exec_result_owned(0)

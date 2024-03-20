@@ -59,7 +59,7 @@ fn host_function_metrics_has_acceptable_size() {
     )
 }
 
-fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
+fn create_account_exec_request<'a>(address: AccountHash) -> ExecuteRequest<'a> {
     ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT_U512,
@@ -85,25 +85,23 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         random_bytes
     };
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT0_ADDR)
-            .with_deploy_hash([55; 32])
-            .with_session_code(
-                CONTRACT_HOST_FUNCTION_METRICS,
-                runtime_args! {
-                    ARG_SEED => seed,
-                    ARG_OTHERS => (Bytes::from(random_bytes), ACCOUNT0_ADDR, ACCOUNT1_ADDR),
-                    ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
-                },
-            )
-            .with_empty_payment_bytes(
-                runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT },
-            )
-            .with_authorization_keys(&[ACCOUNT0_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT0_ADDR)
+        .with_deploy_hash([55; 32])
+        .with_session_code(
+            CONTRACT_HOST_FUNCTION_METRICS,
+            runtime_args! {
+                ARG_SEED => seed,
+                ARG_OTHERS => (Bytes::from(random_bytes), ACCOUNT0_ADDR, ACCOUNT1_ADDR),
+                ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
+            },
+        )
+        .with_empty_payment_bytes(
+            runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT },
+        )
+        .with_authorization_keys(&[ACCOUNT0_ADDR])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request);
 

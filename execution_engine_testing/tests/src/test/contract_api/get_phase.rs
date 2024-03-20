@@ -12,26 +12,24 @@ const ARG_AMOUNT: &str = "amount";
 fn should_run_get_phase_contract() {
     let default_account = *DEFAULT_ACCOUNT_ADDR;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_session_code(
-                "get_phase.wasm",
-                runtime_args! { ARG_PHASE => Phase::Session },
-            )
-            .with_payment_code(
-                "get_phase_payment.wasm",
-                runtime_args! {
-                    ARG_PHASE => Phase::Payment,
-                    ARG_AMOUNT => *DEFAULT_PAYMENT
-                },
-            )
-            .with_authorization_keys(&[default_account])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_deploy_hash([1; 32])
+        .with_session_code(
+            "get_phase.wasm",
+            runtime_args! { ARG_PHASE => Phase::Session },
+        )
+        .with_payment_code(
+            "get_phase_payment.wasm",
+            runtime_args! {
+                ARG_PHASE => Phase::Payment,
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            },
+        )
+        .with_authorization_keys(&[default_account])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     LmdbWasmTestBuilder::default()
         .run_genesis(LOCAL_GENESIS_REQUEST.clone())

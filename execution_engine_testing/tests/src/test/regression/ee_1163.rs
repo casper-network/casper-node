@@ -91,7 +91,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     //         .with_deploy_hash([42; 32])
     //         .with_gas_price(PRIORITIZED_GAS_PRICE)
     //         .build();
-    //     ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    //     ExecuteRequestBuilder::from_deploy_item(&deploy_item).build()
     // };
     //
     // let mut builder = setup();

@@ -39,40 +39,33 @@ enum ExecutionPhase {
 fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase: ExecutionPhase) {
     let payment_amount = *DEFAULT_PAYMENT;
 
-    let (do_minimum_request_builder, expected_error_message) = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let (deploy_item_builder, expected_error_message) = match execution_phase {
-            ExecutionPhase::Payment => (
-                DeployItemBuilder::new()
-                    .with_payment_bytes(
-                        input_wasm_bytes.to_vec(),
-                        runtime_args! {ARG_AMOUNT => payment_amount,},
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
-                expected_error,
-            ),
-            ExecutionPhase::Session => (
-                DeployItemBuilder::new()
-                    .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
-                    .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => payment_amount,}),
-                expected_error,
-            ),
-        };
-        let deploy_item = deploy_item_builder
-            .with_address(account_hash)
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        (
-            ExecuteRequestBuilder::from_deploy_item(deploy_item),
-            expected_error_message,
-        )
+    let (deploy_item_builder, expected_error_message) = match execution_phase {
+        ExecutionPhase::Payment => (
+            DeployItemBuilder::new()
+                .with_payment_bytes(
+                    input_wasm_bytes.to_vec(),
+                    runtime_args! {ARG_AMOUNT => payment_amount,},
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
+            expected_error,
+        ),
+        ExecutionPhase::Session => (
+            DeployItemBuilder::new()
+                .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
+                .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => payment_amount,}),
+            expected_error,
+        ),
     };
-    let do_minimum_request = do_minimum_request_builder.build();
+    let deploy_item = deploy_item_builder
+        .with_address(account_hash)
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let do_minimum_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());

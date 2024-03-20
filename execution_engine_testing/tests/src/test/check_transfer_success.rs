@@ -56,7 +56,7 @@ fn test_check_transfer_success_with_source_only() {
         .build();
 
     // build a request to execute the deploy.
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();
@@ -118,7 +118,7 @@ fn test_check_transfer_success_with_source_only_errors() {
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // Set up test builder and run genesis.
     let mut builder = LmdbWasmTestBuilder::default();
@@ -175,7 +175,7 @@ fn test_check_transfer_success_with_source_and_target() {
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();

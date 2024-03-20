@@ -86,7 +86,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 
@@ -146,7 +146,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 
@@ -178,19 +178,17 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     )
     .build();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -224,19 +222,17 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -270,17 +266,15 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
-            .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
+        .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -314,24 +308,22 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                ACCESS_KEY,
-                None,
-                ENTRY_POINT_NAME,
-                RuntimeArgs::default(),
-            )
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(
+            ACCESS_KEY,
+            None,
+            ENTRY_POINT_NAME,
+            RuntimeArgs::default(),
+        )
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -365,22 +357,20 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
-            .with_stored_versioned_payment_contract_by_name(
-                ACCESS_KEY,
-                None,
-                ENTRY_POINT_NAME,
-                RuntimeArgs::new(),
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
+        .with_stored_versioned_payment_contract_by_name(
+            ACCESS_KEY,
+            None,
+            ENTRY_POINT_NAME,
+            RuntimeArgs::new(),
+        )
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -423,19 +413,17 @@ fn should_not_panic_when_calling_module_without_memory() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 

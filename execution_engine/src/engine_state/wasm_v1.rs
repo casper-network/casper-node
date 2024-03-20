@@ -44,7 +44,7 @@ pub enum InvalidRequest {
 
 /// The item to be executed.
 #[derive(Debug)]
-pub enum ExecutableItem {
+pub enum ExecutableItem<'a> {
     /// A stored entity or package.
     Stored(TransactionInvocationTarget),
     /// Compiled Wasm from a transaction >= V1 as byte code.
@@ -52,15 +52,15 @@ pub enum ExecutableItem {
         /// The kind of session.
         kind: TransactionSessionKind,
         /// The compiled Wasm.
-        module_bytes: Bytes,
+        module_bytes: &'a Bytes,
     },
     /// Compiled Wasm from a deploy as byte code.
-    DeploySessionModuleBytes(Bytes),
+    DeploySessionModuleBytes(&'a Bytes),
     /// Module bytes to be used as custom payment.
-    CustomPayment(Bytes),
+    CustomPayment(&'a Bytes),
 }
 
-impl ExecutableItem {
+impl<'a> ExecutableItem<'a> {
     pub(super) fn phase(&self) -> Phase {
         match self {
             ExecutableItem::Stored(_)
@@ -73,7 +73,7 @@ impl ExecutableItem {
 
 /// A request to execute the given Wasm on the V1 runtime.
 #[derive(Debug)]
-pub struct WasmV1Request {
+pub struct WasmV1Request<'a> {
     /// State root hash of the global state in which the transaction will be executed.
     pub state_hash: Digest,
     /// Block time represented as a unix timestamp.
@@ -85,7 +85,7 @@ pub struct WasmV1Request {
     /// The transaction's initiator.
     pub initiator_addr: InitiatorAddr,
     /// The executable item.
-    pub executable_item: ExecutableItem,
+    pub executable_item: ExecutableItem<'a>,
     /// The entry point to call when executing.
     pub entry_point: String,
     /// The runtime args.
@@ -94,13 +94,13 @@ pub struct WasmV1Request {
     pub authorization_keys: BTreeSet<AccountHash>,
 }
 
-impl WasmV1Request {
+impl<'a> WasmV1Request<'a> {
     /// Creates a new request from a transaction for use as the session code.
     pub fn new_session(
         state_hash: Digest,
         block_time: BlockTime,
         gas_limit: Gas,
-        txn: Transaction,
+        txn: &'a Transaction,
     ) -> Result<Self, InvalidRequest> {
         let transaction_hash = txn.hash();
         let initiator_addr = txn.initiator_addr();
@@ -108,9 +108,7 @@ impl WasmV1Request {
 
         let session_info = match txn {
             Transaction::Deploy(deploy) => {
-                let (hash, _header, _payment, session_deploy_item, _approvals) =
-                    deploy.destructure();
-                SessionInfo::try_from((session_deploy_item, hash))?
+                SessionInfo::try_from((deploy.session(), deploy.hash()))?
             }
             Transaction::V1(v1_txn) => SessionInfo::try_from(v1_txn)?,
         };
@@ -133,7 +131,7 @@ impl WasmV1Request {
         state_hash: Digest,
         block_time: BlockTime,
         gas_limit: Gas,
-        txn: Transaction,
+        txn: &'a Transaction,
     ) -> Result<Self, InvalidRequest> {
         let transaction_hash = txn.hash();
         let initiator_addr = txn.initiator_addr();
@@ -141,9 +139,7 @@ impl WasmV1Request {
 
         let payment_info = match txn {
             Transaction::Deploy(deploy) => {
-                let (hash, _header, payment_deploy_item, _session, _approvals) =
-                    deploy.destructure();
-                PaymentInfo::try_from((payment_deploy_item, hash))?
+                PaymentInfo::try_from((deploy.payment(), deploy.hash()))?
             }
             Transaction::V1(v1_txn) => PaymentInfo::try_from(v1_txn)?,
         };
@@ -169,24 +165,24 @@ impl WasmV1Request {
         block_time: BlockTime,
         gas_limit: Gas,
         DeployItem {
-            address,
-            session,
-            authorization_keys,
-            deploy_hash,
+            ref address,
+            ref session,
+            ref authorization_keys,
+            ref deploy_hash,
             ..
-        }: DeployItem,
+        }: &'a DeployItem,
     ) -> Result<Self, InvalidRequest> {
         let session_info = SessionInfo::try_from((session, deploy_hash))?;
         Ok(Self {
             state_hash,
             block_time,
-            transaction_hash: TransactionHash::Deploy(deploy_hash),
+            transaction_hash: TransactionHash::Deploy(*deploy_hash),
             gas_limit,
-            initiator_addr: InitiatorAddr::AccountHash(address),
+            initiator_addr: InitiatorAddr::AccountHash(*address),
             executable_item: session_info.session,
             entry_point: session_info.entry_point,
             args: session_info.args,
-            authorization_keys,
+            authorization_keys: authorization_keys.clone(),
         })
     }
 
@@ -198,24 +194,24 @@ impl WasmV1Request {
         block_time: BlockTime,
         gas_limit: Gas,
         DeployItem {
-            address,
-            payment,
-            authorization_keys,
-            deploy_hash,
+            ref address,
+            ref payment,
+            ref authorization_keys,
+            ref deploy_hash,
             ..
-        }: DeployItem,
+        }: &'a DeployItem,
     ) -> Result<Self, InvalidRequest> {
         let payment_info = PaymentInfo::try_from((payment, deploy_hash))?;
         Ok(Self {
             state_hash,
             block_time,
-            transaction_hash: TransactionHash::Deploy(deploy_hash),
+            transaction_hash: TransactionHash::Deploy(*deploy_hash),
             gas_limit,
-            initiator_addr: InitiatorAddr::AccountHash(address),
+            initiator_addr: InitiatorAddr::AccountHash(*address),
             executable_item: payment_info.payment,
             entry_point: DEFAULT_ENTRY_POINT.to_string(),
             args: payment_info.args,
-            authorization_keys,
+            authorization_keys: authorization_keys.clone(),
         })
     }
 }
@@ -376,36 +372,37 @@ impl WasmV1Result {
 /// Helper struct to carry the appropriate info for converting an `ExecutableDeployItem` or a
 /// `TransactionV1` into the corresponding fields of a `WasmV1Request` for execution as session
 /// code.
-struct SessionInfo {
-    session: ExecutableItem,
+struct SessionInfo<'a> {
+    session: ExecutableItem<'a>,
     entry_point: String,
     args: RuntimeArgs,
 }
 
-impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
+impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for SessionInfo<'a> {
     type Error = InvalidRequest;
 
     fn try_from(
-        (session_item, deploy_hash): (ExecutableDeployItem, DeployHash),
+        (session_item, deploy_hash): (&'a ExecutableDeployItem, &'a DeployHash),
     ) -> Result<Self, Self::Error> {
-        let session: ExecutableItem;
+        let session: ExecutableItem<'a>;
         let session_entry_point: String;
         let session_args: RuntimeArgs;
         match session_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
                 session = ExecutableItem::DeploySessionModuleBytes(module_bytes);
                 session_entry_point = DEFAULT_ENTRY_POINT.to_string();
-                session_args = args;
+                session_args = args.clone();
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash,
                 entry_point,
                 args,
             } => {
-                session =
-                    ExecutableItem::Stored(TransactionInvocationTarget::new_invocable_entity(hash));
-                session_entry_point = entry_point;
-                session_args = args;
+                session = ExecutableItem::Stored(
+                    TransactionInvocationTarget::new_invocable_entity(*hash),
+                );
+                session_entry_point = entry_point.clone();
+                session_args = args.clone();
             }
             ExecutableDeployItem::StoredContractByName {
                 name,
@@ -413,10 +410,10 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
                 args,
             } => {
                 session = ExecutableItem::Stored(
-                    TransactionInvocationTarget::new_invocable_entity_alias(name),
+                    TransactionInvocationTarget::new_invocable_entity_alias(name.clone()),
                 );
-                session_entry_point = entry_point;
-                session_args = args;
+                session_entry_point = entry_point.clone();
+                session_args = args.clone();
             }
             ExecutableDeployItem::StoredVersionedContractByHash {
                 hash,
@@ -424,10 +421,11 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
                 entry_point,
                 args,
             } => {
-                session =
-                    ExecutableItem::Stored(TransactionInvocationTarget::new_package(hash, version));
-                session_entry_point = entry_point;
-                session_args = args;
+                session = ExecutableItem::Stored(TransactionInvocationTarget::new_package(
+                    *hash, *version,
+                ));
+                session_entry_point = entry_point.clone();
+                session_args = args.clone();
             }
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -436,13 +434,14 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
                 args,
             } => {
                 session = ExecutableItem::Stored(TransactionInvocationTarget::new_package_alias(
-                    name, version,
+                    name.clone(),
+                    *version,
                 ));
-                session_entry_point = entry_point;
-                session_args = args;
+                session_entry_point = entry_point.clone();
+                session_args = args.clone();
             }
             ExecutableDeployItem::Transfer { .. } => {
-                return Err(InvalidRequest::InvalidSessionDeployItem(deploy_hash));
+                return Err(InvalidRequest::InvalidSessionDeployItem(*deploy_hash));
             }
         }
 
@@ -454,29 +453,31 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for SessionInfo {
     }
 }
 
-impl TryFrom<TransactionV1> for SessionInfo {
+impl<'a> TryFrom<&'a TransactionV1> for SessionInfo<'a> {
     type Error = InvalidRequest;
 
-    fn try_from(v1_txn: TransactionV1) -> Result<Self, Self::Error> {
-        let (hash, _header, body, _approvals) = v1_txn.destructure();
-        let (args, target, entry_point, _scheduling) = body.destructure();
-        let session = match target {
+    fn try_from(v1_txn: &'a TransactionV1) -> Result<Self, Self::Error> {
+        let args = v1_txn.args().clone();
+        let session = match v1_txn.target() {
             TransactionTarget::Native => {
-                return Err(InvalidRequest::InvalidSessionV1Target(hash));
+                return Err(InvalidRequest::InvalidSessionV1Target(*v1_txn.hash()));
             }
-            TransactionTarget::Stored { id, .. } => ExecutableItem::Stored(id),
+            TransactionTarget::Stored { id, .. } => ExecutableItem::Stored(id.clone()),
             TransactionTarget::Session {
                 kind, module_bytes, ..
-            } => ExecutableItem::SessionModuleBytes { kind, module_bytes },
+            } => ExecutableItem::SessionModuleBytes {
+                kind: *kind,
+                module_bytes,
+            },
         };
 
-        let TransactionEntryPoint::Custom(entry_point) = entry_point else {
-            return Err(InvalidRequest::InvalidSessionV1EntryPoint(hash));
+        let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
+            return Err(InvalidRequest::InvalidSessionV1EntryPoint(*v1_txn.hash()));
         };
 
         Ok(SessionInfo {
             session,
-            entry_point,
+            entry_point: entry_point.clone(),
             args,
         })
     }
@@ -485,25 +486,25 @@ impl TryFrom<TransactionV1> for SessionInfo {
 /// Helper struct to carry the appropriate info for converting an `ExecutableDeployItem` or a
 /// `TransactionV1` into the corresponding fields of a `WasmV1Request` for execution as custom
 /// payment.
-struct PaymentInfo {
-    payment: ExecutableItem,
+struct PaymentInfo<'a> {
+    payment: ExecutableItem<'a>,
     args: RuntimeArgs,
 }
 
-impl TryFrom<(ExecutableDeployItem, DeployHash)> for PaymentInfo {
+impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for PaymentInfo<'a> {
     type Error = InvalidRequest;
 
     fn try_from(
-        (payment_item, deploy_hash): (ExecutableDeployItem, DeployHash),
+        (payment_item, deploy_hash): (&'a ExecutableDeployItem, &'a DeployHash),
     ) -> Result<Self, Self::Error> {
         match payment_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
                 if module_bytes.is_empty() {
-                    return Err(InvalidRequest::EmptyCustomPaymentBytes(deploy_hash));
+                    return Err(InvalidRequest::EmptyCustomPaymentBytes(*deploy_hash));
                 }
                 Ok(PaymentInfo {
                     payment: ExecutableItem::CustomPayment(module_bytes),
-                    args,
+                    args: args.clone(),
                 })
             }
             ExecutableDeployItem::StoredContractByHash { .. }
@@ -511,43 +512,41 @@ impl TryFrom<(ExecutableDeployItem, DeployHash)> for PaymentInfo {
             | ExecutableDeployItem::StoredVersionedContractByHash { .. }
             | ExecutableDeployItem::StoredVersionedContractByName { .. }
             | ExecutableDeployItem::Transfer { .. } => {
-                Err(InvalidRequest::InvalidPaymentDeployItem(deploy_hash))
+                Err(InvalidRequest::InvalidPaymentDeployItem(*deploy_hash))
             }
         }
     }
 }
 
-impl TryFrom<TransactionV1> for PaymentInfo {
+impl<'a> TryFrom<&'a TransactionV1> for PaymentInfo<'a> {
     type Error = InvalidRequest;
 
-    fn try_from(v1_txn: TransactionV1) -> Result<Self, Self::Error> {
-        let (hash, header, body, _approvals) = v1_txn.destructure();
-        let (_args, target, _entry_point, _scheduling) = body.destructure();
+    fn try_from(v1_txn: &'a TransactionV1) -> Result<Self, Self::Error> {
         // TODO - check this is using the correct value (i.e. we don't need to account for gas_price
         // here).
-        let payment_amount = match header.pricing_mode() {
+        let payment_amount = match v1_txn.pricing_mode() {
             PricingMode::Classic {
                 payment_amount,
                 standard_payment,
                 ..
             } => {
                 if *standard_payment {
-                    return Err(InvalidRequest::InvalidPricingMode(hash));
+                    return Err(InvalidRequest::InvalidPricingMode(*v1_txn.hash()));
                 }
                 *payment_amount
             }
             PricingMode::Fixed { .. } | PricingMode::Reserved { .. } => {
-                return Err(InvalidRequest::InvalidPricingMode(hash));
+                return Err(InvalidRequest::InvalidPricingMode(*v1_txn.hash()));
             }
         };
 
-        let payment = match target {
+        let payment = match v1_txn.target() {
             // TODO - should we also consider the session kind here?
             TransactionTarget::Session { module_bytes, .. } => {
                 ExecutableItem::CustomPayment(module_bytes)
             }
             TransactionTarget::Native | TransactionTarget::Stored { .. } => {
-                return Err(InvalidRequest::InvalidSessionV1Target(hash));
+                return Err(InvalidRequest::InvalidSessionV1Target(*v1_txn.hash()));
             }
         };
         let args = runtime_args! { ARG_AMOUNT => U512::from(payment_amount)};

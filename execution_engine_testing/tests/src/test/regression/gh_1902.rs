@@ -110,28 +110,25 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
 
     let add_bid_payment_amount = U512::from(add_bid_cost + pay_cost) * 2;
 
-    let add_bid_request = {
-        let sender = *DEFAULT_ACCOUNT_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_ADD_BID;
-        let payment_args =
-            runtime_args! { standard_payment::ARG_AMOUNT => add_bid_payment_amount, };
-        let session_args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => bond_amount,
-            auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash([43; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let sender = *DEFAULT_ACCOUNT_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_ADD_BID;
+    let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => add_bid_payment_amount, };
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => bond_amount,
+        auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_empty_payment_bytes(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash([43; 32])
+        .build();
+
+    let add_bid_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     exec_and_assert_costs(
         &mut builder,
@@ -146,30 +143,28 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let delegate_payment_amount = U512::from(delegate_cost);
     let delegate_amount = U512::from(DELEGATE_AMOUNT);
 
-    let delegate_request = {
-        let sender = *ACCOUNT_1_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_DELEGATE;
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => delegate_payment_amount,
-        };
-        let session_args = runtime_args! {
-            auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => delegate_amount,
-        };
-        let deploy_hash = [55; 32];
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let sender = *ACCOUNT_1_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_DELEGATE;
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => delegate_payment_amount,
     };
+    let session_args = runtime_args! {
+        auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
+        auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => delegate_amount,
+    };
+    let deploy_hash = [55; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_empty_payment_bytes(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let delegate_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     exec_and_assert_costs(
         &mut builder,
@@ -184,30 +179,28 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let undelegate_payment_amount = U512::from(undelegate_cost);
     let undelegate_amount = delegate_amount;
 
-    let undelegate_request = {
-        let sender = *ACCOUNT_1_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_UNDELEGATE;
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => undelegate_payment_amount,
-        };
-        let session_args = runtime_args! {
-            auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
-            auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => undelegate_amount,
-        };
-        let deploy_hash = [56; 32];
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let sender = *ACCOUNT_1_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_UNDELEGATE;
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => undelegate_payment_amount,
     };
+    let session_args = runtime_args! {
+        auction::ARG_DELEGATOR => ACCOUNT_1_PUBLIC_KEY.clone(),
+        auction::ARG_VALIDATOR => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => undelegate_amount,
+    };
+    let deploy_hash = [56; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_empty_payment_bytes(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let undelegate_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     exec_and_assert_costs(
         &mut builder,
@@ -223,27 +216,25 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let withdraw_bid_cost = builder.get_auction_costs().withdraw_bid;
     let withdraw_bid_payment_amount = U512::from(withdraw_bid_cost);
 
-    let withdraw_bid_request = {
-        let sender = *DEFAULT_ACCOUNT_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_WITHDRAW_BID;
-        let payment_args =
-            runtime_args! { standard_payment::ARG_AMOUNT => withdraw_bid_payment_amount, };
-        let session_args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => unbond_amount,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash([58; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let sender = *DEFAULT_ACCOUNT_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_WITHDRAW_BID;
+    let payment_args =
+        runtime_args! { standard_payment::ARG_AMOUNT => withdraw_bid_payment_amount, };
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => unbond_amount,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_empty_payment_bytes(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash([58; 32])
+        .build();
+
+    let withdraw_bid_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     exec_and_assert_costs(
         &mut builder,

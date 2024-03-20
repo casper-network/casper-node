@@ -16,21 +16,19 @@ fn get_uref(key: Key) -> URef {
 fn do_pass(pass: &str) -> (URef, URef) {
     // This test runs a contract that's after every call extends the same key with
     // more data
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_session_code(
-                EE_441_RNG_STATE,
-                runtime_args! {
-                    "flag" => pass,
-                },
-            )
-            .with_deploy_hash([1u8; 32])
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_session_code(
+            EE_441_RNG_STATE,
+            runtime_args! {
+                "flag" => pass,
+            },
+        )
+        .with_deploy_hash([1u8; 32])
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder

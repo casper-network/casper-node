@@ -146,21 +146,19 @@ fn test_multisig_auth(
     authorization_keys: &[AccountHash],
 ) -> bool {
     let mut builder = setup();
-    let exec_request = {
-        let session_args = runtime_args! {};
-        let payment_args = runtime_args! {
-            ARG_AMOUNT => *DEFAULT_PAYMENT
-        };
-        let deploy_hash = [42; 32];
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(caller)
-            .with_stored_session_named_key(CONTRACT_KEY, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(authorization_keys)
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {};
+    let payment_args = runtime_args! {
+        ARG_AMOUNT => *DEFAULT_PAYMENT
     };
+    let deploy_hash = [42; 32];
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(caller)
+        .with_stored_session_named_key(CONTRACT_KEY, entry_point, session_args)
+        .with_empty_payment_bytes(payment_args)
+        .with_authorization_keys(authorization_keys)
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request).commit();
 
     match builder.get_error() {

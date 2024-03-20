@@ -82,26 +82,24 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
     // should be able to pay next time.
     let payment_amount = Motes::from_gas(gas_cost_1, 1).unwrap();
 
-    let fund_request_2 = {
-        let deploy_hash: [u8; 32] = [55; 32];
-        let faucet_args_2 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-            ARG_AMOUNT => TOKEN_AMOUNT,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, faucet_args_2)
-            // + default_create_purse_cost
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value()
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [55; 32];
+    let faucet_args_2 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_2_ADDR,
+        ARG_AMOUNT => TOKEN_AMOUNT,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, faucet_args_2)
+        // + default_create_purse_cost
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value()
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(fund_request_2).expect_success().commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
@@ -144,25 +142,23 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
     let mut upgrade_request = make_upgrade_request();
     builder.upgrade(&mut upgrade_request);
 
-    let fund_request_3 = {
-        let deploy_hash: [u8; 32] = [77; 32];
-        let faucet_args_3 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_3_ADDR,
-            ARG_AMOUNT => TOKEN_AMOUNT,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, faucet_args_3)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [77; 32];
+    let faucet_args_3 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_3_ADDR,
+        ARG_AMOUNT => TOKEN_AMOUNT,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, faucet_args_3)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(fund_request_3).expect_success().commit();
 
@@ -200,25 +196,23 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
     // should be able to pay next time.
     let payment_amount = Motes::from_gas(gas_cost_1, 1).unwrap();
 
-    let fund_request_2 = {
-        let deploy_hash: [u8; 32] = [55; 32];
-        let create_purse_args_2 = runtime_args! {
-            ARG_PURSE_NAME => TEST_PURSE_NAME,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, create_purse_args_2)
-            // + default_create_purse_cost
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value()
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [55; 32];
+    let create_purse_args_2 = runtime_args! {
+        ARG_PURSE_NAME => TEST_PURSE_NAME,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, create_purse_args_2)
+        // + default_create_purse_cost
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value()
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(fund_request_2).expect_success().commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
@@ -263,24 +257,22 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let fund_request_3 = {
-        let deploy_hash: [u8; 32] = [77; 32];
-        let create_purse_args_3 = runtime_args! {
-            ARG_PURSE_NAME => TEST_PURSE_NAME,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, create_purse_args_3)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [77; 32];
+    let create_purse_args_3 = runtime_args! {
+        ARG_PURSE_NAME => TEST_PURSE_NAME,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, create_purse_args_3)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(fund_request_3).expect_success().commit();
 
@@ -319,26 +311,24 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
     // should be able to pay next time.
     let payment_amount = Motes::from_gas(gas_cost_1, 1).unwrap();
 
-    let fund_request_2 = {
-        let deploy_hash: [u8; 32] = [55; 32];
-        let faucet_args_2 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-            ARG_AMOUNT => U512::from(TOKEN_AMOUNT),
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(TRANSFER_PURSE_TO_ACCOUNT_CONTRACT, faucet_args_2)
-            // + default_create_purse_cost
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value()
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [55; 32];
+    let faucet_args_2 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_2_ADDR,
+        ARG_AMOUNT => U512::from(TOKEN_AMOUNT),
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(TRANSFER_PURSE_TO_ACCOUNT_CONTRACT, faucet_args_2)
+        // + default_create_purse_cost
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value()
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(fund_request_2).expect_success().commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
@@ -385,25 +375,23 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         .with_chainspec(updated_chainspec)
         .upgrade(&mut upgrade_request);
 
-    let fund_request_3 = {
-        let deploy_hash: [u8; 32] = [77; 32];
-        let faucet_args_3 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_3_ADDR,
-            ARG_AMOUNT => U512::from(TOKEN_AMOUNT),
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, faucet_args_3)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [77; 32];
+    let faucet_args_3 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_3_ADDR,
+        ARG_AMOUNT => U512::from(TOKEN_AMOUNT),
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, faucet_args_3)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(fund_request_3).expect_success().commit();
 
@@ -446,25 +434,23 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
     // should be able to pay next time.
     let payment_amount = Motes::from_gas(gas_cost_1, 1).unwrap();
 
-    let fund_request_2 = {
-        let deploy_hash: [u8; 32] = [55; 32];
-        let faucet_args_2 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_2)
-            // + default_create_purse_cost
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value()
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [55; 32];
+    let faucet_args_2 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_2_ADDR,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_2)
+        // + default_create_purse_cost
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value()
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(fund_request_2).expect_success().commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
@@ -511,24 +497,22 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         .with_chainspec(updated_chainspec)
         .upgrade(&mut upgrade_request);
 
-    let fund_request_3 = {
-        let deploy_hash: [u8; 32] = [77; 32];
-        let faucet_args_3 = runtime_args! {
-            ARG_TARGET => *ACCOUNT_3_ADDR,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_3)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [77; 32];
+    let faucet_args_3 = runtime_args! {
+        ARG_TARGET => *ACCOUNT_3_ADDR,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_3)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(fund_request_3).expect_success().commit();
 
@@ -567,26 +551,24 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
     // should be able to pay next time.
     let payment_amount = Motes::from_gas(gas_cost_1, 1).unwrap();
 
-    let fund_request_2 = {
-        let deploy_hash: [u8; 32] = [55; 32];
-        let faucet_args_2 = runtime_args! {
-            ARG_CONTRACT_HASH => gh_2280_regression,
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, faucet_args_2)
-            // + default_create_purse_cost
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value()
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [55; 32];
+    let faucet_args_2 = runtime_args! {
+        ARG_CONTRACT_HASH => gh_2280_regression,
+        ARG_TARGET => *ACCOUNT_2_ADDR,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, faucet_args_2)
+        // + default_create_purse_cost
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value()
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(fund_request_2).expect_success().commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
@@ -633,25 +615,23 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         .with_chainspec(updated_chainspec)
         .upgrade(&mut upgrade_request);
 
-    let fund_request_3 = {
-        let deploy_hash: [u8; 32] = [77; 32];
-        let faucet_args_3 = runtime_args! {
-            ARG_CONTRACT_HASH => gh_2280_regression,
-            ARG_TARGET => *ACCOUNT_3_ADDR,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(session_file, faucet_args_3)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let deploy_hash: [u8; 32] = [77; 32];
+    let faucet_args_3 = runtime_args! {
+        ARG_CONTRACT_HASH => gh_2280_regression,
+        ARG_TARGET => *ACCOUNT_3_ADDR,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(session_file, faucet_args_3)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let fund_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(fund_request_3).expect_success().commit();
 

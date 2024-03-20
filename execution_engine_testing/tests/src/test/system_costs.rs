@@ -758,19 +758,17 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let do_nothing_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let do_nothing_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let user_funds_before = builder.get_purse_balance(default_account.main_purse());
 

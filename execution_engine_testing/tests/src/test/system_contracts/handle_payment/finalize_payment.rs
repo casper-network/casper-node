@@ -125,19 +125,17 @@ fn finalize_payment_should_refund_to_specified_purse() {
         "payment purse should start with zero balance"
     );
 
-    let exec_request = {
-        let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_session_code("do_nothing.wasm", RuntimeArgs::default())
-            .with_payment_code(FINALIZE_PAYMENT, args)
-            .with_authorization_keys(&[genesis_account_hash])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_deploy_hash([1; 32])
+        .with_session_code("do_nothing.wasm", RuntimeArgs::default())
+        .with_payment_code(FINALIZE_PAYMENT, args)
+        .with_authorization_keys(&[genesis_account_hash])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 

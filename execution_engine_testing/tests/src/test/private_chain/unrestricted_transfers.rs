@@ -436,29 +436,23 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
         .commit();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
-
-        const PAY_ENTRYPOINT: &str = "pay";
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_stored_payment_named_key(
-                TEST_PAYMENT_STORED_HASH_NAME,
-                PAY_ENTRYPOINT,
-                payment_args,
-            )
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let session_args = RuntimeArgs::default();
+
+    const PAY_ENTRYPOINT: &str = "pay";
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_stored_payment_named_key(TEST_PAYMENT_STORED_HASH_NAME, PAY_ENTRYPOINT, payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_failure().commit();
 
@@ -674,26 +668,24 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => payment_amount,
-        };
-        let session_args = RuntimeArgs::default();
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_payment_code("non_standard_payment.wasm", payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => payment_amount,
     };
+    let session_args = RuntimeArgs::default();
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_payment_code("non_standard_payment.wasm", payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -717,29 +709,27 @@ fn should_allow_wasm_transfer_to_system() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => payment_amount,
-        };
-        let session_args = runtime_args! {
-            "target" => *SYSTEM_ADDR,
-            "amount" => U512::one(),
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_code("transfer_to_account_u512.wasm", session_args)
-            .with_payment_bytes(Vec::new(), payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => payment_amount,
     };
+    let session_args = runtime_args! {
+        "target" => *SYSTEM_ADDR,
+        "amount" => U512::one(),
+    };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_code("transfer_to_account_u512.wasm", session_args)
+        .with_payment_bytes(Vec::new(), payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_success().commit();
 

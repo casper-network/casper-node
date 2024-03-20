@@ -44,24 +44,22 @@ fn should_return_different_random_bytes_on_different_phases() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let execute_request = {
-        let mut rng = rand::thread_rng();
-        let deploy_hash = rng.gen();
-        let address = *DEFAULT_ACCOUNT_ADDR;
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(address)
-            .with_session_code(RANDOM_BYTES_WASM, runtime_args! {})
-            .with_payment_code(
-                RANDOM_BYTES_PAYMENT_WASM,
-                runtime_args! {
-                    ARG_AMOUNT => *DEFAULT_PAYMENT
-                },
-            )
-            .with_authorization_keys(&[address])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let mut rng = rand::thread_rng();
+    let deploy_hash = rng.gen();
+    let address = *DEFAULT_ACCOUNT_ADDR;
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(address)
+        .with_session_code(RANDOM_BYTES_WASM, runtime_args! {})
+        .with_payment_code(
+            RANDOM_BYTES_PAYMENT_WASM,
+            runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            },
+        )
+        .with_authorization_keys(&[address])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(execute_request).commit().expect_success();
 

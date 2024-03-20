@@ -48,7 +48,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
         .with_deploy_hash([123; 32])
         .build();
 
-    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
@@ -76,7 +76,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
         .with_deploy_hash([123; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder

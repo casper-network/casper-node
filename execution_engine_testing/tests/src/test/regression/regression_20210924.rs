@@ -14,23 +14,21 @@ const ARG_AMOUNT: &str = "amount";
 fn should_charge_minimum_for_do_nothing_session() {
     let minimum_deploy_payment = U512::from(0);
 
-    let do_nothing_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => minimum_deploy_payment,
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => minimum_deploy_payment,
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let do_nothing_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -71,23 +69,21 @@ fn should_charge_minimum_for_do_nothing_session() {
 fn should_execute_do_minimum_session() {
     let minimum_deploy_payment = U512::from(DEFAULT_NOP_COST);
 
-    let do_minimum_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => minimum_deploy_payment,
-            })
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => minimum_deploy_payment,
+        })
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let do_minimum_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -124,26 +120,24 @@ fn should_execute_do_minimum_session() {
 fn should_charge_minimum_for_do_nothing_payment() {
     let minimum_deploy_payment = U512::from(0);
 
-    let do_nothing_request = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
-            .with_payment_bytes(
-                wasm_utils::do_nothing_bytes(),
-                runtime_args! {
-                    ARG_AMOUNT => minimum_deploy_payment,
-                },
-            )
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
+        .with_payment_bytes(
+            wasm_utils::do_nothing_bytes(),
+            runtime_args! {
+                ARG_AMOUNT => minimum_deploy_payment,
+            },
+        )
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let do_nothing_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 

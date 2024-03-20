@@ -24,20 +24,18 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
     )
     .build();
 
-    let exec_request_2 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(
-                CONTRACT_EE_550_REGRESSION,
-                runtime_args! { ARG_PASS => String::from(PASS_TEST_REMOVE) },
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
-            .with_deploy_hash(DEPLOY_HASH)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_code(
+            CONTRACT_EE_550_REGRESSION,
+            runtime_args! { ARG_PASS => String::from(PASS_TEST_REMOVE) },
+        )
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
+        .with_deploy_hash(DEPLOY_HASH)
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -61,20 +59,18 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
     )
     .build();
 
-    let exec_request_2 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(
-                CONTRACT_EE_550_REGRESSION,
-                runtime_args! { ARG_PASS => String::from(PASS_TEST_UPDATE) },
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
-            .with_deploy_hash(DEPLOY_HASH)
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_code(
+            CONTRACT_EE_550_REGRESSION,
+            runtime_args! { ARG_PASS => String::from(PASS_TEST_UPDATE) },
+        )
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
+        .with_deploy_hash(DEPLOY_HASH)
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 

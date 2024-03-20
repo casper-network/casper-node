@@ -100,23 +100,21 @@ fn test_match(
     expected_authorization_keys: Vec<AccountHash>,
 ) -> bool {
     let mut builder = setup();
-    let exec_request = {
-        let session_args = runtime_args! {
-            ARG_EXPECTED_AUTHORIZATION_KEYS => expected_authorization_keys
-        };
-        let deploy_hash = [42; 32];
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(caller)
-            .with_session_code(CONTRACT_LIST_AUTHORIZATION_KEYS, session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&signatures)
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {
+        ARG_EXPECTED_AUTHORIZATION_KEYS => expected_authorization_keys
     };
+    let deploy_hash = [42; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(caller)
+        .with_session_code(CONTRACT_LIST_AUTHORIZATION_KEYS, session_args)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&signatures)
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request).commit();
 
     match builder.get_error() {

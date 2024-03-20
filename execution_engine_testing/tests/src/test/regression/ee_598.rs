@@ -60,22 +60,20 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
         },
     )
     .build();
-    let combined_bond_and_unbond_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
-            .with_session_code(
-                "ee_598_regression.wasm",
-                runtime_args! {
-                    ARG_AMOUNT => *ACCOUNT_1_BOND,
-                    ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
-                },
-            )
-            .with_deploy_hash([2u8; 32])
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy).build()
-    };
+    let deploy = DeployItemBuilder::new()
+        .with_address(*ACCOUNT_1_ADDR)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
+        .with_session_code(
+            "ee_598_regression.wasm",
+            runtime_args! {
+                ARG_AMOUNT => *ACCOUNT_1_BOND,
+                ARG_PUBLIC_KEY => ACCOUNT_1_PK.clone(),
+            },
+        )
+        .with_deploy_hash([2u8; 32])
+        .with_authorization_keys(&[*ACCOUNT_1_ADDR])
+        .build();
+    let combined_bond_and_unbond_request = ExecuteRequestBuilder::from_deploy_item(&deploy).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(run_genesis_request);

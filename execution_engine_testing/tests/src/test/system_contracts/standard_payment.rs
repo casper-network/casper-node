@@ -78,8 +78,7 @@ fn should_forward_payment_execution_runtime_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(REVERT_WASM, RuntimeArgs::default())
@@ -90,8 +89,7 @@ fn should_forward_payment_execution_runtime_error() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -147,8 +145,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
@@ -159,8 +156,7 @@ fn should_forward_payment_execution_gas_limit_error() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -216,8 +212,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -228,8 +223,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -258,17 +252,15 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_deploy_hash([1; 32])
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -320,8 +312,7 @@ fn should_correctly_charge_when_session_code_fails() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -332,8 +323,7 @@ fn should_correctly_charge_when_session_code_fails() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -370,8 +360,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
@@ -382,8 +371,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -427,8 +415,7 @@ fn should_finalize_to_rewards_purse() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
@@ -439,8 +426,7 @@ fn should_finalize_to_rewards_purse() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -467,8 +453,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let setup_exec_request = {
-        let deploy_item = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
@@ -479,8 +464,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let setup_exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // create another account via transfer
     builder
@@ -489,29 +473,25 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .expect_success()
         .commit();
 
-    let exec_request_from_genesis = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+        .with_deploy_hash([2; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request_from_genesis = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    let exec_request_from_account_1 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_authorization_keys(&[account_1_account_hash])
-            .with_deploy_hash([1; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_authorization_keys(&[account_1_account_hash])
+        .with_deploy_hash([1; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let exec_request_from_account_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // run two independent deploys
     builder

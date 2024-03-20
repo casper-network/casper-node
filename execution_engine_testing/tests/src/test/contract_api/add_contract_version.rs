@@ -31,13 +31,15 @@ fn try_add_contract_version(kind: TransactionSessionKind, should_succeed: bool) 
 
     let module_bytes = utils::read_wasm_file(CONTRACT);
 
-    let txn = TransactionV1Builder::new_session(kind, module_bytes, ENTRY_POINT)
-        .with_secret_key(&DEFAULT_ACCOUNT_SECRET_KEY)
-        .with_chain_name(CHAIN_NAME)
-        .build()
-        .unwrap();
+    let txn = Transaction::from(
+        TransactionV1Builder::new_session(kind, module_bytes, ENTRY_POINT)
+            .with_secret_key(&DEFAULT_ACCOUNT_SECRET_KEY)
+            .with_chain_name(CHAIN_NAME)
+            .build()
+            .unwrap(),
+    );
 
-    let txn_request = ExecuteRequestBuilder::from_transaction(Transaction::from(txn))
+    let txn_request = ExecuteRequestBuilder::from_transaction(&txn)
         .with_block_time(BLOCK_TIME)
         .build();
 

@@ -42,7 +42,7 @@ static BOB_KEY: Lazy<PublicKey> = Lazy::new(|| {
 });
 static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
 
-fn setup_regression_contract() -> ExecuteRequest {
+fn setup_regression_contract<'a>() -> ExecuteRequest<'a> {
     ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         REGRESSION_20210707,
@@ -375,22 +375,20 @@ fn should_not_refund_to_bob_and_charge_alice() {
 
     let contract_hash = get_account_entity_hash(&account);
 
-    let call_request = {
-        let args = runtime_args! {
-            ARG_SOURCE => bob_main_purse,
-            ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([77; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let args = runtime_args! {
+        ARG_SOURCE => bob_main_purse,
+        ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        // Just do nothing if ever we'd get into session execution
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([77; 32])
+        .build();
+
+    let call_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(call_request).commit();
 
@@ -433,22 +431,20 @@ fn should_not_charge_alice_for_execution() {
 
     let contract_hash = get_account_entity_hash(&account);
 
-    let call_request = {
-        let args = runtime_args! {
-            ARG_SOURCE => bob_main_purse,
-            ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([77; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let args = runtime_args! {
+        ARG_SOURCE => bob_main_purse,
+        ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        // Just do nothing if ever we'd get into session execution
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([77; 32])
+        .build();
+
+    let call_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(call_request).commit();
 
@@ -488,21 +484,19 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
 
     let contract_hash = get_account_entity_hash(&account);
 
-    let call_request = {
-        let args = runtime_args! {
-            ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            // Just do nothing if ever we'd get into session execution
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_stored_payment_hash(contract_hash, METHOD_HARDCODED_PAYMENT, args)
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([77; 32])
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let args = runtime_args! {
+        ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        // Just do nothing if ever we'd get into session execution
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        .with_stored_payment_hash(contract_hash, METHOD_HARDCODED_PAYMENT, args)
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([77; 32])
+        .build();
+
+    let call_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(call_request).commit();
 

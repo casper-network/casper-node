@@ -3134,24 +3134,22 @@ mod payment {
     const DEPTHS: &[usize] = &[0, 6, 10];
 
     fn execute(builder: &mut LmdbWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3166,33 +3164,31 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
 
-            let sender = *DEFAULT_ACCOUNT_ADDR;
+        let sender = *DEFAULT_ACCOUNT_ADDR;
 
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_versioned_payment_contract_by_name(
-                    CONTRACT_PACKAGE_NAME,
-                    None,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_versioned_payment_contract_by_name(
+                CONTRACT_PACKAGE_NAME,
+                None,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3208,29 +3204,27 @@ mod payment {
         subcalls: Vec<Call>,
         current_contract_package_hash: HashAddr,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_versioned_payment_contract_by_hash(
-                    current_contract_package_hash,
-                    None,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_versioned_payment_contract_by_hash(
+                current_contract_package_hash,
+                None,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3245,32 +3239,30 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
 
-            let sender = *DEFAULT_ACCOUNT_ADDR;
+        let sender = *DEFAULT_ACCOUNT_ADDR;
 
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_payment_named_key(
-                    CONTRACT_NAME,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_payment_named_key(
+                CONTRACT_NAME,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3286,28 +3278,26 @@ mod payment {
         subcalls: Vec<Call>,
         current_contract_hash: HashAddr,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_payment_hash(
-                    current_contract_hash.into(),
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_payment_hash(
+                current_contract_hash.into(),
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         let is_entry_point_type_session = true;
 

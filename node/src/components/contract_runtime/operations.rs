@@ -135,7 +135,7 @@ pub fn execute_finalized_block(
                     state_root_hash,
                     block_time,
                     custom_payment_gas_limit,
-                    txn.clone(),
+                    &txn,
                 ) {
                     Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
                     Err(error) => {
@@ -239,7 +239,7 @@ pub fn execute_finalized_block(
                         state_root_hash,
                         block_time,
                         gas_limit,
-                        txn.clone(),
+                        &txn,
                     ) {
                         Ok(wasm_v1_request) => {
                             execution_engine_v1.execute(&scratch_state, wasm_v1_request)
@@ -662,7 +662,7 @@ where
         *state_root_hash,
         block_time.into(),
         gas_limit,
-        transaction,
+        &transaction,
     ) {
         Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
         Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),

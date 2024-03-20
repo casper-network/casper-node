@@ -43,18 +43,16 @@ fn should_fail_to_overflow_gas_counter() {
 
     let session_bytes = make_gas_counter_overflow();
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(session_bytes, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(session_bytes, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -151,18 +149,16 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(session_bytes, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(session_bytes, RuntimeArgs::default())
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit().expect_success();
 

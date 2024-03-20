@@ -226,27 +226,25 @@ fn genesis_accounts_should_not_remove_associated_keys() {
 
     let mut builder = super::private_chain_setup();
 
-    let add_associated_key_request = {
-        let session_args = runtime_args! {
-            ARG_ACCOUNT => secondary_account_hash,
-            ARG_WEIGHT => Weight::MAX,
-        };
-
-        let account_hash = *ACCOUNT_1_ADDR;
-        let deploy_hash: [u8; 32] = [55; 32];
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(account_hash)
-            .with_session_code(ADD_ASSOCIATED_KEY_CONTRACT, session_args)
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_authorization_keys(&[*ADMIN_1_ACCOUNT_ADDR])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {
+        ARG_ACCOUNT => secondary_account_hash,
+        ARG_WEIGHT => Weight::MAX,
     };
+
+    let account_hash = *ACCOUNT_1_ADDR;
+    let deploy_hash: [u8; 32] = [55; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(account_hash)
+        .with_session_code(ADD_ASSOCIATED_KEY_CONTRACT, session_args)
+        .with_empty_payment_bytes(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT
+        })
+        .with_authorization_keys(&[*ADMIN_1_ACCOUNT_ADDR])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let add_associated_key_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(add_associated_key_request)
@@ -300,28 +298,24 @@ fn administrator_account_should_disable_any_account() {
     builder.exec(exec_request_1).expect_success().commit();
 
     // Disable account 1
-    let disable_request_1 = {
-        let session_args = runtime_args! {
-            ARG_DEPLOY_THRESHOLD => Weight::MAX,
-            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::MAX,
-        };
-
-        {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [54; 32];
-
-            // Here, deploy is sent as an account, but signed by an administrator.
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-                .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-                .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-        }
+    let session_args = runtime_args! {
+        ARG_DEPLOY_THRESHOLD => Weight::MAX,
+        ARG_KEY_MANAGEMENT_THRESHOLD => Weight::MAX,
     };
+
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [54; 32];
+
+    // Here, deploy is sent as an account, but signed by an administrator.
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let disable_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(disable_request_1).expect_success().commit();
     // Account 1 can not deploy after freezing
@@ -348,47 +342,43 @@ fn administrator_account_should_disable_any_account() {
     );
 
     // Unfreeze account 1
-    let enable_request_1 = {
-        let session_args = runtime_args! {
-            ARG_DEPLOY_THRESHOLD => Weight::new(1),
-            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
-        };
-
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [53; 32];
-
-        // Here, deploy is sent as an account, but signed by an administrator.
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {
+        ARG_DEPLOY_THRESHOLD => Weight::new(1),
+        ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(0),
     };
 
-    let enable_request_2 = {
-        let session_args = runtime_args! {
-            ARG_DEPLOY_THRESHOLD => Weight::new(0),
-            ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
-        };
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [53; 32];
 
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [52; 32];
+    // Here, deploy is sent as an account, but signed by an administrator.
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+        .with_deploy_hash(deploy_hash)
+        .build();
 
-        // Here, deploy is sent as an account, but signed by an administrator.
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
-            .with_deploy_hash(deploy_hash)
-            .build();
+    let enable_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let session_args = runtime_args! {
+        ARG_DEPLOY_THRESHOLD => Weight::new(0),
+        ARG_KEY_MANAGEMENT_THRESHOLD => Weight::new(1),
     };
+
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [52; 32];
+
+    // Here, deploy is sent as an account, but signed by an administrator.
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
+        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
+        .with_deploy_hash(deploy_hash)
+        .build();
+
+    let enable_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(enable_request_1).expect_success().commit();
     builder.exec(enable_request_2).expect_success().commit();
@@ -706,28 +696,22 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     );
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_stored_payment_named_key(
-                TEST_PAYMENT_STORED_HASH_NAME,
-                PAY_ENTRYPOINT,
-                payment_args,
-            )
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let session_args = RuntimeArgs::default();
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_stored_payment_named_key(TEST_PAYMENT_STORED_HASH_NAME, PAY_ENTRYPOINT, payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_failure();
 
@@ -757,48 +741,37 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     );
     assert!(!contract_package_after_disable.is_entity_enabled(&stored_entity_hash),);
 
-    let call_stored_payment_requests_1 = {
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
-
-        let call_by_name = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
-
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
-                .with_stored_payment_named_key(
-                    TEST_PAYMENT_STORED_HASH_NAME,
-                    PAY_ENTRYPOINT,
-                    payment_args.clone(),
-                )
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-        };
-
-        let call_by_hash = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
-
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-        };
-
-        vec![call_by_name, call_by_hash]
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let session_args = RuntimeArgs::default();
 
-    for execute_request in call_stored_payment_requests_1 {
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
+        .with_stored_payment_named_key(
+            TEST_PAYMENT_STORED_HASH_NAME,
+            PAY_ENTRYPOINT,
+            payment_args.clone(),
+        )
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let call_by_name = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let call_by_hash = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
+
+    for execute_request in [call_by_name, call_by_hash] {
         builder.exec(execute_request).expect_failure().commit();
         let error = builder.get_error().expect("should have error");
         assert!(
@@ -825,48 +798,33 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
     builder.exec(enable_request).expect_success().commit();
 
-    let call_stored_payment_requests_2 = {
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
+    let payment_args = runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT };
+    let session_args = RuntimeArgs::default();
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
+        .with_stored_payment_named_key(
+            TEST_PAYMENT_STORED_HASH_NAME,
+            PAY_ENTRYPOINT,
+            payment_args.clone(),
+        )
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let call_by_name = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-        let call_by_name = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let call_by_hash = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args.clone())
-                .with_stored_payment_named_key(
-                    TEST_PAYMENT_STORED_HASH_NAME,
-                    PAY_ENTRYPOINT,
-                    payment_args.clone(),
-                )
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-        };
-
-        let call_by_hash = {
-            let sender = *ACCOUNT_1_ADDR;
-            let deploy_hash = [100; 32];
-
-            let deploy_item = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-        };
-
-        vec![call_by_name, call_by_hash]
-    };
-
-    for exec_request in call_stored_payment_requests_2 {
+    for exec_request in [call_by_name, call_by_hash] {
         builder.exec(exec_request).expect_failure();
     }
 }

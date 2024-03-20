@@ -45,10 +45,8 @@ fn should_install_faucet_contract() {
         .transfer_and_commit(fund_installer_account_request)
         .expect_success();
 
-    let install_faucet_request = FaucetInstallSessionRequestBuilder::new().build();
-
     builder
-        .exec(install_faucet_request)
+        .exec(FaucetInstallSessionRequestBuilder::new().build())
         .expect_success()
         .commit();
 
@@ -960,25 +958,24 @@ fn faucet_costs() {
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
-    let installer_set_variable_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-                ENTRY_POINT_SET_VARIABLES,
-                runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-                    ARG_TIME_INTERVAL => Some(assigned_time_interval),
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([3; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(installer_account)
+        .with_authorization_keys(&[installer_account])
+        .with_stored_session_named_key(
+            &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
+            ENTRY_POINT_SET_VARIABLES,
+            runtime_args! {
+                ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
+                ARG_TIME_INTERVAL => Some(assigned_time_interval),
+                ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
+            },
+        )
+        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_deploy_hash([3; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let installer_set_variable_request =
+        ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(installer_set_variable_request)
@@ -988,8 +985,8 @@ fn faucet_costs() {
     let faucet_set_variables_cost = builder.last_exec_gas_cost();
 
     let user_fund_amount = U512::from(10_000_000_000u64);
-    let faucet_call_by_installer = {
-        let deploy_item = DeployItemBuilder::new()
+
+    let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
@@ -1001,8 +998,7 @@ fn faucet_costs() {
             .with_deploy_hash([4; 32])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let faucet_call_by_installer = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(faucet_call_by_installer)
@@ -1013,21 +1009,19 @@ fn faucet_costs() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
 
-    let faucet_call_by_user_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(user_account)
-            .with_authorization_keys(&[user_account])
-            .with_stored_session_hash(
-                faucet_contract_hash,
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
-            .with_deploy_hash([4; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(user_account)
+        .with_authorization_keys(&[user_account])
+        .with_stored_session_hash(
+            faucet_contract_hash,
+            ENTRY_POINT_FAUCET,
+            runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+        )
+        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
+        .with_deploy_hash([4; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let faucet_call_by_user_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(faucet_call_by_user_request)
