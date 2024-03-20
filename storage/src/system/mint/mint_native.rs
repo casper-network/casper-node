@@ -8,7 +8,7 @@ use crate::{
             runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
             system_provider::SystemProvider, Mint,
         },
-        runtime_native::{Id, RuntimeNative},
+        runtime_native::RuntimeNative,
     },
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
 };
@@ -17,7 +17,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
     AccessRights, AddressableEntity, CLTyped, CLValue, Key, Phase, PublicKey, StoredValue,
-    SystemEntityRegistry, Transfer, TransferAddr, URef, U512,
+    SystemEntityRegistry, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -208,45 +208,46 @@ where
 {
     fn record_transfer(
         &mut self,
-        maybe_to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        id: Option<u64>,
+        _maybe_to: Option<AccountHash>,
+        _source: URef,
+        _target: URef,
+        _amount: U512,
+        _id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.phase() != Phase::Session {
-            return Ok(());
-        }
-        let transaction_hash = match self.id() {
-            Id::Transaction(transaction_hash) => *transaction_hash,
-            // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
-            // so return Ok and move on.
-            Id::Seed(_) => return Ok(()),
-        };
-
-        let transfer_addr = TransferAddr::new(self.address_generator().create_address());
-        let key = Key::Transfer(transfer_addr); // <-- a new key variant needed to deal w/ versioned transaction hash
-                                                //let transaction_hash = self.transaction_hash();
-        let transfer = {
-            let from: AccountHash = self.get_caller();
-            let fee: U512 = U512::zero();
-            Transfer::new(
-                transaction_hash,
-                from,
-                maybe_to,
-                source,
-                target,
-                amount,
-                fee,
-                id,
-            )
-        };
-        self.push_transfer(transfer_addr);
-
-        self.tracking_copy()
-            .borrow_mut()
-            .write(key, StoredValue::Transfer(transfer));
         Ok(())
+        // if self.phase() != Phase::Session {
+        //     return Ok(());
+        // }
+        // let transaction_hash = match self.id() {
+        //     Id::Transaction(transaction_hash) => *transaction_hash,
+        //     // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
+        //     // so return Ok and move on.
+        //     Id::Seed(_) => return Ok(()),
+        // };
+        //
+        // let transfer_addr = TransferAddr::new(self.address_generator().create_address());
+        // let key = Key::Transfer(transfer_addr); // <-- a new key variant needed to deal w/
+        // versioned transaction hash                                         //let
+        // transaction_hash = self.transaction_hash(); let transfer = {
+        //     let from: AccountHash = self.get_caller();
+        //     let fee: U512 = U512::zero();
+        //     Transfer::new(
+        //         transaction_hash,
+        //         from,
+        //         maybe_to,
+        //         source,
+        //         target,
+        //         amount,
+        //         fee,
+        //         id,
+        //     )
+        // };
+        // self.push_transfer(transfer_addr);
+        //
+        // self.tracking_copy()
+        //     .borrow_mut()
+        //     .write(key, StoredValue::Transfer(transfer));
+        // Ok(())
     }
 }
 

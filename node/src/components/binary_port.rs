@@ -12,8 +12,8 @@ use bytes::Bytes;
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
     ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, NodeStatus, ReactorStateName,
-    TransactionWithExecutionInfo,
+    InformationRequest, InformationRequestTag, NodeStatus, RawBytesSpec, ReactorStateName,
+    RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -21,7 +21,6 @@ use casper_storage::{
         QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
-    DbRawBytesSpec, RecordId,
 };
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -188,8 +187,8 @@ where
             let Ok(serialized) = bincode::serialize(&transfers) else {
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
-            let bytes = DbRawBytesSpec::new_current(&serialized);
-            BinaryResponse::from_db_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
+            let bytes = RawBytesSpec::new_current(&serialized);
+            BinaryResponse::from_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
         }
         GetRequest::Record {
             record_type_tag,
@@ -199,7 +198,7 @@ where
             match RecordId::try_from(record_type_tag) {
                 Ok(record_id) => {
                     let maybe_raw_bytes = effect_builder.get_raw_data(record_id, key).await;
-                    BinaryResponse::from_db_raw_bytes(record_id, maybe_raw_bytes, protocol_version)
+                    BinaryResponse::from_raw_bytes(record_id, maybe_raw_bytes, protocol_version)
                 }
                 Err(_) => {
                     BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version)
@@ -222,7 +221,6 @@ where
         }
     }
 }
-
 async fn handle_get_all_items<REv>(
     state_identifier: Option<GlobalStateIdentifier>,
     key_tag: casper_types::KeyTag,
@@ -546,13 +544,9 @@ where
         SpeculativeExecutionResult::InvalidTransaction(ite) => {
             BinaryResponse::new_error(ite.into(), protocol_version)
         }
-        SpeculativeExecutionResult::WasmV1(v1) => match v1.error() {
-            Some(_) => BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
-            None => BinaryResponse::from_value(
-                casper_binary_port::SpeculativeExecutionResult::from(v1),
-                protocol_version,
-            ),
-        },
+        SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
+            BinaryResponse::from_value(spec_exec_result, protocol_version)
+        }
     }
 }
 

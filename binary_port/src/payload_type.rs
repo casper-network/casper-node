@@ -6,8 +6,7 @@ use schemars::JsonSchema;
 #[cfg(test)]
 use rand::Rng;
 
-use casper_execution_engine::engine_state::WasmV1Result;
-use casper_storage::block_store::record_id::RecordId;
+use crate::record_id::RecordId;
 use core::{convert::TryFrom, fmt};
 
 #[cfg(test)]
@@ -417,10 +416,6 @@ impl PayloadEntity for BlockSignatures {
 
 impl PayloadEntity for BlockSignaturesV1 {
     const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignaturesV1;
-}
-
-impl PayloadEntity for WasmV1Result {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::WasmV1Result;
 }
 
 impl PayloadEntity for ExecutionResult {

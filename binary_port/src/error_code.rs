@@ -1,6 +1,5 @@
 use core::{convert::TryFrom, fmt};
 
-use casper_execution_engine::engine_state::Error as EngineError;
 use casper_types::InvalidTransaction;
 
 /// The error code indicating the result of handling the binary request.
@@ -82,20 +81,6 @@ impl fmt::Display for UnknownErrorCode {
 }
 
 impl std::error::Error for UnknownErrorCode {}
-
-impl From<EngineError> for ErrorCode {
-    fn from(err: EngineError) -> Self {
-        match err {
-            EngineError::RootNotFound(_) => ErrorCode::RootNotFound,
-            EngineError::Deploy => ErrorCode::InvalidTransaction,
-            EngineError::InvalidItemVariant(_) => ErrorCode::InvalidItemVariant,
-            EngineError::WasmPreprocessing(_) => ErrorCode::WasmPreprocessing,
-            EngineError::InvalidProtocolVersion(_) => ErrorCode::UnsupportedProtocolVersion,
-            EngineError::Deprecated(_) => ErrorCode::FunctionDisabled,
-            _ => ErrorCode::InternalError,
-        }
-    }
-}
 
 impl From<InvalidTransaction> for ErrorCode {
     fn from(_value: InvalidTransaction) -> Self {

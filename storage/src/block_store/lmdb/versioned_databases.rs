@@ -16,9 +16,11 @@ use casper_types::{
 };
 
 use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
-use crate::block_store::{
-    error::BlockStoreError,
-    types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
+use crate::{
+    block_store::{
+        error::BlockStoreError,
+        types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
+    },
     DbRawBytesSpec,
 };
 

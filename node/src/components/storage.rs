@@ -38,6 +38,7 @@ mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use casper_storage::block_store::{
     lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
@@ -978,9 +979,17 @@ impl Storage {
                 responder,
                 record_id,
             } => {
+                let db_table_id = utils::db_table_id_from_record_id(record_id)
+                    .map_err(|_| FatalStorageError::UnexpectedRecordId(record_id))?;
                 let txn = self.block_store.checkout_ro()?;
-                let maybe_data: Option<DbRawBytesSpec> = txn.read((record_id, key))?;
-                responder.respond(maybe_data).ignore()
+                let maybe_data: Option<DbRawBytesSpec> = txn.read((db_table_id, key))?;
+                match maybe_data {
+                    None => responder.respond(None).ignore(),
+                    Some(db_raw) => {
+                        let raw_bytes_spec = utils::raw_bytes_from_db_raw_bytes(db_raw);
+                        responder.respond(Some(raw_bytes_spec)).ignore()
+                    }
+                }
             }
         })
     }

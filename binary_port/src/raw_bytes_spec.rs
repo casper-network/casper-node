@@ -1,21 +1,22 @@
-mod block_provider;
-mod error;
-pub mod lmdb;
-pub mod types;
+pub use crate::record_id::{RecordId, UnknownRecordId};
 
-pub use block_provider::{BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter};
-pub use error::BlockStoreError;
-
-/// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or
-/// current version of the DB.
+/// Stores raw bytes along with the flag indicating whether data is in a legacy format or not.
 #[derive(Debug)]
-pub struct DbRawBytesSpec {
+pub struct RawBytesSpec {
     is_legacy: bool,
     raw_bytes: Vec<u8>,
 }
 
-impl DbRawBytesSpec {
-    /// Creates a variant indicating that raw bytes are coming from the legacy database.
+impl RawBytesSpec {
+    /// Creates an instance of the appropriate variant.
+    pub fn new(raw_bytes: &[u8], is_legacy: bool) -> Self {
+        Self {
+            is_legacy,
+            raw_bytes: raw_bytes.to_vec(),
+        }
+    }
+
+    /// Creates a variant indicating that raw bytes are coming from a legacy source.
     pub fn new_legacy(raw_bytes: &[u8]) -> Self {
         Self {
             is_legacy: true,

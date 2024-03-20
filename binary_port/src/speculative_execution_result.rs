@@ -1,4 +1,3 @@
-use casper_execution_engine::engine_state::WasmV1Result;
 use casper_types::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
@@ -23,6 +22,26 @@ pub struct SpeculativeExecutionResult {
     error: Option<String>,
 }
 
+impl SpeculativeExecutionResult {
+    pub fn new(
+        transfers: Vec<TransferAddr>,
+        limit: Gas,
+        consumed: Gas,
+        effects: Effects,
+        messages: Messages,
+        error: Option<String>,
+    ) -> Self {
+        SpeculativeExecutionResult {
+            transfers,
+            limit,
+            consumed,
+            effects,
+            messages,
+            error,
+        }
+    }
+}
+
 impl From<InvalidTransaction> for SpeculativeExecutionResult {
     fn from(invalid_transaction: InvalidTransaction) -> Self {
         SpeculativeExecutionResult {
@@ -32,24 +51,6 @@ impl From<InvalidTransaction> for SpeculativeExecutionResult {
             effects: Default::default(),
             messages: Default::default(),
             error: Some(format!("{}", invalid_transaction)),
-        }
-    }
-}
-
-impl From<WasmV1Result> for SpeculativeExecutionResult {
-    fn from(wasm_v1_result: WasmV1Result) -> Self {
-        let error = wasm_v1_result
-            .error()
-            .as_ref()
-            .map(|err| format!("{}", err));
-
-        SpeculativeExecutionResult {
-            transfers: wasm_v1_result.transfers().to_owned(),
-            limit: wasm_v1_result.limit(),
-            consumed: wasm_v1_result.consumed(),
-            effects: wasm_v1_result.effects().to_owned(),
-            messages: wasm_v1_result.messages().to_owned(),
-            error,
         }
     }
 }

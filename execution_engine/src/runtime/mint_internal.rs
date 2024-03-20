@@ -170,16 +170,18 @@ where
 {
     fn record_transfer(
         &mut self,
-        maybe_to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        id: Option<u64>,
+        _maybe_to: Option<AccountHash>,
+        _source: URef,
+        _target: URef,
+        _amount: U512,
+        _id: Option<u64>,
     ) -> Result<(), Error> {
-        let result = Runtime::record_transfer(self, maybe_to, source, target, amount, id);
-        result.map_err(|exec_error| {
-            <Option<Error>>::from(exec_error).unwrap_or(Error::RecordTransferFailure)
-        })
+        Ok(())
+
+        // let result = Runtime::record_transfer(self, maybe_to, source, target, amount, id);
+        // result.map_err(|exec_error| {
+        //     <Option<Error>>::from(exec_error).unwrap_or(Error::RecordTransferFailure)
+        // })
     }
 }
 

@@ -38,6 +38,7 @@ use crate::{
     },
     contract_runtime::{
         types::{ExecutionArtifactOutcome, SpeculativeExecutionResult},
+        utils,
         utils::calculate_prune_eras,
     },
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
@@ -699,7 +700,9 @@ where
         gas_limit,
         Phase::Session,
     );
-    SpeculativeExecutionResult::WasmV1(execution_engine_v1.execute(state_provider, request))
+    let result = execution_engine_v1.execute(state_provider, request);
+    let spec_exec = utils::spec_exec_from_wasm_v1_result(result);
+    SpeculativeExecutionResult::WasmV1(spec_exec)
 }
 
 #[allow(clippy::too_many_arguments)]

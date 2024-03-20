@@ -4,9 +4,8 @@ use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
     ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
     GlobalStateRequest, InformationRequest, InformationRequestTag, LastProgress, NetworkName,
-    NodeStatus, PayloadType, ReactorStateName, Uptime,
+    NodeStatus, PayloadType, ReactorStateName, RecordId, Uptime,
 };
-use casper_storage::RecordId;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,

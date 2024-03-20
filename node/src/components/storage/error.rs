@@ -1,5 +1,6 @@
 use std::{fmt::Debug, io, path::PathBuf};
 
+use casper_binary_port::RecordId;
 use thiserror::Error;
 use tracing::error;
 
@@ -9,7 +10,7 @@ use casper_types::{
 };
 
 use crate::types::VariantMismatch;
-use casper_storage::{block_store::BlockStoreError, RecordId};
+use casper_storage::block_store::BlockStoreError;
 
 /// A fatal storage component error.
 ///
@@ -179,6 +180,9 @@ pub enum FatalStorageError {
     /// BlockStoreError
     #[error(transparent)]
     BlockStoreError(#[from] BlockStoreError),
+    /// BlockStoreError
+    #[error("unexpected record id {0}")]
+    UnexpectedRecordId(RecordId),
 }
 
 impl From<Box<BlockValidationError>> for FatalStorageError {

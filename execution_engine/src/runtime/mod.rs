@@ -53,8 +53,7 @@ use casper_types::{
     CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
-    StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    StoredValue, Tagged, TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -2100,43 +2099,44 @@ where
     /// Records a transfer.
     fn record_transfer(
         &mut self,
-        maybe_to: Option<AccountHash>,
-        source: URef,
-        target: URef,
-        amount: U512,
-        id: Option<u64>,
+        _maybe_to: Option<AccountHash>,
+        _source: URef,
+        _target: URef,
+        _amount: U512,
+        _id: Option<u64>,
     ) -> Result<(), ExecError> {
-        if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
-            return Err(ExecError::InvalidContext);
-        }
-
-        if self.context.phase() != Phase::Session {
-            return Ok(());
-        }
-
-        let transfer_addr = self.context.new_transfer_addr()?;
-        let transfer = {
-            let transaction_hash = self.context.get_transaction_hash();
-            let from: AccountHash = self.context.get_caller();
-            let fee: U512 = U512::zero(); // TODO
-            Transfer::new(
-                transaction_hash,
-                from,
-                maybe_to,
-                source,
-                target,
-                amount,
-                fee,
-                id,
-            )
-        };
-        {
-            let transfers = self.context.transfers_mut();
-            transfers.push(transfer_addr);
-        }
-        self.context
-            .write_transfer(Key::Transfer(transfer_addr), transfer);
         Ok(())
+        // if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
+        //     return Err(ExecError::InvalidContext);
+        // }
+        //
+        // if self.context.phase() != Phase::Session {
+        //     return Ok(());
+        // }
+        //
+        // let transfer_addr = self.context.new_transfer_addr()?;
+        // let transfer = {
+        //     let transaction_hash = self.context.get_transaction_hash();
+        //     let from: AccountHash = self.context.get_caller();
+        //     let fee: U512 = U512::zero(); // TODO
+        //     Transfer::new(
+        //         transaction_hash,
+        //         from,
+        //         maybe_to,
+        //         source,
+        //         target,
+        //         amount,
+        //         fee,
+        //         id,
+        //     )
+        // };
+        // {
+        //     let transfers = self.context.transfers_mut();
+        //     transfers.push(transfer_addr);
+        // }
+        // self.context
+        //     .write_transfer(Key::Transfer(transfer_addr), transfer);
+        // Ok(())
     }
 
     /// Records given auction info at a given era id

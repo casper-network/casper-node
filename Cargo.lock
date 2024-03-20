@@ -472,8 +472,6 @@ name = "casper-binary-port"
 version = "1.0.0"
 dependencies = [
  "bincode",
- "casper-execution-engine",
- "casper-storage",
  "casper-types",
  "once_cell",
  "rand",
