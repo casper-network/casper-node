@@ -508,11 +508,23 @@ where
                         // Technically, the queueing future should be spawned by the reactor, but
                         // since the networking component usually controls its own futures, we are
                         // allowed to spawn these as well.
+                        let net_metrics = self.net_metrics.clone();
                         tokio::spawn(async move {
+                            // Note: This future is not cancellation safe due to the metrics being
+                            //       updated with no drop implementation. However, there is no way
+                            //       to exit this early or cancel its execution, so we should be
+                            //       good.
+
+                            let payload_len = payload.len() as i64;
+
+                            net_metrics.overflow_buffer_count.inc();
+                            net_metrics.overflow_buffer_bytes.add(payload_len);
                             let guard = mk_request(&client, channel, payload)
                                 .queue_for_sending()
                                 .await;
                             responder.respond(()).await;
+                            net_metrics.overflow_buffer_bytes.sub(payload_len);
+                            net_metrics.overflow_buffer_count.dec();
 
                             // We need to properly process the guard, so it does not cause a
                             // cancellation from being dropped.

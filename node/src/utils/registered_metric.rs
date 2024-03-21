@@ -83,6 +83,12 @@ where
         self.inner().dec()
     }
 
+    /// Decrements the gauge by set amount.
+    #[inline]
+    pub(crate) fn sub(&self, v: P::T) {
+        self.inner().sub(v)
+    }
+
     /// Returns the gauge value.
     #[cfg(test)]
     #[inline]
@@ -94,6 +100,12 @@ where
     #[inline]
     pub(crate) fn inc(&self) {
         self.inner().inc()
+    }
+
+    /// Increments the gauge by set amount.
+    #[inline]
+    pub(crate) fn add(&self, v: P::T) {
+        self.inner().add(v)
     }
 
     /// Sets the gauge value.

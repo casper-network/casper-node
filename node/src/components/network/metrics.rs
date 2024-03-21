@@ -14,6 +14,10 @@ pub(super) struct Metrics {
     pub(super) direct_message_requests: RegisteredMetric<IntCounter>,
     /// Number of connected peers.
     pub(super) peers: RegisteredMetric<IntGauge>,
+    /// How many additional messages have been buffered outside of the juliet stack.
+    pub(super) overflow_buffer_count: RegisteredMetric<IntGauge>,
+    /// How many additional payload bytes have been buffered outside of the juliet stack.
+    pub(super) overflow_buffer_bytes: RegisteredMetric<IntGauge>,
 
     // *** Deprecated metrics below ***
     /// Number of messages still waiting to be sent out (broadcast and direct).
@@ -127,6 +131,15 @@ impl Metrics {
         )?;
 
         let peers = registry.new_int_gauge("peers", "number of connected peers")?;
+
+        let overflow_buffer_count = registry.new_int_gauge(
+            "net_overflow_buffer_count",
+            "count of outgoing messages buffered outside network stack",
+        )?;
+        let overflow_buffer_bytes = registry.new_int_gauge(
+            "net_overflow_buffer_bytes",
+            "payload byte sum of outgoing messages buffered outside network stack",
+        )?;
 
         // *** Deprecated metrics below ***
         let queued_messages = registry.new_deprecated(
@@ -336,6 +349,8 @@ impl Metrics {
             broadcast_requests,
             gossip_requests,
             direct_message_requests,
+            overflow_buffer_count,
+            overflow_buffer_bytes,
             peers,
             queued_messages,
             out_count_protocol,
