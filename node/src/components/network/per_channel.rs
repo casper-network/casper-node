@@ -62,6 +62,22 @@ impl<T> PerChannel<T> {
             bulk_gossip: initializer(Channel::BulkGossip),
         }
     }
+
+    /// Fill the fields for all the channels with a value generated from the given closure, reducing
+    /// to a single result..
+    pub fn try_init_with<E>(
+        mut initializer: impl FnMut(Channel) -> Result<T, E>,
+    ) -> Result<Self, E> {
+        Ok(PerChannel {
+            network: initializer(Channel::Network)?,
+            sync_data_request: initializer(Channel::SyncDataRequests)?,
+            sync_data_responses: initializer(Channel::SyncDataResponses)?,
+            data_requests: initializer(Channel::DataRequests)?,
+            data_responses: initializer(Channel::DataResponses)?,
+            consensus: initializer(Channel::Consensus)?,
+            bulk_gossip: initializer(Channel::BulkGossip)?,
+        })
+    }
 }
 
 impl<T> IntoIterator for PerChannel<T> {

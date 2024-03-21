@@ -7,56 +7,106 @@ use super::{Channel, PerChannel};
 #[derive(Debug)]
 pub(super) struct ChannelMetrics {
     /// The number of requests made by this node on the given channel.
-    request_count_out: RegisteredMetric<IntCounter>,
+    request_out_count: RegisteredMetric<IntCounter>,
     /// The total sum of payload bytes of requests made by this node on the given channel.
-    request_bytes_out: RegisteredMetric<IntCounter>,
+    request_out_bytes: RegisteredMetric<IntCounter>,
     /// The number of responses sent by this node on the given channel.
-    response_count_in: RegisteredMetric<IntCounter>,
+    response_in_count: RegisteredMetric<IntCounter>,
     /// The total sum of payload bytes of responses received by this node on the given channel.
-    response_bytes_in: RegisteredMetric<IntCounter>,
+    response_in_bytes: RegisteredMetric<IntCounter>,
     /// The number of requests received by this node on the given channel.
-    request_count_in: RegisteredMetric<IntCounter>,
+    request_in_count: RegisteredMetric<IntCounter>,
     /// The total sum of payload bytes of requests received by this node on the given channel.
-    request_bytes_in: RegisteredMetric<IntCounter>,
+    request_in_bytes: RegisteredMetric<IntCounter>,
     /// The number of responses sent by this node on the given channel.
-    response_count_out: RegisteredMetric<IntCounter>,
+    response_out_count: RegisteredMetric<IntCounter>,
     /// The total sum of payload bytes of responses sent by this node on the given channel.
-    response_bytes_out: RegisteredMetric<IntCounter>,
+    response_out_bytes: RegisteredMetric<IntCounter>,
     /// The number of send failures.
     pub(super) send_failures: RegisteredMetric<IntCounter>,
 }
 
 impl ChannelMetrics {
-    fn new(channel: Channel, registry: &Registry) -> Self {
-        todo!()
+    /// Constructs a new set of channel metrics for a given channel.
+    fn new(channel: Channel, registry: &Registry) -> Result<Self, prometheus::Error> {
+        let labels = format!("{{channel=\"{}\"}}", channel.metrics_name());
+
+        let request_out_count = registry.new_int_counter(
+            format!("net_request_out_count{}", labels),
+            "number of requests sent",
+        )?;
+        let request_out_bytes = registry.new_int_counter(
+            format!("net_request_out_bytes{}", labels),
+            "payload total of requests sent",
+        )?;
+        let response_in_count = registry.new_int_counter(
+            format!("net_response_in_count{}", labels),
+            "number of responses received",
+        )?;
+        let response_in_bytes = registry.new_int_counter(
+            format!("net_response_in_bytes{}", labels),
+            "payload total of responses received",
+        )?;
+        let request_in_count = registry.new_int_counter(
+            format!("net_request_in_count{}", labels),
+            "number of requests received",
+        )?;
+        let request_in_bytes = registry.new_int_counter(
+            format!("net_request_in_bytes{}", labels),
+            "payload total of requests received",
+        )?;
+        let response_out_count = registry.new_int_counter(
+            format!("net_response_out_count{}", labels),
+            "number of responses sent",
+        )?;
+        let response_out_bytes = registry.new_int_counter(
+            format!("net_response_out_bytes{}", labels),
+            "payload total of responses sent",
+        )?;
+        let send_failures = registry.new_int_counter(
+            format!("net_send_failures{}", labels),
+            "number of directly detected send failures",
+        )?;
+
+        Ok(Self {
+            request_out_count,
+            request_out_bytes,
+            response_in_count,
+            response_in_bytes,
+            request_in_count,
+            request_in_bytes,
+            response_out_count,
+            response_out_bytes,
+            send_failures,
+        })
     }
 
     /// Updates the channel metrics upon receiving an incoming request.
     #[inline(always)]
     pub(super) fn update_from_incoming_request(&self, payload_len: u64) {
-        self.request_count_in.inc();
-        self.request_bytes_in.inc_by(payload_len);
+        self.request_in_count.inc();
+        self.request_in_bytes.inc_by(payload_len);
     }
 
     /// Updates the channel metrics upon having scheduled an outgoing request.
     #[inline(always)]
     pub(super) fn update_from_outgoing_request(&self, payload_len: u64) {
-        self.request_count_out.inc();
-        self.request_bytes_out.inc_by(payload_len);
+        self.request_out_count.inc();
+        self.request_out_bytes.inc_by(payload_len);
     }
 
     /// Updates the channel metrics upon receiving a response to a request.
     #[inline(always)]
     pub(super) fn update_from_received_response(&self, payload_len: u64) {
-        self.response_count_in.inc();
-        self.response_bytes_in.inc_by(payload_len);
+        self.response_in_count.inc();
+        self.response_in_bytes.inc_by(payload_len);
     }
 
     /// Updates the channel metrics upon having sent a response to an incoming request.
     #[inline(always)]
     pub(super) fn update_from_sent_response(&self, payload_len: u64) {
-        self.response_count_out.inc();
-        self.response_bytes_out.inc_by(payload_len);
+        self.response_out_count.inc();
+        self.response_out_bytes.inc_by(payload_len);
     }
 }
 
@@ -201,7 +251,7 @@ impl Metrics {
             "payload byte sum of outgoing messages buffered outside network stack",
         )?;
         let channel_metrics =
-            PerChannel::init_with(|channel| ChannelMetrics::new(channel, registry));
+            PerChannel::try_init_with(|channel| ChannelMetrics::new(channel, registry))?;
 
         // *** Deprecated metrics below ***
         let queued_messages = registry.new_deprecated(
