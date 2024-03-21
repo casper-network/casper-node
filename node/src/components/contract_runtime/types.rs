@@ -2,9 +2,11 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 use serde::Serialize;
-use tracing::{debug, trace};
 
-use casper_execution_engine::engine_state::WasmV1Result;
+use casper_execution_engine::engine_state::{
+    Error, InvalidRequest as InvalidWasmV1Request, WasmV1Result,
+};
+use casper_storage::data_access_layer::bidding::AuctionMethodError;
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{BalanceHoldResult, BiddingResult, EraValidatorsRequest, TransferResult},
@@ -14,7 +16,7 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, Gas, InvalidDeploy,
     InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
-    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, U512,
+    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, TransferAddr, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -57,6 +59,169 @@ impl From<ValidatorWeightsByEraIdRequest> for EraValidatorsRequest {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ExecutionArtifactBuilder {
+    effects: Effects,
+    hash: TransactionHash,
+    header: TransactionHeader,
+    error_message: Option<String>,
+    messages: Messages,
+    transfers: Vec<TransferAddr>,
+    gas: Gas,
+    root_not_found: bool,
+}
+
+impl ExecutionArtifactBuilder {
+    pub fn new(transaction: &Transaction) -> Self {
+        let effects = Effects::new();
+        let hash = transaction.hash();
+        let header = transaction.header().clone();
+        ExecutionArtifactBuilder {
+            effects,
+            hash,
+            header,
+            error_message: None,
+            transfers: vec![],
+            messages: Default::default(),
+            gas: Gas::zero(),
+            root_not_found: false,
+        }
+    }
+
+    pub fn effects(&self) -> Effects {
+        self.effects.clone()
+    }
+
+    pub(crate) fn root_not_found(&self) -> bool {
+        self.root_not_found
+    }
+
+    pub fn with_appended_transfers(&mut self, transfers: &mut Vec<TransferAddr>) -> &mut Self {
+        self.transfers.append(transfers);
+        self
+    }
+
+    pub fn with_appended_effects(&mut self, effects: Effects) -> &mut Self {
+        self.effects.append(effects);
+        self
+    }
+
+    pub fn with_appended_messages(&mut self, messages: &mut Messages) -> &mut Self {
+        self.messages.append(messages);
+        self
+    }
+
+    pub fn with_wasm_v1_result(&mut self, wasm_v1_result: WasmV1Result) -> &mut Self {
+        if let Some(Error::RootNotFound(_)) = wasm_v1_result.error() {
+            self.root_not_found = true;
+        }
+        if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
+            self.error_message = Some(format!("{}", err));
+        }
+        self.with_appended_messages(&mut wasm_v1_result.messages().clone())
+            .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
+            .with_appended_effects(wasm_v1_result.effects().clone())
+    }
+
+    pub fn with_balance_hold_result(&mut self, hold_result: &BalanceHoldResult) -> &mut Self {
+        if let BalanceHoldResult::RootNotFound = hold_result {
+            self.root_not_found = true;
+        }
+        if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
+            self.error_message = Some(format!("{}", err));
+        }
+        self.with_appended_effects(hold_result.effects().clone())
+    }
+
+    pub fn with_added_gas(&mut self, gas: Gas) -> &mut Self {
+        self.gas = self.gas.saturating_add(gas);
+        self
+    }
+
+    pub fn with_invalid_transaction(
+        &mut self,
+        invalid_transaction: &InvalidTransaction,
+    ) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{}", invalid_transaction));
+        }
+        self
+    }
+
+    pub fn with_invalid_wasm_v1_request(
+        &mut self,
+        invalid_request: &InvalidWasmV1Request,
+    ) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{}", invalid_request));
+        }
+        self
+    }
+
+    pub fn with_auction_method_error(
+        &mut self,
+        auction_method_error: &AuctionMethodError,
+    ) -> &mut Self {
+        if self.error_message.is_none() {
+            self.error_message = Some(format!("{}", auction_method_error));
+        }
+        self
+    }
+
+    pub fn with_transfer_result(&mut self, transfer_result: TransferResult) -> &mut Self {
+        if let TransferResult::RootNotFound = transfer_result {
+            self.root_not_found = true;
+            return self;
+        }
+        if let (None, TransferResult::Failure(err)) = (&self.error_message, &transfer_result) {
+            self.error_message = Some(format!("{}", err));
+            return self;
+        }
+        if let TransferResult::Success { transfers, effects } = transfer_result {
+            return self
+                .with_appended_transfers(&mut transfers.clone())
+                .with_appended_effects(effects.clone());
+        }
+        self
+    }
+
+    pub fn with_bidding_result(&mut self, bidding_result: BiddingResult) -> &mut Self {
+        if let BiddingResult::RootNotFound = bidding_result {
+            self.root_not_found = true;
+            return self;
+        }
+        if let (None, BiddingResult::Failure(err)) = (&self.error_message, &bidding_result) {
+            self.error_message = Some(format!("{}", err));
+            return self;
+        }
+        if let BiddingResult::Success { effects, .. } = bidding_result {
+            return self.with_appended_effects(effects.clone());
+        }
+        self
+    }
+
+    pub(crate) fn build(self) -> ExecutionArtifact {
+        let effects = self.effects;
+        let transfers = self.transfers;
+        let gas = self.gas;
+        let result = match self.error_message {
+            Some(error_message) => ExecutionResultV2::Failure {
+                effects,
+                transfers,
+                gas,
+                error_message,
+            },
+            None => ExecutionResultV2::Success {
+                effects,
+                transfers,
+                gas,
+            },
+        };
+        let execution_result = ExecutionResult::V2(result);
+        ExecutionArtifact::new(self.hash, self.header, execution_result, self.messages)
+    }
+}
+
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Clone, Debug, DataSize)]
 pub(crate) struct StepOutcome {
@@ -64,251 +229,6 @@ pub(crate) struct StepOutcome {
     pub(crate) upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     /// An [`Effects`] created by an era ending.
     pub(crate) step_effects: Effects,
-}
-
-pub(crate) struct ExecutionArtifacts {
-    artifacts: Vec<ExecutionArtifact>,
-}
-
-pub(crate) enum ExecutionArtifactOutcome {
-    RootNotFound,
-    Effects(Effects),
-}
-
-impl ExecutionArtifacts {
-    pub fn with_capacity(capacity: usize) -> Self {
-        let artifacts = Vec::with_capacity(capacity);
-        ExecutionArtifacts { artifacts }
-    }
-
-    pub fn push_wasm_v1_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        wasm_v1_result: WasmV1Result,
-    ) -> ExecutionArtifactOutcome {
-        trace!(?transaction_hash, ?wasm_v1_result, "native transfer result");
-        let effects = wasm_v1_result.effects().clone();
-        let result = {
-            if let Some(error) = wasm_v1_result.error() {
-                if let casper_execution_engine::engine_state::Error::RootNotFound(_) = error {
-                    return ExecutionArtifactOutcome::RootNotFound;
-                }
-                ExecutionResultV2::Failure {
-                    effects: effects.clone(),
-                    transfers: wasm_v1_result.transfers().clone(),
-                    gas: wasm_v1_result.consumed(),
-                    error_message: format!("{:?}", error),
-                }
-            } else {
-                ExecutionResultV2::Success {
-                    effects: effects.clone(),
-                    transfers: wasm_v1_result.transfers().clone(),
-                    gas: wasm_v1_result.consumed(),
-                }
-            }
-        };
-        self.artifacts.push(ExecutionArtifact::new(
-            transaction_hash,
-            transaction_header,
-            ExecutionResult::V2(result),
-            wasm_v1_result.messages().clone(),
-        ));
-
-        ExecutionArtifactOutcome::Effects(effects)
-    }
-
-    pub fn push_transfer_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        transfer_result: TransferResult,
-        gas: Gas,
-    ) -> ExecutionArtifactOutcome {
-        trace!(
-            ?transaction_hash,
-            ?transfer_result,
-            "native transfer result"
-        );
-        match transfer_result {
-            TransferResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
-            TransferResult::Failure(transfer_error) => {
-                self.push_failure(
-                    transaction_hash,
-                    transaction_header,
-                    format!("{:?}", transfer_error),
-                );
-                debug!(%transfer_error);
-                ExecutionArtifactOutcome::Effects(Effects::new())
-            }
-            TransferResult::Success {
-                effects: transfer_effects,
-                transfers,
-            } => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Success {
-                        effects: transfer_effects.clone(),
-                        gas,
-                        transfers,
-                    }),
-                    Messages::default(),
-                ));
-                ExecutionArtifactOutcome::Effects(transfer_effects)
-            }
-        }
-    }
-
-    pub fn push_bidding_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        bidding_result: BiddingResult,
-        gas: Gas,
-    ) -> ExecutionArtifactOutcome {
-        trace!(?transaction_hash, ?bidding_result, "bidding result");
-        match bidding_result {
-            BiddingResult::RootNotFound => ExecutionArtifactOutcome::RootNotFound,
-            BiddingResult::Failure(tce) => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Failure {
-                        effects: Effects::new(),
-                        gas,
-                        transfers: vec![],
-                        error_message: format!("{:?}", tce),
-                    }),
-                    Messages::default(),
-                ));
-                debug!(%tce);
-                ExecutionArtifactOutcome::Effects(Effects::new())
-            }
-            BiddingResult::Success {
-                effects: bidding_effects,
-                ..
-            } => {
-                self.artifacts.push(ExecutionArtifact::new(
-                    transaction_hash,
-                    transaction_header,
-                    ExecutionResult::V2(ExecutionResultV2::Success {
-                        effects: bidding_effects.clone(),
-                        gas,
-                        transfers: vec![],
-                    }),
-                    Messages::default(),
-                ));
-                ExecutionArtifactOutcome::Effects(bidding_effects)
-            }
-        }
-    }
-
-    pub fn push_hold_result(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        hold_result: BalanceHoldResult,
-    ) -> ExecutionArtifactOutcome {
-        trace!(?transaction_hash, ?hold_result, "balance hold result");
-        if hold_result.is_root_not_found() {
-            return ExecutionArtifactOutcome::RootNotFound;
-        }
-        let hold_cost = Gas::zero(); // we don't charge for the hold itself.
-        let hold_effects = hold_result.effects();
-        if !hold_result.is_fully_covered() {
-            let error_message = hold_result.error_message();
-            self.artifacts.push(ExecutionArtifact::new(
-                transaction_hash,
-                transaction_header,
-                ExecutionResult::V2(ExecutionResultV2::Failure {
-                    effects: hold_effects.clone(),
-                    transfers: vec![],
-                    gas: hold_cost,
-                    error_message: error_message.clone(),
-                }),
-                Messages::default(),
-            ));
-            debug!(%error_message);
-        } else {
-            self.artifacts.push(ExecutionArtifact::new(
-                transaction_hash,
-                transaction_header,
-                ExecutionResult::V2(ExecutionResultV2::Success {
-                    effects: hold_effects.clone(),
-                    transfers: vec![],
-                    gas: hold_cost,
-                }),
-                Messages::default(),
-            ));
-        }
-        ExecutionArtifactOutcome::Effects(hold_effects)
-    }
-
-    pub fn push_invalid_transaction(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        invalid_transaction: InvalidTransaction,
-    ) {
-        self.push_failure(
-            transaction_hash,
-            transaction_header,
-            invalid_transaction.to_string(),
-        );
-    }
-
-    pub fn push_auction_method_failure(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        gas: Gas,
-    ) {
-        let msg = "failed to resolve auction method".to_string();
-        let artifact = ExecutionArtifact::new(
-            transaction_hash,
-            transaction_header,
-            ExecutionResult::V2(ExecutionResultV2::Failure {
-                effects: Effects::new(),
-                transfers: vec![],
-                error_message: msg.clone(),
-                gas,
-            }),
-            Messages::default(),
-        );
-        debug!(%transaction_hash, "{:?}", msg);
-        self.artifacts.push(artifact);
-    }
-
-    fn push_failure(
-        &mut self,
-        transaction_hash: TransactionHash,
-        transaction_header: TransactionHeader,
-        error_message: String,
-    ) {
-        let execution_artifact = ExecutionArtifact::new(
-            transaction_hash,
-            transaction_header,
-            ExecutionResult::V2(ExecutionResultV2::Failure {
-                effects: Effects::new(),
-                gas: Gas::zero(),
-                transfers: vec![],
-                error_message,
-            }),
-            Messages::default(),
-        );
-        self.artifacts.push(execution_artifact);
-    }
-
-    pub fn execution_results(&self) -> impl Iterator<Item = &ExecutionResult> + Clone {
-        self.artifacts
-            .iter()
-            .map(|artifact| &artifact.execution_result)
-    }
-
-    pub fn take(self) -> Vec<ExecutionArtifact> {
-        self.artifacts
-    }
 }
 
 #[derive(Clone, Debug, DataSize, PartialEq, Eq, Serialize)]

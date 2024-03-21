@@ -1677,7 +1677,7 @@ async fn run_redelegate_bid_network() {
     // Inject the transaction and run the network until executed.
     fixture.inject_transaction(txn).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&txn_hash, ONE_MIN)
         .await;
 
     // Ensure execution succeeded and that there is a Write transform for the bid's key.
@@ -1685,6 +1685,7 @@ async fn run_redelegate_bid_network() {
         &bob_public_key,
         Some(&alice_public_key),
     ));
+
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()

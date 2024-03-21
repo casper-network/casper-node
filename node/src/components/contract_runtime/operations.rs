@@ -29,11 +29,12 @@ use casper_types::{
 };
 
 use super::{
-    types::{ExecutionArtifactOutcome, SpeculativeExecutionResult, StepOutcome},
+    types::{SpeculativeExecutionResult, StepOutcome},
     utils::{self, calculate_prune_eras},
-    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionArtifacts, ExecutionPreState,
-    Metrics, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+    BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics,
+    APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+use crate::contract_runtime::types::ExecutionArtifactBuilder;
 use crate::{
     components::fetcher::FetchItem,
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
@@ -67,7 +68,7 @@ pub fn execute_finalized_block(
     let parent_seed = execution_pre_state.parent_seed();
 
     let mut state_root_hash = pre_state_root_hash;
-    let mut artifacts = ExecutionArtifacts::with_capacity(executable_block.transactions.len());
+    let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
     let block_time = BlockTime::new(executable_block.timestamp.millis());
     let balance_handling = BalanceHandling::Available {
         block_time: executable_block.timestamp.millis(),
@@ -88,37 +89,41 @@ pub fn execute_finalized_block(
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
 
-    for txn in executable_block.transactions {
-        let mut effects = Effects::new();
-        let initiator_addr = txn.initiator_addr();
-        let txn_hash = txn.hash();
-        let txn_header = txn.header();
-        let runtime_args = txn.session_args().clone();
-        let entry_point = txn.entry_point();
-        let authorization_keys = txn.authorization_keys();
+    for transaction in executable_block.transactions {
+        let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
+
+        let initiator_addr = transaction.initiator_addr();
+        let transaction_hash = transaction.hash();
+        let runtime_args = transaction.session_args().clone();
+        let entry_point = transaction.entry_point();
+        let authorization_keys = transaction.authorization_keys();
 
         // NOTE: this is the allowed computation limit   (gas limit)
-        let gas_limit = match txn.gas_limit(&system_costs, None) {
+        let gas_limit = match transaction.gas_limit(&system_costs, None) {
             Ok(gas) => gas,
             Err(ite) => {
                 debug!(%ite, "invalid transaction (gas limit)");
-                artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
+                artifact_builder.with_invalid_transaction(&ite);
+                artifacts.push(artifact_builder.build());
                 continue;
             }
         };
 
         // NOTE: this is the actual adjusted cost   (gas limit * gas price)
-        let cost = match txn.gas_limit(&system_costs, gas_price) {
+        let cost = match transaction.gas_limit(&system_costs, gas_price) {
             Ok(gas) => gas,
             Err(ite) => {
                 debug!(%ite, "invalid transaction (cost)");
-                artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
+                artifact_builder.with_invalid_transaction(&ite);
+                artifacts.push(artifact_builder.build());
                 continue;
             }
         };
 
+        artifact_builder.with_added_gas(cost);
+
         let balance_identifier = {
-            if !txn.is_standard_payment() {
+            if !transaction.is_standard_payment() {
                 // execute custom payment logic, which is expected to
                 // interact with the handle payment contract to deposit
                 // sufficient token to cover the cost
@@ -135,22 +140,18 @@ pub fn execute_finalized_block(
                     state_root_hash,
                     block_time,
                     custom_payment_gas_limit,
-                    &txn,
+                    &transaction,
                 ) {
                     Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
                     Err(error) => {
                         WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
                     }
                 };
-                match artifacts.push_wasm_v1_result(txn_hash, txn_header.clone(), pay_result) {
-                    ExecutionArtifactOutcome::RootNotFound => {
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                    }
-                    ExecutionArtifactOutcome::Effects(custom_pay_effects) => {
-                        effects.append(custom_pay_effects);
-                    }
+                artifact_builder.with_wasm_v1_result(pay_result);
+                if artifact_builder.root_not_found() {
+                    artifacts.push(artifact_builder.build());
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 }
-                // balance request should check the handle payment purse, not initiator's purse
                 BalanceIdentifier::Payment
             } else {
                 initiator_addr.clone().into()
@@ -165,7 +166,8 @@ pub fn execute_finalized_block(
 
         let sufficient_balance = initial_balance_result.is_sufficient(cost.value());
         if sufficient_balance {
-            match txn.category() {
+            let category = transaction.category();
+            match category {
                 TransactionCategory::Mint => {
                     let transfer_result =
                         scratch_state.transfer(TransferRequest::with_runtime_args(
@@ -173,24 +175,16 @@ pub fn execute_finalized_block(
                             state_root_hash,
                             holds_epoch,
                             protocol_version,
-                            txn_hash,
+                            transaction_hash,
                             initiator_addr,
                             authorization_keys,
                             runtime_args,
                             cost,
                         ));
-                    match artifacts.push_transfer_result(
-                        txn_hash,
-                        txn_header.clone(),
-                        transfer_result,
-                        cost,
-                    ) {
-                        ExecutionArtifactOutcome::RootNotFound => {
-                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                        }
-                        ExecutionArtifactOutcome::Effects(transfer_effects) => {
-                            effects.append(transfer_effects.clone());
-                        }
+                    artifact_builder.with_transfer_result(transfer_result);
+                    if artifact_builder.root_not_found() {
+                        artifacts.push(artifact_builder.build());
+                        return Err(BlockExecutionError::RootNotFound(state_root_hash));
                     }
                 }
                 TransactionCategory::Auction => {
@@ -206,77 +200,58 @@ pub fn execute_finalized_block(
                                 state_root_hash,
                                 block_time,
                                 protocol_version,
-                                txn_hash,
+                                transaction_hash,
                                 initiator_addr,
                                 authorization_keys,
                                 auction_method,
                             ));
-                            match artifacts.push_bidding_result(
-                                txn_hash,
-                                txn_header.clone(),
-                                bidding_result,
-                                cost,
-                            ) {
-                                ExecutionArtifactOutcome::RootNotFound => {
-                                    return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                                }
-                                ExecutionArtifactOutcome::Effects(bidding_effects) => {
-                                    effects.append(bidding_effects.clone());
-                                }
+                            artifact_builder.with_bidding_result(bidding_result);
+                            if artifact_builder.root_not_found() {
+                                artifacts.push(artifact_builder.build());
+                                return Err(BlockExecutionError::RootNotFound(state_root_hash));
                             }
                         }
                         Err(ame) => {
                             error!(
-                                %txn_hash,
+                                %transaction_hash,
                                 ?ame,
                                 "failed to determine auction method"
                             );
-                            artifacts.push_auction_method_failure(
-                                txn_hash,
-                                txn_header.clone(),
-                                cost,
-                            );
+                            artifact_builder.with_auction_method_error(&ame);
                         }
                     };
                 }
                 TransactionCategory::Standard | TransactionCategory::InstallUpgrade => {
-                    let wasm_v1_result = match WasmV1Request::new_session(
+                    match WasmV1Request::new_session(
                         state_root_hash,
                         block_time,
                         gas_limit,
-                        &txn,
+                        &transaction,
                     ) {
                         Ok(wasm_v1_request) => {
-                            execution_engine_v1.execute(&scratch_state, wasm_v1_request)
+                            trace!(%transaction_hash, ?category, ?wasm_v1_request, "able to get wasm v1 request");
+                            let wasm_v1_result =
+                                execution_engine_v1.execute(&scratch_state, wasm_v1_request);
+                            trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            artifact_builder.with_wasm_v1_result(wasm_v1_result);
+                            if artifact_builder.root_not_found() {
+                                artifacts.push(artifact_builder.build());
+                                return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                            }
                         }
-                        Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
+                        Err(ire) => {
+                            debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1  request");
+                            artifact_builder.with_invalid_wasm_v1_request(&ire);
+                        }
                     };
-                    trace!(
-                        %txn_hash,
-                        ?wasm_v1_result,
-                        "transaction execution result"
-                    );
-                    match artifacts.push_wasm_v1_result(
-                        txn_hash,
-                        txn_header.clone(),
-                        wasm_v1_result,
-                    ) {
-                        ExecutionArtifactOutcome::RootNotFound => {
-                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                        }
-                        ExecutionArtifactOutcome::Effects(wasm_effects) => {
-                            effects.append(wasm_effects.clone());
-                        }
-                    }
                 }
             }
         } else {
-            debug!(%txn_hash, "skipping execution due to insufficient balance");
+            debug!(%transaction_hash, "skipping execution due to insufficient balance");
         }
 
         let fee_handling = chainspec.core_config.fee_handling;
-        debug!(%txn_hash, ?fee_handling, ?sufficient_balance, "fee handling");
-
+        trace!(%transaction_hash, ?fee_handling, ?sufficient_balance, "fee handling");
         // handle payment per the chainspec determined fee setting
         match fee_handling {
             FeeHandling::NoFee => {
@@ -292,13 +267,10 @@ pub fn execute_finalized_block(
                     chainspec.core_config.balance_hold_interval,
                     insufficient_balance_handling,
                 ));
-                match artifacts.push_hold_result(txn_hash, txn_header.clone(), hold_result) {
-                    ExecutionArtifactOutcome::RootNotFound => {
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                    }
-                    ExecutionArtifactOutcome::Effects(hold_effects) => {
-                        effects.append(hold_effects.clone())
-                    }
+                artifact_builder.with_balance_hold_result(&hold_result);
+                if artifact_builder.root_not_found() {
+                    artifacts.push(artifact_builder.build());
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
                 }
             }
             FeeHandling::PayToProposer => {
@@ -324,13 +296,13 @@ pub fn execute_finalized_block(
             }
         }
 
-        // commit effects
-        scratch_state.commit(state_root_hash, effects)?;
+        scratch_state.commit(state_root_hash, artifact_builder.effects())?;
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .commit_effects
                 .observe(start.elapsed().as_secs_f64());
         }
+        artifacts.push(artifact_builder.build());
     }
 
     // calculate and store checksums for approvals and execution effects across the transactions in
@@ -340,8 +312,9 @@ pub fn execute_finalized_block(
     let txns_approvals_hashes = {
         let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
             .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
-        let execution_results_checksum =
-            compute_execution_results_checksum(artifacts.execution_results())?;
+        let execution_results_checksum = compute_execution_results_checksum(
+            artifacts.iter().map(|artifact| &artifact.execution_result),
+        )?;
         let mut checksum_registry = ChecksumRegistry::new();
         checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
         checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
@@ -632,12 +605,10 @@ pub fn execute_finalized_block(
         proof_of_checksum_registry,
     ));
 
-    let execution_artifacts = artifacts.take();
-
     Ok(BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
-        execution_artifacts,
+        execution_artifacts: artifacts,
         step_outcome,
     })
 }

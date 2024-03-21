@@ -132,7 +132,6 @@ impl ExecutionEngineV1 {
             Ok(execution_kind) => execution_kind,
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
-
         let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
         let execution_result = Executor::new(self.config().clone()).exec(
             execution_kind,
@@ -154,7 +153,6 @@ impl ExecutionEngineV1 {
                 self.config.max_runtime_call_stack_height() as usize,
             ),
         );
-
         WasmV1Result::from_execution_result(gas_limit, execution_result)
     }
 }
