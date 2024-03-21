@@ -6,9 +6,11 @@ use crate::utils::registered_metric::{DeprecatedMetric, RegisteredMetric, Regist
 #[derive(Debug)]
 #[allow(dead_code)] // TODO: Remove this once deprecated metrics are removed.
 pub(super) struct Metrics {
-    /// How often a request was made by a component to broadcast.
+    /// Number of broadcasts attempted.
     pub(super) broadcast_requests: RegisteredMetric<IntCounter>,
-    /// How often a request to send a message directly to a peer was made.
+    /// Number of gossips sent.
+    pub(super) gossip_requests: RegisteredMetric<IntCounter>,
+    /// Number of directly sent messages.
     pub(super) direct_message_requests: RegisteredMetric<IntCounter>,
     /// Number of connected peers.
     pub(super) peers: RegisteredMetric<IntGauge>,
@@ -115,8 +117,10 @@ pub(super) struct Metrics {
 impl Metrics {
     /// Creates a new instance of networking metrics.
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let broadcast_requests = registry
-            .new_int_counter("net_broadcast_requests", "number of broadcasting requests")?;
+        let broadcast_requests =
+            registry.new_int_counter("net_broadcast_requests", "number of broadcasts attempted")?;
+        let gossip_requests =
+            registry.new_int_counter("net_gossip_requests", "number of gossips sent")?;
         let direct_message_requests = registry.new_int_counter(
             "net_direct_message_requests",
             "number of requests to send a message directly to a peer",
@@ -330,6 +334,7 @@ impl Metrics {
 
         Ok(Metrics {
             broadcast_requests,
+            gossip_requests,
             direct_message_requests,
             peers,
             queued_messages,

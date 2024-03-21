@@ -366,6 +366,8 @@ where
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> Vec<NodeId> {
+        self.net_metrics.gossip_requests.inc();
+
         let Some(ref conman) = self.conman else {
             error!("should never attempt to gossip on uninitialized component");
             return Default::default();
