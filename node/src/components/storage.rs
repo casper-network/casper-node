@@ -2292,15 +2292,4 @@ impl Storage {
             execution_result,
         })
     }
-
-    pub(crate) fn get_utilization_for_era(&self, era_id: EraId) -> Option<u64> {
-        let era_utilization = match self.utilization_tracker.get(&era_id) {
-            Some(utilization) => utilization,
-            None => return None,
-        };
-
-        let total_utilization: u64 = era_utilization.values().sum();
-
-        Some(total_utilization)
-    }
 }
