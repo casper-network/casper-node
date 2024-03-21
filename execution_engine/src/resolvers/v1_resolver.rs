@@ -245,10 +245,6 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::EnableContractVersion.into(),
             ),
-            "casper_add_session_logic" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
-                FunctionIndex::AddSessionVersion.into(),
-            ),
             "casper_manage_message_topic" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::ManageMessageTopic.into(),
