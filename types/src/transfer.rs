@@ -1,27 +1,29 @@
 mod error;
-mod transfer_addr;
 mod transfer_v1;
 mod transfer_v2;
 
 use alloc::vec::Vec;
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(feature = "json-schema")]
-use crate::{
-    account::AccountHash, Gas, InitiatorAddr, TransactionHash, TransactionV1Hash, URef, U512,
-};
+use crate::{account::AccountHash, TransactionV1Hash, URef, U512};
+#[cfg(any(feature = "testing", feature = "json-schema", test))]
+use crate::{Gas, InitiatorAddr, TransactionHash};
 pub use error::TransferFromStrError;
-pub use transfer_addr::TransferAddr;
 pub use transfer_v1::{TransferV1, TransferV1Addr, TRANSFER_V1_ADDR_LENGTH};
-pub use transfer_v2::{TransferV2, TransferV2Addr, TRANSFER_V2_ADDR_LENGTH};
+pub use transfer_v2::TransferV2;
 
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
@@ -73,6 +75,36 @@ impl Transfer {
     #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &TRANSFER
+    }
+
+    /// Returns a random `Transfer`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        use crate::DeployHash;
+
+        if rng.gen() {
+            Transfer::V1(TransferV1::new(
+                DeployHash::random(rng),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+            ))
+        } else {
+            Transfer::V2(TransferV2::new(
+                TransactionHash::random(rng),
+                InitiatorAddr::random(rng),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                Gas::new(rng.gen::<u64>()),
+                rng.gen(),
+            ))
+        }
     }
 }
 
@@ -137,16 +169,20 @@ impl FromBytes for Transfer {
 /// Proptest generators for [`Transfer`].
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
-    use proptest::prelude::{prop::option, prop_oneof, Arbitrary, Strategy};
+    use proptest::{
+        array,
+        prelude::{prop::option, Arbitrary, Strategy},
+    };
 
     use super::*;
     use crate::{
-        gens::{u512_arb, uref_arb},
-        transaction_info::gens::{
-            account_hash_arb, deploy_hash_arb, initiator_addr_arb, txn_hash_arb,
-        },
-        Gas, Transfer,
+        gens::{account_hash_arb, u512_arb, uref_arb},
+        transaction::gens::deploy_hash_arb,
     };
+
+    pub fn transfer_v1_addr_arb() -> impl Strategy<Value = TransferV1Addr> {
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferV1Addr::new)
+    }
 
     pub fn transfer_v1_arb() -> impl Strategy<Value = TransferV1> {
         (
@@ -172,53 +208,19 @@ pub mod gens {
                 }
             })
     }
-
-    pub fn transfer_v2_arb() -> impl Strategy<Value = TransferV2> {
-        (
-            txn_hash_arb(),
-            initiator_addr_arb(),
-            option::of(account_hash_arb()),
-            uref_arb(),
-            uref_arb(),
-            u512_arb(),
-            u512_arb(),
-            option::of(<u64>::arbitrary()),
-        )
-            .prop_map(
-                |(transaction_hash, from, to, source, target, amount, gas, id)| TransferV2 {
-                    transaction_hash,
-                    from,
-                    to,
-                    source,
-                    target,
-                    amount,
-                    gas: Gas::new(gas),
-                    id,
-                },
-            )
-    }
-
-    /// Creates an arbitrary [`Transfer`]
-    pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
-        prop_oneof![
-            transfer_v1_arb().prop_map(Transfer::V1),
-            transfer_v2_arb().prop_map(Transfer::V2)
-        ]
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
-
     use crate::bytesrepr;
 
     use super::*;
 
-    proptest! {
-        #[test]
-        fn bytesrepr_roundtrip(transfer in gens::transfer_arb()) {
-            bytesrepr::test_serialization_roundtrip(&transfer)
-        }
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let transfer = Transfer::random(rng);
+        bytesrepr::test_serialization_roundtrip(&transfer);
     }
 }

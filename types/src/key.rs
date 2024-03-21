@@ -33,8 +33,6 @@ use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use tracing::warn;
 
-#[cfg(any(feature = "testing", test))]
-use crate::TransferV2Addr;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
@@ -54,8 +52,8 @@ use crate::{
         mint::BalanceHoldAddr,
     },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransactionHash, TransactionV1Hash,
-    TransferAddr, TransferFromStrError, TransferV1Addr, TRANSFER_V1_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferFromStrError, TransferV1Addr,
+    TRANSFER_V1_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -75,9 +73,6 @@ const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
 const BLOCK_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
-const TXN_INFO_PREFIX: &str = "txn-";
-const TXN_INFO_DEPLOY_PREFIX: &str = "d-";
-const TXN_INFO_V1_PREFIX: &str = "v1-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -161,15 +156,13 @@ pub enum KeyTag {
     NamedKey = 20,
     BlockMessageCount = 21,
     BalanceHold = 22,
-    TransactionInfo = 23,
-    Transfer = 24,
 }
 
 impl KeyTag {
     /// Returns a random `KeyTag`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..=24) {
+        match rng.gen_range(0..=22) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -193,8 +186,6 @@ impl KeyTag {
             20 => KeyTag::NamedKey,
             21 => KeyTag::BlockMessageCount,
             22 => KeyTag::BalanceHold,
-            23 => KeyTag::TransactionInfo,
-            24 => KeyTag::Transfer,
             _ => panic!(),
         }
     }
@@ -226,8 +217,6 @@ impl Display for KeyTag {
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
-            KeyTag::TransactionInfo => write!(f, "TransactionInfo"),
-            KeyTag::Transfer => write!(f, "Transfer"),
         }
     }
 }
@@ -276,8 +265,6 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
             tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
-            tag if tag == KeyTag::TransactionInfo as u8 => KeyTag::TransactionInfo,
-            tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -338,10 +325,6 @@ pub enum Key {
     BlockMessageCount,
     /// A `Key` under which a hold on a purse balance is stored.
     BalanceHold(BalanceHoldAddr),
-    /// A `Key` under which info about a transaction is stored.
-    TransactionInfo(TransactionHash),
-    /// A `Key` under which a versioned transfer is stored.
-    Transfer(TransferAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -412,10 +395,6 @@ pub enum FromStrError {
     BlockMessageCount(String),
     /// Balance hold parse error.
     BalanceHold(String),
-    /// TransactionInfo parse error.
-    TransactionInfo(String),
-    /// Transfer parse error.
-    Transfer(TransferFromStrError),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -496,12 +475,6 @@ impl Display for FromStrError {
             FromStrError::BalanceHold(error) => {
                 write!(f, "balance-hold from string error: {}", error)
             }
-            FromStrError::TransactionInfo(error) => {
-                write!(f, "transaction-info-key from string error: {}", error)
-            }
-            FromStrError::Transfer(error) => {
-                write!(f, "transfer-key from string error: {}", error)
-            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -535,8 +508,6 @@ impl Key {
             Key::NamedKey(_) => String::from("Key::NamedKey"),
             Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
-            Key::TransactionInfo(_) => String::from("Key::TransactionInfo"),
-            Key::Transfer(_) => String::from("Key::Transfer"),
         }
     }
 
@@ -653,25 +624,6 @@ impl Key {
                 let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
                 format!("{}{}", BALANCE_HOLD_PREFIX, tail)
             }
-            Key::TransactionInfo(txn_hash) => match txn_hash {
-                TransactionHash::Deploy(deploy_hash) => {
-                    format!(
-                        "{}{}{}",
-                        TXN_INFO_PREFIX,
-                        TXN_INFO_DEPLOY_PREFIX,
-                        base16::encode_lower(deploy_hash.as_ref())
-                    )
-                }
-                TransactionHash::V1(txn_v1_hash) => {
-                    format!(
-                        "{}{}{}",
-                        TXN_INFO_PREFIX,
-                        TXN_INFO_V1_PREFIX,
-                        base16::encode_lower(txn_v1_hash.as_ref())
-                    )
-                }
-            },
-            Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
         }
     }
 
@@ -697,12 +649,6 @@ impl Key {
             let hash_array = <[u8; DeployHash::LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
             return Ok(Key::DeployInfo(DeployHash::new(Digest::from(hash_array))));
-        }
-
-        match TransferAddr::from_formatted_str(input) {
-            Ok(transfer_addr) => return Ok(Key::Transfer(transfer_addr)),
-            Err(TransferFromStrError::InvalidPrefix) => {}
-            Err(error) => return Err(FromStrError::Transfer(error)),
         }
 
         if let Some(hex) = input.strip_prefix(LEGACY_TRANSFER_PREFIX) {
@@ -890,28 +836,6 @@ impl Key {
                 )
             })?;
             return Ok(Key::BlockMessageCount);
-        }
-
-        if let Some(txn_hash) = input.strip_prefix(TXN_INFO_PREFIX) {
-            let txn_hash = if let Some(deploy_hash) = txn_hash.strip_prefix(TXN_INFO_DEPLOY_PREFIX)
-            {
-                let hash_bytes = checksummed_hex::decode(deploy_hash)
-                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
-                let hash = Digest::try_from(hash_bytes.as_slice())
-                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
-                TransactionHash::from(DeployHash::new(hash))
-            } else if let Some(txn_v1_hash) = txn_hash.strip_prefix(TXN_INFO_V1_PREFIX) {
-                let hash_bytes = checksummed_hex::decode(txn_v1_hash)
-                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
-                let hash = Digest::try_from(hash_bytes.as_slice())
-                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
-                TransactionHash::from(TransactionV1Hash::new(hash))
-            } else {
-                return Err(FromStrError::TransactionInfo(
-                    "invalid transaction info prefix".to_string(),
-                ));
-            };
-            return Ok(Key::TransactionInfo(txn_hash));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1368,22 +1292,6 @@ impl Display for Key {
             Key::BalanceHold(balance_hold_addr) => {
                 write!(f, "Key::BalanceHold({})", balance_hold_addr)
             }
-            Key::TransactionInfo(TransactionHash::Deploy(deploy_hash)) => write!(
-                f,
-                "Key::TransactionInfo(deploy-{})",
-                base16::encode_lower(deploy_hash.as_ref())
-            ),
-            Key::TransactionInfo(TransactionHash::V1(txn_v1_hash)) => write!(
-                f,
-                "Key::TransactionInfo(txn-v1-{})",
-                base16::encode_lower(txn_v1_hash.as_ref())
-            ),
-            Key::Transfer(TransferAddr::V1(transfer_v1_addr)) => {
-                write!(f, "Key::Transfer(transfer-v1-{})", transfer_v1_addr)
-            }
-            Key::Transfer(TransferAddr::V2(transfer_v2_addr)) => {
-                write!(f, "Key::Transfer(transfer-v2-{})", transfer_v2_addr)
-            }
         }
     }
 }
@@ -1420,8 +1328,6 @@ impl Tagged<KeyTag> for Key {
             Key::NamedKey(_) => KeyTag::NamedKey,
             Key::BlockMessageCount => KeyTag::BlockMessageCount,
             Key::BalanceHold(_) => KeyTag::BalanceHold,
-            Key::TransactionInfo(_) => KeyTag::TransactionInfo,
-            Key::Transfer(_) => KeyTag::Transfer,
         }
     }
 }
@@ -1442,12 +1348,6 @@ impl From<URef> for Key {
 impl From<AccountHash> for Key {
     fn from(account_hash: AccountHash) -> Key {
         Key::Account(account_hash)
-    }
-}
-
-impl From<TransferAddr> for Key {
-    fn from(transfer_addr: TransferAddr) -> Key {
-        Key::Transfer(transfer_addr)
     }
 }
 
@@ -1542,10 +1442,6 @@ impl ToBytes for Key {
             Key::BalanceHold(balance_hold_addr) => {
                 U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
             }
-            Key::TransactionInfo(txn_hash) => {
-                KEY_ID_SERIALIZED_LENGTH + txn_hash.serialized_length()
-            }
-            Key::Transfer(transfer) => KEY_ID_SERIALIZED_LENGTH + transfer.serialized_length(),
         }
     }
 
@@ -1582,8 +1478,6 @@ impl ToBytes for Key {
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
-            Key::TransactionInfo(txn_hash) => txn_hash.write_bytes(writer),
-            Key::Transfer(addr) => addr.write_bytes(writer),
         }
     }
 }
@@ -1684,14 +1578,6 @@ impl FromBytes for Key {
                 let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
                 Ok((Key::BalanceHold(balance_hold_addr), rem))
             }
-            KeyTag::TransactionInfo => {
-                let (txn_hash, rem) = TransactionHash::from_bytes(remainder)?;
-                Ok((Key::TransactionInfo(txn_hash), rem))
-            }
-            KeyTag::Transfer => {
-                let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
-                Ok((Key::Transfer(transfer_addr), rem))
-            }
         }
     }
 }
@@ -1724,15 +1610,13 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::NamedKey(_) => unimplemented!(),
         Key::BlockMessageCount => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
-        Key::TransactionInfo(_) => unimplemented!(),
-        Key::Transfer(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=23) {
+        match rng.gen_range(0..=22) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1756,16 +1640,6 @@ impl Distribution<Key> for Standard {
             20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
             21 => Key::BlockMessageCount,
             22 => Key::BalanceHold(rng.gen()),
-            23 => Key::TransactionInfo(if rng.gen() {
-                TransactionHash::Deploy(DeployHash::from_raw(rng.gen()))
-            } else {
-                TransactionHash::V1(TransactionV1Hash::from_raw(rng.gen()))
-            }),
-            24 => Key::Transfer(if rng.gen() {
-                TransferAddr::V1(TransferV1Addr::new(rng.gen()))
-            } else {
-                TransferAddr::V2(TransferV2Addr::new(rng.gen()))
-            }),
             _ => unreachable!(),
         }
     }
@@ -1800,8 +1674,6 @@ mod serde_helpers {
         NamedKey(&'a NamedKeyAddr),
         BlockMessageCount,
         BalanceHold(&'a BalanceHoldAddr),
-        TransactionInfo(&'a TransactionHash),
-        Transfer(&'a TransferAddr),
     }
 
     #[derive(Deserialize)]
@@ -1830,8 +1702,6 @@ mod serde_helpers {
         NamedKey(NamedKeyAddr),
         BlockMessageCount,
         BalanceHold(BalanceHoldAddr),
-        TransactionInfo(TransactionHash),
-        Transfer(TransferAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1866,8 +1736,6 @@ mod serde_helpers {
                 Key::BalanceHold(balance_hold_addr) => {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
-                Key::TransactionInfo(txn_hash) => BinarySerHelper::TransactionInfo(txn_hash),
-                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
             }
         }
     }
@@ -1904,8 +1772,6 @@ mod serde_helpers {
                 BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
                     Key::BalanceHold(balance_hold_addr)
                 }
-                BinaryDeserHelper::TransactionInfo(txn_hash) => Key::TransactionInfo(txn_hash),
-                BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
             }
         }
     }
@@ -1995,12 +1861,6 @@ mod tests {
     const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const TRANSACTION_INFO_DEPLOY_KEY: Key =
-        Key::TransactionInfo(TransactionHash::Deploy(DeployHash::from_raw([42; 32])));
-    const TRANSACTION_INFO_V1_KEY: Key =
-        Key::TransactionInfo(TransactionHash::V1(TransactionV1Hash::from_raw([42; 32])));
-    const TRANSFER_V1_KEY: Key = Key::Transfer(TransferAddr::V1(TransferV1Addr::new([42; 32])));
-    const TRANSFER_V2_KEY: Key = Key::Transfer(TransferAddr::V2(TransferV2Addr::new([42; 32])));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -2031,9 +1891,6 @@ mod tests {
         NAMED_KEY,
         BLOCK_MESSAGE_COUNT,
         BALANCE_HOLD,
-        TRANSACTION_INFO_V1_KEY,
-        TRANSFER_V1_KEY,
-        TRANSFER_V2_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2215,22 +2072,6 @@ mod tests {
                 "Key::BlockMessageCount({})",
                 base16::encode_lower(&PADDING_BYTES)
             )
-        );
-        assert_eq!(
-            format!("{}", TRANSACTION_INFO_DEPLOY_KEY),
-            format!("Key::TransactionInfo(deploy-{})", HEX_STRING)
-        );
-        assert_eq!(
-            format!("{}", TRANSACTION_INFO_V1_KEY),
-            format!("Key::TransactionInfo(txn-v1-{})", HEX_STRING)
-        );
-        assert_eq!(
-            format!("{}", TRANSFER_V1_KEY),
-            format!("Key::Transfer(transfer-v1-{})", HEX_STRING)
-        );
-        assert_eq!(
-            format!("{}", TRANSFER_V2_KEY),
-            format!("Key::Transfer(transfer-v2-{})", HEX_STRING)
         );
     }
 
@@ -2491,11 +2332,6 @@ mod tests {
                 .to_string()
                 .starts_with("byte-code-key from string error: ")
         );
-        println!("{}", Key::from_formatted_str(TXN_INFO_PREFIX).unwrap_err());
-        assert!(Key::from_formatted_str(TXN_INFO_PREFIX)
-            .unwrap_err()
-            .to_string()
-            .starts_with("transaction-info-key from string error: "));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -2606,13 +2442,5 @@ mod tests {
         round_trip(&Key::NamedKey(NamedKeyAddr::default()));
         round_trip(&Key::BlockMessageCount);
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
-        round_trip(&Key::TransactionInfo(TransactionHash::Deploy(
-            DeployHash::from_raw(zeros),
-        )));
-        round_trip(&Key::TransactionInfo(TransactionHash::V1(
-            TransactionV1Hash::from_raw(zeros),
-        )));
-        round_trip(&Key::Transfer(TransferAddr::V1(TransferV1Addr::new(zeros))));
-        round_trip(&Key::Transfer(TransferAddr::V2(TransferV2Addr::new(zeros))));
     }
 }

@@ -9,7 +9,7 @@ use casper_types::{
     runtime_args, system::mint::ARG_AMOUNT, BlockTime, DeployHash, Digest, ExecutableDeployItem,
     Gas, InitiatorAddr, Phase, PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint,
     TransactionHash, TransactionInvocationTarget, TransactionSessionKind, TransactionTarget,
-    TransactionV1, TransactionV1Hash, TransferAddr, U512,
+    TransactionV1, TransactionV1Hash, Transfer, U512,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError, ExecutionResult};
@@ -220,7 +220,7 @@ impl<'a> WasmV1Request<'a> {
 #[derive(Clone, Debug)]
 pub struct WasmV1Result {
     /// List of transfers that happened during execution.
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     /// Gas limit.
     limit: Gas,
     /// Gas consumed.
@@ -240,7 +240,7 @@ impl WasmV1Result {
     }
 
     /// List of transfers that happened during execution.
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         &self.transfers
     }
 

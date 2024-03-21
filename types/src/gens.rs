@@ -43,9 +43,9 @@ use crate::{
         },
         mint::BalanceHoldAddr,
     },
-    transaction_info::gens::{deploy_hash_arb, transfer_v1_addr_arb, txn_info_arb},
+    transaction::gens::deploy_hash_arb,
     transfer::{
-        gens::{transfer_arb, transfer_v1_arb},
+        gens::{transfer_v1_addr_arb, transfer_v1_arb},
         TransferV1Addr,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
@@ -730,8 +730,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
-        txn_info_arb().prop_map(StoredValue::TransactionInfo),
-        transfer_arb().prop_map(StoredValue::Transfer),
     ]
     .prop_map(|stored_value|
             // The following match statement is here only to make sure
@@ -755,8 +753,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
                 StoredValue::MessageTopic(_) => stored_value,
                 StoredValue::Message(_) => stored_value,
                 StoredValue::NamedKey(_) => stored_value,
-                StoredValue::TransactionInfo(_) => stored_value,
-                StoredValue::Transfer(_) => stored_value,
             })
 }
 

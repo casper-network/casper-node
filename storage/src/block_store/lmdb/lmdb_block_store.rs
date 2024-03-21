@@ -9,11 +9,9 @@ use datasize::DataSize;
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
-    },
-    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, StoredValue,
-    Transaction, TransactionHash, Transfer,
+    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2},
+    Approval, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest, Transaction,
+    TransactionHash, Transfer,
 };
 
 use super::{
@@ -543,30 +541,35 @@ pub(crate) fn new_environment(
 /// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
 /// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
 fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
-    let mut transfers: Vec<Transfer> = vec![];
+    let mut all_transfers: Vec<Transfer> = vec![];
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
             for transform_entry in &effect.transforms {
                 if let execution_result_v1::TransformKindV1::WriteTransfer(transfer_v1) =
                     &transform_entry.transform
                 {
-                    transfers.push(Transfer::V1(transfer_v1.clone()));
+                    all_transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }
-        ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-            for transform in effects.transforms() {
-                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform.kind() {
-                    transfers.push(transfer.clone());
+        ExecutionResult::V2(ExecutionResultV2 {
+            transfers,
+            error_message,
+            ..
+        }) => {
+            if error_message.is_none() {
+                for transfer in transfers {
+                    all_transfers.push(transfer.clone());
                 }
             }
+            // else no-op: we only record transfers from successful executions.
         }
-        ExecutionResult::V1(ExecutionResultV1::Failure { .. })
-        | ExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+        ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
         }
     }
-    transfers
+
+    all_transfers
 }
 
 impl<'s> BlockStoreProvider for LmdbBlockStore<'s> {

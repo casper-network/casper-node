@@ -68,7 +68,6 @@ mod tagged;
 pub mod testing;
 mod timestamp;
 mod transaction;
-mod transaction_info;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -199,10 +198,8 @@ pub use transaction::{
 pub use transaction::{
     DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
-pub use transaction_info::TransactionInfo;
 pub use transfer::{
-    Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV1Addr, TransferV2,
-    TransferV2Addr, TRANSFER_V1_ADDR_LENGTH, TRANSFER_V2_ADDR_LENGTH,
+    Transfer, TransferFromStrError, TransferV1, TransferV1Addr, TransferV2, TRANSFER_V1_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{

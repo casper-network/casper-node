@@ -1,22 +1,25 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use casper_types::{execution::PaymentInfo, InitiatorAddr, Transfer};
 use datasize::DataSize;
 use serde::Serialize;
 
 use casper_execution_engine::engine_state::{
     Error, InvalidRequest as InvalidWasmV1Request, WasmV1Result,
 };
-use casper_storage::data_access_layer::bidding::AuctionMethodError;
 use casper_storage::{
     block_store::types::ApprovalsHashes,
-    data_access_layer::{BalanceHoldResult, BiddingResult, EraValidatorsRequest, TransferResult},
+    data_access_layer::{
+        bidding::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
+        TransferResult,
+    },
 };
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
     BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, Gas, InvalidDeploy,
     InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
-    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, TransferAddr, U512,
+    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -66,23 +69,24 @@ pub(crate) struct ExecutionArtifactBuilder {
     header: TransactionHeader,
     error_message: Option<String>,
     messages: Messages,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
+    initiator: InitiatorAddr,
+    payment: Vec<PaymentInfo>,
     gas: Gas,
     root_not_found: bool,
 }
 
 impl ExecutionArtifactBuilder {
     pub fn new(transaction: &Transaction) -> Self {
-        let effects = Effects::new();
-        let hash = transaction.hash();
-        let header = transaction.header().clone();
         ExecutionArtifactBuilder {
-            effects,
-            hash,
-            header,
+            effects: Effects::new(),
+            hash: transaction.hash(),
+            header: transaction.header(),
             error_message: None,
             transfers: vec![],
             messages: Default::default(),
+            initiator: transaction.initiator_addr(),
+            payment: vec![],
             gas: Gas::zero(),
             root_not_found: false,
         }
@@ -96,7 +100,7 @@ impl ExecutionArtifactBuilder {
         self.root_not_found
     }
 
-    pub fn with_appended_transfers(&mut self, transfers: &mut Vec<TransferAddr>) -> &mut Self {
+    pub fn with_appended_transfers(&mut self, transfers: &mut Vec<Transfer>) -> &mut Self {
         self.transfers.append(transfers);
         self
     }
@@ -130,7 +134,7 @@ impl ExecutionArtifactBuilder {
         if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
             self.error_message = Some(format!("{}", err));
         }
-        self.with_appended_effects(hold_result.effects().clone())
+        self.with_appended_effects(hold_result.effects())
     }
 
     pub fn with_added_gas(&mut self, gas: Gas) -> &mut Self {
@@ -177,10 +181,14 @@ impl ExecutionArtifactBuilder {
             self.error_message = Some(format!("{}", err));
             return self;
         }
-        if let TransferResult::Success { transfers, effects } = transfer_result {
+        if let TransferResult::Success {
+            mut transfers,
+            effects,
+        } = transfer_result
+        {
             return self
-                .with_appended_transfers(&mut transfers.clone())
-                .with_appended_effects(effects.clone());
+                .with_appended_transfers(&mut transfers)
+                .with_appended_effects(effects);
         }
         self
     }
@@ -195,27 +203,32 @@ impl ExecutionArtifactBuilder {
             return self;
         }
         if let BiddingResult::Success { effects, .. } = bidding_result {
-            return self.with_appended_effects(effects.clone());
+            return self.with_appended_effects(effects);
         }
         self
     }
 
+    #[allow(unused)]
+    pub fn with_initiator_addr(&mut self, initiator_addr: InitiatorAddr) -> &mut Self {
+        self.initiator = initiator_addr;
+        self
+    }
+
+    //TODO: use this when payment breakdown is implemented.
+    #[allow(unused)]
+    pub fn with_appended_payment_info(&mut self, payment: &mut Vec<PaymentInfo>) -> &mut Self {
+        self.payment.append(payment);
+        self
+    }
+
     pub(crate) fn build(self) -> ExecutionArtifact {
-        let effects = self.effects;
-        let transfers = self.transfers;
-        let gas = self.gas;
-        let result = match self.error_message {
-            Some(error_message) => ExecutionResultV2::Failure {
-                effects,
-                transfers,
-                gas,
-                error_message,
-            },
-            None => ExecutionResultV2::Success {
-                effects,
-                transfers,
-                gas,
-            },
+        let result = ExecutionResultV2 {
+            effects: self.effects,
+            transfers: self.transfers,
+            initiator: self.initiator,
+            payment: self.payment,
+            gas: self.gas,
+            error_message: self.error_message,
         };
         let execution_result = ExecutionResult::V2(result);
         ExecutionArtifact::new(self.hash, self.header, execution_result, self.messages)

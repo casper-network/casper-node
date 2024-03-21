@@ -6,7 +6,7 @@ use crate::{
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, Chainspec,
     ContextAccessRights, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
-    StoredValue, TransactionHash, TransferAddr, URef, U512,
+    StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
@@ -239,7 +239,7 @@ pub struct RuntimeNative<S> {
     named_keys: NamedKeys,
     access_rights: ContextAccessRights,
     remaining_spending_limit: U512,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     phase: Phase,
 }
 
@@ -361,12 +361,12 @@ where
         self.remaining_spending_limit = remaining;
     }
 
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         &self.transfers
     }
 
-    pub fn push_transfer(&mut self, transfer_addr: TransferAddr) {
-        self.transfers.push(transfer_addr);
+    pub fn push_transfer(&mut self, transfer: Transfer) {
+        self.transfers.push(transfer);
     }
 
     pub fn id(&self) -> &Id {
@@ -389,7 +389,7 @@ where
         self.config.compute_rewards
     }
 
-    pub fn into_transfers(self) -> Vec<TransferAddr> {
+    pub fn into_transfers(self) -> Vec<Transfer> {
         self.transfers
     }
 }

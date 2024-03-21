@@ -110,8 +110,9 @@ pub(crate) mod gens {
     use proptest::{collection, prelude::Strategy};
 
     use crate::{
-        gens::{u512_arb, uref_arb},
-        transaction_info::gens::{account_hash_arb, deploy_hash_arb, transfer_v1_addr_arb},
+        gens::{account_hash_arb, u512_arb, uref_arb},
+        transaction::gens::deploy_hash_arb,
+        transfer::gens::transfer_v1_addr_arb,
         DeployInfo,
     };
 

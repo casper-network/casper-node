@@ -33,9 +33,8 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
     KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer,
-    TransferAddr, TransferV2Addr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH,
-    U512,
+    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef,
+    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
@@ -71,7 +70,7 @@ pub struct RuntimeContext<'a, R> {
     engine_config: EngineConfig,
     //TODO: Will be removed along with stored session in later PR.
     entry_point_type: EntryPointType,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     remaining_spending_limit: U512,
 
     // Original account/contract for read only tasks taken before execution
@@ -108,7 +107,7 @@ where
         args: RuntimeArgs,
         gas_limit: Gas,
         gas_counter: Gas,
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
         calling_add_contract_version: CallingAddContractVersion,
@@ -372,12 +371,6 @@ where
         self.new_uref(StoredValue::CLValue(CLValue::unit()))
     }
 
-    /// Creates a new transfer address using a transfer address generator.
-    pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, ExecError> {
-        let transfer_addr = self.address_generator.borrow_mut().create_address();
-        Ok(TransferAddr::V2(TransferV2Addr::new(transfer_addr)))
-    }
-
     /// Puts `key` to the map of named keys of current context.
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), ExecError> {
         // No need to perform actual validation on the base key because an account or contract (i.e.
@@ -520,17 +513,6 @@ where
             .map_err(Into::into)
     }
 
-    /// Write a transfer instance to the global state.
-    pub fn write_transfer(&mut self, key: Key, value: Transfer) {
-        if let Key::Transfer(_) = key {
-            self.tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::Transfer(value));
-        } else {
-            panic!("Do not use this function for writing non-transfer keys")
-        }
-    }
-
     /// Write an era info instance to the global state.
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraSummary = key {
@@ -624,12 +606,12 @@ where
     }
 
     /// Returns list of transfers.
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         &self.transfers
     }
 
     /// Returns mutable list of transfers.
-    pub fn transfers_mut(&mut self) -> &mut Vec<TransferAddr> {
+    pub fn transfers_mut(&mut self) -> &mut Vec<Transfer> {
         &mut self.transfers
     }
 
@@ -694,9 +676,7 @@ where
             | StoredValue::ContractPackage(_)
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
-            | StoredValue::Message(_)
-            | StoredValue::TransactionInfo(_)
-            | StoredValue::Transfer(_) => Ok(()),
+            | StoredValue::Message(_) => Ok(()),
         }
     }
 

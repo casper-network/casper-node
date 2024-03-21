@@ -20,15 +20,14 @@ use casper_storage::block_store::{
     BlockStoreProvider, BlockStoreTransaction, DataReader, DataWriter,
 };
 use casper_types::{
-    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
+    execution::{Effects, ExecutionResult, ExecutionResultV2},
     generate_ed25519_keypair,
     testing::TestRng,
     ApprovalsHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
-    Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key,
-    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, StoredValue, TestBlockBuilder,
-    TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer,
-    TransferV2, U512,
+    Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr,
+    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder,
+    TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, TransferV2, U512,
 };
 use tempfile::tempdir;
 
@@ -1353,9 +1352,10 @@ fn prepare_exec_result_with_transfer(
     rng: &mut TestRng,
     txn_hash: &TransactionHash,
 ) -> (ExecutionResult, Transfer) {
+    let initiator_addr = InitiatorAddr::random(rng);
     let transfer = Transfer::V2(TransferV2::new(
         *txn_hash,
-        InitiatorAddr::random(rng),
+        initiator_addr.clone(),
         Some(rng.gen()),
         rng.gen(),
         rng.gen(),
@@ -1363,16 +1363,13 @@ fn prepare_exec_result_with_transfer(
         Gas::from(rng.gen::<u64>()),
         Some(rng.gen()),
     ));
-    let transform = TransformV2::new(
-        Key::TransactionInfo(*txn_hash),
-        TransformKindV2::Write(StoredValue::Transfer(transfer.clone())),
-    );
-    let mut effects = Effects::new();
-    effects.push(transform);
-    let exec_result = ExecutionResult::V2(ExecutionResultV2::Success {
-        effects,
-        transfers: vec![],
+    let exec_result = ExecutionResult::V2(ExecutionResultV2 {
+        effects: Effects::new(),
+        transfers: vec![transfer.clone()],
+        initiator: initiator_addr,
         gas: Gas::new(rng.gen::<u64>()),
+        payment: vec![],
+        error_message: None,
     });
     (exec_result, transfer)
 }

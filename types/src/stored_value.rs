@@ -24,7 +24,7 @@ use crate::{
     contracts::{Contract, ContractPackage},
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, ByteCode, CLValue, DeployInfo, TransactionInfo, Transfer, TransferV1,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -50,8 +50,6 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKey = 17,
-    TransactionInfo = 18,
-    Transfer = 19,
 }
 
 /// A value stored in Global State.
@@ -100,10 +98,6 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
-    /// Info about a transaction.
-    TransactionInfo(TransactionInfo),
-    /// A versioned transfer.
-    Transfer(Transfer),
 }
 
 impl StoredValue {
@@ -231,22 +225,6 @@ impl StoredValue {
         }
     }
 
-    /// Returns a reference to the wrapped `TransactionInfo` if this is a `TransactionInfo` variant.
-    pub fn as_transaction_info(&self) -> Option<&TransactionInfo> {
-        match self {
-            StoredValue::TransactionInfo(txn_info) => Some(txn_info),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the wrapped `Transfer` if this is a `Transfer` variant.
-    pub fn as_transfer(&self) -> Option<&Transfer> {
-        match self {
-            StoredValue::Transfer(transfer) => Some(transfer),
-            _ => None,
-        }
-    }
-
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
@@ -359,22 +337,6 @@ impl StoredValue {
         }
     }
 
-    /// Returns the `TransactionInfo` if this is a `TransactionInfo` variant.
-    pub fn into_transaction_info(self) -> Option<TransactionInfo> {
-        match self {
-            StoredValue::TransactionInfo(txn_info) => Some(txn_info),
-            _ => None,
-        }
-    }
-
-    /// Returns the `Transfer` if this is a `Transfer` variant.
-    pub fn into_transfer(self) -> Option<Transfer> {
-        match self {
-            StoredValue::Transfer(transfer) => Some(transfer),
-            _ => None,
-        }
-    }
-
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
@@ -398,8 +360,6 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
-            StoredValue::TransactionInfo(_) => "TransactionInfo".to_string(),
-            StoredValue::Transfer(_) => "Transfer".to_string(),
         }
     }
 
@@ -423,8 +383,6 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
-            StoredValue::TransactionInfo(_) => Tag::TransactionInfo,
-            StoredValue::Transfer(_) => Tag::Transfer,
         }
     }
 }
@@ -674,31 +632,6 @@ impl TryFrom<StoredValue> for NamedKeyValue {
     }
 }
 
-impl TryFrom<StoredValue> for TransactionInfo {
-    type Error = TypeMismatch;
-
-    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
-        match value {
-            StoredValue::TransactionInfo(txn_info) => Ok(txn_info),
-            _ => Err(TypeMismatch::new(
-                "TransactionInfo".to_string(),
-                value.type_name(),
-            )),
-        }
-    }
-}
-
-impl TryFrom<StoredValue> for Transfer {
-    type Error = TypeMismatch;
-
-    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
-        match value {
-            StoredValue::Transfer(transfer) => Ok(transfer),
-            _ => Err(TypeMismatch::new("Transfer".to_string(), value.type_name())),
-        }
-    }
-}
-
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -731,8 +664,6 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
-                StoredValue::TransactionInfo(txn_info) => txn_info.serialized_length(),
-                StoredValue::Transfer(transfer) => transfer.serialized_length(),
             }
     }
 
@@ -759,8 +690,6 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
-            StoredValue::TransactionInfo(txn_info) => txn_info.write_bytes(writer),
-            StoredValue::Transfer(transfer) => transfer.write_bytes(writer),
         }
     }
 }
@@ -825,10 +754,6 @@ impl FromBytes for StoredValue {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
             }
-            tag if tag == Tag::TransactionInfo as u8 => TransactionInfo::from_bytes(remainder)
-                .map(|(txn_info, remainder)| (StoredValue::TransactionInfo(txn_info), remainder)),
-            tag if tag == Tag::Transfer as u8 => Transfer::from_bytes(remainder)
-                .map(|(transfer, remainder)| (StoredValue::Transfer(transfer), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -857,8 +782,6 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
-        TransactionInfo(&'a TransactionInfo),
-        Transfer(&'a Transfer),
     }
 
     #[derive(Deserialize)]
@@ -881,8 +804,6 @@ mod serde_helpers {
         MessageTopic(MessageTopicSummary),
         Message(MessageChecksum),
         NamedKey(NamedKeyValue),
-        TransactionInfo(TransactionInfo),
-        Transfer(Transfer),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -910,8 +831,6 @@ mod serde_helpers {
                 }
                 StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
                 StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
-                StoredValue::TransactionInfo(payload) => BinarySerHelper::TransactionInfo(payload),
-                StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
             }
         }
     }
@@ -943,10 +862,6 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
                 BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
-                BinaryDeserHelper::TransactionInfo(payload) => {
-                    StoredValue::TransactionInfo(payload)
-                }
-                BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),
             }
         }
     }

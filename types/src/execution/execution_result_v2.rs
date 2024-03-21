@@ -13,7 +13,7 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
-use rand::{distributions::Standard, prelude::Distribution, Rng};
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -23,14 +23,12 @@ use super::Effects;
 use super::{TransformKindV2, TransformV2};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-#[cfg(any(feature = "json-schema", feature = "testing", test))]
-use crate::TransferV2Addr;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
-    Gas, TransferAddr,
-};
 #[cfg(feature = "json-schema")]
-use crate::{Key, KEY_HASH_LENGTH};
+use crate::Key;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Gas, InitiatorAddr, Transfer, URef,
+};
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
@@ -46,72 +44,70 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     effects.push(TransformV2::new(key1, TransformKindV2::AddUInt64(8u64)));
     effects.push(TransformV2::new(key2, TransformKindV2::Identity));
 
-    let transfers = vec![
-        TransferAddr::V2(TransferV2Addr::new([89; KEY_HASH_LENGTH])),
-        TransferAddr::V2(TransferV2Addr::new([130; KEY_HASH_LENGTH])),
-    ];
+    let transfers = vec![Transfer::example().clone()];
 
-    ExecutionResultV2::Success {
+    ExecutionResultV2 {
         effects,
         transfers,
         gas: Gas::new(123_456),
+        payment: vec![PaymentInfo {
+            source: URef::new([1; crate::UREF_ADDR_LENGTH], crate::AccessRights::READ),
+        }],
+        initiator: InitiatorAddr::from(crate::PublicKey::example().clone()),
+        error_message: None,
     }
 });
+
+/// Breakdown of payments made to cover the cost.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct PaymentInfo {
+    /// Source purse used for payment of the transaction.
+    pub source: URef,
+}
+
+impl ToBytes for PaymentInfo {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.source.write_bytes(writer)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.source.serialized_length()
+    }
+}
+
+impl FromBytes for PaymentInfo {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (source, remainder) = URef::from_bytes(bytes)?;
+        Ok((PaymentInfo { source }, remainder))
+    }
+}
 
 /// The result of executing a single transaction.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum ExecutionResultV2 {
-    /// The result of a failed execution.
-    Failure {
-        /// The effects of executing the transaction.
-        effects: Effects,
-        /// A record of transfers performed while executing the transaction.
-        transfers: Vec<TransferAddr>,
-        /// The gas consumed executing the transaction.
-        gas: Gas,
-        /// The error message associated with executing the transaction.
-        error_message: String,
-    },
-    /// The result of a successful execution.
-    Success {
-        /// The effects of executing the transaction.
-        effects: Effects,
-        /// A record of transfers performed while executing the transaction.
-        transfers: Vec<TransferAddr>,
-        /// The gas consumed executing the transaction.
-        gas: Gas,
-    },
-}
-
-#[cfg(any(feature = "testing", test))]
-impl Distribution<ExecutionResultV2> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResultV2 {
-        let transfer_count = rng.gen_range(0..6);
-        let mut transfers = Vec::new();
-        for _ in 0..transfer_count {
-            transfers.push(TransferAddr::V2(TransferV2Addr::new(rng.gen())))
-        }
-
-        let effects = Effects::random(rng);
-
-        if rng.gen() {
-            ExecutionResultV2::Failure {
-                effects,
-                transfers,
-                gas: Gas::new(rng.gen::<u64>()),
-                error_message: format!("Error message {}", rng.gen::<u64>()),
-            }
-        } else {
-            ExecutionResultV2::Success {
-                effects,
-                transfers,
-                gas: Gas::new(rng.gen::<u64>()),
-            }
-        }
-    }
+pub struct ExecutionResultV2 {
+    /// The effects of executing the transaction.
+    pub effects: Effects,
+    /// A record of transfers performed while executing the transaction.
+    pub transfers: Vec<Transfer>,
+    /// Identifier of the initiator of the transaction.
+    pub initiator: InitiatorAddr,
+    /// Breakdown of payments made to cover the cost.
+    pub payment: Vec<PaymentInfo>,
+    /// The gas consumed executing the transaction.
+    pub gas: Gas,
+    /// The error message associated with executing the transaction if the transaction failed.
+    pub error_message: Option<String>,
 }
 
 impl ExecutionResultV2 {
@@ -130,54 +126,35 @@ impl ExecutionResultV2 {
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
         for _ in 0..transfer_count {
-            transfers.push(TransferAddr::V2(TransferV2Addr::new(rng.gen())))
+            transfers.push(Transfer::random(rng))
         }
 
         let gas = Gas::new(rng.gen::<u64>());
 
-        if rng.gen() {
-            ExecutionResultV2::Failure {
-                effects,
-                transfers,
-                gas,
-                error_message: format!("Error message {}", rng.gen::<u64>()),
-            }
-        } else {
-            ExecutionResultV2::Success {
-                effects,
-                transfers,
-                gas,
-            }
+        let payment = vec![PaymentInfo { source: rng.gen() }];
+        ExecutionResultV2 {
+            effects,
+            transfers,
+            gas,
+            payment,
+            initiator: InitiatorAddr::random(rng),
+            error_message: if rng.gen() {
+                Some(format!("Error message {}", rng.gen::<u64>()))
+            } else {
+                None
+            },
         }
     }
 }
 
 impl ToBytes for ExecutionResultV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            ExecutionResultV2::Failure {
-                effects,
-                transfers,
-                gas,
-                error_message,
-            } => {
-                RESULT_ERR_TAG.write_bytes(writer)?;
-                effects.write_bytes(writer)?;
-                transfers.write_bytes(writer)?;
-                gas.write_bytes(writer)?;
-                error_message.write_bytes(writer)
-            }
-            ExecutionResultV2::Success {
-                effects,
-                transfers,
-                gas,
-            } => {
-                RESULT_OK_TAG.write_bytes(writer)?;
-                effects.write_bytes(writer)?;
-                transfers.write_bytes(writer)?;
-                gas.write_bytes(writer)
-            }
-        }
+        self.effects.write_bytes(writer)?;
+        self.transfers.write_bytes(writer)?;
+        self.initiator.write_bytes(writer)?;
+        self.payment.write_bytes(writer)?;
+        self.gas.write_bytes(writer)?;
+        self.error_message.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -187,62 +164,32 @@ impl ToBytes for ExecutionResultV2 {
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                ExecutionResultV2::Failure {
-                    effects,
-                    transfers,
-                    gas,
-                    error_message,
-                } => {
-                    effects.serialized_length()
-                        + transfers.serialized_length()
-                        + gas.serialized_length()
-                        + error_message.serialized_length()
-                }
-                ExecutionResultV2::Success {
-                    effects,
-                    transfers,
-                    gas,
-                } => {
-                    effects.serialized_length()
-                        + transfers.serialized_length()
-                        + gas.serialized_length()
-                }
-            }
+        self.effects.serialized_length()
+            + self.transfers.serialized_length()
+            + self.initiator.serialized_length()
+            + self.payment.serialized_length()
+            + self.gas.serialized_length()
+            + self.error_message.serialized_length()
     }
 }
 
 impl FromBytes for ExecutionResultV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            RESULT_ERR_TAG => {
-                let (effects, remainder) = Effects::from_bytes(remainder)?;
-                let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
-                let (gas, remainder) = Gas::from_bytes(remainder)?;
-                let (error_message, remainder) = String::from_bytes(remainder)?;
-                let execution_result = ExecutionResultV2::Failure {
-                    effects,
-                    transfers,
-                    gas,
-                    error_message,
-                };
-                Ok((execution_result, remainder))
-            }
-            RESULT_OK_TAG => {
-                let (effects, remainder) = Effects::from_bytes(remainder)?;
-                let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
-                let (gas, remainder) = Gas::from_bytes(remainder)?;
-                let execution_result = ExecutionResultV2::Success {
-                    effects,
-                    transfers,
-                    gas,
-                };
-                Ok((execution_result, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let (effects, remainder) = Effects::from_bytes(bytes)?;
+        let (transfers, remainder) = Vec::<Transfer>::from_bytes(remainder)?;
+        let (initiator, remainder) = InitiatorAddr::from_bytes(remainder)?;
+        let (payment, remainder) = Vec::<PaymentInfo>::from_bytes(remainder)?;
+        let (gas, remainder) = Gas::from_bytes(remainder)?;
+        let (error_message, remainder) = Option::<String>::from_bytes(remainder)?;
+        let execution_result = ExecutionResultV2 {
+            effects,
+            transfers,
+            initiator,
+            payment,
+            gas,
+            error_message,
+        };
+        Ok((execution_result, remainder))
     }
 }
 

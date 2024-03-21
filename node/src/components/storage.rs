@@ -65,13 +65,11 @@ use casper_storage::DbRawBytesSpec;
 use casper_types::SignedBlock;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
-    },
+    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2},
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
-    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, StoredValue,
-    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
+    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -2003,31 +2001,34 @@ fn move_storage_files_to_network_subdir(
 /// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
 /// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
 fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
-    let mut transfers: Vec<Transfer> = vec![];
+    let mut all_transfers: Vec<Transfer> = vec![];
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
             for transform_v1 in &effect.transforms {
                 if let execution_result_v1::TransformKindV1::WriteTransfer(transfer_v1) =
                     &transform_v1.transform
                 {
-                    transfers.push(Transfer::V1(transfer_v1.clone()));
+                    all_transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }
-        ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-            for transform_v2 in effects.transforms() {
-                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform_v2.kind()
-                {
-                    transfers.push(transfer.clone());
+        ExecutionResult::V2(ExecutionResultV2 {
+            transfers,
+            error_message,
+            ..
+        }) => {
+            if error_message.is_none() {
+                for transfer in transfers {
+                    all_transfers.push(transfer.clone());
                 }
             }
+            // else no-op: we only record transfers from successful executions.
         }
-        ExecutionResult::V1(ExecutionResultV1::Failure { .. })
-        | ExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+        ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
         }
     }
-    transfers
+    all_transfers
 }
 
 // Testing code. The functions below allow direct inspection of the storage component and should

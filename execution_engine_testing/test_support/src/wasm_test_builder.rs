@@ -63,8 +63,7 @@ use casper_types::{
     ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
     InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
     ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Timestamp,
-    TransactionHash, TransactionInfo, TransactionV1Hash, Transfer, TransferAddr, URef,
-    OS_PAGE_SIZE, U512,
+    TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -1387,32 +1386,6 @@ where
 
         if let StoredValue::Package(package) = contract_value {
             Some(package)
-        } else {
-            None
-        }
-    }
-
-    /// Queries for a transfer by `TransferAddr`.
-    pub fn get_transfer(&self, transfer_addr: TransferAddr) -> Option<Transfer> {
-        let transfer_value: StoredValue = self
-            .query(None, Key::Transfer(transfer_addr), &[])
-            .expect("should have transfer value");
-
-        if let StoredValue::Transfer(transfer) = transfer_value {
-            Some(transfer)
-        } else {
-            None
-        }
-    }
-
-    /// Queries for transaction info by `TransactionHash`.
-    pub fn get_transaction_info(&self, txn_hash: TransactionHash) -> Option<TransactionInfo> {
-        let txn_info_value: StoredValue = self
-            .query(None, Key::TransactionInfo(txn_hash), &[])
-            .expect("should have transaction info value");
-
-        if let StoredValue::TransactionInfo(txn_info) = txn_info_value {
-            Some(txn_info)
         } else {
             None
         }

@@ -12,7 +12,8 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::super::{transfer_addr::TRANSFER_ADDR_FORMATTED_STRING_PREFIX, TransferFromStrError};
+use super::super::TransferFromStrError;
+pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{

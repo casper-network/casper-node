@@ -502,6 +502,21 @@ impl Display for Transaction {
     }
 }
 
+/// Proptest generators for [`Transaction`].
+#[cfg(any(feature = "testing", feature = "gens", test))]
+pub mod gens {
+    use proptest::{
+        array,
+        prelude::{Arbitrary, Strategy},
+    };
+
+    use super::*;
+
+    pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
+        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
