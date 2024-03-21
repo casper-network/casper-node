@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.  The format
 * `use_validator_broadcast` can now be configured to control the node's broadcast behavior.
 * `use_mixed_gossip` can now be configured to enable or disable the node's gossip peer selection.
 * Add `net_gossip_requests`, `net_overflow_buffer_count` and `net_overflow_buffer_bytes` metrics.
+* Add a new family of metrics per channel has been added, namely `request_out_count` `request_out_bytes` `response_in_count` `response_in_bytes` `request_in_count` `request_in_bytes` `response_out_count` and `response_out_bytes`. These are labelled with each channel.
+
 
 ### Changed
 * The node's connection model has changed, now only establishing a single connection per peer. The direction of the connection is chosen based on the randomly generated `NodeID`s.
