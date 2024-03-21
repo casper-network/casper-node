@@ -1636,7 +1636,7 @@
                   "minimum": 0.0
                 },
                 "gas_price": {
-                  "description": "User-specified gas_price tolerance (minimum 1).",
+                  "description": "User-specified gas_price (minimum 1).",
                   "type": "integer",
                   "format": "uint64",
                   "minimum": 0.0

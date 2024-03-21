@@ -6,7 +6,7 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     account::AccountHash, runtime_args, AddressableEntityHash, BlockTime, Digest, EntityVersion,
     Gas, InitiatorAddr, PackageHash, Phase, RuntimeArgs, Transaction, TransactionHash,
-    TransactionV1Hash, DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT,
+    TransactionV1Hash,
 };
 
 use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};

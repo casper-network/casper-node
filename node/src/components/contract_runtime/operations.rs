@@ -101,7 +101,7 @@ pub fn execute_finalized_block(
         let gas_limit = match txn.gas_limit(&system_costs, None) {
             Ok(gas) => gas,
             Err(ite) => {
-                debug!(%ite, "invalid transaction");
+                debug!(%ite, "invalid transaction (gas limit)");
                 artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
                 continue;
             }
@@ -111,7 +111,7 @@ pub fn execute_finalized_block(
         let cost = match txn.gas_limit(&system_costs, gas_price) {
             Ok(gas) => gas,
             Err(ite) => {
-                debug!(%ite, "invalid transaction");
+                debug!(%ite, "invalid transaction (cost)");
                 artifacts.push_invalid_transaction(txn_hash, txn_header, ite);
                 continue;
             }
@@ -156,7 +156,6 @@ pub fn execute_finalized_block(
                 initiator_addr.clone().into()
             }
         };
-
         let initial_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
             protocol_version,
@@ -164,7 +163,8 @@ pub fn execute_finalized_block(
             balance_handling,
         ));
 
-        if initial_balance_result.is_sufficient(cost.value()) {
+        let sufficient_balance = initial_balance_result.is_sufficient(cost.value());
+        if sufficient_balance {
             match txn.category() {
                 TransactionCategory::Mint => {
                     let transfer_result =
@@ -194,45 +194,50 @@ pub fn execute_finalized_block(
                     }
                 }
                 TransactionCategory::Auction => {
-                    let auction_method = match AuctionMethod::from_parts(
+                    match AuctionMethod::from_parts(
                         entry_point,
                         &runtime_args,
                         holds_epoch,
                         chainspec,
                     ) {
-                        Ok(auction_method) => auction_method,
-                        Err(_) => {
+                        Ok(auction_method) => {
+                            let bidding_result = scratch_state.bidding(BiddingRequest::new(
+                                native_runtime_config.clone(),
+                                state_root_hash,
+                                block_time,
+                                protocol_version,
+                                txn_hash,
+                                initiator_addr,
+                                authorization_keys,
+                                auction_method,
+                            ));
+                            match artifacts.push_bidding_result(
+                                txn_hash,
+                                txn_header.clone(),
+                                bidding_result,
+                                cost,
+                            ) {
+                                ExecutionArtifactOutcome::RootNotFound => {
+                                    return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                                }
+                                ExecutionArtifactOutcome::Effects(bidding_effects) => {
+                                    effects.append(bidding_effects.clone());
+                                }
+                            }
+                        }
+                        Err(ame) => {
+                            error!(
+                                %txn_hash,
+                                ?ame,
+                                "failed to determine auction method"
+                            );
                             artifacts.push_auction_method_failure(
                                 txn_hash,
                                 txn_header.clone(),
                                 cost,
                             );
-                            continue;
                         }
                     };
-                    let bidding_result = scratch_state.bidding(BiddingRequest::new(
-                        native_runtime_config.clone(),
-                        state_root_hash,
-                        block_time,
-                        protocol_version,
-                        txn_hash,
-                        initiator_addr,
-                        authorization_keys,
-                        auction_method,
-                    ));
-                    match artifacts.push_bidding_result(
-                        txn_hash,
-                        txn_header.clone(),
-                        bidding_result,
-                        cost,
-                    ) {
-                        ExecutionArtifactOutcome::RootNotFound => {
-                            return Err(BlockExecutionError::RootNotFound(state_root_hash))
-                        }
-                        ExecutionArtifactOutcome::Effects(bidding_effects) => {
-                            effects.append(bidding_effects.clone());
-                        }
-                    }
                 }
                 TransactionCategory::Standard | TransactionCategory::InstallUpgrade => {
                     let wasm_v1_result = match WasmV1Request::new_session(
@@ -269,8 +274,11 @@ pub fn execute_finalized_block(
             debug!(%txn_hash, "skipping execution due to insufficient balance");
         }
 
+        let fee_handling = chainspec.core_config.fee_handling;
+        debug!(%txn_hash, ?fee_handling, ?sufficient_balance, "fee handling");
+
         // handle payment per the chainspec determined fee setting
-        match chainspec.core_config.fee_handling {
+        match fee_handling {
             FeeHandling::NoFee => {
                 // this is the "fee elimination" model...a BalanceHold for the full cost is placed
                 // on the initiator's purse.

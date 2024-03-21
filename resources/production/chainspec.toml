@@ -100,18 +100,32 @@ compute_rewards = true
 # Defines how refunds of the unused portion of payment amounts are calculated and handled.
 #
 # Valid options are:
-#   'refund': this causes excess payment amounts to be sent to either a pre-defined purse, or back to the sender.
-#             the refunded amount is calculated as the given ratio of the payment amount minus the execution costs.
-#   'burn': similar to what refund does; except the refund amount is burned.
+#   'refund': a ratio of the unspent token is returned to the spender.
+#   'burn': unspent token is burned
+# This causes excess payment amounts to be sent to either a
+# pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
+# minus the execution costs.
 refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
+#   'no_fee': fees are eliminated.
 #   'pay_to_proposer': fees are paid to the block proposer
 #   'accumulate': fees are accumulated in a special purse and distributed at the end of each era evenly among all
 #                 administrator accounts
 #   'burn': fees are burned
-fee_handling = { type = 'pay_to_proposer' }
+fee_handling = { type = 'no_fee' }
+# Defines how fees are handled.
+#
+# Valid options are:
+#   'classic': senders of transaction self-specify how much they pay.
+#   'fixed': costs are fixed, per the cost table
+#   'reserved': prepaid transaction (currently not supported)
+pricing_handling = { type = 'fixed' }
+# Does the network allow pre-payment / reservations for future
+# execution? Currently not supported.
+#
+allow_reservations = false
 # How long does it take for a balance hold to fade away?
 balance_hold_interval = '24 hours'
 # List of public keys of administrator accounts. Setting this option makes only on private chains which require

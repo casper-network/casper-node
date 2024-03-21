@@ -941,9 +941,12 @@ impl Storage {
                 ref transaction_hash,
                 ref finalized_approvals,
                 responder,
-            } => responder
-                .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
-                .ignore(),
+            } => {
+                info!(txt=?transaction_hash, count=finalized_approvals.len(), "storing finalized approvals {:?}", finalized_approvals);
+                responder
+                    .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
+                    .ignore()
+            }
             StorageRequest::PutExecutedBlock {
                 block,
                 approvals_hashes,

@@ -1,5 +1,5 @@
 //! Runtime stacks.
-use casper_types::{account::AccountHash, system::Caller, PublicKey};
+use casper_types::{account::AccountHash, system::Caller};
 
 /// A runtime stack frame.
 ///
@@ -39,14 +39,6 @@ impl RuntimeStack {
         let mut frames = Vec::with_capacity(max_height);
         frames.push(frame);
         Self { frames, max_height }
-    }
-
-    /// Creates a new call instance that starts with a system account.
-    pub(crate) fn new_system_call_stack(max_height: usize) -> Self {
-        RuntimeStack::new_with_frame(
-            max_height,
-            Caller::initiator(PublicKey::System.to_account_hash()),
-        )
     }
 
     /// Is the stack empty?

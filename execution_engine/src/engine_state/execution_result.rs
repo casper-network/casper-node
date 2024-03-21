@@ -6,10 +6,9 @@ use tracing::{debug, trace};
 
 use casper_storage::data_access_layer::BiddingResult;
 use casper_types::{
-    bytesrepr::FromBytes,
     contract_messages::Messages,
     execution::{Effects, ExecutionResultV2 as TypesExecutionResult, TransformKindV2, TransformV2},
-    CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
+    CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
 use super::Error;
@@ -306,16 +305,6 @@ impl ExecutionResult {
         })
     }
 
-    /// Returns a wrapped `ret` by consuming object.
-    pub(crate) fn take_with_ret<T: FromBytes + CLTyped>(self, ret: T) -> (Option<T>, Self) {
-        (Some(ret), self)
-    }
-
-    /// Returns a self and has a return type compatible with [`ExecutionResult::take_with_ret`].
-    pub(crate) fn take_without_ret<T: FromBytes + CLTyped>(self) -> (Option<T>, Self) {
-        (None, self)
-    }
-
     /// Converts a bidding result to an execution result.
     pub fn from_bidding_result(bidding_result: BiddingResult, gas: Gas) -> Option<Self> {
         match bidding_result {
@@ -335,27 +324,6 @@ impl ExecutionResult {
                     messages: Messages::default(),
                 })
             }
-        }
-    }
-
-    /// Should charge for wasm errors?
-    pub(crate) fn should_charge_for_errors_in_wasm(&self) -> bool {
-        match self {
-            ExecutionResult::Failure {
-                error,
-                transfers: _,
-                gas: _,
-                effects: _,
-                messages: _,
-            } => match error {
-                Error::Exec(err) => matches!(
-                    err,
-                    ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart
-                ),
-                Error::WasmPreprocessing(_) => true,
-                _ => false,
-            },
-            ExecutionResult::Success { .. } => false,
         }
     }
 

@@ -11,6 +11,7 @@ mod global_state_update;
 mod highway_config;
 mod network_config;
 mod next_upgrade;
+mod pricing_handling;
 mod protocol_config;
 mod refund_handling;
 mod transaction_config;
@@ -55,6 +56,7 @@ pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, Global
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
+pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
