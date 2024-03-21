@@ -2,6 +2,64 @@ use prometheus::{IntCounter, IntGauge, Registry};
 
 use crate::utils::registered_metric::{DeprecatedMetric, RegisteredMetric, RegistryExt};
 
+use super::{Channel, PerChannel};
+
+#[derive(Debug)]
+pub(super) struct ChannelMetrics {
+    /// The number of requests made by this node on the given channel.
+    request_count_out: RegisteredMetric<IntCounter>,
+    /// The total sum of payload bytes of requests made by this node on the given channel.
+    request_bytes_out: RegisteredMetric<IntCounter>,
+    /// The number of responses sent by this node on the given channel.
+    response_count_in: RegisteredMetric<IntCounter>,
+    /// The total sum of payload bytes of responses received by this node on the given channel.
+    response_bytes_in: RegisteredMetric<IntCounter>,
+    /// The number of requests received by this node on the given channel.
+    request_count_in: RegisteredMetric<IntCounter>,
+    /// The total sum of payload bytes of requests received by this node on the given channel.
+    request_bytes_in: RegisteredMetric<IntCounter>,
+    /// The number of responses sent by this node on the given channel.
+    response_count_out: RegisteredMetric<IntCounter>,
+    /// The total sum of payload bytes of responses sent by this node on the given channel.
+    response_bytes_out: RegisteredMetric<IntCounter>,
+    /// The number of send failures.
+    pub(super) send_failures: RegisteredMetric<IntCounter>,
+}
+
+impl ChannelMetrics {
+    fn new(channel: Channel, registry: &Registry) -> Self {
+        todo!()
+    }
+
+    /// Updates the channel metrics upon receiving an incoming request.
+    #[inline(always)]
+    pub(super) fn update_from_incoming_request(&self, payload_len: u64) {
+        self.request_count_in.inc();
+        self.request_bytes_in.inc_by(payload_len);
+    }
+
+    /// Updates the channel metrics upon having scheduled an outgoing request.
+    #[inline(always)]
+    pub(super) fn update_from_outgoing_request(&self, payload_len: u64) {
+        self.request_count_out.inc();
+        self.request_bytes_out.inc_by(payload_len);
+    }
+
+    /// Updates the channel metrics upon receiving a response to a request.
+    #[inline(always)]
+    pub(super) fn update_from_received_response(&self, payload_len: u64) {
+        self.response_count_in.inc();
+        self.response_bytes_in.inc_by(payload_len);
+    }
+
+    /// Updates the channel metrics upon having sent a response to an incoming request.
+    #[inline(always)]
+    pub(super) fn update_from_sent_response(&self, payload_len: u64) {
+        self.response_count_out.inc();
+        self.response_bytes_out.inc_by(payload_len);
+    }
+}
+
 /// Network-type agnostic networking metrics.
 #[derive(Debug)]
 #[allow(dead_code)] // TODO: Remove this once deprecated metrics are removed.
@@ -18,6 +76,8 @@ pub(super) struct Metrics {
     pub(super) overflow_buffer_count: RegisteredMetric<IntGauge>,
     /// How many additional payload bytes have been buffered outside of the juliet stack.
     pub(super) overflow_buffer_bytes: RegisteredMetric<IntGauge>,
+    /// Per-channel metrics.
+    pub(super) channel_metrics: PerChannel<ChannelMetrics>,
 
     // *** Deprecated metrics below ***
     /// Number of messages still waiting to be sent out (broadcast and direct).
@@ -140,6 +200,8 @@ impl Metrics {
             "net_overflow_buffer_bytes",
             "payload byte sum of outgoing messages buffered outside network stack",
         )?;
+        let channel_metrics =
+            PerChannel::init_with(|channel| ChannelMetrics::new(channel, registry));
 
         // *** Deprecated metrics below ***
         let queued_messages = registry.new_deprecated(
@@ -352,6 +414,7 @@ impl Metrics {
             overflow_buffer_count,
             overflow_buffer_bytes,
             peers,
+            channel_metrics,
             queued_messages,
             out_count_protocol,
             out_count_consensus,
