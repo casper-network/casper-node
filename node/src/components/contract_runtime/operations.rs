@@ -194,7 +194,6 @@ pub fn execute_finalized_block(
                             let bidding_result = scratch_state.bidding(BiddingRequest::new(
                                 native_runtime_config.clone(),
                                 state_root_hash,
-                                block_time,
                                 protocol_version,
                                 transaction_hash,
                                 initiator_addr,

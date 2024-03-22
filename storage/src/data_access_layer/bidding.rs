@@ -9,8 +9,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     execution::Effects,
     system::{auction, auction::DelegationRate},
-    BlockTime, CLTyped, CLValue, CLValueError, Chainspec, Digest, InitiatorAddr, ProtocolVersion,
-    PublicKey, RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
+    CLTyped, CLValue, CLValueError, Chainspec, Digest, InitiatorAddr, ProtocolVersion, PublicKey,
+    RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
 };
 
 use crate::{
@@ -197,8 +197,6 @@ pub struct BiddingRequest {
     pub(crate) config: NativeRuntimeConfig,
     /// State root hash.
     pub(crate) state_hash: Digest,
-    /// Block time represented as a unix timestamp.
-    pub(crate) block_time: BlockTime,
     /// The protocol version.
     pub(crate) protocol_version: ProtocolVersion,
     /// The auction method.
@@ -217,7 +215,6 @@ impl BiddingRequest {
     pub fn new(
         config: NativeRuntimeConfig,
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
         initiator: InitiatorAddr,
@@ -227,7 +224,6 @@ impl BiddingRequest {
         Self {
             config,
             state_hash,
-            block_time,
             protocol_version,
             transaction_hash,
             initiator,

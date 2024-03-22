@@ -249,8 +249,8 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        protocol_version: ProtocolVersion,
         config: Config,
+        protocol_version: ProtocolVersion,
         id: Id,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         address: AccountHash,

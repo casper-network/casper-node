@@ -902,7 +902,8 @@ pub trait StateProvider {
             protocol_version,
             auction_method,
             transaction_hash,
-            ..
+            initiator,
+            authorization_keys,
         }: BiddingRequest,
     ) -> BiddingResult {
         let tc = match self.tracking_copy(state_hash) {
@@ -911,18 +912,33 @@ pub trait StateProvider {
             Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
         };
 
-        let mut runtime = match RuntimeNative::new_system_runtime(
+        let source_account_hash = initiator.account_hash();
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                source_account_hash,
+                &authorization_keys,
+                &BTreeSet::default(),
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return BiddingResult::Failure(tce);
+                }
+            };
+
+        // IMPORTANT: this runtime _must_ use the payer's context.
+        let mut runtime = RuntimeNative::new(
             config,
             protocol_version,
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
+            source_account_hash,
+            entity,
+            entity_named_keys,
+            entity_access_rights,
+            U512::MAX,
             Phase::Session,
-        ) {
-            Ok(rt) => rt,
-            Err(tce) => {
-                return BiddingResult::Failure(tce);
-            }
-        };
+        );
 
         let result = match auction_method {
             AuctionMethod::ActivateBid { validator } => runtime
@@ -1380,8 +1396,8 @@ pub trait StateProvider {
         let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
-            protocol_version,
             config.clone(),
+            protocol_version,
             id,
             Rc::clone(&tc),
             source_account_hash,
