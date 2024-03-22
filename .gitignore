@@ -141,14 +141,6 @@ cmake-build-debug/
 .vscode/
 .dccache
 
-# NCTL transient assets
-/utils/nctl/assets
-/utils/nctl/remotes
-/utils/nctl/stages
-/utils/nctl/dumps
-/utils/nctl/tmp
-/utils/nctl/overrides
-
 # utils data dirs
 /utils/**/chain-download
 /utils/**/lmdb-data
