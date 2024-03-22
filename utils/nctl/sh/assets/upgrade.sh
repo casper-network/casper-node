@@ -51,8 +51,10 @@ function _upgrade_node() {
 
     if [ "$NCTL_COMPILE_TARGET" = "debug" ]; then
         cp "$NCTL_CASPER_HOME"/target/debug/casper-node "$PATH_TO_NODE"/bin/"$PROTOCOL_VERSION"/
+        cp "$NCTL_CASPER_SIDECAR_HOME"/target/debug/casper-sidecar "$PATH_TO_NODE"/bin/"$PROTOCOL_VERSION"/
     else
         cp "$NCTL_CASPER_HOME"/target/release/casper-node "$PATH_TO_NODE"/bin/"$PROTOCOL_VERSION"/
+        cp "$NCTL_CASPER_SIDECAR_HOME"/target/release/casper-sidecar "$PATH_TO_NODE"/bin/"$PROTOCOL_VERSION"/
     fi
 
     # Copy chainspec.
@@ -89,6 +91,8 @@ function _upgrade_node() {
 
         python3 -c "${SCRIPT[*]}"
     fi
+
+    cp $(get_path_to_sidecar_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"

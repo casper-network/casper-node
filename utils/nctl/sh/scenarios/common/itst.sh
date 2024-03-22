@@ -168,6 +168,9 @@ function parallel_check_network_sync() {
             write_lfb_of_node_to_pipe $IDX $PIPE $LOG &
         done
 
+        # avoid a race condition with the writes
+        sleep 1
+
         while true
         do
             if read LINE;

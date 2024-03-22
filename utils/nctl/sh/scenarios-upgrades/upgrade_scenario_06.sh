@@ -57,7 +57,7 @@ function _main()
     _step_07
     _step_08
 
-    UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block_with_signatures.block.Version2.hash')"
 
     _step_09 "$PROTOCOL_VERSION" "$ACTIVATION_POINT" "$UPGRADE_HASH"
     _step_10
@@ -397,6 +397,7 @@ do
     esac
 done
 
-PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_0_0"}
+# Must be higher than the current protocol version.
+PROTOCOL_VERSION=${PROTOCOL_VERSION:-"2_1_0"}
 
 _main "$PROTOCOL_VERSION"
