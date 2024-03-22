@@ -692,16 +692,20 @@ impl TestFixture {
             .expect("node 0 should have given execution result")
         {
             ExecutionResult::V1(_) => unreachable!(),
-            ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-                effects.transforms().to_vec()
-            }
-            ExecutionResult::V2(ExecutionResultV2::Failure {
-                gas, error_message, ..
+            ExecutionResult::V2(ExecutionResultV2 {
+                effects,
+                gas,
+                error_message,
+                ..
             }) => {
-                panic!(
-                    "transaction execution failed: {} gas: {}",
-                    error_message, gas
-                );
+                if error_message.is_none() {
+                    effects.transforms().to_vec()
+                } else {
+                    panic!(
+                        "transaction execution failed: {:?} gas: {}",
+                        error_message, gas
+                    );
+                }
             }
         }
     }

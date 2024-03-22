@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
 use casper_types::{
     account::AccountHash, execution::Effects, Digest, Gas, InitiatorAddr, ProtocolVersion,
-    RuntimeArgs, TransactionHash, TransferAddr,
+    RuntimeArgs, TransactionHash, Transfer,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -162,7 +162,7 @@ pub enum TransferResult {
     /// Transfer succeeded
     Success {
         /// List of transfers that happened during execution.
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         /// Effects of transfer.
         effects: Effects,
     },

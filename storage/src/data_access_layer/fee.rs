@@ -6,7 +6,7 @@ use crate::system::{
     transfer::TransferError,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, FeeHandling, ProtocolVersion, TransferAddr,
+    account::AccountHash, execution::Effects, Digest, FeeHandling, ProtocolVersion, Transfer,
 };
 
 use crate::tracking_copy::TrackingCopyError;
@@ -108,7 +108,7 @@ pub enum FeeResult {
     Failure(FeeError),
     Success {
         /// List of transfers that happened during execution.
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         /// State hash after fee distribution outcome is committed to the global state.
         post_state_hash: Digest,
         /// Effects of the fee distribution process.

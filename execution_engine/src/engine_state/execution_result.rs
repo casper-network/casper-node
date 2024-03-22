@@ -7,8 +7,8 @@ use tracing::{debug, trace};
 use casper_storage::data_access_layer::BiddingResult;
 use casper_types::{
     contract_messages::Messages,
-    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, TransformKindV2, TransformV2},
-    CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
+    execution::{Effects, TransformKindV2, TransformV2},
+    CLValue, Gas, Key, Motes, StoredValue, Transfer,
 };
 
 use super::Error;
@@ -22,7 +22,7 @@ pub enum ExecutionResult {
         /// Error causing this `Failure` variant.
         error: Error,
         /// List of transfers that happened during execution up to the point of the failure.
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         /// Gas consumed up to the point of the failure.
         gas: Gas,
         /// Execution effects.
@@ -33,7 +33,7 @@ pub enum ExecutionResult {
     /// Execution was finished successfully
     Success {
         /// List of transfers.
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         /// Gas consumed.
         gas: Gas,
         /// Execution effects.
@@ -94,7 +94,7 @@ impl ExecutionResult {
     }
 
     /// Returns list of transfers regardless of variant.
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         match self {
             ExecutionResult::Failure { transfers, .. } => transfers,
             ExecutionResult::Success { transfers, .. } => transfers,
@@ -146,7 +146,7 @@ impl ExecutionResult {
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the
     /// `transfers` field only.
-    pub fn with_transfers(self, transfers: Vec<TransferAddr>) -> Self {
+    pub fn with_transfers(self, transfers: Vec<Transfer>) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
@@ -380,50 +380,6 @@ pub enum ForcedTransferResult {
     PaymentFailure,
 }
 
-/// A versioned execution result and the messages produced by that execution.
-#[derive(Debug)]
-pub struct ExecutionResultAndMessages {
-    /// Execution result
-    pub execution_result: TypesExecutionResult,
-    /// Messages emitted during execution
-    pub messages: Messages,
-}
-
-impl From<ExecutionResult> for ExecutionResultAndMessages {
-    fn from(execution_result: ExecutionResult) -> Self {
-        match execution_result {
-            ExecutionResult::Success {
-                transfers,
-                gas,
-                effects,
-                messages,
-            } => ExecutionResultAndMessages {
-                execution_result: TypesExecutionResult::Success {
-                    effects,
-                    transfers,
-                    gas,
-                },
-                messages,
-            },
-            ExecutionResult::Failure {
-                error,
-                transfers,
-                gas,
-                effects,
-                messages,
-            } => ExecutionResultAndMessages {
-                execution_result: TypesExecutionResult::Failure {
-                    effects,
-                    transfers,
-                    gas,
-                    error_message: error.to_string(),
-                },
-                messages,
-            },
-        }
-    }
-}
-
 /// Represents error conditions of an execution result builder.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ExecutionResultBuilderError {
@@ -499,7 +455,7 @@ impl ExecutionResultBuilder {
     /// Returns transfers from a session's execution result.
     ///
     /// If the session's execution result is not supplied then an empty [`Vec`] is returned.
-    pub fn transfers(&self) -> Vec<TransferAddr> {
+    pub fn transfers(&self) -> Vec<Transfer> {
         self.session_execution_result
             .as_ref()
             .map(ExecutionResult::transfers)

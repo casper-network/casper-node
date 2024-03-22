@@ -3290,101 +3290,62 @@
     },
     "ExecutionResultV2": {
       "description": "The result of executing a single transaction.",
-      "oneOf": [
-        {
-          "description": "The result of a failed execution.",
-          "type": "object",
-          "required": [
-            "Failure"
-          ],
-          "properties": {
-            "Failure": {
-              "type": "object",
-              "required": [
-                "effects",
-                "error_message",
-                "gas",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the transaction.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the transaction.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "gas": {
-                  "description": "The gas consumed executing the transaction.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Gas"
-                    }
-                  ]
-                },
-                "error_message": {
-                  "description": "The error message associated with executing the transaction.",
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
+      "type": "object",
+      "required": [
+        "effects",
+        "gas",
+        "initiator",
+        "payment",
+        "transfers"
+      ],
+      "properties": {
+        "effects": {
+          "description": "The effects of executing the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Effects"
             }
-          },
-          "additionalProperties": false
+          ]
         },
-        {
-          "description": "The result of a successful execution.",
-          "type": "object",
-          "required": [
-            "Success"
-          ],
-          "properties": {
-            "Success": {
-              "type": "object",
-              "required": [
-                "effects",
-                "gas",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the transaction.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the transaction.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "gas": {
-                  "description": "The gas consumed executing the transaction.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Gas"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
+        "transfers": {
+          "description": "A record of transfers performed while executing the transaction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Transfer"
+          }
+        },
+        "initiator": {
+          "description": "Identifier of the initiator of the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
             }
-          },
-          "additionalProperties": false
+          ]
+        },
+        "payment": {
+          "description": "Breakdown of payments made to cover the cost.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PaymentInfo"
+          }
+        },
+        "gas": {
+          "description": "The gas consumed executing the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "error_message": {
+          "description": "The error message associated with executing the transaction if the transaction failed.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      ]
+      },
+      "additionalProperties": false
     },
     "Effects": {
       "description": "A log of all transforms produced during execution.",
@@ -3781,32 +3742,6 @@
           "properties": {
             "NamedKey": {
               "$ref": "#/definitions/NamedKeyValue"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Info about a transaction.",
-          "type": "object",
-          "required": [
-            "TransactionInfo"
-          ],
-          "properties": {
-            "TransactionInfo": {
-              "$ref": "#/definitions/TransactionInfo"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "A versioned transfer.",
-          "type": "object",
-          "required": [
-            "Transfer"
-          ],
-          "properties": {
-            "Transfer": {
-              "$ref": "#/definitions/Transfer"
             }
           },
           "additionalProperties": false
@@ -4643,101 +4578,108 @@
         }
       }
     },
-    "TransactionInfo": {
-      "description": "Information relating to the given Transaction, stored in global state under .",
-      "type": "object",
-      "required": [
-        "from",
-        "gas",
-        "source",
-        "transaction_hash",
-        "transfers"
-      ],
-      "properties": {
-        "transaction_hash": {
-          "description": "The transaction hash.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/TransactionHash"
-            }
-          ]
-        },
-        "transfers": {
-          "description": "Transfers done during execution of the transaction.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/TransferAddr"
-          }
-        },
-        "from": {
-          "description": "Identifier of the initiator of the transaction.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/InitiatorAddr"
-            }
-          ]
-        },
-        "source": {
-          "description": "Source purse used for payment of the transaction.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
-        "gas": {
-          "description": "Gas used in executing the transaction.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Gas"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "TransferAddr": {
-      "description": "A versioned wrapper for a transfer address.",
+    "TransformError": {
+      "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
       "oneOf": [
         {
-          "description": "A version 1 transfer address.",
+          "description": "Error while (de)serializing data.",
           "type": "object",
           "required": [
-            "Version1"
+            "Serialization"
           ],
           "properties": {
-            "Version1": {
-              "$ref": "#/definitions/TransferV1Addr"
+            "Serialization": {
+              "$ref": "#/definitions/BytesreprError"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "A version 2 transfer address.",
+          "description": "Type mismatch error.",
           "type": "object",
           "required": [
-            "Version2"
+            "TypeMismatch"
           ],
           "properties": {
-            "Version2": {
-              "$ref": "#/definitions/TransferV2Addr"
+            "TypeMismatch": {
+              "$ref": "#/definitions/TypeMismatch"
             }
           },
           "additionalProperties": false
-        }
-      ]
-    },
-    "TransferV2Addr": {
-      "description": "Hex-encoded version 2 transfer address.",
-      "type": "string"
-    },
-    "Gas": {
-      "description": "The `Gas` struct represents a `U512` amount of gas.",
-      "allOf": [
+        },
         {
-          "$ref": "#/definitions/U512"
+          "description": "Type no longer supported.",
+          "type": "string",
+          "enum": [
+            "Deprecated"
+          ]
         }
       ]
+    },
+    "BytesreprError": {
+      "description": "Serialization and deserialization errors.",
+      "oneOf": [
+        {
+          "description": "Early end of stream while deserializing.",
+          "type": "string",
+          "enum": [
+            "EarlyEndOfStream"
+          ]
+        },
+        {
+          "description": "Formatting error while deserializing.",
+          "type": "string",
+          "enum": [
+            "Formatting"
+          ]
+        },
+        {
+          "description": "Not all input bytes were consumed in [`deserialize`].",
+          "type": "string",
+          "enum": [
+            "LeftOverBytes"
+          ]
+        },
+        {
+          "description": "Out of memory error.",
+          "type": "string",
+          "enum": [
+            "OutOfMemory"
+          ]
+        },
+        {
+          "description": "No serialized representation is available for a value.",
+          "type": "string",
+          "enum": [
+            "NotRepresentable"
+          ]
+        },
+        {
+          "description": "Exceeded a recursion depth limit.",
+          "type": "string",
+          "enum": [
+            "ExceededRecursionDepth"
+          ]
+        }
+      ]
+    },
+    "TypeMismatch": {
+      "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
+      "type": "object",
+      "required": [
+        "expected",
+        "found"
+      ],
+      "properties": {
+        "expected": {
+          "description": "The name of the expected type.",
+          "type": "string"
+        },
+        "found": {
+          "description": "The actual type found.",
+          "type": "string"
+        }
+      }
     },
     "Transfer": {
       "description": "A versioned wrapper for a transfer.",
@@ -4853,106 +4795,28 @@
       },
       "additionalProperties": false
     },
-    "TransformError": {
-      "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
-      "oneOf": [
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
         {
-          "description": "Error while (de)serializing data.",
-          "type": "object",
-          "required": [
-            "Serialization"
-          ],
-          "properties": {
-            "Serialization": {
-              "$ref": "#/definitions/BytesreprError"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Type mismatch error.",
-          "type": "object",
-          "required": [
-            "TypeMismatch"
-          ],
-          "properties": {
-            "TypeMismatch": {
-              "$ref": "#/definitions/TypeMismatch"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Type no longer supported.",
-          "type": "string",
-          "enum": [
-            "Deprecated"
-          ]
+          "$ref": "#/definitions/U512"
         }
       ]
     },
-    "BytesreprError": {
-      "description": "Serialization and deserialization errors.",
-      "oneOf": [
-        {
-          "description": "Early end of stream while deserializing.",
-          "type": "string",
-          "enum": [
-            "EarlyEndOfStream"
-          ]
-        },
-        {
-          "description": "Formatting error while deserializing.",
-          "type": "string",
-          "enum": [
-            "Formatting"
-          ]
-        },
-        {
-          "description": "Not all input bytes were consumed in [`deserialize`].",
-          "type": "string",
-          "enum": [
-            "LeftOverBytes"
-          ]
-        },
-        {
-          "description": "Out of memory error.",
-          "type": "string",
-          "enum": [
-            "OutOfMemory"
-          ]
-        },
-        {
-          "description": "No serialized representation is available for a value.",
-          "type": "string",
-          "enum": [
-            "NotRepresentable"
-          ]
-        },
-        {
-          "description": "Exceeded a recursion depth limit.",
-          "type": "string",
-          "enum": [
-            "ExceededRecursionDepth"
-          ]
-        }
-      ]
-    },
-    "TypeMismatch": {
-      "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
+    "PaymentInfo": {
+      "description": "Breakdown of payments made to cover the cost.",
       "type": "object",
       "required": [
-        "expected",
-        "found"
+        "source"
       ],
       "properties": {
-        "expected": {
-          "description": "The name of the expected type.",
-          "type": "string"
-        },
-        "found": {
-          "description": "The actual type found.",
-          "type": "string"
+        "source": {
+          "description": "Source purse used for payment of the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
         }
       }
     },

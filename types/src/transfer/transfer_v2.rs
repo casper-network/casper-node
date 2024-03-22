@@ -1,5 +1,3 @@
-mod transfer_v2_addr;
-
 use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
@@ -13,8 +11,6 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Gas, InitiatorAddr, TransactionHash, URef, U512,
 };
-pub(super) use transfer_v2_addr::V2_PREFIX;
-pub use transfer_v2_addr::{TransferV2Addr, TRANSFER_V2_ADDR_LENGTH};
 
 /// Represents a version 2 transfer from one purse to another.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]

@@ -20,10 +20,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Gas, Group, Groups, InitiatorAddr, Key,
-    Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TransactionHash, TransactionV1Hash, Transfer, TransferV1, TransferV1Addr,
-    TransferV2, URef, U512,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Groups, Key, Package, PackageHash,
+    PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferV1,
+    TransferV1Addr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -80,16 +79,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         U512::from(2_500_000_000u64),
         Some(1),
     );
-    let transfer = Transfer::V2(TransferV2::new(
-        TransactionHash::V1(TransactionV1Hash::from_raw([44; 32])),
-        InitiatorAddr::AccountHash(AccountHash::new([100; 32])),
-        Some(AccountHash::new([101; 32])),
-        URef::new([10; 32], AccessRights::WRITE),
-        URef::new([11; 32], AccessRights::WRITE),
-        U512::from(15_000_000_000u64),
-        Gas::new(2_500_000_000u64),
-        Some(1),
-    ));
     let deploy_info = DeployInfo::new(
         DeployHash::from_raw([55; 32]),
         &[TransferV1Addr::new([1; 32]), TransferV1Addr::new([2; 32])],
@@ -472,10 +461,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 unbonding_purse_2,
             ])
             .into()])?,
-        );
-        stored_value.insert(
-            "Transfer".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Transfer(transfer).into()])?,
         );
 
         Fixture::ABI {

@@ -9,7 +9,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{DeployHeader, TransactionV1Header};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    InitiatorAddr,
+};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -29,6 +32,16 @@ pub enum TransactionHeader {
     /// A version 1 transaction header.
     #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1Header),
+}
+
+impl TransactionHeader {
+    /// Return the initiator addr of this transaction.
+    pub fn initiator_addr(&self) -> InitiatorAddr {
+        match self {
+            TransactionHeader::Deploy(header) => header.account().clone().into(),
+            TransactionHeader::V1(header) => header.initiator_addr().clone(),
+        }
+    }
 }
 
 impl From<DeployHeader> for TransactionHeader {

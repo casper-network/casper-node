@@ -13,7 +13,6 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     serde_helpers, DeployHash, URef, U512,
 };
-pub(super) use transfer_v1_addr::V1_PREFIX;
 pub use transfer_v1_addr::{TransferV1Addr, TRANSFER_V1_ADDR_LENGTH};
 
 /// Represents a version 1 transfer from one purse to another.

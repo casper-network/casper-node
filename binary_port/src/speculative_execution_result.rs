@@ -1,15 +1,14 @@
 use casper_types::{
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::Effects,
-    Gas, InvalidTransaction, TransferAddr,
+    Gas, InvalidTransaction, Transfer,
 };
 
 #[derive(Debug)]
 pub struct SpeculativeExecutionResult {
     /// List of transfers that happened during execution.
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     /// Gas limit.
     limit: Gas,
     /// Gas consumed.
@@ -24,7 +23,7 @@ pub struct SpeculativeExecutionResult {
 
 impl SpeculativeExecutionResult {
     pub fn new(
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         limit: Gas,
         consumed: Gas,
         effects: Effects,
@@ -83,7 +82,7 @@ impl ToBytes for SpeculativeExecutionResult {
 
 impl FromBytes for SpeculativeExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (transfers, bytes) = Vec::<TransferAddr>::from_bytes(bytes)?;
+        let (transfers, bytes) = Vec::<Transfer>::from_bytes(bytes)?;
         let (limit, bytes) = Gas::from_bytes(bytes)?;
         let (consumed, bytes) = Gas::from_bytes(bytes)?;
         let (effects, bytes) = Effects::from_bytes(bytes)?;

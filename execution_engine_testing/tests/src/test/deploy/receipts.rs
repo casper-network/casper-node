@@ -4,11 +4,11 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, Gas, InitiatorAddr, PublicKey,
-    SecretKey, Transfer, TransferAddr, TransferV2, U512,
+    SecretKey, Transfer, TransferV2, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -77,26 +77,14 @@ fn should_record_wasmless_transfer() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let txn_info = builder
-        .get_transaction_info(txn_hash)
-        .expect("should have txn info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(txn_info.transaction_hash, txn_hash);
-    assert_eq!(
-        txn_info.from,
-        InitiatorAddr::PublicKey(DEFAULT_ACCOUNT_PUBLIC_KEY.clone())
-    );
-    assert_eq!(txn_info.source, default_account.main_purse());
-
-    // TODO: reenable after new payment logic is added
-    // assert_eq!(txn_info.gas, U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
-
-    let transfers = txn_info.transfers;
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let Transfer::V2(transfer) = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer") else {
+    let Transfer::V2(transfer) = transfers[0].clone() else {
         panic!("wrong transfer variant");
     };
 
@@ -145,24 +133,15 @@ fn should_record_wasm_transfer() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let txn_info = builder
-        .get_transaction_info(txn_hash)
-        .expect("should have txn info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(txn_info.transaction_hash, txn_hash);
-    assert_eq!(
-        txn_info.from,
-        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
-    );
-    assert_eq!(txn_info.source, default_account.main_purse());
-    assert_ne!(txn_info.gas, Gas::zero());
-
-    let transfers = txn_info.transfers;
+    assert_ne!(execution_result.consumed(), Gas::zero());
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let Transfer::V2(transfer) = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer") else {
+    let Transfer::V2(transfer) = transfers[0].clone() else {
         panic!("wrong transfer variant");
     };
 
@@ -212,24 +191,15 @@ fn should_record_wasm_transfer_with_id() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let txn_info = builder
-        .get_transaction_info(txn_hash)
-        .expect("should have txn info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(txn_info.transaction_hash, txn_hash);
-    assert_eq!(
-        txn_info.from,
-        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
-    );
-    assert_eq!(txn_info.source, default_account.main_purse());
-    assert_ne!(txn_info.gas, Gas::zero());
-
-    let transfers = txn_info.transfers;
+    assert_ne!(execution_result.consumed(), Gas::zero());
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let Transfer::V2(transfer) = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer") else {
+    let Transfer::V2(transfer) = transfers[0].clone() else {
         panic!("wrong transfer variant");
     };
 
@@ -305,37 +275,27 @@ fn should_record_wasm_transfers() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let txn_info = builder
-        .get_transaction_info(txn_hash)
-        .expect("should have txn info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(txn_info.transaction_hash, txn_hash);
-    assert_eq!(
-        txn_info.from,
-        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
-    );
-    assert_eq!(txn_info.source, default_account.main_purse());
-    assert_ne!(txn_info.gas, Gas::zero());
-
+    assert_ne!(execution_result.consumed(), Gas::zero());
     const EXPECTED_LENGTH: usize = 3;
-    let transfer_addrs = txn_info.transfers;
-    assert_eq!(transfer_addrs.len(), EXPECTED_LENGTH);
+    assert_eq!(execution_result.transfers().len(), EXPECTED_LENGTH);
     assert_eq!(
-        transfer_addrs
+        execution_result
+            .transfers()
             .iter()
             .cloned()
-            .collect::<BTreeSet<TransferAddr>>()
+            .collect::<BTreeSet<Transfer>>()
             .len(),
         EXPECTED_LENGTH
     );
 
     let transfers: BTreeSet<Transfer> = {
         let mut tmp = BTreeSet::new();
-        for transfer_addr in transfer_addrs {
-            let transfer = builder
-                .get_transfer(transfer_addr)
-                .expect("should have transfer");
-            tmp.insert(transfer);
+        for transfer in execution_result.transfers() {
+            tmp.insert(transfer.clone());
         }
         tmp
     };
@@ -466,37 +426,38 @@ fn should_record_wasm_transfers_with_subcall() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let txn_info = builder
-        .get_transaction_info(transfer_txn_hash)
-        .expect("should have txn info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
+    /*
     assert_eq!(txn_info.transaction_hash, transfer_txn_hash);
     assert_eq!(
         txn_info.from,
         InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
     );
     assert_eq!(txn_info.source, default_account.main_purse());
-    assert_ne!(txn_info.gas, Gas::zero());
+    */
 
+    assert_ne!(execution_result.consumed(), Gas::zero());
     const EXPECTED_LENGTH: usize = 6;
-    let transfer_addrs = txn_info.transfers;
-    assert_eq!(transfer_addrs.len(), EXPECTED_LENGTH);
+    assert_eq!(execution_result.transfers().len(), EXPECTED_LENGTH);
     assert_eq!(
-        transfer_addrs
+        execution_result
+            .transfers()
             .iter()
             .cloned()
-            .collect::<BTreeSet<TransferAddr>>()
+            .collect::<BTreeSet<Transfer>>()
             .len(),
         EXPECTED_LENGTH
     );
 
     let transfer_counts: BTreeMap<Transfer, usize> = {
         let mut tmp = BTreeMap::new();
-        for transfer_addr in transfer_addrs {
-            let transfer = builder
-                .get_transfer(transfer_addr)
-                .expect("should have transfer");
-            tmp.entry(transfer).and_modify(|i| *i += 1).or_insert(1);
+        for transfer in execution_result.transfers() {
+            tmp.entry(transfer.clone())
+                .and_modify(|i| *i += 1)
+                .or_insert(1);
         }
         tmp
     };

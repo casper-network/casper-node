@@ -34,9 +34,9 @@ use super::{
     BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, Metrics,
     APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
 };
-use crate::contract_runtime::types::ExecutionArtifactBuilder;
 use crate::{
     components::fetcher::FetchItem,
+    contract_runtime::types::ExecutionArtifactBuilder,
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
