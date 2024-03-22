@@ -3,7 +3,9 @@ set -e
 shopt -s expand_aliases
 
 DRONE_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
-SCENARIOS_DIR="$DRONE_ROOT_DIR/utils/nctl/sh/scenarios"
+NCTL_HOME="$DRONE_ROOT_DIR/../casper-nctl"
+
+SCENARIOS_DIR="$NCTL_HOME/sh/scenarios"
 SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"
 SCENARIOS_ACCOUNTS_DIR="$SCENARIOS_DIR/accounts_toml"
 SCENARIOS_CONFIGS_DIR="$SCENARIOS_DIR/configs"
@@ -12,7 +14,7 @@ NCTL_CLIENT_BRANCH="${DRONE_BRANCH:='dev'}"
 
 # Activate Environment
 pushd "$DRONE_ROOT_DIR"
-source "$(pwd)"/utils/nctl/activate
+source "$NCTL_HOME/activate"
 
 # Call compile wrapper for client, launcher, and nctl-compile
 bash -c "$DRONE_ROOT_DIR/ci/nctl_compile.sh"
