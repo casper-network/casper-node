@@ -31,6 +31,7 @@ for i in "${JSON_KEYS[@]}"; do
 done
 
 NCTL_HOME="$ROOT_DIR/../casper-nctl"
+NCTL_CASPER_HOME="$ROOT_DIR"
 
 if [ ! -d "$NCTL_HOME" ]; then
     echo "ERROR: nctl was not set up correctly, check ci/ci.json, exiting..."

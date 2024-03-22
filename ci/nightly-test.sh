@@ -4,6 +4,7 @@ shopt -s expand_aliases
 
 DRONE_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 NCTL_HOME="$DRONE_ROOT_DIR/../casper-nctl"
+NCTL_CASPER_HOME="$DRONE_ROOT_DIR"
 
 SCENARIOS_DIR="$NCTL_HOME/sh/scenarios"
 SCENARIOS_CHAINSPEC_DIR="$SCENARIOS_DIR/chainspecs"

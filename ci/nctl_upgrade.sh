@@ -4,6 +4,7 @@ shopt -s expand_aliases
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 NCTL_HOME="$ROOT_DIR/../casper-nctl"
+NCTL_CASPER_HOME="$ROOT_DIR"
 
 # Activate Environment
 pushd "$ROOT_DIR"
