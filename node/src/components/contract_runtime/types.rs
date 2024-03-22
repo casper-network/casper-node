@@ -14,9 +14,9 @@ use casper_storage::{
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
-    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, Gas, InvalidDeploy,
-    InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
-    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, TransferAddr, U512,
+    BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidDeploy, InvalidTransaction,
+    InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash,
+    TransactionHeader, TransferAddr, U512,
 };
 
 /// Request for validator weights for a specific era.
@@ -68,14 +68,13 @@ pub(crate) struct ExecutionArtifactBuilder {
     messages: Messages,
     transfers: Vec<TransferAddr>,
     gas: Gas,
-    root_not_found: bool,
 }
 
 impl ExecutionArtifactBuilder {
     pub fn new(transaction: &Transaction) -> Self {
         let effects = Effects::new();
         let hash = transaction.hash();
-        let header = transaction.header().clone();
+        let header = transaction.header();
         ExecutionArtifactBuilder {
             effects,
             hash,
@@ -84,16 +83,11 @@ impl ExecutionArtifactBuilder {
             transfers: vec![],
             messages: Default::default(),
             gas: Gas::zero(),
-            root_not_found: false,
         }
     }
 
     pub fn effects(&self) -> Effects {
         self.effects.clone()
-    }
-
-    pub(crate) fn root_not_found(&self) -> bool {
-        self.root_not_found
     }
 
     pub fn with_appended_transfers(&mut self, transfers: &mut Vec<TransferAddr>) -> &mut Self {
@@ -111,26 +105,31 @@ impl ExecutionArtifactBuilder {
         self
     }
 
-    pub fn with_wasm_v1_result(&mut self, wasm_v1_result: WasmV1Result) -> &mut Self {
+    pub fn with_wasm_v1_result(&mut self, wasm_v1_result: WasmV1Result) -> Result<&mut Self, ()> {
         if let Some(Error::RootNotFound(_)) = wasm_v1_result.error() {
-            self.root_not_found = true;
+            return Err(());
         }
         if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
             self.error_message = Some(format!("{}", err));
         }
         self.with_appended_messages(&mut wasm_v1_result.messages().clone())
             .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
-            .with_appended_effects(wasm_v1_result.effects().clone())
+            .with_appended_effects(wasm_v1_result.effects().clone());
+        Ok(self)
     }
 
-    pub fn with_balance_hold_result(&mut self, hold_result: &BalanceHoldResult) -> &mut Self {
+    pub fn with_balance_hold_result(
+        &mut self,
+        hold_result: &BalanceHoldResult,
+    ) -> Result<&mut Self, ()> {
         if let BalanceHoldResult::RootNotFound = hold_result {
-            self.root_not_found = true;
+            return Err(());
         }
         if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
             self.error_message = Some(format!("{}", err));
         }
-        self.with_appended_effects(hold_result.effects().clone())
+        self.with_appended_effects(hold_result.effects());
+        Ok(self)
     }
 
     pub fn with_added_gas(&mut self, gas: Gas) -> &mut Self {
@@ -168,36 +167,38 @@ impl ExecutionArtifactBuilder {
         self
     }
 
-    pub fn with_transfer_result(&mut self, transfer_result: TransferResult) -> &mut Self {
+    pub fn with_transfer_result(
+        &mut self,
+        transfer_result: TransferResult,
+    ) -> Result<&mut Self, ()> {
         if let TransferResult::RootNotFound = transfer_result {
-            self.root_not_found = true;
-            return self;
+            return Err(());
         }
         if let (None, TransferResult::Failure(err)) = (&self.error_message, &transfer_result) {
             self.error_message = Some(format!("{}", err));
-            return self;
         }
-        if let TransferResult::Success { transfers, effects } = transfer_result {
-            return self
-                .with_appended_transfers(&mut transfers.clone())
-                .with_appended_effects(effects.clone());
+        if let TransferResult::Success {
+            mut transfers,
+            effects,
+        } = transfer_result
+        {
+            self.with_appended_transfers(&mut transfers)
+                .with_appended_effects(effects);
         }
-        self
+        Ok(self)
     }
 
-    pub fn with_bidding_result(&mut self, bidding_result: BiddingResult) -> &mut Self {
+    pub fn with_bidding_result(&mut self, bidding_result: BiddingResult) -> Result<&mut Self, ()> {
         if let BiddingResult::RootNotFound = bidding_result {
-            self.root_not_found = true;
-            return self;
+            return Err(());
         }
         if let (None, BiddingResult::Failure(err)) = (&self.error_message, &bidding_result) {
             self.error_message = Some(format!("{}", err));
-            return self;
         }
         if let BiddingResult::Success { effects, .. } = bidding_result {
-            return self.with_appended_effects(effects.clone());
+            self.with_appended_effects(effects);
         }
-        self
+        Ok(self)
     }
 
     pub(crate) fn build(self) -> ExecutionArtifact {
@@ -249,36 +250,6 @@ impl ExecutionArtifact {
         Self {
             transaction_hash,
             transaction_header,
-            execution_result,
-            messages,
-        }
-    }
-
-    #[allow(unused)]
-    pub(crate) fn deploy(
-        deploy_hash: DeployHash,
-        header: DeployHeader,
-        execution_result: ExecutionResult,
-        messages: Messages,
-    ) -> Self {
-        Self {
-            transaction_hash: TransactionHash::Deploy(deploy_hash),
-            transaction_header: TransactionHeader::Deploy(header),
-            execution_result,
-            messages,
-        }
-    }
-
-    #[allow(unused)]
-    pub(crate) fn v1(
-        transaction_hash: TransactionV1Hash,
-        header: TransactionV1Header,
-        execution_result: ExecutionResult,
-        messages: Messages,
-    ) -> Self {
-        Self {
-            transaction_hash: TransactionHash::V1(transaction_hash),
-            transaction_header: TransactionHeader::V1(header),
             execution_result,
             messages,
         }

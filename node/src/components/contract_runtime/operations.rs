@@ -147,11 +147,9 @@ pub fn execute_finalized_block(
                         WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
                     }
                 };
-                artifact_builder.with_wasm_v1_result(pay_result);
-                if artifact_builder.root_not_found() {
-                    artifacts.push(artifact_builder.build());
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
+                artifact_builder
+                    .with_wasm_v1_result(pay_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 BalanceIdentifier::Payment
             } else {
                 initiator_addr.clone().into()
@@ -181,11 +179,9 @@ pub fn execute_finalized_block(
                             runtime_args,
                             cost,
                         ));
-                    artifact_builder.with_transfer_result(transfer_result);
-                    if artifact_builder.root_not_found() {
-                        artifacts.push(artifact_builder.build());
-                        return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                    }
+                    artifact_builder
+                        .with_transfer_result(transfer_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
                 TransactionCategory::Auction => {
                     match AuctionMethod::from_parts(
@@ -205,11 +201,9 @@ pub fn execute_finalized_block(
                                 authorization_keys,
                                 auction_method,
                             ));
-                            artifact_builder.with_bidding_result(bidding_result);
-                            if artifact_builder.root_not_found() {
-                                artifacts.push(artifact_builder.build());
-                                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                            }
+                            artifact_builder
+                                .with_bidding_result(bidding_result)
+                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
                         Err(ame) => {
                             error!(
@@ -233,11 +227,9 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
-                            artifact_builder.with_wasm_v1_result(wasm_v1_result);
-                            if artifact_builder.root_not_found() {
-                                artifacts.push(artifact_builder.build());
-                                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                            }
+                            artifact_builder
+                                .with_wasm_v1_result(wasm_v1_result)
+                                .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
                         Err(ire) => {
                             debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1  request");
@@ -267,11 +259,9 @@ pub fn execute_finalized_block(
                     chainspec.core_config.balance_hold_interval,
                     insufficient_balance_handling,
                 ));
-                artifact_builder.with_balance_hold_result(&hold_result);
-                if artifact_builder.root_not_found() {
-                    artifacts.push(artifact_builder.build());
-                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
-                }
+                artifact_builder
+                    .with_balance_hold_result(&hold_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::PayToProposer => {
                 // this is the current mainnet mechanism...pay up front
