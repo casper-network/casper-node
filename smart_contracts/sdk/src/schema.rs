@@ -2,11 +2,7 @@ pub trait CasperSchema {
     fn schema() -> Schema;
 }
 
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    fmt::{self, LowerHex},
-};
+use std::{cell::RefCell, collections::BTreeMap, fmt::LowerHex};
 
 use bitflags::Flags;
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};

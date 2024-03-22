@@ -2,6 +2,7 @@ mod lookup_key;
 
 mod map;
 mod set;
+pub mod sorted_vector;
 mod vector;
 
 pub use map::Map;

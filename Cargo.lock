@@ -717,7 +717,6 @@ name = "casper-macros"
 version = "0.1.0"
 dependencies = [
  "blake2-rfc",
- "casper-sdk",
  "casper-sdk-sys",
  "darling",
  "paste",
@@ -7193,6 +7192,7 @@ dependencies = [
 name = "vm2-trait"
 version = "0.1.0"
 dependencies = [
+ "base16",
  "borsh",
  "casper-macros",
  "casper-sdk",

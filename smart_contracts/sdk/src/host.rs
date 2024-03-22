@@ -1,7 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
-use core::fmt;
 use std::{
     ffi::c_void,
     marker::PhantomData,

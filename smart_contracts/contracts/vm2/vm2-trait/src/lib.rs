@@ -4,12 +4,15 @@
 #[macro_use]
 extern crate alloc;
 
-use core::fmt;
-
 use alloc::{string::String, vec::Vec};
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
-use casper_sdk::{log, Contract, ContractHandle};
+use casper_sdk::{
+    collections::{sorted_vector::SortedVector, Map, Vector},
+    log,
+    types::Address,
+    Contract, ContractHandle,
+};
 
 const GREET_RETURN_VALUE: u64 = 123456789;
 
@@ -57,12 +60,123 @@ trait Counter {
     fn counter_state_mut(&mut self) -> &mut CounterState;
 }
 
+#[derive(BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
+pub struct OwnableState {
+    owner: Option<Address>,
+}
+
+impl Default for OwnableState {
+    fn default() -> Self {
+        Self {
+            owner: Some(casper_sdk::host::get_caller()),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
+pub enum OwnableError {
+    /// The caller is not authorized to perform the action.
+    NotAuthorized,
+}
+
+#[casper(trait_definition)]
+pub trait Ownable {
+    #[casper(private)]
+    fn state(&self) -> &OwnableState;
+    #[casper(private)]
+    fn state_mut(&mut self) -> &mut OwnableState;
+
+    fn only_owner(&self) -> Result<(), OwnableError> {
+        let caller = casper_sdk::host::get_caller();
+        match self.state().owner {
+            Some(owner) if caller != owner => {
+                return Err(OwnableError::NotAuthorized);
+            }
+            None => {
+                return Err(OwnableError::NotAuthorized);
+            }
+            Some(_owner) => {}
+        }
+        Ok(())
+    }
+
+    fn transfer_ownership(&mut self, new_owner: Address) -> Result<(), OwnableError> {
+        self.only_owner()?;
+        self.state_mut().owner = Some(new_owner);
+        Ok(())
+    }
+
+    fn owner(&self) -> Option<Address> {
+        self.state().owner
+    }
+
+    fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
+        self.only_owner()?;
+        self.state_mut().owner = None;
+        Ok(())
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
+pub struct AccessControlState {
+    roles: Map<Address, SortedVector<[u8; 32]>>,
+}
+
+impl Default for AccessControlState {
+    fn default() -> Self {
+        Self {
+            roles: Map::new("roles"),
+        }
+    }
+}
+
+#[casper(trait_definition)]
+pub trait AccessControl {
+    #[casper(private)]
+    fn state(&self) -> &AccessControlState;
+    #[casper(private)]
+    fn state_mut(&mut self) -> &mut AccessControlState;
+
+    fn has_role(&self, account: Address, role: [u8; 32]) -> bool {
+        match self.state().roles.get(&account) {
+            Some(roles) => roles.contains(&role),
+            None => false,
+        }
+    }
+
+    fn grant_role(&mut self, account: Address, role: [u8; 32]) {
+        // let roles = self.state_mut().roles.entry(account).or_insert_with(Vec::new);
+        match self.state_mut().roles.get(&account) {
+            Some(mut roles) => {
+                if roles.contains(&role) {
+                    return;
+                }
+                roles.push(role);
+            }
+            None => {
+                let mut roles =
+                    SortedVector::new(format!("roles-{}", base16::encode_lower(&account)));
+                roles.push(role);
+                self.state_mut().roles.insert(&account, &roles);
+            }
+        }
+    }
+
+    fn revoke_role(&mut self, account: Address, role: [u8; 32]) {
+        if let Some(mut roles) = self.state_mut().roles.get(&account) {
+            roles.retain(|r| r != &role);
+        }
+    }
+}
+
 #[derive(
     Default, Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone,
 )]
 #[casper(impl_traits(Trait1, Counter))]
 struct HasTraits {
     counter_state: CounterState,
+    ownable_state: OwnableState,
+    access_control_state: AccessControlState,
 }
 
 impl Trait1 for HasTraits {
@@ -86,6 +200,15 @@ impl Counter for HasTraits {
     }
 }
 
+impl Ownable for HasTraits {
+    fn state(&self) -> &OwnableState {
+        &self.ownable_state
+    }
+    fn state_mut(&mut self) -> &mut OwnableState {
+        &mut self.ownable_state
+    }
+}
+
 #[casper(contract)]
 impl HasTraits {
     #[casper(constructor)]
@@ -95,12 +218,20 @@ impl HasTraits {
             counter_state: CounterState {
                 value: counter_value,
             },
+            ownable_state: OwnableState::default(),
+            access_control_state: AccessControlState::default(),
         }
     }
     pub fn foobar(&self) {
         // Can extend contract that implements a trait to also call methods provided by a trait.
         let counter_state = self.counter_state();
         log!("Foobar! Counter value: {}", counter_state.value);
+    }
+
+    pub fn only_for_owner(&mut self) -> Result<(), OwnableError> {
+        self.only_owner()?;
+        log!("Only for owner!");
+        Ok(())
     }
 }
 

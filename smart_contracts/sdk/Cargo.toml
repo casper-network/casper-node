@@ -14,6 +14,7 @@ bitflags = "2.4.1"
 const-fnv1a-hash = "1.1.0"
 impl-trait-for-tuples = "0.2.2"
 casper-sdk-sys = {path = "../sdk-sys" }
+# casper-macros = {path = "../macros" }
 
 once_cell = "1"
 serde = { version = "1", features = ["derive"] }
