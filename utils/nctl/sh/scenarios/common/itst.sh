@@ -395,8 +395,8 @@ function verify_transfer_inclusion() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
-        BLOCK_TRANSFER_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block.body.transfer_hashes[]')
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block.Version2.header')
+        BLOCK_TRANSFER_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.mint[]')
         if grep -q "${TRANSFER}" <<< "$BLOCK_TRANSFER_HASHES"; then
             log "Transfer: $TRANSFER found in block!"
         else
@@ -429,8 +429,8 @@ function verify_wasm_inclusion() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
-        BLOCK_DEPLOY_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block.body.deploy_hashes[]')
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block.Version2.header')
+        BLOCK_DEPLOY_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.standard[]')
         if grep -q "${DEPLOY_HASH}" <<< "$BLOCK_DEPLOY_HASHES"; then
             log "DEPLOY: $DEPLOY_HASH found in block!"
         else
