@@ -17,9 +17,9 @@ use casper_storage::{
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2},
-    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, Gas, InvalidDeploy,
-    InvalidTransaction, InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction,
-    TransactionHash, TransactionHeader, TransactionV1Hash, TransactionV1Header, U512,
+    BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, Gas, InvalidDeploy, InvalidTransaction,
+    InvalidTransactionV1, ProtocolVersion, PublicKey, Transaction, TransactionHash,
+    TransactionHeader, U512,
 };
 
 /// Request for validator weights for a specific era.
