@@ -48,7 +48,9 @@ function _main()
     INITIAL_PROTOCOL_VERSION=$(get_node_protocol_version 1)
     # Establish consistent activation point for use later.
     ACTIVATION_POINT="$(($(get_chain_era) + NCTL_DEFAULT_ERA_ACTIVATION_OFFSET))"
-    PRE_UPGRADE_BLOCK_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+    # This explicitly expects the previous major version of the node, which might not be backwards compatible
+    # TODO: The version here should be updated in the next major release.
+    PRE_UPGRADE_BLOCK_HASH="$(get_block_v1 "2" | jq -r '.hash')"
 
     _step_03 "$STAGE_ID" "$ACTIVATION_POINT"
     _step_04 "$INITIAL_PROTOCOL_VERSION"
