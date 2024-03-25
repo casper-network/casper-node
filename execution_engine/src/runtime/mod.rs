@@ -757,29 +757,6 @@ where
                 let maybe_purse = runtime.get_refund_purse().map_err(Self::reverter)?;
                 CLValue::from_t(maybe_purse).map_err(Self::reverter)
             })(),
-            handle_payment::METHOD_FINALIZE_PAYMENT => (|| {
-                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
-
-                let amount_spent: U512 =
-                    Self::get_named_argument(runtime_args, handle_payment::ARG_AMOUNT)?;
-                let account: AccountHash =
-                    Self::get_named_argument(runtime_args, handle_payment::ARG_ACCOUNT)?;
-                let target: URef =
-                    Self::get_named_argument(runtime_args, handle_payment::ARG_TARGET)?;
-                runtime
-                    .finalize_payment(amount_spent, account, target)
-                    .map_err(Self::reverter)?;
-
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-            handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES => (|| {
-                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
-                runtime
-                    .distribute_accumulated_fees()
-                    .map_err(Self::reverter)?;
-                CLValue::from_t(()).map_err(Self::reverter)
-            })(),
-
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
@@ -2653,9 +2630,9 @@ where
 
                 self.transfer_to_new_account(source, target, amount, id)
             }
-            Some(StoredValue::CLValue(account)) => {
+            Some(StoredValue::CLValue(entity_key_value)) => {
                 // Attenuate the target main purse
-                let entity_key = CLValue::into_t::<Key>(account)?;
+                let entity_key = CLValue::into_t::<Key>(entity_key_value)?;
                 let target_uref = if let Some(StoredValue::AddressableEntity(entity)) =
                     self.context.read_gs(&entity_key)?
                 {

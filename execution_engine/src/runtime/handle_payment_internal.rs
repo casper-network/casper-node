@@ -2,9 +2,8 @@ use casper_storage::global_state::{error::Error as GlobalStateError, state::Stat
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error,
-    BlockTime, CLValue, FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef,
-    U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, CLValue,
+    FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
 use casper_storage::system::handle_payment::{
@@ -133,10 +132,6 @@ where
         self.context.phase()
     }
 
-    fn get_block_time(&self) -> BlockTime {
-        self.context.get_blocktime()
-    }
-
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
@@ -149,8 +144,11 @@ where
         self.context.engine_config().fee_handling()
     }
 
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        self.context.engine_config().administrative_accounts()
+    fn administrative_accounts(&self) -> BTreeSet<AccountHash> {
+        self.context
+            .engine_config()
+            .administrative_accounts()
+            .clone()
     }
 }
 

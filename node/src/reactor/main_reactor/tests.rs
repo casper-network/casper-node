@@ -694,7 +694,7 @@ impl TestFixture {
             ExecutionResult::V1(_) => unreachable!(),
             ExecutionResult::V2(ExecutionResultV2 {
                 effects,
-                gas,
+                consumed: gas,
                 error_message,
                 ..
             }) => {

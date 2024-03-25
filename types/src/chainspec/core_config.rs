@@ -31,14 +31,16 @@ pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 
 /// Default refund handling.
-pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(99, 100),
-};
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::NoRefund;
 
+/// Default pricing handling.
 pub const DEFAULT_PRICING_HANDLING: PricingHandling = PricingHandling::Fixed;
 
 /// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::NoFee;
+
+/// Default allow reservations.
+pub const DEFAULT_ALLOW_RESERVATIONS: bool = false;
 
 /// Default balance hold interval.
 pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
@@ -223,7 +225,7 @@ impl CoreConfig {
             PricingHandling::Fixed
         };
 
-        let allow_reservations = false;
+        let allow_reservations = DEFAULT_ALLOW_RESERVATIONS;
 
         let fee_handling = if rng.gen() {
             FeeHandling::PayToProposer
@@ -304,7 +306,7 @@ impl Default for CoreConfig {
             refund_handling: DEFAULT_REFUND_HANDLING,
             pricing_handling: DEFAULT_PRICING_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
-            allow_reservations: false,
+            allow_reservations: DEFAULT_ALLOW_RESERVATIONS,
             balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
@@ -346,6 +348,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.refund_handling.to_bytes()?);
         buffer.extend(self.pricing_handling.to_bytes()?);
         buffer.extend(self.fee_handling.to_bytes()?);
+        buffer.extend(self.allow_reservations.to_bytes()?);
         buffer.extend(self.balance_hold_interval.to_bytes()?);
         Ok(buffer)
     }

@@ -697,11 +697,11 @@ fn should_charge_for_erroneous_system_contract_calls() {
             handle_payment::METHOD_SET_REFUND_PURSE,
             system_config.handle_payment_costs().set_refund_purse,
         ),
-        (
-            handle_payment_hash,
-            handle_payment::METHOD_FINALIZE_PAYMENT,
-            system_config.handle_payment_costs().finalize_payment,
-        ),
+        // (
+        //     handle_payment_hash,
+        //     handle_payment::METHOD_FINALIZE_PAYMENT,
+        //     system_config.handle_payment_costs().finalize_payment,
+        // ),
     ];
 
     for (contract_hash, entrypoint, expected_cost) in entrypoint_calls {

@@ -9,7 +9,7 @@ use casper_types::{
     runtime_args, system::mint::ARG_AMOUNT, BlockTime, DeployHash, Digest, ExecutableDeployItem,
     Gas, InitiatorAddr, Phase, PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint,
     TransactionHash, TransactionInvocationTarget, TransactionSessionKind, TransactionTarget,
-    TransactionV1, TransactionV1Hash, Transfer, U512,
+    TransactionV1, Transfer, U512,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError, ExecutionResult};
@@ -17,29 +17,23 @@ use crate::engine_state::{DeployItem, Error as EngineError, ExecutionResult};
 const DEFAULT_ENTRY_POINT: &str = "call";
 
 /// Error returned if constructing a new [`WasmV1Request`] fails.
-#[derive(Copy, Clone, Eq, PartialEq, Error, Serialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Error, Serialize, Debug)]
 pub enum InvalidRequest {
-    /// The module bytes for custom payment must not be empty.
-    #[error("empty module bytes for custom payment in deploy {0}")]
-    EmptyCustomPaymentBytes(DeployHash),
-    /// The executable deploy item for custom payment must be the module bytes variant.
-    #[error("can only use module bytes for custom payment in deploy {0}")]
-    InvalidPaymentDeployItem(DeployHash),
-    /// The transaction v1 pricing mode must be the classic variant with `standard_payment` false.
-    #[error(
-        "can only use classic variant with `standard_payment` false for pricing mode in \
-        transaction v1 {0}"
-    )]
-    InvalidPricingMode(TransactionV1Hash),
-    /// The executable deploy item for session cannot be the transfer variant.
-    #[error("cannot use transfer variant for session in deploy {0}")]
-    InvalidSessionDeployItem(DeployHash),
-    /// The transaction v1 target for session cannot be the native variant.
-    #[error("cannot use native variant for session target in transaction v1 {0}")]
-    InvalidSessionV1Target(TransactionV1Hash),
-    /// The transaction v1 entry point for session cannot be one of the native variants.
-    #[error("cannot use native variant for session entry point in transaction v1 {0}")]
-    InvalidSessionV1EntryPoint(TransactionV1Hash),
+    /// Missing custom payment.
+    #[error("custom payment not found for {0}")]
+    CustomPaymentNotFound(TransactionHash),
+    /// Unexpected variant.
+    #[error("unexpected variant for {0} attempting {1}")]
+    UnexpectedVariant(TransactionHash, String),
+    /// Unsupported mode.
+    #[error("unsupported mode for {0} attempting {1}")]
+    UnsupportedMode(TransactionHash, String),
+    /// Invalid entry point.
+    #[error("invalid entry point for {0} attempting {1}")]
+    InvalidEntryPoint(TransactionHash, String),
+    /// Invalid target.
+    #[error("invalid target for {0} attempting {1}")]
+    InvalidTarget(TransactionHash, String),
 }
 
 /// The item to be executed.
@@ -58,6 +52,8 @@ pub enum ExecutableItem<'a> {
     DeploySessionModuleBytes(&'a Bytes),
     /// Module bytes to be used as custom payment.
     CustomPayment(&'a Bytes),
+    /// Standard payment.
+    StandardPayment,
 }
 
 impl<'a> ExecutableItem<'a> {
@@ -66,7 +62,7 @@ impl<'a> ExecutableItem<'a> {
             ExecutableItem::Stored(_)
             | ExecutableItem::SessionModuleBytes { .. }
             | ExecutableItem::DeploySessionModuleBytes(_) => Phase::Session,
-            ExecutableItem::CustomPayment(_) => Phase::Payment,
+            ExecutableItem::CustomPayment(_) | ExecutableItem::StandardPayment => Phase::Payment,
         }
     }
 }
@@ -384,6 +380,7 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for SessionInfo<'a>
     fn try_from(
         (session_item, deploy_hash): (&'a ExecutableDeployItem, &'a DeployHash),
     ) -> Result<Self, Self::Error> {
+        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
         let session: ExecutableItem<'a>;
         let session_entry_point: String;
         let session_args: RuntimeArgs;
@@ -441,7 +438,10 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for SessionInfo<'a>
                 session_args = args.clone();
             }
             ExecutableDeployItem::Transfer { .. } => {
-                return Err(InvalidRequest::InvalidSessionDeployItem(*deploy_hash));
+                return Err(InvalidRequest::UnsupportedMode(
+                    transaction_hash,
+                    session_item.to_string(),
+                ));
             }
         }
 
@@ -457,10 +457,14 @@ impl<'a> TryFrom<&'a TransactionV1> for SessionInfo<'a> {
     type Error = InvalidRequest;
 
     fn try_from(v1_txn: &'a TransactionV1) -> Result<Self, Self::Error> {
+        let transaction_hash = TransactionHash::V1(*v1_txn.hash());
         let args = v1_txn.args().clone();
         let session = match v1_txn.target() {
             TransactionTarget::Native => {
-                return Err(InvalidRequest::InvalidSessionV1Target(*v1_txn.hash()));
+                return Err(InvalidRequest::InvalidTarget(
+                    transaction_hash,
+                    v1_txn.target().to_string(),
+                ));
             }
             TransactionTarget::Stored { id, .. } => ExecutableItem::Stored(id.clone()),
             TransactionTarget::Session {
@@ -472,7 +476,7 @@ impl<'a> TryFrom<&'a TransactionV1> for SessionInfo<'a> {
         };
 
         let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point() else {
-            return Err(InvalidRequest::InvalidSessionV1EntryPoint(*v1_txn.hash()));
+            return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
         };
 
         Ok(SessionInfo {
@@ -497,23 +501,29 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for PaymentInfo<'a>
     fn try_from(
         (payment_item, deploy_hash): (&'a ExecutableDeployItem, &'a DeployHash),
     ) -> Result<Self, Self::Error> {
+        let transaction_hash = TransactionHash::Deploy(*deploy_hash);
         match payment_item {
             ExecutableDeployItem::ModuleBytes { module_bytes, args } => {
                 if module_bytes.is_empty() {
-                    return Err(InvalidRequest::EmptyCustomPaymentBytes(*deploy_hash));
+                    Ok(PaymentInfo {
+                        payment: ExecutableItem::StandardPayment,
+                        args: args.clone(),
+                    })
+                } else {
+                    Ok(PaymentInfo {
+                        payment: ExecutableItem::CustomPayment(module_bytes),
+                        args: args.clone(),
+                    })
                 }
-                Ok(PaymentInfo {
-                    payment: ExecutableItem::CustomPayment(module_bytes),
-                    args: args.clone(),
-                })
             }
             ExecutableDeployItem::StoredContractByHash { .. }
             | ExecutableDeployItem::StoredContractByName { .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { .. }
             | ExecutableDeployItem::StoredVersionedContractByName { .. }
-            | ExecutableDeployItem::Transfer { .. } => {
-                Err(InvalidRequest::InvalidPaymentDeployItem(*deploy_hash))
-            }
+            | ExecutableDeployItem::Transfer { .. } => Err(InvalidRequest::UnexpectedVariant(
+                transaction_hash,
+                "payment item".to_string(),
+            )),
         }
     }
 }
@@ -522,8 +532,8 @@ impl<'a> TryFrom<&'a TransactionV1> for PaymentInfo<'a> {
     type Error = InvalidRequest;
 
     fn try_from(v1_txn: &'a TransactionV1) -> Result<Self, Self::Error> {
-        // TODO - check this is using the correct value (i.e. we don't need to account for gas_price
-        // here).
+        let transaction_hash = TransactionHash::V1(*v1_txn.hash());
+        let pricing_mode = v1_txn.pricing_mode();
         let payment_amount = match v1_txn.pricing_mode() {
             PricingMode::Classic {
                 payment_amount,
@@ -531,22 +541,30 @@ impl<'a> TryFrom<&'a TransactionV1> for PaymentInfo<'a> {
                 ..
             } => {
                 if *standard_payment {
-                    return Err(InvalidRequest::InvalidPricingMode(*v1_txn.hash()));
+                    return Err(InvalidRequest::UnsupportedMode(
+                        transaction_hash,
+                        pricing_mode.to_string(),
+                    ));
                 }
                 *payment_amount
             }
             PricingMode::Fixed { .. } | PricingMode::Reserved { .. } => {
-                return Err(InvalidRequest::InvalidPricingMode(*v1_txn.hash()));
+                return Err(InvalidRequest::UnsupportedMode(
+                    transaction_hash,
+                    pricing_mode.to_string(),
+                ));
             }
         };
 
         let payment = match v1_txn.target() {
-            // TODO - should we also consider the session kind here?
             TransactionTarget::Session { module_bytes, .. } => {
                 ExecutableItem::CustomPayment(module_bytes)
             }
             TransactionTarget::Native | TransactionTarget::Stored { .. } => {
-                return Err(InvalidRequest::InvalidSessionV1Target(*v1_txn.hash()));
+                return Err(InvalidRequest::InvalidTarget(
+                    transaction_hash,
+                    v1_txn.target().to_string(),
+                ));
             }
         };
         let args = runtime_args! { ARG_AMOUNT => U512::from(payment_amount)};

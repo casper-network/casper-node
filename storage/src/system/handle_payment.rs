@@ -1,9 +1,10 @@
+mod handle_payment_native;
 mod internal;
 pub mod mint_provider;
 pub mod runtime_provider;
 pub mod storage_provider;
 
-use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
+use casper_types::{system::handle_payment::Error, AccessRights, Gas, URef, U512};
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
@@ -34,17 +35,39 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
     }
 
     /// Finalize payment with `amount_spent` and a given `account`.
+    #[allow(clippy::too_many_arguments)]
     fn finalize_payment(
         &mut self,
-        amount_spent: U512,
-        account: AccountHash,
-        target: URef,
+        limit: Gas,
+        gas_price: Option<u64>,
+        cost: U512,
+        consumed: Gas,
+        source_purse: URef,
+        target_purse: URef,
+        holds_epoch: Option<u64>,
     ) -> Result<(), Error> {
-        internal::finalize_payment(self, amount_spent, account, target)
+        internal::finalize_payment(
+            self,
+            limit,
+            gas_price,
+            cost,
+            consumed,
+            source_purse,
+            target_purse,
+            holds_epoch,
+        )
     }
 
     /// Distribute fees from an accumulation purse.
-    fn distribute_accumulated_fees(&mut self) -> Result<(), Error> {
-        internal::distribute_accumulated_fees(self)
+    fn distribute_accumulated_fees(
+        &mut self,
+        source_uref: URef,
+        amount: Option<Gas>,
+    ) -> Result<(), Error> {
+        internal::distribute_accumulated_fees(self, source_uref, amount)
+    }
+
+    fn burn(&mut self, source_uref: URef, amount: Option<U512>) -> Result<(), Error> {
+        internal::burn(self, source_uref, amount)
     }
 }

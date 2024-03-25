@@ -988,7 +988,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         let undelegate_amount = delegator_1_expected_payout - 1;
         let undelegate_result = builder.bidding(
             None,
-            None,
             protocol_version,
             (*DELEGATOR_1_ADDR).into(),
             AuctionMethod::Undelegate {
@@ -1004,7 +1003,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
         let updelegate_amount = U512::from(1_000_000);
         let updelegate_result = builder.bidding(
-            None,
             None,
             protocol_version,
             (*DELEGATOR_2_ADDR).into(),
@@ -1039,7 +1037,6 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             }
         };
         let bid_flip_result = builder.bidding(
-            None,
             None,
             protocol_version,
             (*VALIDATOR_1_ADDR).into(),

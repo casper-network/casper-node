@@ -10,8 +10,8 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldRequest, BalanceIdentifier,
         BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
         EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
-        InsufficientBalanceHandling, PruneRequest, PruneResult, StepRequest, StepResult,
-        TransferRequest,
+        HandlePaymentMode, HandlePaymentRequest, InsufficientBalanceHandling, PruneRequest,
+        PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -19,6 +19,7 @@ use casper_storage::{
     },
     system::runtime_native::Config as NativeRuntimeConfig,
 };
+
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
@@ -39,6 +40,11 @@ use crate::{
     contract_runtime::types::ExecutionArtifactBuilder,
     types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
+
+const ACCOUNT_SESSION: bool = true;
+const DIRECT_CONTRACT: bool = !ACCOUNT_SESSION;
+const STANDARD_PAYMENT: bool = true;
+const CUSTOM_PAYMENT: bool = !STANDARD_PAYMENT;
 
 /// Executes a finalized block.
 #[allow(clippy::too_many_arguments)]
@@ -75,12 +81,13 @@ pub fn execute_finalized_block(
         hold_interval: chainspec.core_config.balance_hold_interval.millis(),
     };
     let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
+    let proposer = executable_block.proposer.clone();
 
     let start = Instant::now();
 
     let scratch_state = data_access_layer.get_scratch_global_state();
 
-    let txn_ids = executable_block
+    let transaction_ids = executable_block
         .transactions
         .iter()
         .map(Transaction::fetch_id)
@@ -98,6 +105,25 @@ pub fn execute_finalized_block(
         let entry_point = transaction.entry_point();
         let authorization_keys = transaction.authorization_keys();
 
+        // there are three separate mote / gas / token values and it is important to not mix them up
+        // we solve for halting state using a `gas limit` which is the maximum amount of
+        // computation we will allow a given transaction to consume. the transaction itself
+        // provides a function to determine this if provided with the current cost tables
+        //
+        // next there is the actual cost, i.e. how much we charge for that computation
+        // this is calculated by multiplying the gas limit by the current `gas_price`
+        // gas price has a floor of 1, and the ceiling is configured in the chainspec
+        // NOTE: when the gas price is 1, the gas limit and the cost are coincidentally equal
+        // because x == x * 1; thus it is recommended to run tests with gas price >1 to
+        // avoid being confused by this
+        //
+        // the third important value is the amount of computation consumed by executing a
+        // transaction  for native transactions there is no wasm and the consumed always
+        // equals the limit  for bytecode / wasm based transactions the consumed is based on
+        // what opcodes were executed      in such cases, consumed can range from >0 to
+        // <=gas_limit. consumed is determined after execution and is important for payment
+        // post processing
+
         // NOTE: this is the allowed computation limit   (gas limit)
         let gas_limit = match transaction.gas_limit(&system_costs, None) {
             Ok(gas) => gas,
@@ -108,10 +134,11 @@ pub fn execute_finalized_block(
                 continue;
             }
         };
+        artifact_builder.with_gas_limit(gas_limit);
 
-        // NOTE: this is the actual adjusted cost   (gas limit * gas price)
+        // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
         let cost = match transaction.gas_limit(&system_costs, gas_price) {
-            Ok(gas) => gas,
+            Ok(gas) => gas.value(),
             Err(ite) => {
                 debug!(%ite, "invalid transaction (cost)");
                 artifact_builder.with_invalid_transaction(&ite);
@@ -119,42 +146,76 @@ pub fn execute_finalized_block(
                 continue;
             }
         };
-
-        artifact_builder.with_added_gas(cost);
+        artifact_builder.with_added_cost(cost);
 
         let balance_identifier = {
-            if !transaction.is_standard_payment() {
-                // execute custom payment logic, which is expected to
-                // interact with the handle payment contract to deposit
-                // sufficient token to cover the cost
-
-                // this is the limit on how much gas we will allow custom payment code to consume
-                // this notion was originally referred to as the "leash" in the early design of the
-                // system.
-                let custom_payment_gas_limit = Gas::new(
-                    // TODO: this should have it's own chainspec value; in the meantime
-                    // using a multiple of a small value.
-                    chainspec.transaction_config.native_transfer_minimum_motes * 5,
-                );
-                let pay_result = match WasmV1Request::new_custom_payment(
-                    state_root_hash,
-                    block_time,
-                    custom_payment_gas_limit,
-                    &transaction,
-                ) {
-                    Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
-                    Err(error) => {
-                        WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
-                    }
-                };
-                artifact_builder
-                    .with_wasm_v1_result(pay_result)
-                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                BalanceIdentifier::Payment
-            } else {
-                initiator_addr.clone().into()
+            let is_account_session = transaction.is_account_session();
+            let is_standard_payment = transaction.is_standard_payment();
+            //  if standard payment & is session based...use account main purse
+            //  if standard payment & is targeting a contract
+            //      load contract & check entry point, if it pays use contract main purse
+            //  if custom payment, attempt execute custom payment
+            //      if custom payment fails, take remaining balance up to amount
+            //      currently contracts cannot provide custom payment, but considering adding it in
+            // future
+            match (is_account_session, is_standard_payment) {
+                (ACCOUNT_SESSION, STANDARD_PAYMENT) => {
+                    // this is the typical scenario; the initiating account pays using its main
+                    // purse
+                    trace!(%transaction_hash, "account session with standard payment");
+                    initiator_addr.clone().into()
+                }
+                (ACCOUNT_SESSION, CUSTOM_PAYMENT) => {
+                    // the initiating account will pay, but wants to do so with a different purse or
+                    // in a custom way. If anything goes wrong, penalize the sender, do not execute
+                    let custom_payment_gas_limit = Gas::new(
+                        // TODO: this should have it's own chainspec value; in the meantime
+                        // using a multiple of a small value.
+                        chainspec.transaction_config.native_transfer_minimum_motes * 5,
+                    );
+                    let pay_result = match WasmV1Request::new_custom_payment(
+                        state_root_hash,
+                        block_time,
+                        custom_payment_gas_limit,
+                        &transaction,
+                    ) {
+                        Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
+                        Err(error) => {
+                            WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
+                        }
+                    };
+                    let balance_identifier = {
+                        if pay_result.error().is_some() {
+                            BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                        } else {
+                            BalanceIdentifier::Payment
+                        }
+                    };
+                    artifact_builder
+                        .with_wasm_v1_result(pay_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                    trace!(%transaction_hash, ?balance_identifier, "account session with custom payment");
+                    balance_identifier
+                }
+                (DIRECT_CONTRACT, STANDARD_PAYMENT) => {
+                    // TODO: get the contract, check the entry point indicated in the transaction
+                    //      if the contract pays for itself, use its main purse
+                    // <-- contract paying for things wire up goes here -->
+                    // use scratch_state to read the contract & check it here
+                    // if the contract does not exist, the entrypoint does not exist,
+                    //      the entrypoint does not pay for itself, and every other sad path
+                    // outcome...      penalize the sender, do not execute
+                    debug!("direct contract invocation is currently unsupported; penalize the account that sent it.");
+                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                }
+                (DIRECT_CONTRACT, CUSTOM_PAYMENT) => {
+                    // currently not supported. penalize the sender, do not execute.
+                    warn!("direct contract invocation is currently unsupported; penalize the account that sent it.");
+                    BalanceIdentifier::PenalizedAccount(initiator_addr.account_hash())
+                }
             }
         };
+
         let initial_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
             protocol_version,
@@ -162,9 +223,16 @@ pub fn execute_finalized_block(
             balance_handling,
         ));
 
-        let sufficient_balance = initial_balance_result.is_sufficient(cost.value());
-        if sufficient_balance {
+        let allow_execution = {
+            let is_not_penalized = !balance_identifier.is_penalty();
+            let sufficient_balance = initial_balance_result.is_sufficient(cost);
+            trace!(%transaction_hash, ?sufficient_balance, ?is_not_penalized, "payment preprocessing");
+            is_not_penalized && sufficient_balance
+        };
+
+        if allow_execution {
             let category = transaction.category();
+            trace!(%transaction_hash, ?category, "eligible for execution");
             match category {
                 TransactionCategory::Mint => {
                     let transfer_result =
@@ -177,9 +245,10 @@ pub fn execute_finalized_block(
                             initiator_addr,
                             authorization_keys,
                             runtime_args,
-                            cost,
                         ));
+                    let consumed = gas_limit;
                     artifact_builder
+                        .with_added_consumed(consumed)
                         .with_transfer_result(transfer_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 }
@@ -200,7 +269,9 @@ pub fn execute_finalized_block(
                                 authorization_keys,
                                 auction_method,
                             ));
+                            let consumed = gas_limit;
                             artifact_builder
+                                .with_added_consumed(consumed)
                                 .with_bidding_result(bidding_result)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
@@ -226,6 +297,7 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -238,22 +310,20 @@ pub fn execute_finalized_block(
                 }
             }
         } else {
-            debug!(%transaction_hash, "skipping execution due to insufficient balance");
+            debug!(%transaction_hash, "not eligible for execution");
         }
 
         let fee_handling = chainspec.core_config.fee_handling;
-        trace!(%transaction_hash, ?fee_handling, ?sufficient_balance, "fee handling");
         // handle payment per the chainspec determined fee setting
         match fee_handling {
             FeeHandling::NoFee => {
-                // this is the "fee elimination" model...a BalanceHold for the full cost is placed
-                // on the initiator's purse.
+                // in this mode, a hold for full cost is placed on the payer's purse.
                 let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
                     state_root_hash,
                     protocol_version,
                     balance_identifier,
                     BalanceHoldAddrTag::Gas,
-                    cost.value(),
+                    cost,
                     block_time,
                     chainspec.core_config.balance_hold_interval,
                     insufficient_balance_handling,
@@ -263,25 +333,60 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::PayToProposer => {
-                // this is the current mainnet mechanism...pay up front
-                // finalize at the end
-                // we have the proposer of this block...just deposit to them
-                // call handle_payment and done
-                // add data_provider.fee(.. pay_to_proposer), get effects and done
+                // in this mode, the consumed gas is paid as a fee to the block proposer
+                let consumed = Gas::new(artifact_builder.consumed());
+                let handle_payment_request = HandlePaymentRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandlePaymentMode::finalize(
+                        gas_limit,
+                        gas_price,
+                        cost,
+                        consumed,
+                        balance_identifier,
+                        BalanceIdentifier::Public(*(proposer.clone())),
+                        holds_epoch,
+                    ),
+                );
+                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                artifact_builder
+                    .with_handle_payment_result(&handle_payment_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::Accumulate => {
-                // this is a variation on PayToProposer that was added for
-                // for some private networks...the fees are all accumulated
-                // and distributed to administrative accounts as part of fee
-                // distribution. So, we just send the payment to the accumulator
-                // purse and move on.
-                // add data_provider.fee(.. accumulate), get effects and done
+                // in this mode, consumed gas is accumulated into a single purse for later
+                // distribution
+                let consumed = Gas::new(artifact_builder.consumed());
+                let handle_payment_request = HandlePaymentRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandlePaymentMode::distribute_accumulated(
+                        BalanceIdentifier::Accumulate,
+                        Some(consumed),
+                    ),
+                );
+                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                artifact_builder
+                    .with_handle_payment_result(&handle_payment_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::Burn => {
-                // this is a new variation that is not currently supported.
-                // this is for future use...but it is very simple...the
-                // fees are simply burned, lowering total supply.
-                // add data_provider.fee(.. burn), get effects and done
+                let consumed = artifact_builder.consumed();
+                let handle_payment_request = HandlePaymentRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandlePaymentMode::burn(balance_identifier, Some(consumed)),
+                );
+                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                artifact_builder
+                    .with_handle_payment_result(&handle_payment_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
         }
 
@@ -299,7 +404,7 @@ pub fn execute_finalized_block(
     // data can be verified if necessary for a given block. the block synchronizer in particular
     // depends on the existence of such checksums.
     let txns_approvals_hashes = {
-        let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
+        let approvals_checksum = types::compute_approvals_checksum(transaction_ids.clone())
             .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
         let execution_results_checksum = compute_execution_results_checksum(
             artifacts.iter().map(|artifact| &artifact.execution_result),
@@ -318,7 +423,10 @@ pub fn execute_finalized_block(
             ),
         ));
         scratch_state.commit(state_root_hash, effects)?;
-        txn_ids.into_iter().map(|id| id.approvals_hash()).collect()
+        transaction_ids
+            .into_iter()
+            .map(|id| id.approvals_hash())
+            .collect()
     };
 
     // Pay out block fees, if relevant. This auto-commits
@@ -335,16 +443,9 @@ pub fn execute_finalized_block(
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
-                //transfers: fee_transfers,
-                post_state_hash,
-                ..
+                post_state_hash, ..
             } => {
-                //transfers.extend(fee_transfers);
                 state_root_hash = post_state_hash;
-                // TODO: looks like effects & transfer records are associated with the
-                // ExecutionResult struct which assumes they were caused by a
-                // deploy. however, systemic operations produce effects and transfer
-                // records also.
             }
         }
     }
@@ -570,7 +671,7 @@ pub fn execute_finalized_block(
         executable_block.era_id,
         executable_block.height,
         protocol_version,
-        (*executable_block.proposer).clone(),
+        (*proposer).clone(),
         executable_block.mint,
         executable_block.auction,
         executable_block.install_upgrade,

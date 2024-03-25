@@ -271,14 +271,14 @@ pub enum AuctionMethodRet {
 pub enum BiddingResult {
     /// Invalid state root hash.
     RootNotFound,
-    /// Transfer succeeded
+    /// Bidding request succeeded
     Success {
         // The ret value, if any.
         ret: AuctionMethodRet,
         /// Effects of bidding interaction.
         effects: Effects,
     },
-    /// Bidding request failed
+    /// Bidding request failed.
     Failure(TrackingCopyError),
 }
 

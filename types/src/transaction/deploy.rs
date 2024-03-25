@@ -381,6 +381,12 @@ impl Deploy {
         self.session.is_transfer()
     }
 
+    /// Should this transaction start in the initiating accounts context?
+    pub fn is_account_session(&self) -> bool {
+        // legacy deploys are always initiated by an account
+        true
+    }
+
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp

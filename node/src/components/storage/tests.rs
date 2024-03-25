@@ -1363,13 +1363,16 @@ fn prepare_exec_result_with_transfer(
         Gas::from(rng.gen::<u64>()),
         Some(rng.gen()),
     ));
+    let limit = Gas::new(rng.gen::<u64>());
     let exec_result = ExecutionResult::V2(ExecutionResultV2 {
-        effects: Effects::new(),
-        transfers: vec![transfer.clone()],
         initiator: initiator_addr,
-        gas: Gas::new(rng.gen::<u64>()),
-        payment: vec![],
         error_message: None,
+        limit,
+        cost: limit.value(),
+        consumed: limit,
+        payment: vec![],
+        transfers: vec![transfer.clone()],
+        effects: Effects::new(),
     });
     (exec_result, transfer)
 }

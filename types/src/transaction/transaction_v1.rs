@@ -235,6 +235,12 @@ impl TransactionV1 {
         }
     }
 
+    /// Should this transaction start in the initiating accounts context?
+    pub fn is_account_session(&self) -> bool {
+        let target_is_stored_contract = matches!(self.target(), TransactionTarget::Stored { .. });
+        !target_is_stored_contract
+    }
+
     /// Returns the approvals for this transaction.
     pub fn approvals(&self) -> &BTreeSet<Approval> {
         &self.approvals

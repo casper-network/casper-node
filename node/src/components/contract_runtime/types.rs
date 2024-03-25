@@ -10,8 +10,8 @@ use casper_execution_engine::engine_state::{
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        bidding::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
-        TransferResult,
+        auction::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
+        HandlePaymentResult, TransferResult,
     },
 };
 use casper_types::{
@@ -72,7 +72,9 @@ pub(crate) struct ExecutionArtifactBuilder {
     transfers: Vec<Transfer>,
     initiator: InitiatorAddr,
     payment: Vec<PaymentInfo>,
-    gas: Gas,
+    cost: U512,
+    limit: Gas,
+    consumed: Gas,
 }
 
 impl ExecutionArtifactBuilder {
@@ -86,12 +88,18 @@ impl ExecutionArtifactBuilder {
             messages: Default::default(),
             initiator: transaction.initiator_addr(),
             payment: vec![],
-            gas: Gas::zero(),
+            cost: U512::zero(),
+            limit: Gas::zero(),
+            consumed: Gas::zero(),
         }
     }
 
     pub fn effects(&self) -> Effects {
         self.effects.clone()
+    }
+
+    pub fn consumed(&self) -> U512 {
+        self.consumed.value()
     }
 
     pub fn with_appended_transfers(&mut self, transfers: &mut Vec<Transfer>) -> &mut Self {
@@ -116,9 +124,30 @@ impl ExecutionArtifactBuilder {
         if let (None, Some(err)) = (&self.error_message, wasm_v1_result.error()) {
             self.error_message = Some(format!("{}", err));
         }
-        self.with_appended_messages(&mut wasm_v1_result.messages().clone())
+        self.with_added_consumed(wasm_v1_result.consumed())
+            .with_appended_messages(&mut wasm_v1_result.messages().clone())
             .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
             .with_appended_effects(wasm_v1_result.effects().clone());
+        Ok(self)
+    }
+
+    pub fn with_handle_payment_result(
+        &mut self,
+        handle_payment_result: &HandlePaymentResult,
+    ) -> Result<&mut Self, ()> {
+        if let HandlePaymentResult::RootNotFound = handle_payment_result {
+            return Err(());
+        }
+        if let (None, HandlePaymentResult::Failure(err)) =
+            (&self.error_message, handle_payment_result)
+        {
+            self.error_message = Some(format!("{}", err));
+            // NOTE: if handle payment fails, we revert any prior effects.
+            // and only commit effects produced by handle payment (if any).
+            self.effects = handle_payment_result.effects();
+            return Ok(self);
+        }
+        self.with_appended_effects(handle_payment_result.effects());
         Ok(self)
     }
 
@@ -136,8 +165,18 @@ impl ExecutionArtifactBuilder {
         Ok(self)
     }
 
-    pub fn with_added_gas(&mut self, gas: Gas) -> &mut Self {
-        self.gas = self.gas.saturating_add(gas);
+    pub fn with_added_cost(&mut self, cost: U512) -> &mut Self {
+        self.cost = self.cost.saturating_add(cost);
+        self
+    }
+
+    pub fn with_gas_limit(&mut self, limit: Gas) -> &mut Self {
+        self.limit = limit;
+        self
+    }
+
+    pub fn with_added_consumed(&mut self, consumed: Gas) -> &mut Self {
+        self.consumed = self.consumed.saturating_add(consumed);
         self
     }
 
@@ -223,8 +262,10 @@ impl ExecutionArtifactBuilder {
             effects: self.effects,
             transfers: self.transfers,
             initiator: self.initiator,
+            limit: self.limit,
+            consumed: self.consumed,
+            cost: self.cost,
             payment: self.payment,
-            gas: self.gas,
             error_message: self.error_message,
         };
         let execution_result = ExecutionResult::V2(result);

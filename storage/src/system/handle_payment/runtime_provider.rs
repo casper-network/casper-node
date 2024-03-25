@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, FeeHandling, Key, Phase,
-    RefundHandling,
+    account::AccountHash, system::handle_payment::Error, FeeHandling, Key, Phase, RefundHandling,
 };
 
 /// Provider of runtime host functionality.
@@ -19,9 +18,6 @@ pub trait RuntimeProvider {
     /// Get current execution phase.
     fn get_phase(&self) -> Phase;
 
-    /// Get current block time.
-    fn get_block_time(&self) -> BlockTime;
-
     /// Get caller.
     fn get_caller(&self) -> AccountHash;
 
@@ -32,5 +28,5 @@ pub trait RuntimeProvider {
     fn fee_handling(&self) -> FeeHandling;
 
     /// Returns list of administrative accounts.
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash>;
+    fn administrative_accounts(&self) -> BTreeSet<AccountHash>;
 }

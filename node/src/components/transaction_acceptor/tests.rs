@@ -738,7 +738,10 @@ impl reactor::Reactor for Reactor {
                         BalanceIdentifier::Public(public_key) => {
                             Key::Account(public_key.to_account_hash())
                         }
-                        BalanceIdentifier::Account(account_hash) => Key::Account(*account_hash),
+                        BalanceIdentifier::Account(account_hash)
+                        | BalanceIdentifier::PenalizedAccount(account_hash) => {
+                            Key::Account(*account_hash)
+                        }
                         BalanceIdentifier::Entity(entity_addr) => {
                             Key::AddressableEntity(*entity_addr)
                         }
@@ -747,6 +750,14 @@ impl reactor::Reactor for Reactor {
                             responder
                                 .respond(BalanceResult::Failure(
                                     TrackingCopyError::NamedKeyNotFound("payment".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                        BalanceIdentifier::Accumulate => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("accumulate".to_string()),
                                 ))
                                 .ignore::<Self::Event>();
                             return Effects::new();

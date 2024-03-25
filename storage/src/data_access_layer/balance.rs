@@ -3,7 +3,11 @@ use crate::data_access_layer::BalanceHoldRequest;
 use casper_types::{
     account::AccountHash,
     global_state::TrieMerkleProof,
-    system::{handle_payment::PAYMENT_PURSE_KEY, mint::BalanceHoldAddrTag, HANDLE_PAYMENT},
+    system::{
+        handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
+        mint::BalanceHoldAddrTag,
+        HANDLE_PAYMENT,
+    },
     AccessRights, BlockTime, Digest, EntityAddr, InitiatorAddr, Key, ProtocolVersion, PublicKey,
     StoredValue, URef, URefAddr, U512,
 };
@@ -29,23 +33,27 @@ pub enum BalanceHandling {
 /// Represents a way to make a balance inquiry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BalanceIdentifier {
+    Payment,
+    Accumulate,
     Purse(URef),
     Public(PublicKey),
     Account(AccountHash),
     Entity(EntityAddr),
     Internal(URefAddr),
-    Payment,
+    PenalizedAccount(AccountHash),
 }
 
 impl BalanceIdentifier {
     pub fn as_purse_addr(&self) -> Option<URefAddr> {
         match self {
-            BalanceIdentifier::Purse(uref) => Some(uref.addr()),
             BalanceIdentifier::Internal(addr) => Some(*addr),
+            BalanceIdentifier::Purse(uref) => Some(uref.addr()),
             BalanceIdentifier::Public(_)
             | BalanceIdentifier::Account(_)
+            | BalanceIdentifier::PenalizedAccount(_)
             | BalanceIdentifier::Entity(_)
-            | BalanceIdentifier::Payment => None,
+            | BalanceIdentifier::Payment
+            | BalanceIdentifier::Accumulate => None,
         }
     }
 
@@ -59,6 +67,7 @@ impl BalanceIdentifier {
         S: StateReader<Key, StoredValue, Error = crate::global_state::error::Error>,
     {
         let purse_uref = match self {
+            BalanceIdentifier::Internal(addr) => URef::new(*addr, AccessRights::READ),
             BalanceIdentifier::Purse(purse_uref) => *purse_uref,
             BalanceIdentifier::Public(public_key) => {
                 let account_hash = public_key.to_account_hash();
@@ -67,7 +76,8 @@ impl BalanceIdentifier {
                     Err(tce) => return Err(tce),
                 }
             }
-            BalanceIdentifier::Account(account_hash) => {
+            BalanceIdentifier::Account(account_hash)
+            | BalanceIdentifier::PenalizedAccount(account_hash) => {
                 match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
                     Ok(entity) => entity.main_purse(),
                     Err(tce) => return Err(tce),
@@ -79,30 +89,52 @@ impl BalanceIdentifier {
                     Err(tce) => return Err(tce),
                 }
             }
-            BalanceIdentifier::Internal(addr) => URef::new(*addr, AccessRights::READ),
             BalanceIdentifier::Payment => {
-                let system_contract_registry = tc.get_system_entity_registry()?;
-
-                let handle_payment_hash =
-                    system_contract_registry
-                        .get(HANDLE_PAYMENT)
-                        .ok_or_else(|| {
-                            error!("Missing system handle payment contract hash");
-                            TrackingCopyError::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
-                        })?;
-
-                let named_keys =
-                    tc.get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
-                let named_key = named_keys.get(PAYMENT_PURSE_KEY).ok_or(
-                    TrackingCopyError::NamedKeyNotFound(PAYMENT_PURSE_KEY.to_string()),
-                )?;
-                let uref = named_key
-                    .as_uref()
-                    .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
-                *uref
+                self.get_system_purse(tc, HANDLE_PAYMENT, PAYMENT_PURSE_KEY)?
+            }
+            BalanceIdentifier::Accumulate => {
+                self.get_system_purse(tc, HANDLE_PAYMENT, ACCUMULATION_PURSE_KEY)?
             }
         };
         Ok(purse_uref)
+    }
+
+    fn get_system_purse<S>(
+        &self,
+        tc: &mut TrackingCopy<S>,
+        system_contract_name: &str,
+        named_key_name: &str,
+    ) -> Result<URef, TrackingCopyError>
+    where
+        S: StateReader<Key, StoredValue, Error = crate::global_state::error::Error>,
+    {
+        let system_contract_registry = tc.get_system_entity_registry()?;
+
+        let entity_hash = system_contract_registry
+            .get(system_contract_name)
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                TrackingCopyError::MissingSystemContractHash(system_contract_name.to_string())
+            })?;
+
+        let named_keys = tc.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+        let named_key =
+            named_keys
+                .get(named_key_name)
+                .ok_or(TrackingCopyError::NamedKeyNotFound(
+                    named_key_name.to_string(),
+                ))?;
+        let uref = named_key
+            .as_uref()
+            .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
+        Ok(*uref)
+    }
+
+    /// Is this balance identifier for penalty?
+    pub fn is_penalty(&self) -> bool {
+        // currently there is one variant of this kind, but more may be added later to
+        // support more use cases.
+        matches!(self, BalanceIdentifier::PenalizedAccount(_))
     }
 }
 

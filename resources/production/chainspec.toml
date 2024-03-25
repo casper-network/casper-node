@@ -101,7 +101,8 @@ compute_rewards = true
 #
 # Valid options are:
 #   'refund': a ratio of the unspent token is returned to the spender.
-#   'burn': unspent token is burned
+#   'burn': a ratio of the unspent token is burned.
+#   'no_refund': no refunds are paid out; this is functionally equivalent to refund with 0% ratio.
 # This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.

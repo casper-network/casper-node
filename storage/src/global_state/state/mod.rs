@@ -31,19 +31,20 @@ use casper_types::{
         },
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, Gas, InitiatorAddr, Key, KeyTag,
-    Phase, PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, InitiatorAddr, Key, KeyTag, Phase,
+    PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
 };
 
 #[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
 use crate::{
     data_access_layer::{
+        auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
         balance::BalanceHandling,
-        bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
         era_validators::EraValidatorsResult,
+        handle_payment::{HandlePaymentMode, HandlePaymentRequest, HandlePaymentResult},
+        mint::{TransferRequest, TransferRequestArgs, TransferResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-        transfer::{TransferRequest, TransferRequestArgs, TransferResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldRequest, BalanceHoldResult, BalanceRequest, BalanceResult, BidsRequest,
         BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
@@ -70,6 +71,7 @@ use crate::{
         auction,
         auction::Auction,
         genesis::{GenesisError, GenesisInstaller},
+        handle_payment::HandlePayment,
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
         runtime_native::{Id, RuntimeNative},
@@ -585,7 +587,6 @@ pub trait CommitProvider: StateProvider {
                     InitiatorAddr::from(system_account_key.clone()),
                     authorization_keys.clone(),
                     args,
-                    Gas::zero(),
                 );
                 match self.transfer(transfer_req) {
                     TransferResult::RootNotFound => return FeeResult::RootNotFound,
@@ -1015,6 +1016,97 @@ pub trait StateProvider {
         match result {
             Ok(ret) => BiddingResult::Success { ret, effects },
             Err(tce) => BiddingResult::Failure(tce),
+        }
+    }
+
+    /// Direct auction interaction for all variations of bid management.
+    fn handle_payment(
+        &self,
+        HandlePaymentRequest {
+            config,
+            state_hash,
+            protocol_version,
+            transaction_hash,
+            handle_payment_mode,
+        }: HandlePaymentRequest,
+    ) -> HandlePaymentResult {
+        // let mut tc = match self.tracking_copy(state_hash) {
+        //     Ok(Some(tracking_copy)) => tracking_copy,
+        //     Ok(None) => return HandlePaymentResult::RootNotFound,
+        //     Err(err) => return HandlePaymentResult::Failure(TrackingCopyError::Storage(err)),
+        // };
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return HandlePaymentResult::RootNotFound,
+            Err(err) => return HandlePaymentResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return HandlePaymentResult::Failure(tce);
+            }
+        };
+
+        let result = match handle_payment_mode {
+            HandlePaymentMode::Finalize {
+                limit,
+                gas_price,
+                cost,
+                consumed,
+                source,
+                target,
+                holds_epoch,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandlePaymentResult::Failure(tce),
+                };
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandlePaymentResult::Failure(tce),
+                };
+                runtime.finalize_payment(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    target_purse,
+                    holds_epoch,
+                )
+            }
+            HandlePaymentMode::Distribute { source, amount } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandlePaymentResult::Failure(tce),
+                };
+                runtime.distribute_accumulated_fees(source_purse, amount)
+            }
+            HandlePaymentMode::Burn { source, amount } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandlePaymentResult::Failure(tce),
+                };
+                runtime.burn(source_purse, amount)
+            }
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(_) => HandlePaymentResult::Success { effects },
+            Err(hpe) => HandlePaymentResult::Failure(TrackingCopyError::SystemContract(
+                system::Error::HandlePayment(hpe),
+            )),
         }
     }
 

@@ -3292,33 +3292,51 @@
       "description": "The result of executing a single transaction.",
       "type": "object",
       "required": [
+        "consumed",
+        "cost",
         "effects",
-        "gas",
         "initiator",
+        "limit",
         "payment",
         "transfers"
       ],
       "properties": {
-        "effects": {
-          "description": "The effects of executing the transaction.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Effects"
-            }
-          ]
-        },
-        "transfers": {
-          "description": "A record of transfers performed while executing the transaction.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Transfer"
-          }
-        },
         "initiator": {
-          "description": "Identifier of the initiator of the transaction.",
+          "description": "Who initiatied this transaction.",
           "allOf": [
             {
               "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "error_message": {
+          "description": "If there is no error message, this execution was processed successfully. If there is an error message, this execution failed to fully process for the stated reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "What was the maximum allowed gas limit for this transaction?.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "consumed": {
+          "description": "How much gas was consumed executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "cost": {
+          "description": "How much was paid for this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
             }
           ]
         },
@@ -3329,20 +3347,159 @@
             "$ref": "#/definitions/PaymentInfo"
           }
         },
+        "transfers": {
+          "description": "A record of transfers performed while executing this transaction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Transfer"
+          }
+        },
+        "effects": {
+          "description": "The effects of executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Effects"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/U512"
+        }
+      ]
+    },
+    "PaymentInfo": {
+      "description": "Breakdown of payments made to cover the cost.",
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "description": "Source purse used for payment of the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        }
+      }
+    },
+    "Transfer": {
+      "description": "A versioned wrapper for a transfer.",
+      "oneOf": [
+        {
+          "description": "A version 1 transfer.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/TransferV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 2 transfer.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/TransferV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransferV2": {
+      "description": "Represents a version 2 transfer from one purse to another.",
+      "type": "object",
+      "required": [
+        "amount",
+        "from",
+        "gas",
+        "source",
+        "target",
+        "transaction_hash"
+      ],
+      "properties": {
+        "transaction_hash": {
+          "description": "Transaction that created the transfer.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TransactionHash"
+            }
+          ]
+        },
+        "from": {
+          "description": "Entity from which transfer was executed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "to": {
+          "description": "Account to which funds are transferred.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "target": {
+          "description": "Target purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "amount": {
+          "description": "Transfer amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
         "gas": {
-          "description": "The gas consumed executing the transaction.",
+          "description": "Gas.",
           "allOf": [
             {
               "$ref": "#/definitions/Gas"
             }
           ]
         },
-        "error_message": {
-          "description": "The error message associated with executing the transaction if the transaction failed.",
+        "id": {
+          "description": "User-defined ID.",
           "type": [
-            "string",
+            "integer",
             "null"
-          ]
+          ],
+          "format": "uint64",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
@@ -4678,145 +4835,6 @@
         "found": {
           "description": "The actual type found.",
           "type": "string"
-        }
-      }
-    },
-    "Transfer": {
-      "description": "A versioned wrapper for a transfer.",
-      "oneOf": [
-        {
-          "description": "A version 1 transfer.",
-          "type": "object",
-          "required": [
-            "Version1"
-          ],
-          "properties": {
-            "Version1": {
-              "$ref": "#/definitions/TransferV1"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "A version 2 transfer.",
-          "type": "object",
-          "required": [
-            "Version2"
-          ],
-          "properties": {
-            "Version2": {
-              "$ref": "#/definitions/TransferV2"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "TransferV2": {
-      "description": "Represents a version 2 transfer from one purse to another.",
-      "type": "object",
-      "required": [
-        "amount",
-        "from",
-        "gas",
-        "source",
-        "target",
-        "transaction_hash"
-      ],
-      "properties": {
-        "transaction_hash": {
-          "description": "Transaction that created the transfer.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/TransactionHash"
-            }
-          ]
-        },
-        "from": {
-          "description": "Entity from which transfer was executed.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/InitiatorAddr"
-            }
-          ]
-        },
-        "to": {
-          "description": "Account to which funds are transferred.",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AccountHash"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "source": {
-          "description": "Source purse.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
-        "target": {
-          "description": "Target purse.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
-        },
-        "amount": {
-          "description": "Transfer amount.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/U512"
-            }
-          ]
-        },
-        "gas": {
-          "description": "Gas.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Gas"
-            }
-          ]
-        },
-        "id": {
-          "description": "User-defined ID.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        }
-      },
-      "additionalProperties": false
-    },
-    "Gas": {
-      "description": "The `Gas` struct represents a `U512` amount of gas.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/U512"
-        }
-      ]
-    },
-    "PaymentInfo": {
-      "description": "Breakdown of payments made to cover the cost.",
-      "type": "object",
-      "required": [
-        "source"
-      ],
-      "properties": {
-        "source": {
-          "description": "Source purse used for payment of the transaction.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/URef"
-            }
-          ]
         }
       }
     },

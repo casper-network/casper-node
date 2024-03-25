@@ -5,6 +5,9 @@ use casper_types::{
 /// Provides an access to mint.
 pub trait MintProvider {
     /// Transfer `amount` from `source` purse to a `target` account.
+    /// Note: the source should always be a system purse of some kind,
+    /// such as the payment purse or an accumulator purse.
+    /// The target should be the recipient of a refund or a reward
     fn transfer_purse_to_account(
         &mut self,
         source: URef,
@@ -13,6 +16,9 @@ pub trait MintProvider {
     ) -> Result<TransferredTo, Error>;
 
     /// Transfer `amount` from `source` purse to a `target` purse.
+    /// Note: the source should always be a system purse of some kind,
+    /// such as the payment purse or an accumulator purse.
+    /// The target should be the recipient of a refund or a reward
     fn transfer_purse_to_purse(
         &mut self,
         source: URef,

@@ -220,7 +220,6 @@ impl TransferRequestBuilder {
             self.initiator,
             self.authorization_keys,
             RuntimeArgs::from(self.args),
-            self.gas,
         )
     }
 

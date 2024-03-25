@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig};
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, Gas, InitiatorAddr, ProtocolVersion,
-    RuntimeArgs, TransactionHash, Transfer,
+    account::AccountHash, execution::Effects, Digest, InitiatorAddr, ProtocolVersion, RuntimeArgs,
+    TransactionHash, Transfer,
 };
 
 use crate::system::transfer::{TransferArgs, TransferError};
@@ -34,8 +34,6 @@ pub struct TransferRequest {
     authorization_keys: BTreeSet<AccountHash>,
     /// Args.
     args: TransferRequestArgs,
-    /// Cost.
-    gas: Gas,
 }
 
 impl TransferRequest {
@@ -50,7 +48,6 @@ impl TransferRequest {
         initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
         args: TransferArgs,
-        gas: Gas,
     ) -> Self {
         let args = TransferRequestArgs::Explicit(args);
         Self {
@@ -62,7 +59,6 @@ impl TransferRequest {
             initiator,
             authorization_keys,
             args,
-            gas,
         }
     }
 
@@ -77,7 +73,6 @@ impl TransferRequest {
         initiator: InitiatorAddr,
         authorization_keys: BTreeSet<AccountHash>,
         args: RuntimeArgs,
-        gas: Gas,
     ) -> Self {
         let args = TransferRequestArgs::Raw(args);
         Self {
@@ -89,7 +84,6 @@ impl TransferRequest {
             initiator,
             authorization_keys,
             args,
-            gas,
         }
     }
 
@@ -129,11 +123,6 @@ impl TransferRequest {
     /// Returns transaction hash.
     pub fn transaction_hash(&self) -> TransactionHash {
         self.transaction_hash
-    }
-
-    /// The cost.
-    pub fn gas(&self) -> Gas {
-        self.gas
     }
 
     /// Returns transfer args.

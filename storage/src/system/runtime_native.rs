@@ -345,8 +345,16 @@ where
         &self.named_keys
     }
 
-    pub fn access_rights(&self) -> &ContextAccessRights {
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
+    pub fn access_rights(&mut self) -> &ContextAccessRights {
         &self.access_rights
+    }
+
+    pub fn access_rights_mut(&mut self) -> &mut ContextAccessRights {
+        &mut self.access_rights
     }
 
     pub fn extend_access_rights(&mut self, urefs: &[URef]) {

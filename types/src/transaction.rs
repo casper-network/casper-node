@@ -336,6 +336,14 @@ impl Transaction {
         }
     }
 
+    /// Should this transaction start in the initiating accounts context?
+    pub fn is_account_session(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_account_session(),
+            Transaction::V1(v1) => v1.is_account_session(),
+        }
+    }
+
     /// Authorization keys.
     pub fn authorization_keys(&self) -> BTreeSet<AccountHash> {
         match self {

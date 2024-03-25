@@ -27,7 +27,7 @@ use crate::testing::TestRng;
 use crate::Key;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Gas, InitiatorAddr, Transfer, URef,
+    Gas, InitiatorAddr, Transfer, URef, U512,
 };
 
 #[cfg(feature = "json-schema")]
@@ -47,14 +47,16 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     let transfers = vec![Transfer::example().clone()];
 
     ExecutionResultV2 {
-        effects,
-        transfers,
-        gas: Gas::new(123_456),
+        initiator: InitiatorAddr::from(crate::PublicKey::example().clone()),
+        error_message: None,
+        limit: Gas::new(123_456),
+        consumed: Gas::new(100_000),
+        cost: U512::from(246_912),
         payment: vec![PaymentInfo {
             source: URef::new([1; crate::UREF_ADDR_LENGTH], crate::AccessRights::READ),
         }],
-        initiator: InitiatorAddr::from(crate::PublicKey::example().clone()),
-        error_message: None,
+        transfers,
+        effects,
     }
 });
 
@@ -96,18 +98,23 @@ impl FromBytes for PaymentInfo {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionResultV2 {
-    /// The effects of executing the transaction.
-    pub effects: Effects,
-    /// A record of transfers performed while executing the transaction.
-    pub transfers: Vec<Transfer>,
-    /// Identifier of the initiator of the transaction.
+    /// Who initiatied this transaction.
     pub initiator: InitiatorAddr,
+    /// If there is no error message, this execution was processed successfully.
+    /// If there is an error message, this execution failed to fully process for the stated reason.
+    pub error_message: Option<String>,
+    /// What was the maximum allowed gas limit for this transaction?.
+    pub limit: Gas,
+    /// How much gas was consumed executing this transaction.
+    pub consumed: Gas,
+    /// How much was paid for this transaction.
+    pub cost: U512,
     /// Breakdown of payments made to cover the cost.
     pub payment: Vec<PaymentInfo>,
-    /// The gas consumed executing the transaction.
-    pub gas: Gas,
-    /// The error message associated with executing the transaction if the transaction failed.
-    pub error_message: Option<String>,
+    /// A record of transfers performed while executing this transaction.
+    pub transfers: Vec<Transfer>,
+    /// The effects of executing this transaction.
+    pub effects: Effects,
 }
 
 impl ExecutionResultV2 {
@@ -129,15 +136,24 @@ impl ExecutionResultV2 {
             transfers.push(Transfer::random(rng))
         }
 
-        let gas = Gas::new(rng.gen::<u64>());
+        let limit = Gas::new(rng.gen::<u64>());
+        let gas_price = rng.gen_range(1..6);
+        // cost = the limit * the price
+        let cost = limit.value() * U512::from(gas_price);
+        let range = limit.value().as_u64();
+
+        // can range from 0 to limit
+        let consumed = limit - Gas::new(rng.gen_range(0..=range));
 
         let payment = vec![PaymentInfo { source: rng.gen() }];
         ExecutionResultV2 {
+            initiator: InitiatorAddr::random(rng),
             effects,
             transfers,
-            gas,
+            cost,
             payment,
-            initiator: InitiatorAddr::random(rng),
+            limit,
+            consumed,
             error_message: if rng.gen() {
                 Some(format!("Error message {}", rng.gen::<u64>()))
             } else {
@@ -149,12 +165,14 @@ impl ExecutionResultV2 {
 
 impl ToBytes for ExecutionResultV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.effects.write_bytes(writer)?;
-        self.transfers.write_bytes(writer)?;
-        self.initiator.write_bytes(writer)?;
+        self.initiator.write_bytes(writer)?; // initiator should logically be first
+        self.error_message.write_bytes(writer)?;
+        self.limit.write_bytes(writer)?;
+        self.consumed.write_bytes(writer)?;
+        self.cost.write_bytes(writer)?;
         self.payment.write_bytes(writer)?;
-        self.gas.write_bytes(writer)?;
-        self.error_message.write_bytes(writer)
+        self.transfers.write_bytes(writer)?;
+        self.effects.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -164,30 +182,36 @@ impl ToBytes for ExecutionResultV2 {
     }
 
     fn serialized_length(&self) -> usize {
-        self.effects.serialized_length()
-            + self.transfers.serialized_length()
-            + self.initiator.serialized_length()
-            + self.payment.serialized_length()
-            + self.gas.serialized_length()
+        self.initiator.serialized_length()
             + self.error_message.serialized_length()
+            + self.limit.serialized_length()
+            + self.consumed.serialized_length()
+            + self.cost.serialized_length()
+            + self.payment.serialized_length()
+            + self.transfers.serialized_length()
+            + self.effects.serialized_length()
     }
 }
 
 impl FromBytes for ExecutionResultV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (effects, remainder) = Effects::from_bytes(bytes)?;
-        let (transfers, remainder) = Vec::<Transfer>::from_bytes(remainder)?;
-        let (initiator, remainder) = InitiatorAddr::from_bytes(remainder)?;
-        let (payment, remainder) = Vec::<PaymentInfo>::from_bytes(remainder)?;
-        let (gas, remainder) = Gas::from_bytes(remainder)?;
+        let (initiator, remainder) = InitiatorAddr::from_bytes(bytes)?;
         let (error_message, remainder) = Option::<String>::from_bytes(remainder)?;
+        let (limit, remainder) = Gas::from_bytes(remainder)?;
+        let (consumed, remainder) = Gas::from_bytes(remainder)?;
+        let (cost, remainder) = U512::from_bytes(remainder)?;
+        let (payment, remainder) = Vec::<PaymentInfo>::from_bytes(remainder)?;
+        let (transfers, remainder) = Vec::<Transfer>::from_bytes(remainder)?;
+        let (effects, remainder) = Effects::from_bytes(remainder)?;
         let execution_result = ExecutionResultV2 {
-            effects,
-            transfers,
             initiator,
-            payment,
-            gas,
             error_message,
+            limit,
+            consumed,
+            cost,
+            payment,
+            transfers,
+            effects,
         };
         Ok((execution_result, remainder))
     }

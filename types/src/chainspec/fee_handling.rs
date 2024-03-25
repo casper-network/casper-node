@@ -34,6 +34,11 @@ impl FeeHandling {
     pub fn is_accumulate(&self) -> bool {
         matches!(self, FeeHandling::Accumulate)
     }
+
+    /// Returns true if configured for no fees.
+    pub fn skip_fee_handling(&self) -> bool {
+        matches!(self, FeeHandling::NoFee)
+    }
 }
 
 impl ToBytes for FeeHandling {
@@ -66,10 +71,10 @@ impl FromBytes for FeeHandling {
 
 impl Default for FeeHandling {
     fn default() -> Self {
-        // in 2.x the default is None as there are no fees.
-        // FeeHandling::None
         // in 1.x the (implicit) default was PayToProposer
-        FeeHandling::PayToProposer
+        // FeeHandling::PayToProposer
+        // in 2.x the default is NoFee as there are no fees.
+        FeeHandling::NoFee
     }
 }
 
@@ -92,6 +97,12 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip_for_burn() {
         let fee_config = FeeHandling::Burn;
+        bytesrepr::test_serialization_roundtrip(&fee_config);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_for_no_fee() {
+        let fee_config = FeeHandling::NoFee;
         bytesrepr::test_serialization_roundtrip(&fee_config);
     }
 }

@@ -330,7 +330,7 @@ impl EngineConfigBuilder {
                     "refund ratio should be in the range of [0, 1]"
                 );
             }
-            RefundHandling::None => {
+            RefundHandling::NoRefund => {
                 //noop
             }
         }

@@ -76,6 +76,9 @@ impl<'a> ExecutionKind<'a> {
             ExecutableItem::DeploySessionModuleBytes(module_bytes) => {
                 Ok(ExecutionKind::Deploy(module_bytes))
             }
+            ExecutableItem::StandardPayment => Err(Error::Deprecated(
+                "standard payment is no longer handled by the execution engine".to_string(),
+            )),
         }
     }
 

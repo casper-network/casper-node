@@ -63,6 +63,11 @@ impl Gas {
         Gas(self.0.saturating_add(rhs.value()))
     }
 
+    /// Saturating integer subtraction. Computes `self + rhs`, returning min if overflow occurred.
+    pub fn saturating_sub(self, rhs: Self) -> Self {
+        Gas(self.0.saturating_sub(rhs.value()))
+    }
+
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)

@@ -62,8 +62,8 @@ use casper_types::{
     AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
     InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Timestamp,
-    TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
+    TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -550,9 +550,8 @@ impl LmdbWasmTestBuilder {
     pub fn transfer_and_commit(&mut self, mut transfer_request: TransferRequest) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
         transfer_request.set_state_hash_and_config(pre_state_hash, self.native_runtime_config());
-        let gas = transfer_request.gas();
         let transfer_result = self.data_access_layer.transfer(transfer_request);
-
+        let gas = Gas::new(self.chainspec.system_costs_config.mint_costs().transfer);
         let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas).unwrap();
         let effects = execution_result.effects().clone();
         self.effects.push(effects.clone());
@@ -766,7 +765,6 @@ where
     pub fn bidding(
         &mut self,
         maybe_post_state: Option<Digest>,
-        maybe_block_time: Option<Timestamp>,
         protocol_version: ProtocolVersion,
         initiator: InitiatorAddr,
         auction_method: AuctionMethod,
@@ -775,7 +773,6 @@ where
             .or(self.post_state_hash)
             .expect("builder must have a post-state hash");
 
-        let block_time = BlockTime::new(maybe_block_time.unwrap_or(Timestamp::now()).millis());
         let transaction_hash = TransactionHash::V1(TransactionV1Hash::default());
         let authorization_keys = BTreeSet::from_iter(iter::once(initiator.account_hash()));
 
@@ -804,7 +801,6 @@ where
         let bidding_req = BiddingRequest::new(
             native_runtime_config,
             post_state,
-            block_time,
             protocol_version,
             transaction_hash,
             initiator,
@@ -1794,7 +1790,7 @@ where
             RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
                 refund_ratio
             }
-            RefundHandling::None => Ratio::zero(),
+            RefundHandling::NoRefund => Ratio::zero(),
         };
 
         let (numer, denom) = refund_ratio.into();
