@@ -187,7 +187,7 @@ where
             known_addresses: Default::default(),
             public_addr: None,
             chain_info: chain_info_source.into(),
-            node_key_pair: node_key_pair,
+            node_key_pair,
             identity,
             our_id,
             validator_matrix,
@@ -342,7 +342,7 @@ where
             let state = conman.read_state();
             for (consensus_key, &peer_id) in state.key_index().iter() {
                 if validators.contains(consensus_key) {
-                    self.send_message(&*state, peer_id, channel, payload.clone(), None)
+                    self.send_message(&state, peer_id, channel, payload.clone(), None)
                 }
             }
         } else {
@@ -350,7 +350,7 @@ where
             // available. Broadcast to everyone instead.
             let state = conman.read_state();
             for &peer_id in state.routing_table().keys() {
-                self.send_message(&*state, peer_id, channel, payload.clone(), None)
+                self.send_message(&state, peer_id, channel, payload.clone(), None)
             }
         }
     }
@@ -411,7 +411,7 @@ where
 
                     first
                         .into_iter()
-                        .interleave(second.into_iter())
+                        .interleave(second)
                         .take(count)
                         .cloned()
                         .collect()
@@ -601,7 +601,7 @@ where
                 // We're given a message to send. Pass on the responder so that confirmation
                 // can later be given once the message has actually been buffered.
                 self.send_message(
-                    &*conman.read_state(),
+                    &conman.read_state(),
                     *dest,
                     channel,
                     payload,
@@ -980,28 +980,13 @@ where
         + From<PeerBehaviorAnnouncement>,
     P: Payload,
 {
+    #[inline(always)]
     fn handle_validators(
         &mut self,
         _effect_builder: EffectBuilder<REv>,
         _rng: &mut NodeRng,
     ) -> Effects<Self::Event> {
-        // If we receive an updated set of validators, recalculate validator status for every
-        // existing connection.
-
-        let _active_validators = self.validator_matrix.active_or_upcoming_validators();
-
-        // Update the validator status for every connection.
-        // for (public_key, status) in self.incoming_validator_status.iter_mut() {
-        //     // If there is only a `Weak` ref, we lost the connection to the validator, but the
-        //     // disconnection has not reached us yet.
-        //     if let Some(arc) = status.upgrade() {
-        //         arc.store(
-        //             active_validators.contains(public_key),
-        //             std::sync::atomic::Ordering::Relaxed,
-        //         )
-        //     }
-        // }
-        // TODO: Restore functionality.
+        // TODO: Not used at the moment, consider removing this in the future.
 
         Effects::default()
     }
