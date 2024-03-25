@@ -1,5 +1,3 @@
-pub use crate::record_id::{RecordId, UnknownRecordId};
-
 /// Stores raw bytes along with the flag indicating whether data is in a legacy format or not.
 #[derive(Debug)]
 pub struct RawBytesSpec {

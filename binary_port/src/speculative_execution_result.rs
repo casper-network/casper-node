@@ -4,8 +4,21 @@ use casper_types::{
     execution::Effects,
     Gas, InvalidTransaction, Transfer,
 };
+use once_cell::sync::Lazy;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::new(|| {
+    SpeculativeExecutionResult::new(
+        vec![],
+        Gas::zero(),
+        Gas::zero(),
+        Effects::new(),
+        Messages::new(),
+        None,
+    )
+});
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SpeculativeExecutionResult {
     /// List of transfers that happened during execution.
     transfers: Vec<Transfer>,
@@ -38,6 +51,12 @@ impl SpeculativeExecutionResult {
             messages,
             error,
         }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    pub fn example() -> &'static Self {
+        &SPECULATIVE_EXECUTION_RESULT
     }
 }
 

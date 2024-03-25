@@ -15,7 +15,7 @@ casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "
 serde = { version = "1.0.183", features = ["derive"] }
 thiserror = "1.0.45"
 serde-map-to-array = "1.1.0"
-once_cell = { version = "1.5.2", optional = true }
+once_cell = { version = "1.5.2" }
 schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 bincode = "1.3.3"
 
