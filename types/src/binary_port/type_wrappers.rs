@@ -300,7 +300,8 @@ impl FromBytes for TransactionWithExecutionInfo {
     }
 }
 
-/// A query result for a dictionary item, contains the dictionary item key and a global state query result.
+/// A query result for a dictionary item, contains the dictionary item key and a global state query
+/// result.
 #[derive(Debug)]
 pub struct DictionaryQueryResult {
     key: Key,
