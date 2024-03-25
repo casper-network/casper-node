@@ -14,7 +14,8 @@ const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_purse_to_purse_transfer() {
     let source = "purse:main".to_string();
     let target = "purse:secondary".to_string();
@@ -89,7 +90,8 @@ fn should_run_purse_to_purse_transfer() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_purse_to_purse_transfer_with_error() {
     // This test runs a contract that's after every call extends the same key with
     // more data

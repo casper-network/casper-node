@@ -530,14 +530,14 @@ impl TransactionAcceptor {
             }
             Transaction::V1(txn) => match txn.target() {
                 TransactionTarget::Stored { id, .. } => match id {
-                    TransactionInvocationTarget::InvocableEntity(entity_addr) => {
+                    TransactionInvocationTarget::ByHash(entity_addr) => {
                         NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
                     }
-                    TransactionInvocationTarget::Package { addr, version } => {
+                    TransactionInvocationTarget::ByPackageHash { addr, version } => {
                         NextStep::GetPackage(*addr, *version)
                     }
-                    TransactionInvocationTarget::InvocableEntityAlias(_)
-                    | TransactionInvocationTarget::PackageAlias { .. } => {
+                    TransactionInvocationTarget::ByName(_)
+                    | TransactionInvocationTarget::ByPackageName { .. } => {
                         NextStep::CryptoValidation
                     }
                 },

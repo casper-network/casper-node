@@ -78,7 +78,7 @@ const BLOCK_MESSAGE_COUNT_PREFIX: &str = "block-message-count-";
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Hash`].
 pub const KEY_HASH_LENGTH: usize = 32;
-/// The number of bytes in a [`Key::LegacyTransfer`].
+/// The number of bytes in a [`Key::Transfer`].
 pub const KEY_LEGACY_TRANSFER_LENGTH: usize = TRANSFER_V1_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
@@ -284,8 +284,8 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which a version 1 (legacy) transfer is stored.
-    LegacyTransfer(TransferV1Addr),
+    /// A `Key` under which a (legacy) transfer is stored.
+    Transfer(TransferV1Addr),
     /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
     /// A `Key` under which an era info is stored.
@@ -488,7 +488,7 @@ impl Key {
             Key::Account(_) => String::from("Key::Account"),
             Key::Hash(_) => String::from("Key::Hash"),
             Key::URef(_) => String::from("Key::URef"),
-            Key::LegacyTransfer(_) => String::from("Key::LegacyTransfer"),
+            Key::Transfer(_) => String::from("Key::LegacyTransfer"),
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
             Key::EraInfo(_) => String::from("Key::EraInfo"),
             Key::Balance(_) => String::from("Key::Balance"),
@@ -533,7 +533,7 @@ impl Key {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
             Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
-            Key::LegacyTransfer(transfer_v1_addr) => {
+            Key::Transfer(transfer_v1_addr) => {
                 format!(
                     "{}{}",
                     LEGACY_TRANSFER_PREFIX,
@@ -656,7 +656,7 @@ impl Key {
                 .map_err(|error| FromStrError::LegacyTransfer(TransferFromStrError::from(error)))?;
             let addr_array = <[u8; TRANSFER_V1_ADDR_LENGTH]>::try_from(v1_addr.as_ref())
                 .map_err(|error| FromStrError::LegacyTransfer(TransferFromStrError::from(error)))?;
-            return Ok(Key::LegacyTransfer(TransferV1Addr::new(addr_array)));
+            return Ok(Key::Transfer(TransferV1Addr::new(addr_array)));
         }
 
         match URef::from_formatted_str(input) {
@@ -1223,7 +1223,7 @@ impl Display for Key {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
             Key::Hash(addr) => write!(f, "Key::Hash({})", base16::encode_lower(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
-            Key::LegacyTransfer(transfer_v1_addr) => {
+            Key::Transfer(transfer_v1_addr) => {
                 write!(f, "Key::LegacyTransfer({})", transfer_v1_addr)
             }
             Key::DeployInfo(addr) => write!(
@@ -1308,7 +1308,7 @@ impl Tagged<KeyTag> for Key {
             Key::Account(_) => KeyTag::Account,
             Key::Hash(_) => KeyTag::Hash,
             Key::URef(_) => KeyTag::URef,
-            Key::LegacyTransfer(_) => KeyTag::LegacyTransfer,
+            Key::Transfer(_) => KeyTag::LegacyTransfer,
             Key::DeployInfo(_) => KeyTag::DeployInfo,
             Key::EraInfo(_) => KeyTag::EraInfo,
             Key::Balance(_) => KeyTag::Balance,
@@ -1407,7 +1407,7 @@ impl ToBytes for Key {
             }
             Key::Hash(_) => KEY_HASH_SERIALIZED_LENGTH,
             Key::URef(_) => KEY_UREF_SERIALIZED_LENGTH,
-            Key::LegacyTransfer(_) => KEY_LEGACY_TRANSFER_SERIALIZED_LENGTH,
+            Key::Transfer(_) => KEY_LEGACY_TRANSFER_SERIALIZED_LENGTH,
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
@@ -1419,12 +1419,7 @@ impl ToBytes for Key {
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
             Key::ChecksumRegistry => KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH,
-            Key::BidAddr(bid_addr) => match bid_addr.tag() {
-                BidAddrTag::Unified => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length() - 1,
-                BidAddrTag::Validator | BidAddrTag::Delegator => {
-                    KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
-                }
-            },
+            Key::BidAddr(bid_addr) => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length(),
             Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
             Key::AddressableEntity(entity_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length()
@@ -1451,7 +1446,7 @@ impl ToBytes for Key {
             Key::Account(account_hash) => account_hash.write_bytes(writer),
             Key::Hash(hash) => hash.write_bytes(writer),
             Key::URef(uref) => uref.write_bytes(writer),
-            Key::LegacyTransfer(addr) => addr.write_bytes(writer),
+            Key::Transfer(addr) => addr.write_bytes(writer),
             Key::DeployInfo(deploy_hash) => deploy_hash.write_bytes(writer),
             Key::EraInfo(era_id) => era_id.write_bytes(writer),
             Key::Balance(uref_addr) => uref_addr.write_bytes(writer),
@@ -1464,14 +1459,7 @@ impl ToBytes for Key {
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
-            Key::BidAddr(bid_addr) => match bid_addr.tag() {
-                BidAddrTag::Unified => {
-                    let bytes = bid_addr.to_bytes()?;
-                    writer.extend(&bytes[1..]);
-                    Ok(())
-                }
-                BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
-            },
+            Key::BidAddr(bid_addr) => bid_addr.write_bytes(writer),
             Key::Package(package_addr) => package_addr.write_bytes(writer),
             Key::AddressableEntity(entity_addr) => entity_addr.write_bytes(writer),
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
@@ -1500,7 +1488,7 @@ impl FromBytes for Key {
             }
             KeyTag::LegacyTransfer => {
                 let (transfer_v1_addr, rem) = TransferV1Addr::from_bytes(remainder)?;
-                Ok((Key::LegacyTransfer(transfer_v1_addr), rem))
+                Ok((Key::Transfer(transfer_v1_addr), rem))
             }
             KeyTag::DeployInfo => {
                 let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
@@ -1590,7 +1578,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Account(_) => unimplemented!(),
         Key::Hash(_) => unimplemented!(),
         Key::URef(_) => unimplemented!(),
-        Key::LegacyTransfer(_) => unimplemented!(),
+        Key::Transfer(_) => unimplemented!(),
         Key::DeployInfo(_) => unimplemented!(),
         Key::EraInfo(_) => unimplemented!(),
         Key::Balance(_) => unimplemented!(),
@@ -1620,7 +1608,7 @@ impl Distribution<Key> for Standard {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
-            3 => Key::LegacyTransfer(TransferV1Addr::new(rng.gen())),
+            3 => Key::Transfer(TransferV1Addr::new(rng.gen())),
             4 => Key::DeployInfo(DeployHash::from_raw(rng.gen())),
             5 => Key::EraInfo(EraId::new(rng.gen())),
             6 => Key::Balance(rng.gen()),
@@ -1710,7 +1698,7 @@ mod serde_helpers {
                 Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
                 Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
                 Key::URef(uref) => BinarySerHelper::URef(uref),
-                Key::LegacyTransfer(transfer_v1_addr) => {
+                Key::Transfer(transfer_v1_addr) => {
                     BinarySerHelper::LegacyTransfer(transfer_v1_addr)
                 }
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
@@ -1747,7 +1735,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Hash(hash_addr) => Key::Hash(hash_addr),
                 BinaryDeserHelper::URef(uref) => Key::URef(uref),
                 BinaryDeserHelper::LegacyTransfer(transfer_v1_addr) => {
-                    Key::LegacyTransfer(transfer_v1_addr)
+                    Key::Transfer(transfer_v1_addr)
                 }
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
@@ -1821,7 +1809,7 @@ mod tests {
     const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
     const HASH_KEY: Key = Key::Hash([42; 32]);
     const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
-    const LEGACY_TRANSFER_KEY: Key = Key::LegacyTransfer(TransferV1Addr::new([42; 32]));
+    const TRANSFER_KEY: Key = Key::Transfer(TransferV1Addr::new([42; 32]));
     const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
@@ -1865,7 +1853,7 @@ mod tests {
         ACCOUNT_KEY,
         HASH_KEY,
         UREF_KEY,
-        LEGACY_TRANSFER_KEY,
+        TRANSFER_KEY,
         DEPLOY_INFO_KEY,
         ERA_INFO_KEY,
         BALANCE_KEY,
@@ -1963,7 +1951,7 @@ mod tests {
             format!("Key::URef({}, READ)", HEX_STRING)
         );
         assert_eq!(
-            format!("{}", LEGACY_TRANSFER_KEY),
+            format!("{}", TRANSFER_KEY),
             format!("Key::LegacyTransfer({})", HEX_STRING)
         );
         assert_eq!(
@@ -2411,7 +2399,7 @@ mod tests {
         round_trip(&Key::Account(AccountHash::new(zeros)));
         round_trip(&Key::Hash(zeros));
         round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
-        round_trip(&Key::LegacyTransfer(TransferV1Addr::new(zeros)));
+        round_trip(&Key::Transfer(TransferV1Addr::new(zeros)));
         round_trip(&Key::DeployInfo(DeployHash::from_raw(zeros)));
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
@@ -2442,5 +2430,36 @@ mod tests {
         round_trip(&Key::NamedKey(NamedKeyAddr::default()));
         round_trip(&Key::BlockMessageCount);
         round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
+    }
+
+    #[test]
+    fn bytesrepr_serialization_roundtrip() {
+        bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&HASH_KEY);
+        bytesrepr::test_serialization_roundtrip(&UREF_KEY);
+        bytesrepr::test_serialization_roundtrip(&TRANSFER_KEY);
+        bytesrepr::test_serialization_roundtrip(&DEPLOY_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&BALANCE_KEY);
+        bytesrepr::test_serialization_roundtrip(&BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&WITHDRAW_KEY);
+        bytesrepr::test_serialization_roundtrip(&DICTIONARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&SYSTEM_ENTITY_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_SUMMARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNBOND_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHAINSPEC_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHECKSUM_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNIFIED_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&VALIDATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&DELEGATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&PACKAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SYSTEM_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_EMPTY_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_V1_WASM_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
     }
 }

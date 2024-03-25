@@ -14,7 +14,7 @@ use casper_storage::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
-use casper_types::{ProtocolVersion, U512};
+use casper_types::U512;
 
 use crate::{execution::Executor, runtime::RuntimeStack};
 pub use deploy_item::DeployItem;
@@ -40,11 +40,7 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT)
 /// pay.
 pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
 
-/// Main implementation of an execution engine state.
-///
-/// Takes an engine's configuration and a provider of a state (aka the global state) to operate on.
-/// Methods implemented on this structure are the external API intended to be used by the users such
-/// as the node, test framework, and others.
+/// The public api of the v1 execution engine, as of protocol version 2.0.0
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionEngineV1 {
     config: EngineConfig,
@@ -59,15 +55,6 @@ impl ExecutionEngineV1 {
     /// Returns engine config.
     pub fn config(&self) -> &EngineConfig {
         &self.config
-    }
-
-    /// Sets the protocol version of the config.
-    ///
-    /// NOTE: This is only useful to the WasmTestBuilder for emulating a network upgrade, and hence
-    /// is subject to change or deletion without notice.
-    #[doc(hidden)]
-    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
-        self.config.set_protocol_version(protocol_version)
     }
 
     /// Executes wasm, and that's all. Does not commit or handle payment or anything else.
@@ -86,6 +73,12 @@ impl ExecutionEngineV1 {
             authorization_keys,
         }: WasmV1Request,
     ) -> WasmV1Result {
+        // NOTE to core engineers: it is intended for the EE to ONLY execute wasm targeting the
+        // casper v1 virtual machine. it should not handle native behavior, database / global state
+        // interaction, payment processing, or anything other than its single function.
+        // A good deal of effort has been put into removing all such behaviors; please do not
+        // come along and start adding it back.
+
         let account_hash = initiator_addr.account_hash();
         let protocol_version = self.config.protocol_version();
         let tc = match state_provider.tracking_copy(state_hash) {

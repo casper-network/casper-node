@@ -25,55 +25,6 @@ use casper_types::{
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const ARG_ACCOUNT: &str = "account";
-//
-// fn get_upgraded_wasm_config() -> WasmConfig {
-//     let opcode_cost = OpcodeCosts {
-//         bit: DEFAULT_BIT_COST + 1,
-//         add: DEFAULT_ADD_COST + 1,
-//         mul: DEFAULT_MUL_COST + 1,
-//         div: DEFAULT_DIV_COST + 1,
-//         load: DEFAULT_LOAD_COST + 1,
-//         store: DEFAULT_STORE_COST + 1,
-//         op_const: DEFAULT_CONST_COST + 1,
-//         local: DEFAULT_LOCAL_COST + 1,
-//         global: DEFAULT_GLOBAL_COST + 1,
-//         control_flow: ControlFlowCosts {
-//             block: DEFAULT_CONTROL_FLOW_BLOCK_OPCODE + 1,
-//             op_loop: DEFAULT_CONTROL_FLOW_LOOP_OPCODE + 1,
-//             op_if: DEFAULT_CONTROL_FLOW_IF_OPCODE + 1,
-//             op_else: DEFAULT_CONTROL_FLOW_ELSE_OPCODE + 1,
-//             end: DEFAULT_CONTROL_FLOW_END_OPCODE + 1,
-//             br: DEFAULT_CONTROL_FLOW_BR_OPCODE + 1,
-//             br_if: DEFAULT_CONTROL_FLOW_BR_IF_OPCODE + 1,
-//             br_table: BrTableCost {
-//                 cost: DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE + 1,
-//                 size_multiplier: DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER + 1,
-//             },
-//             op_return: DEFAULT_CONTROL_FLOW_RETURN_OPCODE + 1,
-//             call: DEFAULT_CONTROL_FLOW_CALL_OPCODE + 1,
-//             call_indirect: DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE + 1,
-//             drop: DEFAULT_CONTROL_FLOW_DROP_OPCODE + 1,
-//             select: DEFAULT_CONTROL_FLOW_SELECT_OPCODE + 1,
-//         },
-//         integer_comparison: DEFAULT_INTEGER_COMPARISON_COST + 1,
-//         conversion: DEFAULT_CONVERSION_COST + 1,
-//         unreachable: DEFAULT_UNREACHABLE_COST + 1,
-//         nop: DEFAULT_NOP_COST + 1,
-//         current_memory: DEFAULT_CURRENT_MEMORY_COST + 1,
-//         grow_memory: DEFAULT_GROW_MEMORY_COST + 1,
-//     };
-//     let storage_costs = StorageCosts::default();
-//     let host_function_costs = HostFunctionCosts::default();
-//     let messages_limits = MessageLimits::default();
-//     WasmConfig::new(
-//         DEFAULT_WASM_MAX_MEMORY,
-//         DEFAULT_MAX_STACK_HEIGHT * 2,
-//         opcode_cost,
-//         storage_costs,
-//         host_function_costs,
-//         messages_limits,
-//     )
-// }
 
 #[ignore]
 #[test]

@@ -205,7 +205,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
         const HASH_KEY: Key = Key::Hash([42; 32]);
         const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
-        const LEGACY_TRANSFER_KEY: Key = Key::LegacyTransfer(TransferV1Addr::new([42; 32]));
+        const LEGACY_TRANSFER_KEY: Key = Key::Transfer(TransferV1Addr::new([42; 32]));
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);

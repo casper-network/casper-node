@@ -14,9 +14,9 @@ use crate::{
 #[derive(FromPrimitive, ToPrimitive)]
 #[repr(u8)]
 pub enum CallerTag {
-    /// Session tag.
+    /// Initiator tag.
     Initiator = 0,
-    /// StoredContract tag.
+    /// Entity tag.
     Entity,
 }
 

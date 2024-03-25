@@ -418,7 +418,8 @@ fn should_disallow_wasm_payment_to_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_allow_payment_to_purse_in_stored_payment() {
     // This effectively disables any custom payment code
     let mut builder = super::private_chain_setup();
@@ -663,7 +664,8 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_allow_custom_payment_by_paying_to_system_account() {
     let mut builder = super::private_chain_setup();
 

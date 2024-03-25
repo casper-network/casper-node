@@ -51,7 +51,7 @@ pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     /// Maximum number of associated keys (i.e. map of
-    /// [`AccountHash`](casper_types::account::AccountHash)s to
+    /// [`AccountHash`](AccountHash)s to
     /// [`Weight`](casper_types::account::Weight)s) for a single account.
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,

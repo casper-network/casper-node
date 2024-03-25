@@ -93,8 +93,8 @@ impl<'a> ExecutionKind<'a> {
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let entity_hash = match target {
-            TransactionInvocationTarget::InvocableEntity(addr) => AddressableEntityHash::new(*addr),
-            TransactionInvocationTarget::InvocableEntityAlias(alias) => {
+            TransactionInvocationTarget::ByHash(addr) => AddressableEntityHash::new(*addr),
+            TransactionInvocationTarget::ByName(alias) => {
                 let entity_key = named_keys
                     .get(alias)
                     .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.clone())))?;
@@ -107,7 +107,7 @@ impl<'a> ExecutionKind<'a> {
                     _ => return Err(Error::InvalidKeyVariant(*entity_key)),
                 }
             }
-            TransactionInvocationTarget::Package { addr, version } => {
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
                 let package_hash = PackageHash::from(*addr);
                 let package = tracking_copy.get_package(package_hash)?;
 
@@ -136,7 +136,10 @@ impl<'a> ExecutionKind<'a> {
                         entity_version_key,
                     )))?
             }
-            TransactionInvocationTarget::PackageAlias { alias, version } => {
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
+                version,
+            } => {
                 let package_key = named_keys
                     .get(alias)
                     .ok_or_else(|| Error::Exec(ExecError::NamedKeyNotFound(alias.to_string())))?;

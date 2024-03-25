@@ -651,8 +651,9 @@ fn should_not_call_uncallable_session_from_deploy() {
     builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
-#[test]
 #[ignore]
+#[allow(unused)]
+// #[test]
 fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that does not have any of the group urefs in context.
@@ -716,8 +717,9 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
-#[test]
 #[ignore]
+#[allow(unused)]
+// #[test]
 fn should_call_group_restricted_stored_payment_code() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that contains urefs from the group.

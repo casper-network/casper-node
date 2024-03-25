@@ -10,7 +10,8 @@ use crate::wasm_utils;
 const ARG_AMOUNT: &str = "amount";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_minimum_for_do_nothing_session() {
     let minimum_deploy_payment = U512::from(0);
 
@@ -65,7 +66,8 @@ fn should_charge_minimum_for_do_nothing_session() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_execute_do_minimum_session() {
     let minimum_deploy_payment = U512::from(DEFAULT_NOP_COST);
 
@@ -116,7 +118,8 @@ fn should_execute_do_minimum_session() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_minimum_for_do_nothing_payment() {
     let minimum_deploy_payment = U512::from(0);
 

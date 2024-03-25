@@ -38,7 +38,7 @@ fn should_run_ee_532_non_existent_account_regression_test() {
         message,
         Some(format!(
             "{}",
-            Error::TrackingCopy(TrackingCopyError::AccountNotFound(UNKNOWN_ADDR.into()))
+            Error::TrackingCopy(TrackingCopyError::KeyNotFound(UNKNOWN_ADDR.into()))
         )),
         "expected Error::Authorization"
     )

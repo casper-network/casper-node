@@ -678,10 +678,12 @@ where
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
         // contract.
-        self.gas(match mint_runtime.gas_counter().checked_sub(gas_counter) {
-            None => gas_counter,
-            Some(new_gas) => new_gas,
-        })?;
+        self.gas(
+            mint_runtime
+                .gas_counter()
+                .checked_sub(gas_counter)
+                .unwrap_or(gas_counter),
+        )?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -760,10 +762,12 @@ where
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
-        self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
-            None => gas_counter,
-            Some(new_gas) => new_gas,
-        })?;
+        self.gas(
+            runtime
+                .gas_counter()
+                .checked_sub(gas_counter)
+                .unwrap_or(gas_counter),
+        )?;
 
         let ret = result?;
 
@@ -985,10 +989,12 @@ where
         };
 
         // Charge for the gas spent during execution in an isolated runtime.
-        self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
-            None => gas_counter,
-            Some(new_gas) => new_gas,
-        })?;
+        self.gas(
+            runtime
+                .gas_counter()
+                .checked_sub(gas_counter)
+                .unwrap_or(gas_counter),
+        )?;
 
         // Result still contains a result, but the entrypoints logic does not exit early on errors.
         let ret = result?;
@@ -1059,15 +1065,13 @@ where
             // this is normal operation and we should return the value captured
             // in the Runtime result field.
             let downcasted_error = host_error.downcast_ref::<ExecError>();
-            match downcasted_error {
-                Some(ExecError::Ret(ref _ret_urefs)) => {
-                    return self
-                        .take_host_buffer()
-                        .ok_or(ExecError::ExpectedReturnValue);
-                }
-                Some(error) => return Err(error.clone()),
-                None => return Err(ExecError::Interpreter(host_error.to_string())),
-            }
+            return match downcasted_error {
+                Some(ExecError::Ret(ref _ret_urefs)) => self
+                    .take_host_buffer()
+                    .ok_or(ExecError::ExpectedReturnValue),
+                Some(error) => Err(error.clone()),
+                None => Err(ExecError::Interpreter(host_error.to_string())),
+            };
         }
         Err(ExecError::Interpreter(error.into()))
     }
@@ -1488,7 +1492,7 @@ where
                     // operation and we should return the value captured in the Runtime result
                     // field.
                     let downcasted_error = host_error.downcast_ref::<ExecError>();
-                    match downcasted_error {
+                    return match downcasted_error {
                         Some(ExecError::Ret(ref ret_urefs)) => {
                             // Insert extra urefs returned from call.
                             // Those returned URef's are guaranteed to be valid as they were already
@@ -1497,13 +1501,13 @@ where
 
                             // Stored contracts are expected to always call a `ret` function,
                             // otherwise it's an error.
-                            return runtime
+                            runtime
                                 .take_host_buffer()
-                                .ok_or(ExecError::ExpectedReturnValue);
+                                .ok_or(ExecError::ExpectedReturnValue)
                         }
-                        Some(error) => return Err(error.clone()),
-                        None => return Err(ExecError::Interpreter(host_error.to_string())),
-                    }
+                        Some(error) => Err(error.clone()),
+                        None => Err(ExecError::Interpreter(host_error.to_string())),
+                    };
                 }
                 Err(ExecError::Interpreter(error.into()))
             }
@@ -2851,7 +2855,7 @@ where
             Some(cl_value) => cl_value.destructure(),
         };
 
-        if serialized_value.len() > u32::max_value() as usize {
+        if serialized_value.len() > u32::MAX as usize {
             return Ok(Err(ApiError::OutOfMemory));
         }
         if serialized_value.len() > dest_size {
@@ -2899,7 +2903,7 @@ where
         let name = String::from_utf8_lossy(&name_bytes);
 
         let arg_size: u32 = match self.context.args().get(&name) {
-            Some(arg) if arg.inner_bytes().len() > u32::max_value() as usize => {
+            Some(arg) if arg.inner_bytes().len() > u32::MAX as usize => {
                 return Ok(Err(ApiError::OutOfMemory));
             }
             Some(arg) => {

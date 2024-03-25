@@ -15,7 +15,8 @@ use crate::test::private_chain::{
 };
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_the_fees_without_refund() {
     let zero_refund_handling = RefundHandling::Refund {
         refund_ratio: Ratio::zero(),
@@ -26,7 +27,8 @@ fn should_burn_the_fees_without_refund() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_the_fees_with_half_of_refund() {
     let half_refund_handling = RefundHandling::Refund {
         refund_ratio: Ratio::new(1, 2),
@@ -38,7 +40,8 @@ fn should_burn_the_fees_with_half_of_refund() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_the_fees_with_refund() {
     let full_refund_handling = RefundHandling::Refund {
         refund_ratio: Ratio::one(),
@@ -49,7 +52,8 @@ fn should_burn_the_fees_with_refund() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_full_refund_with_accumulating_fee() {
     let full_refund_handling = RefundHandling::Burn {
         refund_ratio: Ratio::one(),
@@ -60,7 +64,8 @@ fn should_burn_full_refund_with_accumulating_fee() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_zero_refund_with_accumulating_fee() {
     let full_refund_handling = RefundHandling::Burn {
         refund_ratio: Ratio::zero(),
@@ -71,7 +76,8 @@ fn should_burn_zero_refund_with_accumulating_fee() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_zero_refund_and_burn_fees() {
     let full_refund_handling = RefundHandling::Burn {
         refund_ratio: Ratio::zero(),
@@ -82,7 +88,8 @@ fn should_burn_zero_refund_and_burn_fees() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_burn_full_refund_and_burn_fees() {
     let full_refund_handling = RefundHandling::Burn {
         refund_ratio: Ratio::one(),

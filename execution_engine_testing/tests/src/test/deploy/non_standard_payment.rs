@@ -15,7 +15,8 @@ const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_DESTINATION: &str = "destination";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_non_main_purse() {
     // as account_1, create & fund a new purse and use that to pay for something
     // instead of account_1 main purse

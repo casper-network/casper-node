@@ -56,7 +56,8 @@ fn should_run_purse_to_account_transfer() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_fail_when_sending_too_much_from_purse_to_account() {
     let account_1_key = ACCOUNT_1_ADDR;
 

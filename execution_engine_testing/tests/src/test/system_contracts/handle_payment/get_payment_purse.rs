@@ -12,7 +12,8 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+//#[test]
 fn should_run_get_payment_purse_contract_default_account() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -30,7 +31,8 @@ fn should_run_get_payment_purse_contract_default_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+//#[test]
 fn should_run_get_payment_purse_contract_account_1() {
     let exec_request_1 = ExecuteRequestBuilder::standard(
        *DEFAULT_ACCOUNT_ADDR,

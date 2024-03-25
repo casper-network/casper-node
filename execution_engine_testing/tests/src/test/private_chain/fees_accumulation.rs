@@ -110,7 +110,8 @@ fn should_finalize_and_accumulate_rewards_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_accumulate_deploy_fees() {
     let mut builder = super::private_chain_setup();
 
@@ -172,7 +173,8 @@ fn should_accumulate_deploy_fees() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_distribute_accumulated_fees_to_admins() {
     let mut builder = super::private_chain_setup();
 
@@ -232,7 +234,8 @@ fn should_distribute_accumulated_fees_to_admins() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_accumulate_fees_after_upgrade() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_5);

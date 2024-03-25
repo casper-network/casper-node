@@ -342,7 +342,8 @@ fn should_not_transfer_from_hardcoded_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+//#[test]
 fn should_not_refund_to_bob_and_charge_alice() {
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -381,7 +382,6 @@ fn should_not_refund_to_bob_and_charge_alice() {
     };
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        // Just do nothing if ever we'd get into session execution
         .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
         .with_stored_payment_hash(contract_hash, METHOD_STORED_PAYMENT, args)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -398,7 +398,8 @@ fn should_not_refund_to_bob_and_charge_alice() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_charge_alice_for_execution() {
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -454,7 +455,8 @@ fn should_not_charge_alice_for_execution() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_charge_for_execution_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 

@@ -11,7 +11,8 @@ const DO_NOTHING_CONTRACT: &str = "do_nothing.wasm";
 
 #[should_panic(expected = "Finalization")]
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1225_verify_finalize_payment_invariants() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());

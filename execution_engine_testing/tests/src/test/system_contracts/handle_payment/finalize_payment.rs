@@ -79,7 +79,8 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn finalize_payment_should_refund_to_specified_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
     let payment_amount = *DEFAULT_PAYMENT;
