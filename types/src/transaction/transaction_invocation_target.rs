@@ -286,10 +286,7 @@ impl FromBytes for TransactionInvocationTarget {
             PACKAGE_TAG => {
                 let (addr, remainder) = PackageAddr::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::ByPackageHash {
-                    addr: addr,
-                    version,
-                };
+                let target = TransactionInvocationTarget::ByPackageHash { addr, version };
                 Ok((target, remainder))
             }
             PACKAGE_ALIAS_TAG => {

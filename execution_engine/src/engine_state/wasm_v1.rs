@@ -533,7 +533,7 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for PaymentInfo<'a>
             } => Ok(PaymentInfo {
                 payment: ExecutableItem::Stored(TransactionInvocationTarget::ByPackageHash {
                     addr: hash.value(),
-                    version: version.clone(),
+                    version: *version,
                 }),
                 args: args.clone(),
             }),
@@ -545,7 +545,7 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for PaymentInfo<'a>
             } => Ok(PaymentInfo {
                 payment: ExecutableItem::Stored(TransactionInvocationTarget::ByPackageName {
                     name: name.clone(),
-                    version: version.clone(),
+                    version: *version,
                 }),
                 args: args.clone(),
             }),
