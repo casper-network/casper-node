@@ -2,7 +2,7 @@
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
-    Counter, Gauge, Histogram, HistogramOpts, HistogramTimer, IntCounter, IntGauge, Registry,
+    Counter, Gauge, Histogram, HistogramOpts, HistogramTimer, IntCounter, IntGauge, Opts, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -178,6 +178,12 @@ pub(crate) trait RegistryExt {
         help: S2,
     ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error>;
 
+    /// Creates a new [`IntCounter`] from options.
+    fn new_int_counter_opts(
+        &self,
+        opts: Opts,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error>;
+
     /// Creates a new [`IntGauge`] registered to this registry.
     fn new_int_gauge<S1: Into<String>, S2: Into<String>>(
         &self,
@@ -227,6 +233,13 @@ impl RegistryExt for Registry {
         help: S2,
     ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), IntCounter::new(name, help)?)
+    }
+
+    fn new_int_counter_opts(
+        &self,
+        opts: Opts,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), IntCounter::with_opts(opts)?)
     }
 
     fn new_int_gauge<S1: Into<String>, S2: Into<String>>(

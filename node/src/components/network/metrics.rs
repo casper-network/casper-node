@@ -1,4 +1,4 @@
-use prometheus::{IntCounter, IntGauge, Registry};
+use prometheus::{IntCounter, IntGauge, Opts, Registry};
 
 use crate::utils::registered_metric::{DeprecatedMetric, RegisteredMetric, RegistryExt};
 
@@ -29,44 +29,44 @@ pub(super) struct ChannelMetrics {
 impl ChannelMetrics {
     /// Constructs a new set of channel metrics for a given channel.
     fn new(channel: Channel, registry: &Registry) -> Result<Self, prometheus::Error> {
-        let labels = format!("{{channel=\"{}\"}}", channel.metrics_name());
+        let mk_opts =
+            |name, help| Opts::new(name, help).const_label("channel", channel.metrics_name());
 
-        let request_out_count = registry.new_int_counter(
-            format!("net_request_out_count{}", labels),
-            "number of requests sent",
-        )?;
-        let request_out_bytes = registry.new_int_counter(
-            format!("net_request_out_bytes{}", labels),
+        let request_out_count = registry
+            .new_int_counter_opts(mk_opts("net_request_out_count", "number of requests sent"))?;
+
+        let request_out_bytes = registry.new_int_counter_opts(mk_opts(
+            "net_request_out_bytes",
             "payload total of requests sent",
-        )?;
-        let response_in_count = registry.new_int_counter(
-            format!("net_response_in_count{}", labels),
+        ))?;
+        let response_in_count = registry.new_int_counter_opts(mk_opts(
+            "net_response_in_count",
             "number of responses received",
-        )?;
-        let response_in_bytes = registry.new_int_counter(
-            format!("net_response_in_bytes{}", labels),
+        ))?;
+        let response_in_bytes = registry.new_int_counter_opts(mk_opts(
+            "net_response_in_bytes",
             "payload total of responses received",
-        )?;
-        let request_in_count = registry.new_int_counter(
-            format!("net_request_in_count{}", labels),
+        ))?;
+        let request_in_count = registry.new_int_counter_opts(mk_opts(
+            "net_request_in_count",
             "number of requests received",
-        )?;
-        let request_in_bytes = registry.new_int_counter(
-            format!("net_request_in_bytes{}", labels),
+        ))?;
+        let request_in_bytes = registry.new_int_counter_opts(mk_opts(
+            "net_request_in_bytes",
             "payload total of requests received",
-        )?;
-        let response_out_count = registry.new_int_counter(
-            format!("net_response_out_count{}", labels),
+        ))?;
+        let response_out_count = registry.new_int_counter_opts(mk_opts(
+            "net_response_out_count",
             "number of responses sent",
-        )?;
-        let response_out_bytes = registry.new_int_counter(
-            format!("net_response_out_bytes{}", labels),
+        ))?;
+        let response_out_bytes = registry.new_int_counter_opts(mk_opts(
+            "net_response_out_bytes",
             "payload total of responses sent",
-        )?;
-        let send_failures = registry.new_int_counter(
-            format!("net_send_failures{}", labels),
+        ))?;
+        let send_failures = registry.new_int_counter_opts(mk_opts(
+            "net_send_failures",
             "number of directly detected send failures",
-        )?;
+        ))?;
 
         Ok(Self {
             request_out_count,
