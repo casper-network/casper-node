@@ -187,7 +187,7 @@ where
             known_addresses: Default::default(),
             public_addr: None,
             chain_info: chain_info_source.into(),
-            node_key_pair: node_key_pair,
+            node_key_pair,
             identity,
             our_id,
             validator_matrix,
@@ -341,7 +341,7 @@ where
             let state = conman.read_state();
             for (consensus_key, &peer_id) in state.key_index().iter() {
                 if validators.contains(consensus_key) {
-                    self.send_message(&*state, peer_id, channel, payload.clone(), None)
+                    self.send_message(&state, peer_id, channel, payload.clone(), None)
                 }
             }
         } else {
@@ -349,7 +349,7 @@ where
             // available. Broadcast to everyone instead.
             let state = conman.read_state();
             for &peer_id in state.routing_table().keys() {
-                self.send_message(&*state, peer_id, channel, payload.clone(), None)
+                self.send_message(&state, peer_id, channel, payload.clone(), None)
             }
         }
     }
@@ -408,7 +408,7 @@ where
 
                     first
                         .into_iter()
-                        .interleave(second.into_iter())
+                        .interleave(second)
                         .take(count)
                         .cloned()
                         .collect()
@@ -577,7 +577,7 @@ where
                 // We're given a message to send. Pass on the responder so that confirmation
                 // can later be given once the message has actually been buffered.
                 self.send_message(
-                    &*conman.read_state(),
+                    &conman.read_state(),
                     *dest,
                     channel,
                     payload,

@@ -239,7 +239,7 @@ impl ValidatorMatrix {
     /// Returns the public keys of all validators in a given era.
     ///
     /// Will return `None` if the era is not known.
-    pub(crate) fn era_validators<'a>(&'a self, era_id: EraId) -> Option<Vec<PublicKey>> {
+    pub(crate) fn era_validators(&self, era_id: EraId) -> Option<Vec<PublicKey>> {
         if let Some(ref chainspec_validators) = self.chainspec_validators {
             if era_id == self.chainspec_activation_era {
                 return Some(chainspec_validators.keys().cloned().collect());
