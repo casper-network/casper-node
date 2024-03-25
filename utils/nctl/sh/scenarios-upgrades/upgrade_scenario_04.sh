@@ -63,7 +63,7 @@ function _main()
     # Workaround for https://github.com/casper-network/casper-node/pull/2101#issuecomment-923205726
     if [ "$(echo $INITIAL_PROTOCOL_VERSION | tr -d '.')" -ge "140" ]; then
         log "... using latest block hash (post version 1.4.0) [expected]"
-        UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
+        UPGRADE_HASH="$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block_with_signatures.block.Version2.hash')"
     else
         log "... using block 1 hash (pre version 1.4.0) [expected]"
         UPGRADE_HASH="$($(get_path_to_client) get-block -b 1 --node-address "$(get_node_address_rpc '2')" | jq -r '.result.block.hash')"
@@ -293,7 +293,7 @@ function _step_10()
     log_step_upgrades 10 "Asserting all nodes are running..."
 
     # true in case of bad grep which would exit 1
-    RUNNING_COUNT="$(nctl-status | grep -c 'RUNNING' || true)"
+    RUNNING_COUNT="$(nctl-status | grep -Ec 'node-[0-9]+ +RUNNING' || true)"
     if [ "$RUNNING_COUNT" != '10' ]; then
         log "ERROR: $RUNNING_COUNT of 10 nodes found running"
         log "... dumping logs"

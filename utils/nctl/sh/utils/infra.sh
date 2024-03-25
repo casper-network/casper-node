@@ -180,7 +180,7 @@ function get_node_is_up()
     local NODE_ID=${1}
     local NODE_PORT
 
-    NODE_PORT=$(get_node_port_rpc "$NODE_ID")
+    NODE_PORT=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
 
     if grep -q "$NODE_PORT (LISTEN)" <<< "$(lsof -i -P -n)"; then
         echo true

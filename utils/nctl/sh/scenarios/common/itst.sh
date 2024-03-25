@@ -296,7 +296,12 @@ function get_switch_block() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK=$(echo "$JSON_OUT" | jq '.result.block')
+        VERSIONED_BLOCK="$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
         local ERA_END="$(echo "$BLOCK" | jq '.header.era_end')"
         local ERA_ID="$(echo "$BLOCK" | jq '.header.era_id')"
         if [ "$ERA_END" = "null" ] || { [ -n "$ERA" ] && [ "$ERA_ID" != "$ERA" ]; }; then
@@ -309,6 +314,48 @@ function get_switch_block() {
     else
         echo "null"
     fi
+}
+
+# Gets the switch block of the given era from a V1 node without using casper-client.
+function get_switch_block_v1() {
+    local NODE_ID=${1}
+    # Number of blocks to walkback before erroring out
+    local WALKBACK=${2}
+    local BLOCK_HASH=${3}
+    local ERA=${4}
+
+    local BLOCK=$(get_block_v1 "$NODE_ID" "$BLOCK_HASH")
+
+    if [ "$WALKBACK" -gt 0 ]; then
+        local ERA_END="$(echo "$BLOCK" | jq '.header.era_end')"
+        local ERA_ID="$(echo "$BLOCK" | jq '.header.era_id')"
+        if [ "$ERA_END" = "null" ] || { [ -n "$ERA" ] && [ "$ERA_ID" != "$ERA" ]; }; then
+            PARENT=$(echo "$BLOCK" | jq -r '.header.parent_hash')
+            WALKBACK=$((WALKBACK - 1))
+            get_switch_block_v1 "$NODE_ID" "$WALKBACK" "$PARENT" "$ERA"
+        else
+            echo "$BLOCK"
+        fi
+    else
+        echo "null"
+    fi
+}
+
+# Gets either the latest block or one with the provided hash from a V1 node without using casper-client.
+function get_block_v1() {
+    local NODE_ID=${1}
+    local BLOCK_HASH=${2}
+
+    if [ -z "$BLOCK_HASH" ]; then
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
+            '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{}}')
+    else
+        JSON_OUT=$(curl $(get_node_address_rpc_for_curl "$NODE_ID") -s -H "Content-Type: application/json" -d \
+            '{"jsonrpc":"2.0","method":"chain_get_block","id":0,"params":{"block_identifier":{"Hash":"'$BLOCK_HASH'"}}}')
+    fi
+
+    local BLOCK=$(echo "$JSON_OUT" | jq '.result.block')
+    echo "$BLOCK"
 }
 
 function get_switch_block_equivocators() {
@@ -348,8 +395,8 @@ function verify_transfer_inclusion() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
-        BLOCK_TRANSFER_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block.body.transfer_hashes[]')
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block.Version2.header')
+        BLOCK_TRANSFER_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.mint[]')
         if grep -q "${TRANSFER}" <<< "$BLOCK_TRANSFER_HASHES"; then
             log "Transfer: $TRANSFER found in block!"
         else
@@ -382,8 +429,8 @@ function verify_wasm_inclusion() {
     fi
 
     if [ "$WALKBACK" -gt 0 ]; then
-        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block.header')
-        BLOCK_DEPLOY_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block.body.deploy_hashes[]')
+        BLOCK_HEADER=$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block.Version2.header')
+        BLOCK_DEPLOY_HASHES=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.standard[]')
         if grep -q "${DEPLOY_HASH}" <<< "$BLOCK_DEPLOY_HASHES"; then
             log "DEPLOY: $DEPLOY_HASH found in block!"
         else
@@ -417,11 +464,18 @@ function assert_node_proposed() {
 
     while true; do
         OUTPUT=$($(get_path_to_client) get-block --node-address "$(get_node_address_rpc)")
-        PROPOSER=$(echo "$OUTPUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
+        VERSIONED_BLOCK="$(echo "$OUTPUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
+
+        PROPOSER=$(echo "$BLOCK" | jq -r '.body.proposer')
 
         if [ "$PROPOSER" == "$PUBLIC_KEY_HEX" ]; then
             log "Node-$NODE_ID created a block!"
-            log "$OUTPUT"
+            log "$VERSIONED_BLOCK"
             log "Proposer: $PROPOSER"
             break;
         else
@@ -455,7 +509,13 @@ function assert_no_proposal_walkback() {
 
     while [ "$CHECK_HASH" != "$WALKBACK_HASH" ]; do
         JSON_OUT=$($(get_path_to_client) get-block --node-address $(get_node_address_rpc "$COMPARE_NODE") -b "$CHECK_HASH")
-        PROPOSER=$(echo "$JSON_OUT" | jq -r '.result.block_with_signatures.block.Version2.body.proposer')
+        VERSIONED_BLOCK="$(echo "$JSON_OUT" | jq '.result.block_with_signatures.block')"
+        if jq -e '.Version2' <<< "$VERSIONED_BLOCK" >/dev/null; then
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version2')"
+        else
+            BLOCK="$(echo "$VERSIONED_BLOCK" | jq '.Version1')"
+        fi
+        PROPOSER=$(echo "$BLOCK" | jq -r '.body.proposer')
         if [ "$PROPOSER" = "$PUBLIC_KEY_HEX" ]; then
             log "ERROR: Node proposal found!"
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
@@ -464,7 +524,7 @@ function assert_no_proposal_walkback() {
         else
             log "BLOCK HASH $CHECK_HASH: PROPOSER=$PROPOSER, NODE_KEY_HEX=$PUBLIC_KEY_HEX"
             unset CHECK_HASH
-            CHECK_HASH=$(echo $JSON_OUT | jq -r '.result.block.header.parent_hash')
+            CHECK_HASH=$(echo $BLOCK | jq -r '.header.parent_hash')
             # normalize
             CHECK_HASH=$(echo $CHECK_HASH | tr '[:upper:]' '[:lower:]')
             log "Checking next hash: $CHECK_HASH"

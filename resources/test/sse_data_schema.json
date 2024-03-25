@@ -626,6 +626,7 @@
       "required": [
         "accumulated_seed",
         "body_hash",
+        "current_gas_price",
         "era_id",
         "height",
         "parent_hash",
@@ -711,6 +712,12 @@
               "$ref": "#/definitions/ProtocolVersion"
             }
           ]
+        },
+        "current_gas_price": {
+          "description": "The gas price of the era",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },
@@ -720,6 +727,7 @@
       "required": [
         "equivocators",
         "inactive_validators",
+        "next_era_gas_price",
         "next_era_validator_weights",
         "rewards"
       ],
@@ -752,6 +760,11 @@
           "additionalProperties": {
             "$ref": "#/definitions/U512"
           }
+        },
+        "next_era_gas_price": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },
@@ -4745,7 +4758,7 @@
           "description": "The identity of the entity that produced the message.",
           "allOf": [
             {
-              "$ref": "#/definitions/AddressableEntityHash"
+              "$ref": "#/definitions/EntityAddr"
             }
           ]
         },
@@ -4782,6 +4795,50 @@
           "minimum": 0.0
         }
       }
+    },
+    "EntityAddr": {
+      "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
+      "oneOf": [
+        {
+          "description": "The address for a system entity account or contract.",
+          "type": "object",
+          "required": [
+            "System"
+          ],
+          "properties": {
+            "System": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The address of an entity that corresponds to an Account.",
+          "type": "object",
+          "required": [
+            "Account"
+          ],
+          "properties": {
+            "Account": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The address of an entity that corresponds to a Userland smart contract.",
+          "type": "object",
+          "required": [
+            "SmartContract"
+          ],
+          "properties": {
+            "SmartContract": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "MessagePayload": {
       "description": "The payload of the message emitted by an addressable entity during execution.",

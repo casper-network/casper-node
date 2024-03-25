@@ -272,6 +272,11 @@ function setup_asset_chainspec()
     SCRIPT+=("toml.dump(cfg, open('$PATH_TO_CHAINSPEC', 'w'));")
 
     python3 -c "${SCRIPT[*]}"
+
+    # Set administrator for private chains.
+    PBK_KEY="PBK_FAUCET"
+    ACCOUNT_KEY="$(get_account_key "$NCTL_ACCOUNT_TYPE_FAUCET")"
+    sed -i "s/""$PBK_KEY""/""$ACCOUNT_KEY""/" "$PATH_TO_CHAINSPEC"
 }
 
 #######################################

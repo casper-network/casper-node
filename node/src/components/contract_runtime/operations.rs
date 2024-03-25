@@ -60,11 +60,19 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
+    current_gas_price: u8,
+    next_era_gas_price: Option<u8>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
+        });
+    }
+
+    if executable_block.era_report.is_some() && next_era_gas_price.is_none() {
+        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {
+            era_id: executable_block.era_id.successor(),
         });
     }
 
@@ -152,6 +160,20 @@ pub fn execute_finalized_block(
     }
 
     for transaction in executable_block.transactions {
+        /*
+        In the go forward, see deploy and transactions, the new transactions specify
+        the target lane in the block, currently there are 4, staking, transfer, install
+        and everything else. Legacy deploy is either a native transfer which is one of the lanes
+        and everything else is not specified and get the default older behavior. The price
+        for all native transfer is set in chainspec.
+
+        What price does it go in, what slot, what is the multiplier, and thats the price
+        Then we check the balance for the payer, and put a hold for that amount.
+        And if we can't put the hold we can't engage the virtual machine
+        Record the error and move on, and charge the penalty payment if any
+
+        This happens here before any engagement of the virtual machine.
+        */
         let transaction_hash = transaction.hash();
         if transaction.is_native_mint() {
             // native transfers are routed to the data provider
@@ -475,17 +497,21 @@ pub fn execute_finalized_block(
         }
     }
 
-    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
-        let next_era_id = executable_block.era_id.successor();
-        maybe_step_effects_and_upcoming_era_validators
-            .as_ref()
-            .and_then(
-                |StepEffectsAndUpcomingEraValidators {
-                     upcoming_era_validators,
-                     ..
-                 }| upcoming_era_validators.get(&next_era_id).cloned(),
-            )
-    };
+    let next_era_id = executable_block.era_id.successor();
+    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> =
+        match maybe_step_effects_and_upcoming_era_validators.as_ref() {
+            None => None,
+            Some(effects_and_validators) => {
+                match effects_and_validators
+                    .upcoming_era_validators
+                    .get(&next_era_id)
+                    .cloned()
+                {
+                    Some(validators) => next_era_gas_price.map(|gas_price| (validators, gas_price)),
+                    None => None,
+                }
+            }
+        };
 
     let era_end = match (
         executable_block.era_report,
@@ -497,12 +523,13 @@ pub fn execute_finalized_block(
                 equivocators,
                 inactive_validators,
             }),
-            Some(next_era_validator_weights),
+            Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
             inactive_validators,
             next_era_validator_weights,
             executable_block.rewards.unwrap_or_default(),
+            next_era_gas_price,
         )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             if maybe_era_report.is_none() {
@@ -540,6 +567,7 @@ pub fn execute_finalized_block(
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
+        current_gas_price,
     ));
 
     let tc = match data_access_layer.tracking_copy(state_root_hash) {

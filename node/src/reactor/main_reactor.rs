@@ -65,7 +65,10 @@ use crate::{
             TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorInfoRequest},
+        requests::{
+            AcceptTransactionRequest, ChainspecRawBytesRequest, ContractRuntimeRequest,
+            ReactorInfoRequest,
+        },
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -896,6 +899,26 @@ impl reactor::Reactor for MainReactor {
                 );
                 self.validator_matrix.register_eras(upcoming_era_validators);
                 Effects::new()
+            }
+            MainEvent::ContractRuntimeAnnouncement(
+                ContractRuntimeAnnouncement::NextEraGasPrice {
+                    era_id,
+                    next_era_gas_price,
+                },
+            ) => {
+                info!(
+                    "New era gas price {} for era {}",
+                    next_era_gas_price, era_id
+                );
+                let event = MainEvent::ContractRuntimeRequest(
+                    ContractRuntimeRequest::UpdateRuntimePrice(era_id, next_era_gas_price),
+                );
+                let mut effects = self.dispatch_event(effect_builder, rng, event);
+                let reactor_event = MainEvent::TransactionBuffer(
+                    transaction_buffer::Event::UpdateEraGasPrice(era_id, next_era_gas_price),
+                );
+                effects.extend(self.dispatch_event(effect_builder, rng, reactor_event));
+                effects
             }
 
             MainEvent::TrieRequestIncoming(req) => reactor::wrap_effects(

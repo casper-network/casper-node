@@ -13,7 +13,7 @@ use casper_storage::{
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, Digest, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -118,7 +118,7 @@ pub enum BlockExecutionError {
         /// An optional `EraReport` we tried to use to construct an `EraEnd`.
         maybe_era_report: Option<InternalEraReport>,
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
-        maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+        maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)>,
     },
     /// An error that occurred while interacting with lmdb.
     #[error(transparent)]
@@ -140,4 +140,6 @@ pub enum BlockExecutionError {
     /// Missing checksum registry.
     #[error("Missing checksum registry")]
     MissingChecksumRegistry,
+    #[error("Failed to get new era gas price when executing switch block")]
+    FailedToGetNewEraGasPrice { era_id: EraId },
 }

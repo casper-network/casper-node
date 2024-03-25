@@ -1771,61 +1771,6 @@ where
         Ok(Ok(()))
     }
 
-    fn add_session_version(
-        &mut self,
-        entry_points: EntryPoints,
-    ) -> Result<Result<(), ApiError>, ExecError> {
-        if !self.context.entity().is_account_kind() {
-            return Err(ExecError::InvalidContext);
-        }
-
-        let package_hash = self.context.entity().package_hash();
-
-        let package = self.context.get_package(package_hash)?;
-
-        let byte_code_hash = self.context.new_hash_address()?;
-
-        let byte_code = {
-            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
-        };
-
-        let entity_hash =
-            if let Some(entity_hash) = self.context.get_entity_key().into_entity_hash() {
-                entity_hash
-            } else {
-                return Err(ExecError::UnexpectedKeyVariant(
-                    self.context.get_entity_key(),
-                ));
-            };
-
-        let entity = self.context.entity().clone();
-
-        let updated_session_entity =
-            entity.update_session_entity(ByteCodeHash::new(byte_code_hash), entry_points);
-
-        self.context.metered_write_gs_unsafe(
-            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
-            byte_code,
-        )?;
-
-        let entity_kind = updated_session_entity.entity_kind();
-
-        if entity_kind != EntityKind::SmartContract {
-            return Err(ExecError::InvalidContext);
-        }
-
-        let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash.value());
-
-        self.context
-            .metered_write_gs_unsafe(Key::AddressableEntity(entity_addr), updated_session_entity)?;
-
-        self.context
-            .metered_write_gs_unsafe(package_hash, package)?;
-
-        Ok(Ok(()))
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version(
         &mut self,
@@ -1929,7 +1874,7 @@ where
             .metered_write_gs_unsafe(package_hash, package)?;
 
         for (_, topic_hash) in previous_message_topics.iter() {
-            let topic_key = Key::message_topic(entity_hash.into(), *topic_hash);
+            let topic_key = Key::message_topic(entity_addr, *topic_hash);
             let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
                 0,
                 self.context.get_blocktime(),
@@ -3502,7 +3447,7 @@ where
         let entity_addr = self
             .context
             .get_entity_key()
-            .into_entity_hash()
+            .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
         let topic_name_hash = crypto::blake2b(topic_name).into();

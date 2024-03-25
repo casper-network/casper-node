@@ -15,11 +15,11 @@ function main()
         $(get_path_to_client) get-block \
             --node-address "$(get_node_address_rpc)" \
             --block-identifier "$BLOCK_HASH" \
-            | jq '.result.block'
+            | jq '.result.block_with_signatures.block'
     else
         $(get_path_to_client) get-block \
             --node-address "$(get_node_address_rpc)" \
-            | jq '.result.block'
+            | jq '.result.block_with_signatures.block'
     fi
 }
 
