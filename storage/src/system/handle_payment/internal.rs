@@ -51,7 +51,7 @@ pub fn get_refund_purse<R: RuntimeProvider>(
 /// Any dust amounts are added to the fee.
 fn calculate_overpayment_and_fee(
     limit: Gas,
-    gas_price: Option<u64>,
+    gas_price: Option<u8>,
     cost: U512,
     consumed: Gas,
     available_balance: U512,
@@ -136,7 +136,7 @@ fn calculate_overpayment_and_fee(
 pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
     limit: Gas,
-    gas_price: Option<u64>,
+    gas_price: Option<u8>,
     cost: U512,
     consumed: Gas,
     source_purse: URef,

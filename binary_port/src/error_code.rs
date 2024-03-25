@@ -43,7 +43,7 @@ pub enum ErrorCode {
     #[error("unsupported request")]
     UnsupportedRequest = 11,
     /// Dictionary URef not found.
-    #[cfg_attr(feature = "std", error("dictionary URef not found"))]
+    #[error("dictionary URef not found")]
     DictionaryURefNotFound = 12,
     /// This node has no complete blocks.
     #[error("no complete blocks")]

@@ -17,7 +17,7 @@ pub(crate) struct TransactionFootprint {
     /// The estimated gas consumption.
     pub(crate) gas_limit: Gas,
     /// The gas tolerance.
-    pub(crate) gas_tolerance: u64,
+    pub(crate) gas_price_tolerance: u8,
     /// The bytesrepr serialized length.
     pub(crate) size_estimate: usize,
     /// The transaction category.
@@ -38,7 +38,8 @@ impl TransactionFootprint {
         let cost_table = &chainspec.system_costs_config;
         // IMPORTANT: block inclusion is always calculated based upon gas price multiple = 1
         // Do not confuse actual cost with retail cost.
-        let gas_price: Option<u64> = None;
+        let gas_price: Option<u8> = None;
+        let gas_price_tolerance = transaction.gas_price_tolerance()?;
         let gas_limit = transaction.gas_limit(cost_table, gas_price)?;
         let category = transaction.category();
         let transaction_hash = transaction.hash();
@@ -51,6 +52,7 @@ impl TransactionFootprint {
             transaction_hash,
             body_hash,
             gas_limit,
+            gas_price_tolerance,
             size_estimate,
             category,
             timestamp,
@@ -90,7 +92,7 @@ impl TransactionFootprint {
         matches!(self.category, TransactionCategory::InstallUpgrade)
     }
 
-    pub(crate) fn gas_tolerance(&self) -> u64 {
-        self.gas_tolerance
+    pub(crate) fn gas_price_tolerance(&self) -> u8 {
+        self.gas_price_tolerance
     }
 }

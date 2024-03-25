@@ -240,7 +240,7 @@ impl ExecutionResult {
     pub fn check_forced_transfer(
         &self,
         payment_purse_balance: Motes,
-        gas_price: u64,
+        gas_price: u8,
     ) -> Option<ForcedTransferResult> {
         let payment_result_cost = match Motes::from_gas(self.gas(), gas_price) {
             Some(cost) => cost,

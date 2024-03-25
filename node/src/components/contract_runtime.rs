@@ -41,7 +41,9 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig};
+use casper_types::{
+    ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},

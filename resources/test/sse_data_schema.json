@@ -1651,7 +1651,7 @@
                 "gas_price": {
                   "description": "User-specified gas_price (minimum 1).",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
                 },
                 "standard_payment": {
@@ -1680,7 +1680,7 @@
                 "gas_price_tolerance": {
                   "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
                 }
               },

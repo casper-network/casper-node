@@ -200,7 +200,7 @@ impl<'a> ContractQueryView<'a> {
             .query(
                 None,
                 Key::message_topic(
-                    EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                    EntityAddr::new_smart_contract(self.contract_hash.value()),
                     topic_name_hash,
                 ),
                 &[],
@@ -227,7 +227,7 @@ impl<'a> ContractQueryView<'a> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
             Key::message(
-                EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                EntityAddr::new_smart_contract(self.contract_hash.value()),
                 topic_name_hash,
                 message_index,
             ),

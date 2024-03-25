@@ -65,7 +65,7 @@ pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
-pub const DEFAULT_GAS_PRICE: u64 = 1;
+pub const DEFAULT_GAS_PRICE: u8 = 1;
 /// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
 /// Timestamp increment in milliseconds.

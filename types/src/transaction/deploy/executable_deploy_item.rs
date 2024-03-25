@@ -345,7 +345,7 @@ impl ExecutableDeployItem {
     }
 
     /// Returns the payment amount from args (if any) as Gas.
-    pub fn payment_amount(&self, conv_rate: u64) -> Option<Gas> {
+    pub fn payment_amount(&self, conv_rate: u8) -> Option<Gas> {
         let cl_value = self.args().get(ARG_AMOUNT)?;
         let motes = cl_value.clone().into_t::<U512>().ok()?;
         Gas::from_motes(Motes::new(motes), conv_rate)

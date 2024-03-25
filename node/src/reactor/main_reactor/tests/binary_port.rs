@@ -8,11 +8,14 @@ use std::{
 
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
-    ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, LastProgress, NetworkName,
-    NodeStatus, PayloadType, ReactorStateName, RecordId, Uptime,
+    ConsensusValidatorChanges, DictionaryItemIdentifier, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    LastProgress, NetworkName, NodeStatus, PayloadType, ReactorStateName, RecordId, Uptime,
 };
+use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
+    account::{AccountHash, ActionThresholds, AssociatedKeys},
+    addressable_entity::{NamedKeyAddr, NamedKeyValue},
     bytesrepr::{FromBytes, ToBytes},
     execution::{Effects, TransformKindV2, TransformV2},
     testing::TestRng,

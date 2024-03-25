@@ -113,7 +113,7 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
-    + EntityAddr::ENTITY_ADDR_LENGTH
+    + EntityAddr::LENGTH
     + TOPIC_NAME_HASH_LENGTH
     + U8_SERIALIZED_LENGTH
     + U32_SERIALIZED_LENGTH;
@@ -1827,11 +1827,11 @@ mod tests {
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        EntityAddr::new_contract_entity_addr([42; 32]),
+        EntityAddr::new_smart_contract([42; 32]),
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
-        EntityAddr::new_contract_entity_addr([42u8; 32]),
+        EntityAddr::new_smart_contract([42u8; 32]),
         TopicNameHash::new([2; 32]),
         15,
     ));
@@ -2415,11 +2415,11 @@ mod tests {
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
-            EntityAddr::new_contract_entity_addr(zeros),
+            EntityAddr::new_smart_contract(zeros),
             nines.into(),
         )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            EntityAddr::new_contract_entity_addr(zeros),
+            EntityAddr::new_smart_contract(zeros),
             nines.into(),
             1,
         )));

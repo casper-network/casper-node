@@ -11,9 +11,9 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, NodeStatus, PayloadType, ReactorStateName, RecordId,
-    TransactionWithExecutionInfo,
+    DictionaryItemIdentifier, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
+    ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -23,10 +23,12 @@ use casper_storage::{
     global_state::trie::TrieRaw,
 };
 use casper_types::{
+    addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, Key,Peers, ProtocolVersion, SignedBlock, StoredValue,TimeDiff,
-    Transaction,
+    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers, ProtocolVersion,
+    SignedBlock, StoredValue, TimeDiff, Transaction,
 };
+
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -46,6 +48,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
+    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -62,7 +65,7 @@ use crate::{
 use self::{error::Error, metrics::Metrics};
 
 use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
-use crate::contract_runtime::SpeculativeExecutionResult;
+
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
@@ -393,7 +396,7 @@ async fn get_dictionary_item_by_legacy_named_key<REv>(
     entity_key: Key,
     dictionary_name: String,
     dictionary_item_key: String,
-) -> Result<Option<GlobalStateQueryResult>, binary_port::ErrorCode>
+) -> Result<Option<GlobalStateQueryResult>, ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
@@ -405,18 +408,18 @@ where
             let named_keys = match &*value {
                 StoredValue::Account(account) => account.named_keys(),
                 StoredValue::Contract(contract) => contract.named_keys(),
-                _ => return Err(binary_port::ErrorCode::DictionaryURefNotFound),
+                _ => return Err(ErrorCode::DictionaryURefNotFound),
             };
             let Some(uref) = named_keys.get(&dictionary_name).and_then(Key::as_uref) else {
-                return Err(binary_port::ErrorCode::DictionaryURefNotFound);
+                return Err(ErrorCode::DictionaryURefNotFound);
             };
             let dictionary_key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
             get_global_state_item(effect_builder, state_root_hash, dictionary_key, vec![]).await
         }
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
-            Err(binary_port::ErrorCode::DictionaryURefNotFound)
+            Err(ErrorCode::DictionaryURefNotFound)
         }
-        QueryResult::Failure(_) => Err(binary_port::ErrorCode::QueryFailedToExecute),
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
     }
 }
 
@@ -426,29 +429,29 @@ async fn get_dictionary_item_by_named_key<REv>(
     entity_addr: EntityAddr,
     dictionary_name: String,
     dictionary_item_key: String,
-) -> Result<Option<GlobalStateQueryResult>, binary_port::ErrorCode>
+) -> Result<Option<GlobalStateQueryResult>, ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
     let Ok(key_addr) = NamedKeyAddr::new_from_string(entity_addr, dictionary_name) else {
-        return Err(binary_port::ErrorCode::InternalError);
+        return Err(ErrorCode::InternalError);
     };
     let req = QueryRequest::new(state_root_hash, Key::NamedKey(key_addr), vec![]);
     match effect_builder.query_global_state(req).await {
         QueryResult::Success { value, .. } => {
             let StoredValue::NamedKey(key_val) = &*value  else {
-                return Err(binary_port::ErrorCode::DictionaryURefNotFound);
+                return Err(ErrorCode::DictionaryURefNotFound);
             };
             let Ok(Key::URef(uref)) = key_val.get_key() else {
-                return Err(binary_port::ErrorCode::DictionaryURefNotFound);
+                return Err(ErrorCode::DictionaryURefNotFound);
             };
             let dictionary_key = Key::dictionary(uref, dictionary_item_key.as_bytes());
             get_global_state_item(effect_builder, state_root_hash, dictionary_key, vec![]).await
         }
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
-            Err(binary_port::ErrorCode::DictionaryURefNotFound)
+            Err(ErrorCode::DictionaryURefNotFound)
         }
-        QueryResult::Failure(_) => Err(binary_port::ErrorCode::QueryFailedToExecute),
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
     }
 }
 
@@ -457,7 +460,7 @@ async fn get_global_state_item<REv>(
     state_root_hash: Digest,
     base_key: Key,
     path: Vec<String>,
-) -> Result<Option<GlobalStateQueryResult>, binary_port::ErrorCode>
+) -> Result<Option<GlobalStateQueryResult>, ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
@@ -465,22 +468,12 @@ where
         .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
         .await
     {
-        QueryResult::Success { value, proofs } => BinaryResponse::from_value(
-            GlobalStateQueryResult::new(*value, proofs),
-            protocol_version,
-        ),
-        QueryResult::RootNotFound => {
-            let error_code = ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
+        QueryResult::Success { value, proofs } => {
+            Ok(Some(GlobalStateQueryResult::new(*value, proofs)))
         }
-        QueryResult::ValueNotFound(_) => {
-            let error_code = ErrorCode::NotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
-        }
-        QueryResult::Failure(_) => {
-            let error_code = ErrorCode::FailedQuery;
-            BinaryResponse::new_error(error_code, protocol_version)
-        }
+        QueryResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        QueryResult::ValueNotFound(_) => Err(ErrorCode::NotFound),
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
     }
 }
 

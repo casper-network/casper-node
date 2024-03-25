@@ -46,7 +46,7 @@ impl Gas {
     /// Converts the given `motes` to `Gas` by dividing them by `conv_rate`.
     ///
     /// Returns `None` if `motes_per_unit_of_gas == 0`.
-    pub fn from_motes(motes: Motes, motes_per_unit_of_gas: u64) -> Option<Self> {
+    pub fn from_motes(motes: Motes, motes_per_unit_of_gas: u8) -> Option<Self> {
         motes
             .value()
             .checked_div(U512::from(motes_per_unit_of_gas))

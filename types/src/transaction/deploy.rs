@@ -14,6 +14,9 @@ use core::{
     hash,
 };
 
+#[cfg(any(feature = "std", test))]
+use std::convert::TryFrom;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
@@ -1159,9 +1162,10 @@ impl GasLimited for Deploy {
     fn gas_limit(
         &self,
         system_costs: &SystemConfig,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
     ) -> Result<Gas, Self::Error> {
-        let user_specified_price = self.gas_price();
+        let user_specified_price =
+            u8::try_from(self.gas_price()).map_err(|_| Self::Error::UnableToCalculateGasLimit)?;
         let actual_price = match gas_price {
             Some(price) => price.max(user_specified_price),
             None => user_specified_price,
@@ -1186,6 +1190,10 @@ impl GasLimited for Deploy {
             Some(gas) => Ok(gas),
             None => Err(InvalidDeploy::MissingPaymentAmount),
         }
+    }
+
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
+        u8::try_from(self.gas_price()).map_err(|_| Self::Error::UnableToCalculateGasLimit)
     }
 }
 

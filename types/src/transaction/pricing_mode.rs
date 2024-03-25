@@ -38,7 +38,7 @@ pub enum PricingMode {
         /// User-specified payment amount.
         payment_amount: u64,
         /// User-specified gas_price (minimum 1).
-        gas_price: u64,
+        gas_price: u8,
         /// Standard payment.
         standard_payment: bool,
     },
@@ -48,7 +48,7 @@ pub enum PricingMode {
         /// User-specified gas_price tolerance (minimum 1).
         /// This is interpreted to mean "do not include this transaction in a block
         /// if the current gas price is greater than this number"
-        gas_price_tolerance: u64,
+        gas_price_tolerance: u8,
     },
     /// The payment for this transaction was previously reserved, as proven by
     /// the receipt hash (this is for future use, not currently implemented).
@@ -177,7 +177,7 @@ impl FromBytes for PricingMode {
         match tag {
             CLASSIC_TAG => {
                 let (payment_amount, remainder) = u64::from_bytes(remainder)?;
-                let (gas_price, remainder) = u64::from_bytes(remainder)?;
+                let (gas_price, remainder) = u8::from_bytes(remainder)?;
                 let (standard_payment, remainder) = bool::from_bytes(remainder)?;
                 Ok((
                     PricingMode::Classic {
@@ -189,7 +189,7 @@ impl FromBytes for PricingMode {
                 ))
             }
             FIXED_TAG => {
-                let (gas_price_tolerance, remainder) = u64::from_bytes(remainder)?;
+                let (gas_price_tolerance, remainder) = u8::from_bytes(remainder)?;
                 Ok((
                     PricingMode::Fixed {
                         gas_price_tolerance,

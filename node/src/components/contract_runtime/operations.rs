@@ -102,7 +102,7 @@ pub fn execute_finalized_block(
         .collect_vec();
     let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
-    let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
+    let gas_price = Some(current_gas_price);
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -621,15 +621,21 @@ pub fn execute_finalized_block(
     }
 
     // the rest of this is post process, picking out data bits to return to caller
-    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
-        let next_era_id = executable_block.era_id.successor();
-        step_outcome.as_ref().and_then(
-            |StepOutcome {
-                 upcoming_era_validators,
-                 ..
-             }| upcoming_era_validators.get(&next_era_id).cloned(),
-        )
-    };
+    let next_era_id = executable_block.era_id.successor();
+    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> =
+        match step_outcome.as_ref() {
+            None => None,
+            Some(effects_and_validators) => {
+                match effects_and_validators
+                    .upcoming_era_validators
+                    .get(&next_era_id)
+                    .cloned()
+                {
+                    Some(validators) => next_era_gas_price.map(|gas_price| (validators, gas_price)),
+                    None => None,
+                }
+            }
+        };
 
     let era_end = match (
         executable_block.era_report,

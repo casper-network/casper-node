@@ -4,8 +4,6 @@ use std::collections::BTreeSet;
 
 use casper_types::{account::AccountHash, Deploy, DeployHash, ExecutableDeployItem};
 
-type GasPrice = u64;
-
 /// Definition of a deploy with all the details that make it possible to execute it.
 /// Corresponds to the similarly-named IPC protobuf message.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -18,7 +16,7 @@ pub struct DeployItem {
     /// Payment code.
     pub payment: ExecutableDeployItem,
     /// Gas price specified for this deploy by the user.
-    pub gas_price: GasPrice,
+    pub gas_price: u8,
     /// List of accounts that signed this deploy.
     pub authorization_keys: BTreeSet<AccountHash>,
     /// A unique identifier of the deploy.
@@ -32,7 +30,7 @@ impl DeployItem {
         address: AccountHash,
         session: ExecutableDeployItem,
         payment: ExecutableDeployItem,
-        gas_price: GasPrice,
+        gas_price: u8,
         authorization_keys: BTreeSet<AccountHash>,
         deploy_hash: DeployHash,
     ) -> Self {
@@ -65,7 +63,7 @@ impl From<Deploy> for DeployItem {
             address,
             deploy.session().clone(),
             deploy.payment().clone(),
-            deploy.header().gas_price(),
+            deploy.header().gas_price() as u8,
             authorization_keys,
             DeployHash::new(*deploy.hash().inner()),
         )

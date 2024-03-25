@@ -51,7 +51,7 @@ impl Motes {
     /// Converts the given `gas` to `Motes` by multiplying them by `conv_rate`.
     ///
     /// Returns `None` if an arithmetic overflow occurred.
-    pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
+    pub fn from_gas(gas: Gas, conv_rate: u8) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
             .map(Self::new)

@@ -1,11 +1,9 @@
-use alloc::{string::String, vec::Vec};
-
+#[cfg(test)]
+use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
 
-#[cfg(test)]
-use crate::testing::TestRng;
-use crate::{
+use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     DictionaryAddr, EntityAddr, HashAddr, URef,
@@ -241,7 +239,7 @@ impl FromBytes for DictionaryItemIdentifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestRng;
+    use casper_types::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

@@ -1,26 +1,11 @@
 use num_rational::Ratio;
-use once_cell::sync::Lazy;
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, error, info};
-
-use casper_execution_engine::engine_state::ExecutionEngineV1;
-use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
-};
-use casper_types::{Chainspec, EraId, Key};
 
 use crate::{
     contract_runtime::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState,
-        StepOutcome,
+        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
@@ -45,7 +30,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///

@@ -10,7 +10,6 @@ use casper_types::{
 
 use super::dictionary_item_identifier::DictionaryItemIdentifier;
 
-
 const ITEM_TAG: u8 = 0;
 const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;

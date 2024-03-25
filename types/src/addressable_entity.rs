@@ -64,7 +64,6 @@ use crate::{
     checksummed_hex,
     contract_messages::TopicNameHash,
     contracts::{Contract, ContractHash},
-    serde_helpers,
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
@@ -909,44 +908,16 @@ impl Distribution<EntityKind> for Standard {
     }
 }
 
-/// The address of an [`AddressableEntity`] which contains the 32 bytes and tagging information.
+/// The address for an AddressableEntity which contains the 32 bytes and tagging information.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "The hex-encoded address and kind of the addressable entity.")
-)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntityAddr {
     /// The address for a system entity account or contract.
-    #[serde(with = "serde_helpers::raw_32_byte_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded entity address identifying a system contract."
-        )
-    )]
     System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to an Account.
-    #[serde(with = "serde_helpers::raw_32_byte_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded entity address identifying an account."
-        )
-    )]
     Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
-    /// The address of an entity that corresponds to a smart contract.
-    #[serde(with = "serde_helpers::raw_32_byte_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded entity address identifying a smart contract."
-        )
-    )]
+    /// The address of an entity that corresponds to a Userland smart contract.
     SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
 }
 

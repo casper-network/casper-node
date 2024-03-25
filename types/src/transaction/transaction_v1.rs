@@ -581,7 +581,7 @@ impl Categorized for TransactionV1 {
 impl GasLimited for TransactionV1 {
     type Error = InvalidTransactionV1;
 
-    fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u64>) -> Result<Gas, Self::Error> {
+    fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u8>) -> Result<Gas, Self::Error> {
         let gas = match self.header().pricing_mode() {
             PricingMode::Classic {
                 payment_amount,
@@ -659,6 +659,10 @@ impl GasLimited for TransactionV1 {
             }
         };
         Ok(gas)
+    }
+
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
+        Ok(self.header.gas_price_tolerance())
     }
 }
 

@@ -356,7 +356,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(
-            EntityAddr::new_contract_entity_addr([1; KEY_HASH_LENGTH]),
+            EntityAddr::new_smart_contract([1; KEY_HASH_LENGTH]),
             message_payload,
             "test_topic".to_string(),
             TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),

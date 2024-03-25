@@ -391,7 +391,7 @@ impl TransactionBuffer {
             .filter(|(th, _)| !self.dead.contains(th))
             .filter(|(_, (_, maybe_data))| match maybe_data {
                 None => false,
-                Some(footprint) => footprint.gas_tolerance() >= (current_era_gas_price as u64),
+                Some(footprint) => footprint.gas_price_tolerance() >= (current_era_gas_price),
             })
             .filter_map(|(th, (_, maybe_data))| {
                 maybe_data

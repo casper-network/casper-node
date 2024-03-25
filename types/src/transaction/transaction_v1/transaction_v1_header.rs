@@ -151,8 +151,8 @@ impl TransactionV1Header {
         self.timestamp.saturating_add(self.ttl)
     }
 
-    /// Returns the gas tolerance for the given transaction.
-    pub fn gas_tolerance(&self) -> u64 {
+    /// Returns the gas price tolerance for the given transaction.
+    pub fn gas_price_tolerance(&self) -> u8 {
         match self.pricing_mode {
             PricingMode::Classic { gas_price, .. } => gas_price,
             PricingMode::Fixed {
@@ -161,7 +161,7 @@ impl TransactionV1Header {
             } => gas_price_tolerance,
             PricingMode::Reserved { .. } => {
                 // TODO: Change this when reserve gets implemented.
-                0u64
+                0u8
             }
         }
     }
