@@ -1030,12 +1030,6 @@ pub trait StateProvider {
             handle_payment_mode,
         }: HandlePaymentRequest,
     ) -> HandlePaymentResult {
-        // let mut tc = match self.tracking_copy(state_hash) {
-        //     Ok(Some(tracking_copy)) => tracking_copy,
-        //     Ok(None) => return HandlePaymentResult::RootNotFound,
-        //     Err(err) => return HandlePaymentResult::Failure(TrackingCopyError::Storage(err)),
-        // };
-
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
             Ok(None) => return HandlePaymentResult::RootNotFound,

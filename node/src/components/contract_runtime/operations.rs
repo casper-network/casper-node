@@ -199,7 +199,7 @@ pub fn execute_finalized_block(
                 (DIRECT_CONTRACT, STANDARD_PAYMENT) => {
                     // TODO: get the contract, check the entry point indicated in the transaction
                     //      if the contract pays for itself, use its main purse
-                    // <-- contract paying for things wire up goes here -->
+                    // <-- contracts paying for things wire up goes here -->
                     // use scratch_state to read the contract & check it here
                     // if the contract does not exist, the entrypoint does not exist,
                     //      the entrypoint does not pay for itself, and every other sad path

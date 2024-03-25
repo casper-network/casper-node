@@ -1874,10 +1874,10 @@
           "description": "Hex-encoded entity address identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntity"
+            "ByHash"
           ],
           "properties": {
-            "InvocableEntity": {
+            "ByHash": {
               "type": "string"
             }
           },
@@ -1887,10 +1887,10 @@
           "description": "The alias identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntityAlias"
+            "ByName"
           ],
           "properties": {
-            "InvocableEntityAlias": {
+            "ByName": {
               "type": "string"
             }
           },
@@ -1900,10 +1900,10 @@
           "description": "The address and optional version identifying the package.",
           "type": "object",
           "required": [
-            "Package"
+            "ByPackageHash"
           ],
           "properties": {
-            "Package": {
+            "ByPackageHash": {
               "type": "object",
               "required": [
                 "addr"
@@ -1932,16 +1932,16 @@
           "description": "The alias and optional version identifying the package.",
           "type": "object",
           "required": [
-            "PackageAlias"
+            "ByPackageName"
           ],
           "properties": {
-            "PackageAlias": {
+            "ByPackageName": {
               "type": "object",
               "required": [
-                "alias"
+                "name"
               ],
               "properties": {
-                "alias": {
+                "name": {
                   "description": "The package alias.",
                   "type": "string"
                 },
