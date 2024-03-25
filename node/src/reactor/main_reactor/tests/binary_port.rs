@@ -739,7 +739,7 @@ fn get_dictionary_item_by_addr(state_root_hash: Digest, addr: DictionaryAddr) ->
         name: "get_dictionary_item_by_addr",
         request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::DictionaryItem(addr.clone()),
+            identifier: DictionaryItemIdentifier::DictionaryItem(addr),
         })),
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
@@ -766,7 +766,7 @@ fn get_dictionary_item_by_seed_uref(
         request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             identifier: DictionaryItemIdentifier::URef {
-                seed_uref: seed_uref.clone(),
+                seed_uref,
                 dictionary_item_key: dictionary_item_key.clone(),
             },
         })),
