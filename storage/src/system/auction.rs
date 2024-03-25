@@ -94,6 +94,9 @@ pub trait Auction:
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
         {
+            if validator_bid.inactive() {
+                validator_bid.activate();
+            }
             validator_bid.increase_stake(amount)?;
             validator_bid.with_delegation_rate(delegation_rate);
             (*validator_bid.bonding_purse(), validator_bid)
@@ -606,6 +609,12 @@ pub trait Auction:
             let total_reward = Ratio::from(reward_amount);
             let recipient = seigniorage_recipients
                 .get(&proposer)
+                .cloned()
+                .or_else(|| {
+                    let bid_key = BidAddr::from(proposer.clone()).into();
+                    let validator_bid = detail::read_validator_bid(self, &bid_key).ok()?;
+                    detail::seigniorage_recipient(self, &validator_bid).ok()
+                })
                 .ok_or(Error::ValidatorNotFound)?;
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
