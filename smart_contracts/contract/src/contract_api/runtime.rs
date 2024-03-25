@@ -193,9 +193,7 @@ pub fn get_named_arg<T: FromBytes>(name: &str) -> T {
 /// Note that this is only relevant to contracts stored on-chain since a contract deployed directly
 /// is not invoked with any arguments.
 pub fn try_get_named_arg<T: FromBytes>(name: &str) -> Option<T> {
-    let Some(arg_size) = get_named_arg_size(name) else {
-        return None
-    };
+    let arg_size = get_named_arg_size(name)?;
     let arg_bytes = if arg_size > 0 {
         let res = {
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
