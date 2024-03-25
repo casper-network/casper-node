@@ -4450,7 +4450,7 @@ fn should_fail_bid_public_key_change_if_conflicting_validator_bid_exists() {
     assert!(matches!(
         error,
         Error::Exec(ExecError::Revert(ApiError::AuctionError(auction_error)))
-        if auction_error == AuctionError::ChangeBidPublicKey as u8));
+        if auction_error == AuctionError::ValidatorBidExistsAlready as u8));
 }
 
 #[ignore]

@@ -726,7 +726,7 @@ pub trait Auction:
         public_key: PublicKey,
         new_public_key: PublicKey,
     ) -> Result<(), Error> {
-        let validator_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+        let validator_account_hash = AccountHash::from(&public_key);
 
         // check that the caller is the current bid's owner
         if !self.is_allowed_session_caller(&validator_account_hash) {
@@ -740,7 +740,7 @@ pub trait Auction:
         // verify that a bid for the new key does not exist yet
         let new_validator_bid_addr = BidAddr::from(new_public_key.clone());
         if self.read_bid(&new_validator_bid_addr.into())?.is_some() {
-            return Err(Error::ChangeBidPublicKey);
+            return Err(Error::ValidatorBidExistsAlready);
         }
 
         debug!("changing validator bid {validator_bid_addr} public key from {public_key} to {new_public_key}");
