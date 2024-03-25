@@ -156,8 +156,7 @@ pub fn execute_finalized_block(
             //      load contract & check entry point, if it pays use contract main purse
             //  if custom payment, attempt execute custom payment
             //      if custom payment fails, take remaining balance up to amount
-            //      currently contracts cannot provide custom payment, but considering adding it in
-            // future
+            //      currently contracts cannot provide custom payment, but possible future use
             match (is_account_session, is_standard_payment) {
                 (ACCOUNT_SESSION, STANDARD_PAYMENT) => {
                     // this is the typical scenario; the initiating account pays using its main

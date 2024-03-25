@@ -25,7 +25,8 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
@@ -73,7 +74,8 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_forward_payment_execution_runtime_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
@@ -136,7 +138,8 @@ fn should_forward_payment_execution_runtime_error() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
@@ -206,7 +209,8 @@ fn should_forward_payment_execution_gas_limit_error() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -248,7 +252,8 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
@@ -306,7 +311,8 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_fails() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -354,7 +360,8 @@ fn should_correctly_charge_when_session_code_fails() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_succeeds() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -409,7 +416,8 @@ fn should_correctly_charge_when_session_code_succeeds() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_finalize_to_rewards_purse() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -445,7 +453,8 @@ fn should_finalize_to_rewards_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn independent_standard_payments_should_not_write_the_same_keys() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;

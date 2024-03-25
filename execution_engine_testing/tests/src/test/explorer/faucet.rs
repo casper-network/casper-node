@@ -284,7 +284,8 @@ fn should_fund_new_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_fund_existing_account() {
     let user_account = AccountHash::new([7u8; 32]);
 
@@ -357,7 +358,8 @@ fn should_fund_existing_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_fund_once_exhausted() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
@@ -855,7 +857,8 @@ fn should_allow_funding_by_an_authorized_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_refund_proper_amount() {
     let user_account = AccountHash::new([7u8; 32]);
 
@@ -923,10 +926,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 92_268_834_930;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_740_460;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_322_580;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_828_500;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_842_307_540;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_733_980;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_317_720;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_815_540;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);

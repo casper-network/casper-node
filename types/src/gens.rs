@@ -110,7 +110,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
-        transfer_v1_addr_arb().prop_map(Key::LegacyTransfer),
+        transfer_v1_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
@@ -128,7 +128,7 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
         u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
         u2_slice_32().prop_map(Key::Hash),
         u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
-        u2_slice_32().prop_map(|bytes| Key::LegacyTransfer(TransferV1Addr::new(bytes))),
+        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferV1Addr::new(bytes))),
         u2_slice_32().prop_map(Key::Dictionary),
     ]
 }

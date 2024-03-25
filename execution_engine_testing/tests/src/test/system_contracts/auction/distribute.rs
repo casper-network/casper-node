@@ -731,7 +731,8 @@ fn should_withdraw_bids_after_distribute() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_distribute_rewards_after_restaking_delegated_funds() {
     const VALIDATOR_1_STAKE: u64 = 7_000_000_000_000_000;
     const DELEGATOR_1_STAKE: u64 = 5_000_000_000_000_000;

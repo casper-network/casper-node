@@ -339,22 +339,23 @@ impl WasmV1Result {
 
     /// Converts a transfer result to an execution result.
     pub fn from_transfer_result(transfer_result: TransferResult, consumed: Gas) -> Option<Self> {
+        // NOTE: for native / wasmless operations limit and consumed are always equal, and
+        // we can get away with simplifying to one or the other here.
+        // this is NOT true of wasm based operations however.
         match transfer_result {
             TransferResult::RootNotFound => None,
-            TransferResult::Success { transfers, effects } => {
-                Some(WasmV1Result {
-                    transfers,
-                    limit: consumed, // TODO - check this is legit.
-                    consumed,
-                    effects,
-                    messages: Messages::default(),
-                    error: None,
-                })
-            }
+            TransferResult::Success { transfers, effects } => Some(WasmV1Result {
+                transfers,
+                limit: consumed,
+                consumed,
+                effects,
+                messages: Messages::default(),
+                error: None,
+            }),
             TransferResult::Failure(te) => {
                 Some(WasmV1Result {
                     transfers: vec![],
-                    limit: consumed, // TODO - check this is legit.
+                    limit: consumed,
                     consumed,
                     effects: Effects::default(), // currently not returning effects on failure
                     messages: Messages::default(),
@@ -516,11 +517,39 @@ impl<'a> TryFrom<(&'a ExecutableDeployItem, &'a DeployHash)> for PaymentInfo<'a>
                     })
                 }
             }
-            ExecutableDeployItem::StoredContractByHash { .. }
-            | ExecutableDeployItem::StoredContractByName { .. }
-            | ExecutableDeployItem::StoredVersionedContractByHash { .. }
-            | ExecutableDeployItem::StoredVersionedContractByName { .. }
-            | ExecutableDeployItem::Transfer { .. } => Err(InvalidRequest::UnexpectedVariant(
+            ExecutableDeployItem::StoredContractByHash { hash, args, .. } => Ok(PaymentInfo {
+                payment: ExecutableItem::Stored(TransactionInvocationTarget::ByHash(hash.value())),
+                args: args.clone(),
+            }),
+            ExecutableDeployItem::StoredContractByName { name, args, .. } => Ok(PaymentInfo {
+                payment: ExecutableItem::Stored(TransactionInvocationTarget::ByName(name.clone())),
+                args: args.clone(),
+            }),
+            ExecutableDeployItem::StoredVersionedContractByHash {
+                args,
+                hash,
+                version,
+                ..
+            } => Ok(PaymentInfo {
+                payment: ExecutableItem::Stored(TransactionInvocationTarget::ByPackageHash {
+                    addr: hash.value(),
+                    version: *version,
+                }),
+                args: args.clone(),
+            }),
+            ExecutableDeployItem::StoredVersionedContractByName {
+                name,
+                version,
+                args,
+                ..
+            } => Ok(PaymentInfo {
+                payment: ExecutableItem::Stored(TransactionInvocationTarget::ByPackageName {
+                    name: name.clone(),
+                    version: *version,
+                }),
+                args: args.clone(),
+            }),
+            ExecutableDeployItem::Transfer { .. } => Err(InvalidRequest::UnexpectedVariant(
                 transaction_hash,
                 "payment item".to_string(),
             )),

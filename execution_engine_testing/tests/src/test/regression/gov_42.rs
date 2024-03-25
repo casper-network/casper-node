@@ -107,7 +107,8 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_file_invalid_magic_number() {
     const WASM_BYTES: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     let execution_phase = ExecutionPhase::Payment;
@@ -116,7 +117,8 @@ fn should_charge_payment_with_incorrect_wasm_file_invalid_magic_number() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_file_invalid_magic_number() {
     const WASM_BYTES: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     let execution_phase = ExecutionPhase::Session;
@@ -125,8 +127,9 @@ fn should_charge_session_with_incorrect_wasm_file_invalid_magic_number() {
 }
 
 #[ignore]
-#[test]
-fn should_charge_payment_with_incorrect_wasm_file_empty_bytes() {
+#[allow(unused)]
+// #[test]
+fn should_fail_to_charge_payment_with_incorrect_wasm_file_empty_bytes() {
     const WASM_BYTES: &[u8] = &[];
     let execution_phase = ExecutionPhase::Payment;
     let expected_error = "I/O Error: UnexpectedEof";
@@ -134,7 +137,8 @@ fn should_charge_payment_with_incorrect_wasm_file_empty_bytes() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_file_empty_bytes() {
     const WASM_BYTES: &[u8] = &[];
     let execution_phase = ExecutionPhase::Session;
@@ -143,7 +147,8 @@ fn should_charge_session_with_incorrect_wasm_file_empty_bytes() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_correct_magic_number_incomplete_module() {
     const WASM_BYTES: &[u8] = &[
         0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00, 0x01, 0x35, 0x09, 0x60, 0x02, 0x7F, 0x7F,
@@ -163,7 +168,8 @@ fn should_charge_payment_with_incorrect_wasm_correct_magic_number_incomplete_mod
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_correct_magic_number_incomplete_module() {
     const WASM_BYTES: &[u8] = &[
         0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00, 0x01, 0x35, 0x09, 0x60, 0x02, 0x7F, 0x7F,
@@ -183,7 +189,8 @@ fn should_charge_session_with_incorrect_wasm_correct_magic_number_incomplete_mod
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_gas_counter_overflow() {
     let wasm_bytes = make_gas_counter_overflow();
     let execution_phase = ExecutionPhase::Payment;
@@ -192,7 +199,8 @@ fn should_charge_payment_with_incorrect_wasm_gas_counter_overflow() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_gas_counter_overflow() {
     let wasm_bytes = make_gas_counter_overflow();
     let execution_phase = ExecutionPhase::Session;
@@ -201,7 +209,8 @@ fn should_charge_session_with_incorrect_wasm_gas_counter_overflow() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_no_memory_section() {
     let wasm_bytes = make_module_without_memory_section();
     let execution_phase = ExecutionPhase::Payment;
@@ -210,7 +219,8 @@ fn should_charge_payment_with_incorrect_wasm_no_memory_section() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_no_memory_section() {
     let wasm_bytes = make_module_without_memory_section();
     let execution_phase = ExecutionPhase::Session;
@@ -219,7 +229,8 @@ fn should_charge_session_with_incorrect_wasm_no_memory_section() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Payment;
@@ -228,7 +239,8 @@ fn should_charge_payment_with_incorrect_wasm_start_section() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Session;

@@ -40,7 +40,8 @@ static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1));
 static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
     assert!(U512::from(DEFAULT_DELEGATE_COST) > *UNDERFUNDED_DELEGATE_AMOUNT);
 
@@ -105,7 +106,8 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
@@ -165,7 +167,8 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 

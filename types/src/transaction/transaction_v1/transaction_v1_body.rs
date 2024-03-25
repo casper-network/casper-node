@@ -512,7 +512,7 @@ mod tests {
 
         let mut check = |entry_point: TransactionEntryPoint| {
             let stored_target = TransactionTarget::new_stored(
-                TransactionInvocationTarget::InvocableEntity([0; 32]),
+                TransactionInvocationTarget::ByHash([0; 32]),
                 TransactionRuntime::VmCasperV1,
             );
             let session_target = TransactionTarget::new_session(

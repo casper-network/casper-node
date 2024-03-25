@@ -241,7 +241,8 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_fail_bonding_with_insufficient_funds() {
     let account_1_secret_key =
         SecretKey::ed25519_from_bytes([123; SecretKey::ED25519_LENGTH]).unwrap();

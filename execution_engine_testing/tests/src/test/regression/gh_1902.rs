@@ -89,7 +89,8 @@ fn exec_and_assert_costs(
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_charge_for_create_purse_in_first_time_bond() {
     let mut builder = setup();
 

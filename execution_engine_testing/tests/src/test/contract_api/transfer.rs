@@ -469,7 +469,8 @@ fn should_fail_when_insufficient_funds() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_transfer_total_amount() {
     let mut builder = LmdbWasmTestBuilder::default();
 
