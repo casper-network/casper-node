@@ -8,8 +8,8 @@ fi
 read SEMVER_CURRENT <<< "$(ls -d $NODE_DIR/bin/*/ | sort -rV | head -n 1)"
 SEMVER_CURRENT=$(basename $SEMVER_CURRENT)
 
-if [ ! -f $NODE_DIR/bin/$SEMVER_CURRENT/casper-sidecar ]; then
-    echo "no sidecar binary to run, exiting"
+if [ ! -f $NODE_DIR/bin/$SEMVER_CURRENT/casper-sidecar ] || [ ! -f $NODE_DIR/config/$SEMVER_CURRENT/sidecar.toml ]; then
+    echo "no sidecar binary/config to run, exiting"
     exit 0
 fi
 

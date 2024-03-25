@@ -41,10 +41,11 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig};
+use casper_types::{ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
+    contract_runtime::types::EraPrice,
     effect::{
         announcements::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
@@ -93,6 +94,7 @@ pub(crate) struct ContractRuntime {
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    current_gas_price: EraPrice,
 }
 
 impl Debug for ContractRuntime {
@@ -110,6 +112,15 @@ impl ContractRuntime {
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState::default()));
+
+        let current_gas_price = match chainspec.protocol_config.activation_point {
+            ActivationPoint::EraId(era_id) => {
+                EraPrice::new(era_id, chainspec.vacancy_config.min_gas_price)
+            }
+            ActivationPoint::Genesis(_) => {
+                EraPrice::new(EraId::new(0), chainspec.vacancy_config.min_gas_price)
+            }
+        };
 
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
@@ -148,6 +159,7 @@ impl ContractRuntime {
             exec_queue: Default::default(),
             chainspec,
             data_access_layer,
+            current_gas_price,
         })
     }
 
@@ -531,6 +543,7 @@ impl ContractRuntime {
                         let chainspec = Arc::clone(&self.chainspec);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        let current_gas_price = self.current_gas_price.gas_price();
                         effects.extend(
                             exec_or_requeue(
                                 data_access_layer,
@@ -544,6 +557,7 @@ impl ContractRuntime {
                                 executable_block,
                                 key_block_height_for_activation_point,
                                 meta_block_state,
+                                current_gas_price,
                             )
                             .ignore(),
                         )
@@ -576,6 +590,13 @@ impl ContractRuntime {
                     responder.respond(result).await
                 }
                 .ignore()
+            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder
+                .respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id))
+                .ignore(),
+            ContractRuntimeRequest::UpdateRuntimePrice(era_id, new_gas_price) => {
+                self.current_gas_price = EraPrice::new(era_id, new_gas_price);
+                Effects::new()
             }
         }
     }
@@ -666,6 +687,11 @@ impl ContractRuntime {
     #[cfg(test)]
     pub(crate) fn data_access_layer(&self) -> Arc<DataAccessLayer<LmdbGlobalState>> {
         Arc::clone(&self.data_access_layer)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_era_price(&self) -> EraPrice {
+        self.current_gas_price
     }
 }
 

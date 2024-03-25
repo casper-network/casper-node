@@ -137,7 +137,7 @@ function do_stop_network() {
     ACTIVATE_ERA="$(get_chain_era)"
     log "emergency upgrade activation era = $ACTIVATE_ERA"
     local ERA_ID=$((ACTIVATE_ERA - 1))
-    local BLOCK=$(get_switch_block "1" "32" "" "$ERA_ID")
+    local BLOCK=$(get_switch_block_v1 "1" "32" "" "$ERA_ID")
     # read the latest global state hash
     STATE_HASH=$(echo "$BLOCK" | jq -r '.header.state_root_hash')
     # save the LFB hash to use as the trusted hash for the restart
@@ -370,6 +370,6 @@ done
 
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 TEST_PROTOCOL_VERSION="1_4_8"
-TEST_PROTOCOL_VERSION_2="1_5_0"
+TEST_PROTOCOL_VERSION_2="2_0_0"
 
 main

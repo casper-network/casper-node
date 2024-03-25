@@ -9,8 +9,8 @@ use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CLValue, CoreConfig,
-    Digest, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs,
-    StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
+    RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -199,7 +199,10 @@ impl<'a> ContractQueryView<'a> {
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(self.contract_hash, topic_name_hash),
+                Key::message_topic(
+                    EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                    topic_name_hash,
+                ),
                 &[],
             )
             .expect("should query");
@@ -223,7 +226,11 @@ impl<'a> ContractQueryView<'a> {
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(self.contract_hash, topic_name_hash, message_index),
+            Key::message(
+                EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                topic_name_hash,
+                message_index,
+            ),
             &[],
         )?;
 

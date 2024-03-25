@@ -128,7 +128,7 @@ function _main()
         # Sidecar isn't managed by the casper node launcher, so we need to restart it manually
         for NODE_ID in $(seq 1 "$COUNT_NODES"); do
             PROCESS_NAME=$(get_process_name_of_sidecar_in_group "$NODE_ID")
-            supervisorctl -c "$(get_path_net_supervisord_cfg)" restart "$PROCESS_NAME" > /dev/null 2>&1
+            supervisorctl -c "$(get_path_net_supervisord_cfg)" restart "$PROCESS_NAME" > /dev/null 2>&1 || true
         done
 
         sleep 10.0

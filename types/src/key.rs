@@ -113,7 +113,7 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
-    + KEY_HASH_LENGTH
+    + EntityAddr::ENTITY_ADDR_LENGTH
     + TOPIC_NAME_HASH_LENGTH
     + U8_SERIALIZED_LENGTH
     + U32_SERIALIZED_LENGTH;
@@ -1019,11 +1019,7 @@ impl Key {
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
     /// `entity_addr`, `topic_name_hash` and message `index`.
-    pub fn message(
-        entity_addr: AddressableEntityHash,
-        topic_name_hash: TopicNameHash,
-        index: u32,
-    ) -> Key {
+    pub fn message(entity_addr: EntityAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
         Key::Message(MessageAddr::new_message_addr(
             entity_addr,
             topic_name_hash,
@@ -1033,10 +1029,7 @@ impl Key {
 
     /// Creates a new [`Key::Message`] variant that identifies a message topic based on an
     /// `entity_addr` and a hash of the topic name.
-    pub fn message_topic(
-        entity_addr: AddressableEntityHash,
-        topic_name_hash: TopicNameHash,
-    ) -> Key {
+    pub fn message_topic(entity_addr: EntityAddr, topic_name_hash: TopicNameHash) -> Key {
         Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
     }
 
@@ -1834,11 +1827,11 @@ mod tests {
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        AddressableEntityHash::new([42; 32]),
+        EntityAddr::new_contract_entity_addr([42; 32]),
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
-        AddressableEntityHash::new([42u8; 32]),
+        EntityAddr::new_contract_entity_addr([42u8; 32]),
         TopicNameHash::new([2; 32]),
         15,
     ));
@@ -2045,12 +2038,15 @@ mod tests {
         );
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
-            format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
+            format!(
+                "Key::Message(addressable-entity-contract-{}-{})",
+                HEX_STRING, HEX_STRING
+            )
         );
         assert_eq!(
             format!("{}", MESSAGE_KEY),
             format!(
-                "Key::Message({}-{}-{})",
+                "Key::Message(addressable-entity-contract-{}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
         );
@@ -2419,11 +2415,11 @@ mod tests {
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
-            zeros.into(),
+            EntityAddr::new_contract_entity_addr(zeros),
             nines.into(),
         )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            zeros.into(),
+            EntityAddr::new_contract_entity_addr(zeros),
             nines.into(),
             1,
         )));

@@ -10,5 +10,5 @@ refund_handling = { type = "refund", refund_ratio = [1, 1] }
 # How fees are paid
 fee_handling = { type = "accumulate" }
 # System account is an administrator
-administrators = ["01f137c5b0c252a028cdb3eccf62946c5340837c66a892fc5079a7c1854f0f962f"]
+administrators = ["PBK_FAUCET"]
 compute_rewards = false

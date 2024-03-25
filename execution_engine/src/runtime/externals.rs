@@ -604,20 +604,6 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
-            FunctionIndex::AddSessionVersion => {
-                // args(0) = pointer to entrypoints in wasm memory
-                // args(1) = size of entrypoints in wasm memory
-                let (entry_points_ptr, entry_points_size) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.add_session_version,
-                    [entry_points_ptr, entry_points_size],
-                )?;
-
-                let entry_points: EntryPoints =
-                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
-                let ret = self.add_session_version(entry_points)?;
-                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
-            }
             FunctionIndex::AddPackageVersion => {
                 // args(0)  = pointer to package hash in wasm memory
                 // args(1)  = size of package hash in wasm memory

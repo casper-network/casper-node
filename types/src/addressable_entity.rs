@@ -927,7 +927,7 @@ pub enum EntityAddr {
             description = "Hex-encoded entity address identifying a system contract."
         )
     )]
-    System(HashAddr),
+    System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to an Account.
     #[serde(with = "serde_helpers::raw_32_byte_array")]
     #[cfg_attr(
@@ -937,7 +937,7 @@ pub enum EntityAddr {
             description = "Hex-encoded entity address identifying an account."
         )
     )]
-    Account(HashAddr),
+    Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to a smart contract.
     #[serde(with = "serde_helpers::raw_32_byte_array")]
     #[cfg_attr(
@@ -947,7 +947,7 @@ pub enum EntityAddr {
             description = "Hex-encoded entity address identifying a smart contract."
         )
     )]
-    SmartContract(HashAddr),
+    SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
 }
 
 impl EntityAddr {

@@ -56,11 +56,19 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
+    current_gas_price: u8,
+    next_era_gas_price: Option<u8>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
+        });
+    }
+
+    if executable_block.era_report.is_some() && next_era_gas_price.is_none() {
+        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {
+            era_id: executable_block.era_id.successor(),
         });
     }
 
@@ -633,12 +641,13 @@ pub fn execute_finalized_block(
                 equivocators,
                 inactive_validators,
             }),
-            Some(next_era_validator_weights),
+            Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
             inactive_validators,
             next_era_validator_weights,
             executable_block.rewards.unwrap_or_default(),
+            next_era_gas_price,
         )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             if maybe_era_report.is_none() {
@@ -676,6 +685,7 @@ pub fn execute_finalized_block(
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
+        current_gas_price,
     ));
 
     // TODO: this should just use the data_access_layer.query mechanism to avoid

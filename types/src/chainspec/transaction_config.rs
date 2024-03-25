@@ -182,6 +182,7 @@ impl FromBytes for TransactionConfig {
         let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (transaction_v1_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
+
         let config = TransactionConfig {
             max_ttl,
             max_transaction_size,

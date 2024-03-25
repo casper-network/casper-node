@@ -1065,7 +1065,7 @@ impl EraSupervisor {
                     current_block_height.saturating_sub(signature_rewards_max_delay);
 
                 let awaitable_appendable_block =
-                    effect_builder.request_appendable_block(block_context.timestamp());
+                    effect_builder.request_appendable_block(block_context.timestamp(), era_id);
                 let awaitable_blocks_with_metadata = async move {
                     effect_builder
                         .collect_past_blocks_with_metadata(

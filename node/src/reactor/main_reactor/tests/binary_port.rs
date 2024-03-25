@@ -1,4 +1,10 @@
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    convert::TryInto,
+    iter,
+    sync::Arc,
+    time::Duration,
+};
 
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
@@ -8,11 +14,12 @@ use casper_binary_port::{
 };
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
+    execution::{Effects, TransformKindV2, TransformV2},
     testing::TestRng,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
-    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers,
-    ProtocolVersion, SecretKey, SignedBlock, StoredValue, Transaction, TransactionV1Builder,
-    Transfer,
+    Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
+    BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
+    EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
+    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -20,6 +27,7 @@ use juliet::{
     rpc::{JulietRpcClient, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
+use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tracing::error;
 
@@ -35,11 +43,18 @@ use super::{InitialStakes, TestFixture};
 
 const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
 
+const TEST_DICT_NAME: &str = "test_dict";
+const TEST_DICT_ITEM_KEY: &str = "test_key";
+
 struct TestData {
     rng: TestRng,
     chainspec_raw_bytes: ChainspecRawBytes,
     highest_block: Block,
     secret_signing_key: Arc<SecretKey>,
+    state_root_hash: Digest,
+    test_account_hash: AccountHash,
+    test_entity_addr: EntityAddr,
+    test_dict_seed_uref: URef,
 }
 
 fn network_produced_blocks(
@@ -87,9 +102,7 @@ async fn setup() -> (
         .next()
         .expect("should have at least one node");
     let secret_signing_key = first_node
-        .reactor()
-        .inner()
-        .inner()
+        .main_reactor()
         .validator_matrix
         .secret_signing_key()
         .clone();
@@ -106,8 +119,17 @@ async fn setup() -> (
         })
         .expect("should have highest block");
 
+    let effects = test_effects(&mut rng);
+
+    let state_root_hash = first_node
+        .main_reactor()
+        .contract_runtime()
+        .data_access_layer()
+        .commit(*highest_block.state_root_hash(), effects.effects)
+        .expect("should commit effects");
+
     // Get the binary port address.
-    let binary_port_addr = net.nodes()[net.nodes().keys().next().unwrap()]
+    let binary_port_addr = first_node
         .main_reactor()
         .binary_port
         .bind_address()
@@ -148,9 +170,70 @@ async fn setup() -> (
                 chainspec_raw_bytes,
                 highest_block,
                 secret_signing_key,
+                state_root_hash,
+                test_account_hash: effects.test_account_hash,
+                test_entity_addr: effects.test_entity_addr,
+                test_dict_seed_uref: effects.test_dict_seed_uref,
             },
         ),
     )
+}
+
+fn test_effects(rng: &mut TestRng) -> TestEffects {
+    // we set up some basic data for global state tests, including an account and a dictionary
+    let account_hash = AccountHash::new(rng.gen());
+    let entity_addr = rng.gen();
+    let dict_seed_uref = rng.gen();
+    let dict_key = Key::dictionary(dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes());
+    let dict_value = CLValueDictionary::new(
+        CLValue::from_t(0).unwrap(),
+        dict_seed_uref.addr().to_vec(),
+        TEST_DICT_ITEM_KEY.as_bytes().to_vec(),
+    );
+
+    let mut effects = Effects::new();
+    effects.push(TransformV2::new(
+        dict_key,
+        TransformKindV2::Write(StoredValue::CLValue(CLValue::from_t(dict_value).unwrap())),
+    ));
+    effects.push(TransformV2::new(
+        Key::Account(account_hash),
+        TransformKindV2::Write(StoredValue::Account(Account::new(
+            account_hash,
+            iter::once((TEST_DICT_NAME.to_owned(), Key::URef(dict_seed_uref)))
+                .collect::<BTreeMap<_, _>>()
+                .into(),
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        ))),
+    ));
+    effects.push(TransformV2::new(
+        Key::NamedKey(
+            NamedKeyAddr::new_from_string(entity_addr, TEST_DICT_NAME.to_owned())
+                .expect("should create named key addr"),
+        ),
+        TransformKindV2::Write(StoredValue::NamedKey(
+            NamedKeyValue::from_concrete_values(
+                Key::URef(dict_seed_uref),
+                TEST_DICT_NAME.to_owned(),
+            )
+            .expect("should create named key value"),
+        )),
+    ));
+    TestEffects {
+        effects,
+        test_account_hash: account_hash,
+        test_entity_addr: entity_addr,
+        test_dict_seed_uref: dict_seed_uref,
+    }
+}
+
+struct TestEffects {
+    effects: Effects,
+    test_account_hash: AccountHash,
+    test_entity_addr: EntityAddr,
+    test_dict_seed_uref: URef,
 }
 
 struct TestCase {
@@ -209,6 +292,10 @@ async fn binary_port_component() {
                 chainspec_raw_bytes: network_chainspec_raw_bytes,
                 highest_block,
                 secret_signing_key,
+                state_root_hash,
+                test_account_hash,
+                test_entity_addr,
+                test_dict_seed_uref,
             },
         ),
     ) = setup().await;
@@ -227,12 +314,36 @@ async fn binary_port_component() {
         next_upgrade(),
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
+        latest_switch_block_header(),
         node_status(),
         get_block_header(highest_block.clone_header()),
         get_block_transfers(highest_block.clone_header()),
-        get_era_summary(*highest_block.state_root_hash()),
-        get_all_bids(*highest_block.state_root_hash()),
-        get_trie(*highest_block.state_root_hash()),
+        get_era_summary(state_root_hash),
+        get_all_bids(state_root_hash),
+        get_trie(state_root_hash),
+        get_dictionary_item_by_addr(
+            state_root_hash,
+            *Key::dictionary(test_dict_seed_uref, TEST_DICT_ITEM_KEY.as_bytes())
+                .as_dictionary()
+                .unwrap(),
+        ),
+        get_dictionary_item_by_seed_uref(
+            state_root_hash,
+            test_dict_seed_uref,
+            TEST_DICT_ITEM_KEY.to_owned(),
+        ),
+        get_dictionary_item_by_legacy_named_key(
+            state_root_hash,
+            test_account_hash,
+            TEST_DICT_NAME.to_owned(),
+            TEST_DICT_ITEM_KEY.to_owned(),
+        ),
+        get_dictionary_item_by_named_key(
+            state_root_hash,
+            test_entity_addr,
+            TEST_DICT_NAME.to_owned(),
+            TEST_DICT_ITEM_KEY.to_owned(),
+        ),
         try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
@@ -495,6 +606,21 @@ fn chainspec_raw_bytes(network_chainspec_raw_bytes: ChainspecRawBytes) -> TestCa
     }
 }
 
+fn latest_switch_block_header() -> TestCase {
+    TestCase {
+        name: "latest_switch_block_header",
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::LatestSwitchBlockHeader.into(),
+            key: vec![],
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+                header.is_switch_block()
+            })
+        }),
+    }
+}
+
 fn node_status() -> TestCase {
     TestCase {
         name: "node_status",
@@ -514,6 +640,7 @@ fn node_status() -> TestCase {
                         && node_status.block_sync.historical().is_none()
                         && node_status.block_sync.forward().is_none()
                         && matches!(node_status.reactor_state.into_inner().as_str(), "Validate")
+                        && node_status.latest_switch_block_hash.is_some()
                 },
             )
         }),
@@ -598,6 +725,99 @@ fn get_trie(digest: Digest) -> TestCase {
                 response,
                 Some(PayloadType::GetTrieFullResult),
                 |res| matches!(res.into_inner(), Some(_)),
+            )
+        }),
+    }
+}
+
+fn get_dictionary_item_by_addr(state_root_hash: Digest, addr: DictionaryAddr) -> TestCase {
+    TestCase {
+        name: "get_dictionary_item_by_addr",
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            identifier: DictionaryItemIdentifier::DictionaryItem(addr),
+        })),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| matches!(res.into_inner(), (StoredValue::CLValue(_), _)),
+            )
+        }),
+    }
+}
+
+fn get_dictionary_item_by_seed_uref(
+    state_root_hash: Digest,
+    seed_uref: URef,
+    dictionary_item_key: String,
+) -> TestCase {
+    TestCase {
+        name: "get_dictionary_item_by_seed_uref",
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            identifier: DictionaryItemIdentifier::URef {
+                seed_uref,
+                dictionary_item_key,
+            },
+        })),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| matches!(res.into_inner(), (StoredValue::CLValue(_), _)),
+            )
+        }),
+    }
+}
+
+fn get_dictionary_item_by_legacy_named_key(
+    state_root_hash: Digest,
+    hash: AccountHash,
+    dictionary_name: String,
+    dictionary_item_key: String,
+) -> TestCase {
+    TestCase {
+        name: "get_dictionary_item_by_legacy_named_key",
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            identifier: DictionaryItemIdentifier::AccountNamedKey {
+                hash,
+                dictionary_name,
+                dictionary_item_key,
+            },
+        })),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| matches!(res.into_inner(), (StoredValue::CLValue(_), _)),
+            )
+        }),
+    }
+}
+
+fn get_dictionary_item_by_named_key(
+    state_root_hash: Digest,
+    addr: EntityAddr,
+    dictionary_name: String,
+    dictionary_item_key: String,
+) -> TestCase {
+    TestCase {
+        name: "get_dictionary_item_by_named_key",
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+            identifier: DictionaryItemIdentifier::EntityNamedKey {
+                addr,
+                dictionary_name,
+                dictionary_item_key,
+            },
+        })),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| matches!(res.into_inner(), (StoredValue::CLValue(_), _)),
             )
         }),
     }

@@ -16,6 +16,8 @@ pub(crate) struct TransactionFootprint {
     pub(crate) body_hash: Digest,
     /// The estimated gas consumption.
     pub(crate) gas_limit: Gas,
+    /// The gas tolerance.
+    pub(crate) gas_tolerance: u64,
     /// The bytesrepr serialized length.
     pub(crate) size_estimate: usize,
     /// The transaction category.
@@ -86,5 +88,9 @@ impl TransactionFootprint {
     /// Is install or upgrade transaction.
     pub(crate) fn is_install_upgrade(&self) -> bool {
         matches!(self.category, TransactionCategory::InstallUpgrade)
+    }
+
+    pub(crate) fn gas_tolerance(&self) -> u64 {
+        self.gas_tolerance
     }
 }

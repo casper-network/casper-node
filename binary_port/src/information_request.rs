@@ -49,6 +49,8 @@ pub enum InformationRequest {
     ChainspecRawBytes,
     /// Returns the status information of the node.
     NodeStatus,
+    /// Returns the latest switch block header.
+    LatestSwitchBlockHeader,
 }
 
 impl InformationRequest {
@@ -74,6 +76,9 @@ impl InformationRequest {
             InformationRequest::ConsensusStatus => InformationRequestTag::ConsensusStatus,
             InformationRequest::ChainspecRawBytes => InformationRequestTag::ChainspecRawBytes,
             InformationRequest::NodeStatus => InformationRequestTag::NodeStatus,
+            InformationRequest::LatestSwitchBlockHeader => {
+                InformationRequestTag::LatestSwitchBlockHeader
+            }
         }
     }
 
@@ -114,6 +119,9 @@ impl InformationRequest {
             InformationRequestTag::ConsensusStatus => InformationRequest::ConsensusStatus,
             InformationRequestTag::ChainspecRawBytes => InformationRequest::ChainspecRawBytes,
             InformationRequestTag::NodeStatus => InformationRequest::NodeStatus,
+            InformationRequestTag::LatestSwitchBlockHeader => {
+                InformationRequest::LatestSwitchBlockHeader
+            }
         }
     }
 }
@@ -151,7 +159,8 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
-            | InformationRequest::NodeStatus => Ok(()),
+            | InformationRequest::NodeStatus
+            | InformationRequest::LatestSwitchBlockHeader => Ok(()),
         }
     }
 
@@ -178,7 +187,8 @@ impl ToBytes for InformationRequest {
             | InformationRequest::NextUpgrade
             | InformationRequest::ConsensusStatus
             | InformationRequest::ChainspecRawBytes
-            | InformationRequest::NodeStatus => 0,
+            | InformationRequest::NodeStatus
+            | InformationRequest::LatestSwitchBlockHeader => 0,
         }
     }
 }
@@ -229,6 +239,9 @@ impl TryFrom<(InformationRequestTag, &[u8])> for InformationRequest {
                 (InformationRequest::ChainspecRawBytes, key_bytes)
             }
             InformationRequestTag::NodeStatus => (InformationRequest::NodeStatus, key_bytes),
+            InformationRequestTag::LatestSwitchBlockHeader => {
+                (InformationRequest::LatestSwitchBlockHeader, key_bytes)
+            }
         };
         if !remainder.is_empty() {
             return Err(bytesrepr::Error::LeftOverBytes);
@@ -282,12 +295,14 @@ pub enum InformationRequestTag {
     ChainspecRawBytes = 13,
     /// Node status request.
     NodeStatus = 14,
+    /// Latest switch block header request.
+    LatestSwitchBlockHeader = 15,
 }
 
 impl InformationRequestTag {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..15) {
+        match rng.gen_range(0..16) {
             0 => InformationRequestTag::BlockHeader,
             1 => InformationRequestTag::SignedBlock,
             2 => InformationRequestTag::Transaction,
@@ -303,6 +318,7 @@ impl InformationRequestTag {
             12 => InformationRequestTag::ConsensusStatus,
             13 => InformationRequestTag::ChainspecRawBytes,
             14 => InformationRequestTag::NodeStatus,
+            15 => InformationRequestTag::LatestSwitchBlockHeader,
             _ => unreachable!(),
         }
     }
@@ -328,6 +344,7 @@ impl TryFrom<u16> for InformationRequestTag {
             12 => Ok(InformationRequestTag::ConsensusStatus),
             13 => Ok(InformationRequestTag::ChainspecRawBytes),
             14 => Ok(InformationRequestTag::NodeStatus),
+            15 => Ok(InformationRequestTag::LatestSwitchBlockHeader),
             _ => Err(UnknownInformationRequestTag(value)),
         }
     }

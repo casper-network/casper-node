@@ -572,6 +572,7 @@ impl LargestSpecimen for BlockHeaderV2 {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             OnceCell::with_value(LargestSpecimen::largest_specimen(estimator, cache)),
         )
     }
@@ -613,6 +614,7 @@ impl LargestSpecimen for BlockHeaderWithoutEraEnd {
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
             OnceCell::with_value(LargestSpecimen::largest_specimen(estimator, cache)),
         ))
     }
@@ -634,6 +636,7 @@ impl LargestSpecimen for EraEndV2 {
             vec_prop_specimen(estimator, "validator_count", cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
+            1u8,
         )
     }
 }
@@ -708,6 +711,7 @@ impl LargestSpecimen for BlockV2 {
             staking_hashes,
             install_upgrade_hashes,
             standard_hashes,
+            LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
     }
