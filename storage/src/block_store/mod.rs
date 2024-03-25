@@ -37,7 +37,7 @@ impl DbRawBytesSpec {
     }
 
     /// Raw bytes.
-    pub fn raw_bytes(&self) -> Vec<u8> {
-        self.raw_bytes.clone()
+    pub fn into_raw_bytes(self) -> Vec<u8> {
+        self.raw_bytes
     }
 }

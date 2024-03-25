@@ -106,7 +106,7 @@ pub enum PayloadType {
 }
 
 impl PayloadType {
-    pub(crate) fn new_from_record_id(record_id: RecordId, is_legacy: bool) -> Self {
+    pub fn from_record_id(record_id: RecordId, is_legacy: bool) -> Self {
         match (is_legacy, record_id) {
             (true, RecordId::BlockHeader) => Self::BlockHeaderV1,
             (true, RecordId::BlockBody) => Self::BlockBodyV1,
