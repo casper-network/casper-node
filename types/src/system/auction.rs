@@ -141,16 +141,16 @@ impl BidsExt for Vec<BidKind> {
         new_public_key: &PublicKey,
         era_id: &EraId,
     ) -> Option<Bridge> {
-        if let BidKind::Bridge(bridge) = self.iter().find(|x| {
-            x.is_bridge()
-                && &x.validator_public_key() == public_key
-                && &x.new_validator_public_key().unwrap() == new_public_key
-                && &x.era_id().unwrap() == era_id
-        })? {
-            Some(*bridge.clone())
-        } else {
-            None
-        }
+        self.iter().find_map(|x| match x {
+            BidKind::Bridge(bridge)
+                if bridge.old_validator_public_key() == public_key
+                    && bridge.new_validator_public_key() == new_public_key
+                    && bridge.era_id() == era_id =>
+            {
+                Some(*bridge.clone())
+            }
+            _ => None,
+        })
     }
 
     fn validator_total_stake(&self, public_key: &PublicKey) -> Option<U512> {

@@ -59,9 +59,7 @@ impl CLTyped for Bridge {
 impl ToBytes for Bridge {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.old_validator_public_key.write_bytes(&mut result)?;
-        self.new_validator_public_key.write_bytes(&mut result)?;
-        self.era_id.write_bytes(&mut result)?;
+        self.write_bytes(&mut result)?;
         Ok(result)
     }
 
