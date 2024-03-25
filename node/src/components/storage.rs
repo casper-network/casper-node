@@ -986,10 +986,7 @@ impl Storage {
                 let maybe_data: Option<DbRawBytesSpec> = txn.read((db_table_id, key))?;
                 match maybe_data {
                     None => responder.respond(None).ignore(),
-                    Some(db_raw) => {
-                        let raw_bytes_spec = utils::raw_bytes_from_db_raw_bytes(db_raw);
-                        responder.respond(Some(raw_bytes_spec)).ignore()
-                    }
+                    Some(db_raw) => responder.respond(Some(db_raw)).ignore(),
                 }
             }
         })

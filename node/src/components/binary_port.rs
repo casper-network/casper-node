@@ -12,8 +12,8 @@ use bytes::Bytes;
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
     ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
-    InformationRequest, InformationRequestTag, NodeStatus, RawBytesSpec, ReactorStateName,
-    RecordId, TransactionWithExecutionInfo,
+    InformationRequest, InformationRequestTag, NodeStatus, PayloadType, ReactorStateName, RecordId,
+    TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -187,8 +187,7 @@ where
             let Ok(serialized) = bincode::serialize(&transfers) else {
                 return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
-            let bytes = RawBytesSpec::new_current(&serialized);
-            BinaryResponse::from_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
+            BinaryResponse::from_raw_bytes(PayloadType::Transfers, serialized, protocol_version)
         }
         GetRequest::Record {
             record_type_tag,
@@ -197,8 +196,15 @@ where
             metrics.binary_port_get_record_count.inc();
             match RecordId::try_from(record_type_tag) {
                 Ok(record_id) => {
-                    let maybe_raw_bytes = effect_builder.get_raw_data(record_id, key).await;
-                    BinaryResponse::from_raw_bytes(record_id, maybe_raw_bytes, protocol_version)
+                    let Some(db_bytes) = effect_builder.get_raw_data(record_id, key).await else {
+                        return BinaryResponse::new_empty(protocol_version);
+                    };
+                    let payload_type = PayloadType::from_record_id(record_id, db_bytes.is_legacy());
+                    BinaryResponse::from_raw_bytes(
+                        payload_type,
+                        db_bytes.into_raw_bytes(),
+                        protocol_version,
+                    )
                 }
                 Err(_) => {
                     BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version)

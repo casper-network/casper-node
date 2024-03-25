@@ -3,7 +3,7 @@ use casper_types::{
     ProtocolVersion,
 };
 
-use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, RawBytesSpec};
+use crate::{binary_response::BinaryResponse, payload_type::PayloadEntity, PayloadType};
 
 use crate::record_id::RecordId;
 #[cfg(test)]
@@ -34,8 +34,8 @@ impl BinaryResponseAndRequest {
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         let response = BinaryResponse::from_raw_bytes(
-            record_id,
-            Some(RawBytesSpec::new_current(&data.to_bytes().unwrap())),
+            PayloadType::from_record_id(record_id, false),
+            data.to_bytes().unwrap(),
             protocol_version,
         );
         Self::new(response, &[])
@@ -48,8 +48,8 @@ impl BinaryResponseAndRequest {
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         let response = BinaryResponse::from_raw_bytes(
-            record_id,
-            Some(RawBytesSpec::new_legacy(&bincode::serialize(data).unwrap())),
+            PayloadType::from_record_id(record_id, true),
+            bincode::serialize(data).unwrap(),
             protocol_version,
         );
         Self::new(response, &[])
