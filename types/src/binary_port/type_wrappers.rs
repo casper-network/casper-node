@@ -12,8 +12,10 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::ExecutionResultV2,
-    EraId, ExecutionInfo, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
+    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
 };
+
+use super::GlobalStateQueryResult;
 
 // `bytesrepr` implementations for type wrappers are repetitive, hence this macro helper. We should
 // get rid of this after we introduce the proper "bytesrepr-derive" proc macro.
@@ -295,6 +297,50 @@ impl FromBytes for TransactionWithExecutionInfo {
             TransactionWithExecutionInfo::new(transaction, execution_info),
             remainder,
         ))
+    }
+}
+
+/// A query result for a dictionary item, contains the dictionary item key and a global state query result.
+#[derive(Debug)]
+pub struct DictionaryQueryResult {
+    key: Key,
+    query_result: GlobalStateQueryResult,
+}
+
+impl DictionaryQueryResult {
+    /// Constructs new dictionary query result.
+    pub fn new(key: Key, query_result: GlobalStateQueryResult) -> Self {
+        Self { key, query_result }
+    }
+
+    /// Converts `self` into the dictionary item key and global state query result.
+    pub fn into_inner(self) -> (Key, GlobalStateQueryResult) {
+        (self.key, self.query_result)
+    }
+}
+
+impl ToBytes for DictionaryQueryResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.key.write_bytes(writer)?;
+        self.query_result.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.key.serialized_length() + self.query_result.serialized_length()
+    }
+}
+
+impl FromBytes for DictionaryQueryResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (query_result, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((DictionaryQueryResult::new(key, query_result), remainder))
     }
 }
 

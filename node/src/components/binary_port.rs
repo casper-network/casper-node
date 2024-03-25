@@ -20,9 +20,9 @@ use casper_types::{
     addressable_entity::NamedKeyAddr,
     binary_port::{
         self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-        BinaryResponseAndRequest, DbRawBytesSpec, DictionaryItemIdentifier, GetRequest,
-        GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-        InformationRequestTag, NodeStatus, ReactorStateName, RecordId,
+        BinaryResponseAndRequest, DbRawBytesSpec, DictionaryItemIdentifier, DictionaryQueryResult,
+        GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
+        InformationRequest, InformationRequestTag, NodeStatus, ReactorStateName, RecordId,
         TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
@@ -514,22 +514,16 @@ where
                     seed_uref,
                     dictionary_item_key,
                 } => {
-                    get_global_state_item(
-                        effect_builder,
-                        state_root_hash,
-                        Key::dictionary(seed_uref, dictionary_item_key.as_bytes()),
-                        vec![],
-                    )
-                    .await
+                    let key = Key::dictionary(seed_uref, dictionary_item_key.as_bytes());
+                    get_global_state_item(effect_builder, state_root_hash, key, vec![])
+                        .await
+                        .map(|maybe_res| maybe_res.map(|res| DictionaryQueryResult::new(key, res)))
                 }
                 DictionaryItemIdentifier::DictionaryItem(addr) => {
-                    get_global_state_item(
-                        effect_builder,
-                        state_root_hash,
-                        Key::Dictionary(addr),
-                        vec![],
-                    )
-                    .await
+                    let key = Key::Dictionary(addr);
+                    get_global_state_item(effect_builder, state_root_hash, key, vec![])
+                        .await
+                        .map(|maybe_res| maybe_res.map(|res| DictionaryQueryResult::new(key, res)))
                 }
             };
             match result {
@@ -547,7 +541,7 @@ async fn get_dictionary_item_by_legacy_named_key<REv>(
     entity_key: Key,
     dictionary_name: String,
     dictionary_item_key: String,
-) -> Result<Option<GlobalStateQueryResult>, binary_port::ErrorCode>
+) -> Result<Option<DictionaryQueryResult>, binary_port::ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
@@ -564,8 +558,14 @@ where
             let Some(uref) = named_keys.get(&dictionary_name).and_then(Key::as_uref) else {
                 return Err(binary_port::ErrorCode::DictionaryURefNotFound);
             };
-            let dictionary_key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
-            get_global_state_item(effect_builder, state_root_hash, dictionary_key, vec![]).await
+            let key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
+            let Some(query_result) =
+                get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+                else {
+                return Ok(None);
+            };
+
+            Ok(Some(DictionaryQueryResult::new(key, query_result)))
         }
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
             Err(binary_port::ErrorCode::DictionaryURefNotFound)
@@ -580,7 +580,7 @@ async fn get_dictionary_item_by_named_key<REv>(
     entity_addr: EntityAddr,
     dictionary_name: String,
     dictionary_item_key: String,
-) -> Result<Option<GlobalStateQueryResult>, binary_port::ErrorCode>
+) -> Result<Option<DictionaryQueryResult>, binary_port::ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
@@ -596,8 +596,13 @@ where
             let Ok(Key::URef(uref)) = key_val.get_key() else {
                 return Err(binary_port::ErrorCode::DictionaryURefNotFound);
             };
-            let dictionary_key = Key::dictionary(uref, dictionary_item_key.as_bytes());
-            get_global_state_item(effect_builder, state_root_hash, dictionary_key, vec![]).await
+            let key = Key::dictionary(uref, dictionary_item_key.as_bytes());
+            let Some(query_result) =
+                get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+                else {
+                return Ok(None);
+            };
+            Ok(Some(DictionaryQueryResult::new(key, query_result)))
         }
         QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
             Err(binary_port::ErrorCode::DictionaryURefNotFound)

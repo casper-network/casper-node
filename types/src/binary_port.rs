@@ -33,8 +33,9 @@ pub use payload_type::{PayloadEntity, PayloadType};
 pub use record_id::RecordId;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-    ReactorStateName, SpeculativeExecutionResult, TransactionWithExecutionInfo, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, DictionaryQueryResult, GetTrieFullResult,
+    LastProgress, NetworkName, ReactorStateName, SpeculativeExecutionResult,
+    TransactionWithExecutionInfo, Uptime,
 };
 
 use alloc::vec::Vec;
