@@ -19,12 +19,11 @@ pub use self::lmdb::make_temporary_global_state;
 
 use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    global_state::TrieMerkleProof,
-    system,
+    global_state::{self, TrieMerkleProof},
     system::{
+        self,
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         handle_payment::ACCUMULATION_PURSE_KEY,
         mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
@@ -77,7 +76,7 @@ use crate::{
 };
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
-pub trait StateReader<K, V>: Sized + Send + Sync {
+pub trait StateReader<K = Key, V = StoredValue>: Sized + Send + Sync {
     /// An error which occurs when reading state
     type Error;
 

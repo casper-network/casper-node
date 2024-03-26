@@ -16,7 +16,9 @@ use wasmer::{
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
 
-use crate::{host, Config, ExportError, MemoryError, TrapCode, VMResult};
+use crate::{
+    host, storage::GlobalStateReader, Config, ExportError, MemoryError, TrapCode, VMResult,
+};
 
 use self::metering_middleware::make_wasmer_metering_middleware;
 
@@ -56,7 +58,7 @@ impl From<wasmer_types::TrapCode> for TrapCode {
 
 pub(crate) struct WasmerEngine {}
 
-struct WasmerEnv<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
+struct WasmerEnv<S: GlobalStateReader> {
     config: Config,
     context: Context<S>,
     instance: Weak<Instance>,
@@ -64,16 +66,11 @@ struct WasmerEnv<S: StateReader<Key, StoredValue, Error = global_state::error::E
     exported_runtime: Option<ExportedRuntime>,
 }
 
-pub(crate) struct WasmerCaller<
-    'a,
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
-> {
+pub(crate) struct WasmerCaller<'a, S: GlobalStateReader> {
     env: FunctionEnvMut<'a, WasmerEnv<S>>,
 }
 
-impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static>
-    WasmerCaller<'a, S>
-{
+impl<'a, S: GlobalStateReader + 'static> WasmerCaller<'a, S> {
     fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
         let mem = &self.env.data().exported_runtime().memory;
         let binding = self.env.as_store_ref();
@@ -107,9 +104,7 @@ impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 
     }
 }
 
-impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static> Caller<S>
-    for WasmerCaller<'a, S>
-{
+impl<'a, S: GlobalStateReader + 'static> Caller<S> for WasmerCaller<'a, S> {
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
         Ok(self
             .with_memory(|mem| mem.write(offset.into(), data))
@@ -180,9 +175,9 @@ impl<'a, S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 
     }
 }
 
-impl<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> WasmerEnv<S> {}
+impl<S: GlobalStateReader> WasmerEnv<S> {}
 
-impl<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> WasmerEnv<S> {
+impl<S: GlobalStateReader> WasmerEnv<S> {
     fn new(config: Config, context: Context<S>, code: Bytes) -> Self {
         Self {
             config,
@@ -210,9 +205,7 @@ pub(crate) struct ExportedRuntime {
     pub(crate) exports: Exports,
 }
 
-pub(crate) struct WasmerInstance<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
-> {
+pub(crate) struct WasmerInstance<S: GlobalStateReader> {
     instance: Arc<Instance>,
     env: FunctionEnv<WasmerEnv<S>>,
     store: Store,
@@ -236,7 +229,7 @@ fn handle_wasmer_result<T: Debug>(wasmer_result: Result<T, RuntimeError>) -> VMR
 
 impl<S> WasmerInstance<S>
 where
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
+    S: GlobalStateReader + 'static,
 {
     fn wasmer_env(&self) -> &WasmerEnv<S> {
         self.env.as_ref(&self.store)
@@ -601,7 +594,7 @@ where
 
 impl<S> WasmInstance<S> for WasmerInstance<S>
 where
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
+    S: GlobalStateReader + 'static,
 {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
         let vm_result = self.call_export(name);

@@ -2,7 +2,6 @@
 pub(crate) mod abi;
 
 use bytes::Bytes;
-use casper_storage::global_state::{self, state::StateReader};
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     contracts::{ContractManifest, ContractV2, EntryPointV2},
@@ -22,7 +21,7 @@ use vm_common::{
 use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest},
-    storage::{self, Address},
+    storage::{self, Address, GlobalStateReader},
     ConfigBuilder, VMError, VMResult, VM,
 };
 
@@ -51,7 +50,7 @@ pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
 }
 
 /// Write value under a key.
-pub(crate) fn casper_write<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
+pub(crate) fn casper_write<S: GlobalStateReader>(
     mut caller: impl Caller<S>,
     key_space: u64,
     key_ptr: u32,
@@ -79,7 +78,7 @@ pub(crate) fn casper_write<S: StateReader<Key, StoredValue, Error = global_state
     Ok(0)
 }
 
-pub(crate) fn casper_print<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
+pub(crate) fn casper_print<S: GlobalStateReader>(
     caller: impl Caller<S>,
     message_ptr: u32,
     message_size: u32,
@@ -91,7 +90,7 @@ pub(crate) fn casper_print<S: StateReader<Key, StoredValue, Error = global_state
 }
 
 /// Write value under a key.
-pub(crate) fn casper_read<S: StateReader<Key, StoredValue, Error = global_state::error::Error>>(
+pub(crate) fn casper_read<S: GlobalStateReader>(
     mut caller: impl Caller<S>,
     key_tag: u64,
     key_ptr: u32,
@@ -164,9 +163,7 @@ fn keyspace_to_global_state_key<'a>(address: [u8; 32], keyspace: Keyspace<'a>) -
     }
 }
 
-pub(crate) fn casper_copy_input<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
->(
+pub(crate) fn casper_copy_input<S: GlobalStateReader>(
     mut caller: impl Caller<S>,
     cb_alloc: u32,
     alloc_ctx: u32,
@@ -189,9 +186,7 @@ pub(crate) fn casper_copy_input<
 }
 
 /// Returns from the execution of a smart contract with an optional flags.
-pub(crate) fn casper_return<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
->(
+pub(crate) fn casper_return<S: GlobalStateReader>(
     caller: impl Caller<S>,
     flags: u32,
     data_ptr: u32,
@@ -209,9 +204,7 @@ pub(crate) fn casper_return<
     Err(VMError::Return { flags, data })
 }
 
-pub(crate) fn casper_create_contract<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
->(
+pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
@@ -479,9 +472,7 @@ pub(crate) fn casper_create_contract<
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn casper_call<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
->(
+pub(crate) fn casper_call<S: GlobalStateReader + 'static>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
     address_len: u32,
@@ -525,7 +516,7 @@ pub(crate) fn casper_call<
                 }
             };
 
-            // Note: Bytecode stored in the globalstate has a "kind" option - currently we know we have a v2 bytecode as the stored contract is of "V2" variant.
+            // Note: Bytecode stored in the GlobalStateReader has a "kind" option - currently we know we have a v2 bytecode as the stored contract is of "V2" variant.
             let wasm_bytes = caller
                 .context_mut()
                 .storage
@@ -655,9 +646,7 @@ pub(crate) fn casper_call<
 
 const CASPER_ENV_CALLER: u64 = 0;
 
-pub(crate) fn casper_env_read<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
->(
+pub(crate) fn casper_env_read<S: GlobalStateReader>(
     mut caller: impl Caller<S>,
     env_path: u32,
     env_path_length: u32,
@@ -705,9 +694,7 @@ pub(crate) fn casper_env_read<
     }
 }
 
-pub(crate) fn casper_env_caller<
-    S: StateReader<Key, StoredValue, Error = global_state::error::Error>,
->(
+pub(crate) fn casper_env_caller<S: GlobalStateReader>(
     mut caller: impl Caller<S>,
     dest_ptr: u32,
     dest_len: u32,

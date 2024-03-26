@@ -245,6 +245,7 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 pub fn casper_call(
     address: &Address,
     value: u64,
+    // config: &CallCofnig,
     selector: Selector,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, ResultCode) {

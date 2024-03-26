@@ -19,7 +19,7 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use crate::global_state::{
-    error::Error as GlobalStateError, state::StateReader,
+    self, error::Error as GlobalStateError, state::StateReader,
     trie_store::operations::compute_state_hash, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_types::{
@@ -724,6 +724,13 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
         self.reader.keys_with_prefix(prefix)
     }
 }
+
+/// An alias for a `TrackingCopy` that uses a `GlobalState` as the state reader.
+///
+/// This is aliasing the `TrackingCopy` to use the `GlobalState` as the state reader without the explicit verbose generic types and bounds.
+// pub trait GlobalState: StateReader<Key, StoredValue> {}
+
+// impl<R: StateReader<Key, StoredValue>> GlobalState for TrackingCopy<R> {}
 
 /// Error conditions of a proof validation.
 #[derive(Error, Debug, PartialEq, Eq)]

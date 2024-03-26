@@ -111,6 +111,9 @@ mod tests {
 
         let result = host::native::dispatch_with(env, move || {
             let constructor = TokenContractRef::new("Foo Token".to_string());
+
+            // casper_call(address, value, selector!("nme"), ());
+
             let cep18_handle = TokenContract::create(constructor).expect("Should create");
 
             {

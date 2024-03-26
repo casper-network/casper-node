@@ -1,13 +1,11 @@
 pub(crate) mod wasmer;
 use bytes::Bytes;
-use casper_storage::{
-    global_state::{self, state::StateReader},
-    TrackingCopy,
-};
-use casper_types::{Key, StoredValue};
 use thiserror::Error;
 
-use crate::{storage::Address, Config, VMError, VMResult};
+use crate::{
+    storage::{Address, GlobalStateReader, TrackingCopy},
+    Config, VMError, VMResult,
+};
 
 #[derive(Debug)]
 pub struct GasUsage {
@@ -17,7 +15,7 @@ pub struct GasUsage {
 }
 
 /// Container that holds all relevant modules necessary to process an execution request.
-pub struct Context<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
+pub struct Context<S: GlobalStateReader> {
     pub address: Address,
     pub storage: TrackingCopy<S>,
 }
@@ -43,7 +41,7 @@ impl MeteringPoints {
 /// This allows access for important instances such as the context object that was passed to the
 /// instance, wasm linear memory access, etc.
 
-pub(crate) trait Caller<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
+pub(crate) trait Caller<S: GlobalStateReader> {
     fn config(&self) -> &Config;
     fn context(&self) -> &Context<S>;
     fn context_mut(&mut self) -> &mut Context<S>;
@@ -79,7 +77,7 @@ pub enum Error {
     Instantiation(String),
 }
 
-pub trait WasmInstance<S: StateReader<Key, StoredValue, Error = global_state::error::Error>> {
+pub trait WasmInstance<S: GlobalStateReader> {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
     fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage);
     fn teardown(self) -> Context<S>;

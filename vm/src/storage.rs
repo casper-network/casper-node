@@ -1,5 +1,16 @@
 use bytes::Bytes;
+use casper_storage::global_state::{self, state::StateReader};
+use casper_types::{Key, StoredValue};
 use vm_common::flags::EntryPointFlags;
+
+pub(crate) type TrackingCopy<R> = casper_storage::TrackingCopy<R>;
+
+pub(crate) trait GlobalStateReader:
+    StateReader<Key, StoredValue, Error = global_state::error::Error>
+{
+}
+
+impl<R: StateReader<Key, StoredValue, Error = global_state::error::Error>> GlobalStateReader for R {}
 
 pub enum Tag {
     Bytes = 0,
