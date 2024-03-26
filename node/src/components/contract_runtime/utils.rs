@@ -314,7 +314,7 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
         .map(|err| format!("{:?}", err));
 
     SpeculativeExecutionResult::new(
-        transfers, limit, consumed, effects, messages, error_msg, block_hash,
+        block_hash, transfers, limit, consumed, effects, messages, error_msg,
     )
 }
 

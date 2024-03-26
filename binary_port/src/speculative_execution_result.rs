@@ -1,12 +1,17 @@
+use once_cell::sync::Lazy;
+#[cfg(test)]
+use rand::Rng;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::Effects,
     BlockHash, Digest, Gas, InvalidTransaction, Transfer,
 };
-use once_cell::sync::Lazy;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::new(|| {
     SpeculativeExecutionResult::new(
@@ -62,6 +67,34 @@ impl SpeculativeExecutionResult {
     #[doc(hidden)]
     pub fn example() -> &'static Self {
         &SPECULATIVE_EXECUTION_RESULT
+    }
+
+    #[cfg(test)]
+    fn random(rng: &mut TestRng) -> Self {
+        use casper_types::contract_messages::Message;
+        use rand::distributions::{Alphanumeric, DistString};
+
+        let random_messages = |rng: &mut TestRng| -> Messages {
+            let count = rng.gen_range(16..128);
+            std::iter::repeat_with(|| Message::random(rng))
+                .take(count)
+                .collect()
+        };
+
+        SpeculativeExecutionResult {
+            block_hash: BlockHash::new(rng.gen()),
+            transfers: vec![Transfer::random(rng)],
+            limit: Gas::random(rng),
+            consumed: Gas::random(rng),
+            effects: Effects::random(rng),
+            messages: random_messages(rng),
+            error: if rng.gen() {
+                None
+            } else {
+                let count = rng.gen_range(16..128);
+                Some(Alphanumeric.sample_string(rng, count))
+            },
+        }
     }
 }
 
@@ -131,17 +164,16 @@ impl FromBytes for SpeculativeExecutionResult {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     // use super::*;
-//     // use casper_types::testing::TestRng;
-//
-//     #[test]
-//     fn bytesrepr_roundtrip() {
-//         todo!();
-//         let rng = &mut TestRng::new();
-//
-//         let val = SpeculativeExecutionResult::random(rng);
-//         bytesrepr::test_serialization_roundtrip(&val);
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use casper_types::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = SpeculativeExecutionResult::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
+    }
+}

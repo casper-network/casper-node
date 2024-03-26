@@ -10,10 +10,14 @@ use core::{
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::Zero;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Motes, U512,
@@ -71,6 +75,12 @@ impl Gas {
     /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
     pub fn checked_sub(&self, rhs: Self) -> Option<Self> {
         self.0.checked_sub(rhs.value()).map(Self::new)
+    }
+
+    /// Returns a random `Gas`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Self(rng.gen::<u128>().into())
     }
 }
 

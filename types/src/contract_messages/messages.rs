@@ -17,6 +17,9 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+
 use super::{FromStrError, TopicNameHash};
 
 /// Collection of multiple messages.
@@ -126,6 +129,24 @@ pub enum MessagePayload {
     String(String),
     /// Message represented as raw bytes.
     Bytes(Bytes),
+}
+
+impl MessagePayload {
+    #[cfg(any(feature = "testing", test))]
+    /// Returns a random `MessagePayload`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(16..128);
+        if rng.gen() {
+            MessagePayload::String(Alphanumeric.sample_string(rng, count))
+        } else {
+            MessagePayload::Bytes(
+                std::iter::repeat_with(|| rng.gen())
+                    .take(count)
+                    .collect::<Vec<u8>>()
+                    .into(),
+            )
+        }
+    }
 }
 
 impl<T> From<T> for MessagePayload
@@ -274,6 +295,20 @@ impl Message {
 
         Ok(MessageChecksum(checksum))
     }
+
+    /// Returns a random `Message`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(16..128);
+        Self {
+            entity_hash: rng.gen(),
+            message: MessagePayload::random(rng),
+            topic_name: Alphanumeric.sample_string(rng, count),
+            topic_name_hash: rng.gen(),
+            topic_index: rng.gen(),
+            block_index: rng.gen(),
+        }
+    }
 }
 
 impl ToBytes for Message {
@@ -340,40 +375,29 @@ impl Distribution<Message> for Standard {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, contract_messages::topics::TOPIC_NAME_HASH_LENGTH, KEY_HASH_LENGTH};
+    use crate::bytesrepr;
 
     use super::*;
 
     #[test]
     fn serialization_roundtrip() {
+        let rng = &mut TestRng::new();
+
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload: MessagePayload = "message payload".into();
+        let message_payload = MessagePayload::random(rng);
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
-        let message_payload = MessagePayload::Bytes(vec![5u8; 128].into());
-        bytesrepr::test_serialization_roundtrip(&message_payload);
-
-        let message = Message::new(
-            [1; KEY_HASH_LENGTH].into(),
-            message_payload,
-            "test_topic".to_string(),
-            TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
-            10,
-            111,
-        );
+        let message = Message::random(rng);
         bytesrepr::test_serialization_roundtrip(&message);
     }
 
     #[test]
     fn json_roundtrip() {
-        let message_payload: MessagePayload = "message payload".into();
-        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
-        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(decoded, message_payload);
+        let rng = &mut TestRng::new();
 
-        let message_payload = MessagePayload::Bytes(vec![255u8; 32].into());
+        let message_payload = MessagePayload::random(rng);
         let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
         let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
         assert_eq!(decoded, message_payload);
