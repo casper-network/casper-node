@@ -9,7 +9,6 @@ use crate::{
     payload_type::{PayloadEntity, PayloadType},
 };
 
-use crate::{raw_bytes_spec::RawBytesSpec, record_id::RecordId};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 
@@ -41,22 +40,13 @@ impl BinaryResponse {
 
     /// Creates new binary response from raw bytes.
     pub fn from_raw_bytes(
-        record_id: RecordId,
-        spec: Option<RawBytesSpec>,
+        payload_type: PayloadType,
+        payload: Vec<u8>,
         protocol_version: ProtocolVersion,
     ) -> Self {
-        match spec {
-            Some(val) => BinaryResponse {
-                header: BinaryResponseHeader::new(
-                    Some(PayloadType::new_from_record_id(record_id, val.is_legacy())),
-                    protocol_version,
-                ),
-                payload: val.raw_bytes(),
-            },
-            None => BinaryResponse {
-                header: BinaryResponseHeader::new_error(ErrorCode::NotFound, protocol_version),
-                payload: vec![],
-            },
+        BinaryResponse {
+            header: BinaryResponseHeader::new(Some(payload_type), protocol_version),
+            payload,
         }
     }
 

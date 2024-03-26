@@ -141,7 +141,7 @@ pub enum InvalidTransaction {
         /// The base amount.
         amount: u64,
         /// The attempted gas price.
-        gas_price: u64,
+        gas_price: u8,
     },
     /// Unable to calculate gas limit.
     UnableToCalculateGasLimit,

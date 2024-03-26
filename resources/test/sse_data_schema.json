@@ -626,6 +626,7 @@
       "required": [
         "accumulated_seed",
         "body_hash",
+        "current_gas_price",
         "era_id",
         "height",
         "parent_hash",
@@ -711,6 +712,12 @@
               "$ref": "#/definitions/ProtocolVersion"
             }
           ]
+        },
+        "current_gas_price": {
+          "description": "The gas price of the era",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },
@@ -720,6 +727,7 @@
       "required": [
         "equivocators",
         "inactive_validators",
+        "next_era_gas_price",
         "next_era_validator_weights",
         "rewards"
       ],
@@ -752,6 +760,11 @@
           "additionalProperties": {
             "$ref": "#/definitions/U512"
           }
+        },
+        "next_era_gas_price": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
         }
       }
     },
@@ -1638,7 +1651,7 @@
                 "gas_price": {
                   "description": "User-specified gas_price (minimum 1).",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
                 },
                 "standard_payment": {
@@ -1667,7 +1680,7 @@
                 "gas_price_tolerance": {
                   "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
                 }
               },
@@ -1874,10 +1887,10 @@
           "description": "Hex-encoded entity address identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntity"
+            "ByHash"
           ],
           "properties": {
-            "InvocableEntity": {
+            "ByHash": {
               "type": "string"
             }
           },
@@ -1887,10 +1900,10 @@
           "description": "The alias identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntityAlias"
+            "ByName"
           ],
           "properties": {
-            "InvocableEntityAlias": {
+            "ByName": {
               "type": "string"
             }
           },
@@ -1900,10 +1913,10 @@
           "description": "The address and optional version identifying the package.",
           "type": "object",
           "required": [
-            "Package"
+            "ByPackageHash"
           ],
           "properties": {
-            "Package": {
+            "ByPackageHash": {
               "type": "object",
               "required": [
                 "addr"
@@ -1932,16 +1945,16 @@
           "description": "The alias and optional version identifying the package.",
           "type": "object",
           "required": [
-            "PackageAlias"
+            "ByPackageName"
           ],
           "properties": {
-            "PackageAlias": {
+            "ByPackageName": {
               "type": "object",
               "required": [
-                "alias"
+                "name"
               ],
               "properties": {
-                "alias": {
+                "name": {
                   "description": "The package alias.",
                   "type": "string"
                 },
@@ -4854,7 +4867,7 @@
           "description": "The identity of the entity that produced the message.",
           "allOf": [
             {
-              "$ref": "#/definitions/AddressableEntityHash"
+              "$ref": "#/definitions/EntityAddr"
             }
           ]
         },
@@ -4891,6 +4904,50 @@
           "minimum": 0.0
         }
       }
+    },
+    "EntityAddr": {
+      "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
+      "oneOf": [
+        {
+          "description": "The address for a system entity account or contract.",
+          "type": "object",
+          "required": [
+            "System"
+          ],
+          "properties": {
+            "System": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The address of an entity that corresponds to an Account.",
+          "type": "object",
+          "required": [
+            "Account"
+          ],
+          "properties": {
+            "Account": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The address of an entity that corresponds to a Userland smart contract.",
+          "type": "object",
+          "required": [
+            "SmartContract"
+          ],
+          "properties": {
+            "SmartContract": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "MessagePayload": {
       "description": "The payload of the message emitted by an addressable entity during execution.",

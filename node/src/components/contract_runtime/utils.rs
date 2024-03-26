@@ -1,9 +1,11 @@
+use num_rational::Ratio;
+
 use crate::{
     contract_runtime::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionArtifacts, ExecutionPreState, StepOutcome,
+        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
@@ -29,7 +31,7 @@ use std::{
     ops::Range,
     sync::{Arc, Mutex},
 };
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -74,6 +76,7 @@ pub(super) async fn exec_or_requeue<REv>(
     mut executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     mut meta_block_state: MetaBlockState,
+    current_gas_price: u8,
 ) where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
@@ -84,7 +87,10 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
+    let block_max_install_upgrade_count =
+        chainspec.transaction_config.block_max_install_upgrade_count;
+    let is_era_end = executable_block.era_report.is_some();
+    if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
@@ -108,6 +114,68 @@ pub(super) async fn exec_or_requeue<REv>(
         });
     }
 
+    let maybe_next_era_gas_price = if is_era_end {
+        let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
+        let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
+        let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
+        let go_up = chainspec.vacancy_config.upper_threshold;
+        let go_down = chainspec.vacancy_config.lower_threshold;
+        let max = chainspec.vacancy_config.max_gas_price;
+        let min = chainspec.vacancy_config.min_gas_price;
+        info!("End of era calculating new gas price");
+        let era_id = executable_block.era_id;
+        let block_height = executable_block.height;
+
+        let switch_block_transaction_hashes = executable_block.transactions.len() as u64;
+
+        let maybe_utilization = effect_builder
+            .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
+            .await;
+
+        match maybe_utilization {
+            None => {
+                let error = BlockExecutionError::FailedToGetNewEraGasPrice { era_id };
+                return fatal!(effect_builder, "{}", error).await;
+            }
+            Some((utilization, block_count)) => {
+                let per_block_capacity = {
+                    block_max_install_upgrade_count
+                        + block_max_standard_count
+                        + block_max_mint_count
+                        + block_max_auction_count
+                } as u64;
+
+                let era_score = {
+                    let numerator = utilization * 100;
+                    let denominator = per_block_capacity * block_count;
+                    Ratio::new(numerator, denominator).to_integer()
+                };
+
+                let new_gas_price = if era_score >= go_up {
+                    let new_gas_price = current_gas_price + 1;
+                    if new_gas_price > max {
+                        max
+                    } else {
+                        new_gas_price
+                    }
+                } else if era_score <= go_down {
+                    let new_gas_price = current_gas_price - 1;
+                    if new_gas_price <= min {
+                        min
+                    } else {
+                        new_gas_price
+                    }
+                } else {
+                    current_gas_price
+                };
+                info!(%new_gas_price, "Calculated new gas price");
+                Some(new_gas_price)
+            }
+        }
+    } else {
+        None
+    };
+
     let BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
@@ -123,6 +191,8 @@ pub(super) async fn exec_or_requeue<REv>(
             current_pre_state,
             executable_block,
             key_block_height_for_activation_point,
+            current_gas_price,
+            maybe_next_era_gas_price,
         )
     })
     .await
@@ -234,6 +304,12 @@ pub(super) async fn exec_or_requeue<REv>(
 
     // If the child is already finalized, start execution.
     let next_block = exec_queue.remove(new_execution_pre_state.next_block_height());
+
+    if let Some(next_era_gas_price) = maybe_next_era_gas_price {
+        effect_builder
+            .announce_new_era_gas_price(current_era_id.successor(), next_era_gas_price)
+            .await;
+    }
 
     // We schedule the next block from the queue to be executed:
     if let Some(QueueItem {

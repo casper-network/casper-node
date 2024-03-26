@@ -120,10 +120,11 @@ def start_network():
     invoke(command)
 
     for node in range(1, 11):
-        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/2_0_0/chainspec.toml".format(
             node)
         chainspec = toml.load(path_to_chainspec)
-        chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
+        chainspec['transactions'][
+            'block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
 
     command = "RUST_LOG=debug nctl-start"
@@ -219,12 +220,13 @@ def get_node_metrics_endpoint(node):
 
 
 def get_node_rpc_endpoint(node):
-    command = "nctl-view-node-ports node={}".format(node)
-    result = invoke(command, True)
-    m = re.match(r'.*RPC @ (\d*).*', result)
-    if m and m.group(1):
-        return "localhost:{}/rpc/".format(int(m.group(1)))
-    return
+    sidecar_config_path = "./utils/nctl/assets/net-1/nodes/node-{}/config/2_0_0/sidecar.toml".format(
+        node)
+    config = toml.load(sidecar_config_path)
+    sidecar_address = config['rpc_server']['main_server']['address']
+    chunks = sidecar_address.split(":")
+    rpc_endpoint = "localhost:{}/rpc/".format(chunks[1])
+    return rpc_endpoint
 
 
 def start_memory_reporting():

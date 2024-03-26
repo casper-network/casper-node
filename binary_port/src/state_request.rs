@@ -8,9 +8,12 @@ use casper_types::{
     Digest, GlobalStateIdentifier, Key, KeyTag,
 };
 
+use super::dictionary_item_identifier::DictionaryItemIdentifier;
+
 const ITEM_TAG: u8 = 0;
 const ALL_ITEMS_TAG: u8 = 1;
 const TRIE_TAG: u8 = 2;
+const DICTIONARY_ITEM_TAG: u8 = 3;
 
 /// A request to get data from the global state.
 #[derive(Clone, Debug, PartialEq)]
@@ -36,12 +39,19 @@ pub enum GlobalStateRequest {
         /// A trie key.
         trie_key: Digest,
     },
+    /// Get a dictionary item by its identifier.
+    DictionaryItem {
+        /// Global state identifier, `None` means "latest block state".
+        state_identifier: Option<GlobalStateIdentifier>,
+        /// Dictionary item identifier.
+        identifier: DictionaryItemIdentifier,
+    },
 }
 
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match TestRng::gen_range(rng, 0..3) {
+        match TestRng::gen_range(rng, 0..4) {
             0 => {
                 let path_count = rng.gen_range(10..20);
                 let state_identifier = if rng.gen() {
@@ -71,6 +81,17 @@ impl GlobalStateRequest {
             2 => GlobalStateRequest::Trie {
                 trie_key: Digest::random(rng),
             },
+            3 => {
+                let state_identifier = if rng.gen() {
+                    Some(GlobalStateIdentifier::random(rng))
+                } else {
+                    None
+                };
+                GlobalStateRequest::DictionaryItem {
+                    state_identifier,
+                    identifier: DictionaryItemIdentifier::random(rng),
+                }
+            }
             _ => unreachable!(),
         }
     }
@@ -107,6 +128,14 @@ impl ToBytes for GlobalStateRequest {
                 TRIE_TAG.write_bytes(writer)?;
                 trie_key.write_bytes(writer)
             }
+            GlobalStateRequest::DictionaryItem {
+                state_identifier,
+                identifier,
+            } => {
+                DICTIONARY_ITEM_TAG.write_bytes(writer)?;
+                state_identifier.write_bytes(writer)?;
+                identifier.write_bytes(writer)
+            }
         }
     }
 
@@ -127,6 +156,10 @@ impl ToBytes for GlobalStateRequest {
                     key_tag,
                 } => state_identifier.serialized_length() + key_tag.serialized_length(),
                 GlobalStateRequest::Trie { trie_key } => trie_key.serialized_length(),
+                GlobalStateRequest::DictionaryItem {
+                    state_identifier,
+                    identifier,
+                } => state_identifier.serialized_length() + identifier.serialized_length(),
             }
     }
 }
@@ -162,6 +195,17 @@ impl FromBytes for GlobalStateRequest {
             TRIE_TAG => {
                 let (trie_key, remainder) = Digest::from_bytes(remainder)?;
                 Ok((GlobalStateRequest::Trie { trie_key }, remainder))
+            }
+            DICTIONARY_ITEM_TAG => {
+                let (state_identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                let (identifier, remainder) = FromBytes::from_bytes(remainder)?;
+                Ok((
+                    GlobalStateRequest::DictionaryItem {
+                        state_identifier,
+                        identifier,
+                    },
+                    remainder,
+                ))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

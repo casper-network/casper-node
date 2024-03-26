@@ -274,6 +274,7 @@ impl Reactor for MockReactor {
                     Default::default(),
                     Default::default(),
                     Default::default(),
+                    Default::default(),
                 );
                 responder
                     .respond(Some(BlockHeader::V2(block_header_v2)))

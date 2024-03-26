@@ -20,8 +20,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, Chainspec, Digest, DisplayIter, Timestamp, Transaction, TransactionCategory,
-    TransactionHash, TransactionId,
+    Block, BlockV2, Chainspec, Digest, DisplayIter, EraId, Timestamp, Transaction,
+    TransactionCategory, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -46,6 +46,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
+use crate::effect::{requests::ContractRuntimeRequest, Responder};
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "transaction_buffer";
@@ -69,6 +70,7 @@ pub(crate) struct TransactionBuffer {
     hold: BTreeMap<Timestamp, HashSet<TransactionHash>>,
     // Transaction hashes that should not be proposed, ever.
     dead: HashSet<TransactionHash>,
+    prices: BTreeMap<EraId, u8>,
     #[data_size(skip)]
     metrics: Metrics,
 }
@@ -87,6 +89,7 @@ impl TransactionBuffer {
             buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
+            prices: BTreeMap::new(),
             metrics: Metrics::new(registry)?,
         })
     }
@@ -181,6 +184,17 @@ impl TransactionBuffer {
             );
         }
 
+        if let Some(era_id) = self.prices.keys().max() {
+            let updated = self
+                .prices
+                .clone()
+                .into_iter()
+                .filter(|(price_era_id, _)| price_era_id.successor() >= *era_id)
+                .collect();
+
+            self.prices = updated;
+        }
+
         let mut effects = effect_builder
             .announce_expired_transactions(freed.keys().cloned().collect())
             .ignore();
@@ -207,6 +221,30 @@ impl TransactionBuffer {
             .event(move |maybe_transaction| {
                 Event::StoredTransaction(transaction_id, maybe_transaction.map(Box::new))
             })
+    }
+
+    fn handle_get_appendable_block<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        timestamp: Timestamp,
+        era_id: EraId,
+        responder: Responder<AppendableBlock>,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest> + Send,
+    {
+        if self.prices.get(&era_id).is_none() {
+            info!("Empty prices field, requesting gas price from contract runtime");
+            return effect_builder
+                .get_current_gas_price(era_id)
+                .event(move |maybe_gas_price| {
+                    Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder)
+                });
+        }
+
+        responder
+            .respond(self.appendable_block(timestamp, era_id))
+            .ignore()
     }
 
     /// Update buffer considering new stored transaction.
@@ -342,12 +380,19 @@ impl TransactionBuffer {
     }
 
     /// Returns eligible transactions that are buffered and not held or dead.
-    fn proposable(&self) -> Vec<(TransactionHash, TransactionFootprint)> {
+    fn proposable(
+        &self,
+        current_era_gas_price: u8,
+    ) -> Vec<(TransactionHash, TransactionFootprint)> {
         debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
             .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
             .filter(|(th, _)| !self.dead.contains(th))
+            .filter(|(_, (_, maybe_data))| match maybe_data {
+                None => false,
+                Some(footprint) => footprint.gas_price_tolerance() >= (current_era_gas_price),
+            })
             .filter_map(|(th, (_, maybe_data))| {
                 maybe_data
                     .as_ref()
@@ -356,8 +401,11 @@ impl TransactionBuffer {
             .collect()
     }
 
-    fn buckets(&mut self) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
-        let proposable = self.proposable();
+    fn buckets(
+        &mut self,
+        current_era_gas_price: u8,
+    ) -> HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> {
+        let proposable = self.proposable(current_era_gas_price);
 
         let mut buckets: HashMap<Digest, Vec<(TransactionHash, TransactionFootprint)>> =
             HashMap::new();
@@ -373,8 +421,12 @@ impl TransactionBuffer {
     }
 
     /// Returns a right-sized payload of transactions that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
+    fn appendable_block(&mut self, timestamp: Timestamp, era_id: EraId) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.chainspec.transaction_config, timestamp);
+        let current_era_gas_price = match self.prices.get(&era_id) {
+            Some(gas_price) => *gas_price,
+            None => return ret,
+        };
         let mut holds = HashSet::new();
 
         // TODO[RC]: It's error prone to use 4 different flags to track the limits. Implement a
@@ -384,7 +436,7 @@ impl TransactionBuffer {
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
 
-        let mut buckets = self.buckets();
+        let mut buckets = self.buckets(current_era_gas_price);
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
 
         #[cfg(test)]
@@ -559,11 +611,21 @@ impl TransactionBuffer {
             .total_transactions
             .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
     }
+
+    #[cfg(test)]
+    pub fn prices(&self) -> BTreeMap<EraId, u8> {
+        self.prices.clone()
+    }
 }
 
 impl<REv> InitializedComponent<REv> for TransactionBuffer
 where
-    REv: From<Event> + From<TransactionBufferAnnouncement> + From<StorageRequest> + Send + 'static,
+    REv: From<Event>
+        + From<TransactionBufferAnnouncement>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + Send
+        + 'static,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -582,7 +644,12 @@ where
 
 impl<REv> Component<REv> for TransactionBuffer
 where
-    REv: From<Event> + From<TransactionBufferAnnouncement> + From<StorageRequest> + Send + 'static,
+    REv: From<Event>
+        + From<TransactionBufferAnnouncement>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + Send
+        + 'static,
 {
     type Event = Event;
 
@@ -632,7 +699,9 @@ where
                     | Event::Block(_)
                     | Event::VersionedBlock(_)
                     | Event::BlockFinalized(_)
-                    | Event::Expire => {
+                    | Event::Expire
+                    | Event::UpdateEraGasPrice { .. }
+                    | Event::GetGasPriceResult(_, _, _, _) => {
                         warn!(
                             ?event,
                             name = <Self as Component<MainEvent>>::name(self),
@@ -653,8 +722,27 @@ where
                 }
                 Event::Request(TransactionBufferRequest::GetAppendableBlock {
                     timestamp,
+                    era_id,
                     responder,
-                }) => responder.respond(self.appendable_block(timestamp)).ignore(),
+                }) => {
+                    self.handle_get_appendable_block(effect_builder, timestamp, era_id, responder)
+                }
+                Event::GetGasPriceResult(maybe_gas_price, era_id, timestamp, responder) => {
+                    match maybe_gas_price {
+                        None => responder
+                            .respond(AppendableBlock::new(
+                                self.chainspec.transaction_config,
+                                timestamp,
+                            ))
+                            .ignore(),
+                        Some(gas_price) => {
+                            self.prices.insert(era_id, gas_price);
+                            responder
+                                .respond(self.appendable_block(timestamp, era_id))
+                                .ignore()
+                        }
+                    }
+                }
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
                     Effects::new()
@@ -686,6 +774,10 @@ where
                     Effects::new()
                 }
                 Event::Expire => self.expire(effect_builder),
+                Event::UpdateEraGasPrice(era_id, next_era_gas_price) => {
+                    self.prices.insert(era_id, next_era_gas_price);
+                    Effects::new()
+                }
             },
         }
     }

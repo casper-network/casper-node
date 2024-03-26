@@ -8,7 +8,7 @@ use casper_types::{execution::Effects, Digest, Gas, ProtocolVersion, Transaction
 pub enum HandlePaymentMode {
     Finalize {
         limit: Gas,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
         cost: U512,
         consumed: Gas,
         source: Box<BalanceIdentifier>,
@@ -28,7 +28,7 @@ pub enum HandlePaymentMode {
 impl HandlePaymentMode {
     pub fn finalize(
         limit: Gas,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
         cost: U512,
         consumed: Gas,
         source: BalanceIdentifier,

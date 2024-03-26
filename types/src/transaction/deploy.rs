@@ -14,6 +14,9 @@ use core::{
     hash,
 };
 
+#[cfg(any(feature = "std", test))]
+use std::convert::TryFrom;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
@@ -1100,6 +1103,46 @@ impl Deploy {
             )),
         )
     }
+
+    /// Creates a native transfer, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn native_transfer(
+        chain_name: String,
+        sender_public_key: PublicKey,
+        receiver_public_key: PublicKey,
+        amount: Option<U512>,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        gas_price: u64,
+    ) -> Self {
+        let amount = amount.unwrap_or_else(|| U512::from(DEFAULT_MIN_TRANSFER_MOTES));
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+
+        let transfer_args = runtime_args! {
+            "amount" => amount,
+            "source" => sender_public_key.to_account_hash(),
+            "target" => receiver_public_key.to_account_hash(),
+        };
+
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(sender_public_key)),
+        )
+    }
 }
 
 impl Categorized for Deploy {
@@ -1119,9 +1162,10 @@ impl GasLimited for Deploy {
     fn gas_limit(
         &self,
         system_costs: &SystemConfig,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
     ) -> Result<Gas, Self::Error> {
-        let user_specified_price = self.gas_price();
+        let user_specified_price =
+            u8::try_from(self.gas_price()).map_err(|_| Self::Error::UnableToCalculateGasLimit)?;
         let actual_price = match gas_price {
             Some(price) => price.max(user_specified_price),
             None => user_specified_price,
@@ -1146,6 +1190,10 @@ impl GasLimited for Deploy {
             Some(gas) => Ok(gas),
             None => Err(InvalidDeploy::MissingPaymentAmount),
         }
+    }
+
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
+        u8::try_from(self.gas_price()).map_err(|_| Self::Error::UnableToCalculateGasLimit)
     }
 }
 

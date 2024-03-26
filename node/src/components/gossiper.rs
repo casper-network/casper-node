@@ -75,11 +75,11 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
     }
 
     /// This could be the first time we've encountered this item in the gossiper (e.g. the
-    /// `Network` component requesting that we gossip an address, or the `DeployAcceptor` having
-    /// accepted a deploy which we received from a client), or it could be the result of this
-    /// gossiper having requested the complete data from a peer, announcing it, and that complete
-    /// item having been deemed valid by the relevant component and stored is now ready to be
-    /// gossiped onwards by us.
+    /// `Network` component requesting that we gossip an address, or the `TransactionAcceptor`
+    /// having accepted a transaction which we received from a client), or it could be the result
+    /// of this gossiper having requested the complete data from a peer, announcing it, and that
+    /// complete item having been deemed valid by the relevant component and stored is now ready to
+    /// be gossiped onwards by us.
     fn handle_item_received<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -219,7 +219,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         }
     }
 
-    /// Checks that the given peer has responded to a previous gossip response or `GetRequest` we
+    /// Checks that the given peer has responded to a previous `GossipResponse` or `GetItem` we
     /// sent it indicating we wanted to get the full item from it.
     fn check_get_from_peer_timeout<REv>(
         &mut self,

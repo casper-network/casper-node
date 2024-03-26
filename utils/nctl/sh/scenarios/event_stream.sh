@@ -39,7 +39,7 @@ function main() {
     do_send_wasm_deploys
     await_n_blocks 1 false
     do_check_event_emitted 'BlockAdded'
-    do_check_event_emitted 'DeployAccepted'
+    do_check_event_emitted 'TransactionAccepted'
     do_check_event_emitted 'FinalitySignature'
 
     log "------------------------------------------------------------"

@@ -52,6 +52,7 @@ static ERA_END_V2: Lazy<EraEndV2> = Lazy::new(|| {
         inactive_validators,
         next_era_validator_weights,
         rewards,
+        1u8,
     )
 });
 
@@ -69,6 +70,7 @@ pub struct EraEndV2 {
     pub(super) next_era_validator_weights: BTreeMap<PublicKey, U512>,
     /// The rewards distributed to the validators.
     pub(super) rewards: BTreeMap<PublicKey, U512>,
+    pub(super) next_era_gas_price: u8,
 }
 
 impl EraEndV2 {
@@ -99,12 +101,14 @@ impl EraEndV2 {
         inactive_validators: Vec<PublicKey>,
         next_era_validator_weights: BTreeMap<PublicKey, U512>,
         rewards: BTreeMap<PublicKey, U512>,
+        next_era_gas_price: u8,
     ) -> Self {
         EraEndV2 {
             equivocators,
             inactive_validators,
             next_era_validator_weights,
             rewards,
+            next_era_gas_price,
         }
     }
 
@@ -154,6 +158,7 @@ impl EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
+            1u8,
         )
     }
 }
@@ -165,12 +170,14 @@ impl ToBytes for EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
+            next_era_gas_price,
         } = self;
 
         equivocators.write_bytes(writer)?;
         inactive_validators.write_bytes(writer)?;
         next_era_validator_weights.write_bytes(writer)?;
         rewards.write_bytes(writer)?;
+        next_era_gas_price.write_bytes(writer)?;
 
         Ok(())
     }
@@ -187,12 +194,14 @@ impl ToBytes for EraEndV2 {
             inactive_validators,
             next_era_validator_weights,
             rewards,
+            next_era_gas_price,
         } = self;
 
         equivocators.serialized_length()
             + inactive_validators.serialized_length()
             + next_era_validator_weights.serialized_length()
             + rewards.serialized_length()
+            + next_era_gas_price.serialized_length()
     }
 }
 
@@ -202,11 +211,13 @@ impl FromBytes for EraEndV2 {
         let (inactive_validators, bytes) = Vec::from_bytes(bytes)?;
         let (next_era_validator_weights, bytes) = BTreeMap::from_bytes(bytes)?;
         let (rewards, bytes) = BTreeMap::from_bytes(bytes)?;
+        let (next_era_gas_price, bytes) = u8::from_bytes(bytes)?;
         let era_end = EraEndV2 {
             equivocators,
             inactive_validators,
             next_era_validator_weights,
             rewards,
+            next_era_gas_price,
         };
 
         Ok((era_end, bytes))

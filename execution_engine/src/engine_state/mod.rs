@@ -38,7 +38,7 @@ pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT)
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
-pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u64 = 1;
+pub const WASMLESS_TRANSFER_FIXED_GAS_PRICE: u8 = 1;
 
 /// The public api of the v1 execution engine, as of protocol version 2.0.0
 #[derive(Debug, Clone, Default)]

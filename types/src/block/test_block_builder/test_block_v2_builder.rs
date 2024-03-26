@@ -212,7 +212,7 @@ impl TestBlockV2Builder {
             }
         }
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
-
+        let current_gas_price: u8 = 1;
         BlockV2::new(
             parent_hash,
             parent_seed,
@@ -229,6 +229,7 @@ impl TestBlockV2Builder {
             install_upgrade_hashes,
             standard_hashes,
             rewarded_signatures,
+            current_gas_price,
         )
     }
 
@@ -275,5 +276,6 @@ fn gen_era_end_v2(
         inactive_validators,
         next_era_validator_weights,
         rewards,
+        1u8,
     )
 }

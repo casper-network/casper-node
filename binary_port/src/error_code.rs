@@ -42,9 +42,12 @@ pub enum ErrorCode {
     /// Received an unsupported type of request.
     #[error("unsupported request")]
     UnsupportedRequest = 11,
+    /// Dictionary URef not found.
+    #[error("dictionary URef not found")]
+    DictionaryURefNotFound = 12,
     /// This node has no complete blocks.
     #[error("no complete blocks")]
-    NoCompleteBlocks = 12,
+    NoCompleteBlocks = 13,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -64,7 +67,8 @@ impl TryFrom<u8> for ErrorCode {
             9 => Ok(ErrorCode::FailedQuery),
             10 => Ok(ErrorCode::BadRequest),
             11 => Ok(ErrorCode::UnsupportedRequest),
-            12 => Ok(ErrorCode::NoCompleteBlocks),
+            12 => Ok(ErrorCode::DictionaryURefNotFound),
+            13 => Ok(ErrorCode::NoCompleteBlocks),
             _ => Err(UnknownErrorCode),
         }
     }

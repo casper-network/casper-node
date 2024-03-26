@@ -1,7 +1,7 @@
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    AvailableBlockRange, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey, TimeDiff,
-    Timestamp,
+    AvailableBlockRange, BlockHash, BlockSynchronizerStatus, Digest, NextUpgrade, Peers, PublicKey,
+    TimeDiff, Timestamp,
 };
 
 #[cfg(test)]
@@ -40,6 +40,8 @@ pub struct NodeStatus {
     pub available_block_range: AvailableBlockRange,
     /// The status of the block synchronizer builders.
     pub block_sync: BlockSynchronizerStatus,
+    /// The hash of the latest switch block.
+    pub latest_switch_block_hash: Option<BlockHash>,
 }
 
 impl NodeStatus {
@@ -61,6 +63,7 @@ impl NodeStatus {
             last_progress: Timestamp::random(rng),
             available_block_range: AvailableBlockRange::random(rng),
             block_sync: BlockSynchronizerStatus::random(rng),
+            latest_switch_block_hash: rng.gen::<bool>().then_some(BlockHash::random(rng)),
         }
     }
 }
@@ -80,6 +83,7 @@ impl FromBytes for NodeStatus {
         let (last_progress, remainder) = Timestamp::from_bytes(remainder)?;
         let (available_block_range, remainder) = AvailableBlockRange::from_bytes(remainder)?;
         let (block_sync, remainder) = BlockSynchronizerStatus::from_bytes(remainder)?;
+        let (latest_switch_block_hash, remainder) = Option::<BlockHash>::from_bytes(remainder)?;
         Ok((
             NodeStatus {
                 peers,
@@ -95,6 +99,7 @@ impl FromBytes for NodeStatus {
                 last_progress,
                 available_block_range,
                 block_sync,
+                latest_switch_block_hash,
             },
             remainder,
         ))
@@ -123,6 +128,7 @@ impl ToBytes for NodeStatus {
             last_progress,
             available_block_range,
             block_sync,
+            latest_switch_block_hash,
         } = self;
         peers.write_bytes(writer)?;
         build_version.write_bytes(writer)?;
@@ -136,7 +142,8 @@ impl ToBytes for NodeStatus {
         reactor_state.write_bytes(writer)?;
         last_progress.write_bytes(writer)?;
         available_block_range.write_bytes(writer)?;
-        block_sync.write_bytes(writer)
+        block_sync.write_bytes(writer)?;
+        latest_switch_block_hash.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -153,6 +160,7 @@ impl ToBytes for NodeStatus {
             + self.last_progress.serialized_length()
             + self.available_block_range.serialized_length()
             + self.block_sync.serialized_length()
+            + self.latest_switch_block_hash.serialized_length()
     }
 }
 

@@ -419,8 +419,11 @@ pub trait GasLimited {
     fn gas_limit(
         &self,
         system_costs: &SystemConfig,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
     ) -> Result<Gas, Self::Error>;
+
+    /// Returns the gas tolerance of transaction sender.
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error>;
 }
 
 #[cfg(any(feature = "std", test))]
@@ -430,7 +433,7 @@ impl GasLimited for Transaction {
     fn gas_limit(
         &self,
         system_costs: &SystemConfig,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
     ) -> Result<Gas, Self::Error> {
         match self {
             Transaction::Deploy(deploy) => deploy
@@ -439,6 +442,15 @@ impl GasLimited for Transaction {
             Transaction::V1(v1) => v1
                 .gas_limit(system_costs, gas_price)
                 .map_err(InvalidTransaction::from),
+        }
+    }
+
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_price_tolerance()
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1.gas_price_tolerance().map_err(InvalidTransaction::from),
         }
     }
 }

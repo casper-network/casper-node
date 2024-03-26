@@ -39,7 +39,7 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
     fn finalize_payment(
         &mut self,
         limit: Gas,
-        gas_price: Option<u64>,
+        gas_price: Option<u8>,
         cost: U512,
         consumed: Gas,
         source_purse: URef,

@@ -56,11 +56,19 @@ pub fn execute_finalized_block(
     execution_pre_state: ExecutionPreState,
     executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
+    current_gas_price: u8,
+    next_era_gas_price: Option<u8>,
 ) -> Result<BlockAndExecutionArtifacts, BlockExecutionError> {
     if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
+        });
+    }
+
+    if executable_block.era_report.is_some() && next_era_gas_price.is_none() {
+        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {
+            era_id: executable_block.era_id.successor(),
         });
     }
 
@@ -94,7 +102,7 @@ pub fn execute_finalized_block(
         .collect_vec();
     let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
-    let gas_price = Some(1); // < --TODO: this is where Karan's calculated gas price needs to be used
+    let gas_price = Some(current_gas_price);
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -199,7 +207,7 @@ pub fn execute_finalized_block(
                 (DIRECT_CONTRACT, STANDARD_PAYMENT) => {
                     // TODO: get the contract, check the entry point indicated in the transaction
                     //      if the contract pays for itself, use its main purse
-                    // <-- contract paying for things wire up goes here -->
+                    // <-- contracts paying for things wire up goes here -->
                     // use scratch_state to read the contract & check it here
                     // if the contract does not exist, the entrypoint does not exist,
                     //      the entrypoint does not pay for itself, and every other sad path
@@ -613,15 +621,21 @@ pub fn execute_finalized_block(
     }
 
     // the rest of this is post process, picking out data bits to return to caller
-    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
-        let next_era_id = executable_block.era_id.successor();
-        step_outcome.as_ref().and_then(
-            |StepOutcome {
-                 upcoming_era_validators,
-                 ..
-             }| upcoming_era_validators.get(&next_era_id).cloned(),
-        )
-    };
+    let next_era_id = executable_block.era_id.successor();
+    let maybe_next_era_validator_weights: Option<(BTreeMap<PublicKey, U512>, u8)> =
+        match step_outcome.as_ref() {
+            None => None,
+            Some(effects_and_validators) => {
+                match effects_and_validators
+                    .upcoming_era_validators
+                    .get(&next_era_id)
+                    .cloned()
+                {
+                    Some(validators) => next_era_gas_price.map(|gas_price| (validators, gas_price)),
+                    None => None,
+                }
+            }
+        };
 
     let era_end = match (
         executable_block.era_report,
@@ -633,12 +647,13 @@ pub fn execute_finalized_block(
                 equivocators,
                 inactive_validators,
             }),
-            Some(next_era_validator_weights),
+            Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
             inactive_validators,
             next_era_validator_weights,
             executable_block.rewards.unwrap_or_default(),
+            next_era_gas_price,
         )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             if maybe_era_report.is_none() {
@@ -676,6 +691,7 @@ pub fn execute_finalized_block(
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,
+        current_gas_price,
     ));
 
     // TODO: this should just use the data_access_layer.query mechanism to avoid

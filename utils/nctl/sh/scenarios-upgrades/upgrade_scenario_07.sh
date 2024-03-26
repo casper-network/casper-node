@@ -275,7 +275,7 @@ function _step_10()
     log_step_upgrades 10 "Asserting all nodes are running..."
 
     # true in case of bad grep which would exit 1
-    RUNNING_COUNT="$(nctl-status | grep -c 'RUNNING' || true)"
+    RUNNING_COUNT="$(nctl-status | grep -Ec 'node-[0-9]+ +RUNNING' || true)"
     if [ "$RUNNING_COUNT" != '10' ]; then
         log "ERROR: $RUNNING_COUNT of 10 nodes found running"
         log "... dumping logs"

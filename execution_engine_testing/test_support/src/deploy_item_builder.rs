@@ -15,7 +15,7 @@ struct DeployItemData {
     pub address: Option<AccountHash>,
     pub payment_code: Option<ExecutableDeployItem>,
     pub session_code: Option<ExecutableDeployItem>,
-    pub gas_price: u64,
+    pub gas_price: u8,
     pub authorization_keys: BTreeSet<AccountHash>,
     pub deploy_hash: Option<DeployHash>,
 }
@@ -255,7 +255,7 @@ impl DeployItemBuilder {
     }
 
     /// Sets the gas price for the deploy.
-    pub fn with_gas_price(mut self, gas_price: u64) -> Self {
+    pub fn with_gas_price(mut self, gas_price: u8) -> Self {
         self.deploy_item.gas_price = gas_price;
         self
     }

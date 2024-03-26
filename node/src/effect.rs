@@ -115,8 +115,7 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_binary_port::{
-    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RawBytesSpec, RecordId,
-    Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
 use casper_storage::{
     block_store::types::ApprovalsHashes,
@@ -127,6 +126,7 @@ use casper_storage::{
         QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
         TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
     },
+    DbRawBytesSpec,
 };
 use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult},
@@ -1047,6 +1047,21 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn announce_new_era_gas_price(self, era_id: EraId, next_era_gas_price: u8)
+    where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::NextEraGasPrice {
+                    era_id,
+                    next_era_gas_price,
+                },
+                QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
     /// Begins gossiping an item.
     pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source, target: GossipTarget)
     where
@@ -1132,6 +1147,27 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_block_utilization(
+        self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                transaction_count,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     pub(crate) async fn is_block_stored(self, block_hash: BlockHash) -> bool
     where
         REv: From<StorageRequest>,
@@ -1168,7 +1204,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         record_id: RecordId,
         key: Vec<u8>,
-    ) -> Option<RawBytesSpec>
+    ) -> Option<DbRawBytesSpec>
     where
         REv: From<StorageRequest>,
     {
@@ -1217,6 +1253,17 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_latest_switch_block_header_from_storage(self) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLatestSwitchBlockHeader { responder },
             QueueKind::FromStorage,
         )
         .await
@@ -1511,6 +1558,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_current_gas_price(self, era_id: EraId) -> Option<u8>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraGasPrice { era_id, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     pub(crate) async fn put_transaction_to_storage(self, transaction: Transaction) -> bool
     where
         REv: From<StorageRequest>,
@@ -1754,13 +1812,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which transactions are to be proposed.
-    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
+    pub(crate) async fn request_appendable_block(
+        self,
+        timestamp: Timestamp,
+        era_id: EraId,
+    ) -> AppendableBlock
     where
         REv: From<TransactionBufferRequest>,
     {
         self.make_request(
             |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
+                era_id,
                 responder,
             },
             QueueKind::Consensus,

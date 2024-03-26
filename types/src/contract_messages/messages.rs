@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, crypto, AddressableEntityHash, Key,
+    checksummed_hex, crypto, EntityAddr, Key,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -212,7 +212,7 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
-    entity_hash: AddressableEntityHash, // TODO: this should be EntityAddr
+    entity_hash: EntityAddr, // TODO: this should be EntityAddr
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
@@ -228,7 +228,7 @@ pub struct Message {
 impl Message {
     /// Creates new instance of [`Message`] with the specified source and message payload.
     pub fn new(
-        source: AddressableEntityHash,
+        source: EntityAddr,
         message: MessagePayload,
         topic_name: String,
         topic_name_hash: TopicNameHash,
@@ -246,7 +246,7 @@ impl Message {
     }
 
     /// Returns a reference to the identity of the entity that produced the message.
-    pub fn entity_hash(&self) -> &AddressableEntityHash {
+    pub fn entity_hash(&self) -> &EntityAddr {
         &self.entity_hash
     }
 

@@ -297,7 +297,8 @@ enable_server = true
 address = '0.0.0.0:7779'
 
 # Flag that enables the `AllValues` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
-allow_request_get_all_values = false
+# We enable it for NCTL testing since we need deeper inspection for the network in tests.
+allow_request_get_all_values = true
 
 # Flag that enables the `Trie` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
