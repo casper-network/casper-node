@@ -8,7 +8,7 @@ use crate::{
     system::auction::{
         bid::VestingSchedule, DelegationRate, Error, VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    CLType, CLTyped, PublicKey, URef, U512,
+    CLType, CLTyped, EraId, PublicKey, URef, U512,
 };
 
 use crate::system::auction::Bid;
@@ -36,6 +36,8 @@ pub struct ValidatorBid {
     vesting_schedule: Option<VestingSchedule>,
     /// `true` if validator has been "evicted"
     inactive: bool,
+    /// era when validator has been "evicted"
+    eviction_era: Option<EraId>,
 }
 
 impl ValidatorBid {
@@ -49,6 +51,7 @@ impl ValidatorBid {
     ) -> Self {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let inactive = false;
+        let eviction_era = None;
         Self {
             validator_public_key,
             bonding_purse,
@@ -56,6 +59,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            eviction_era,
         }
     }
 
@@ -68,6 +72,7 @@ impl ValidatorBid {
     ) -> Self {
         let vesting_schedule = None;
         let inactive = false;
+        let eviction_era = None;
         Self {
             validator_public_key,
             bonding_purse,
@@ -75,6 +80,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            eviction_era,
         }
     }
 
@@ -82,6 +88,7 @@ impl ValidatorBid {
     pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
         let vesting_schedule = None;
         let inactive = true;
+        let eviction_era = None;
         let staked_amount = 0.into();
         let delegation_rate = Default::default();
         Self {
@@ -91,6 +98,7 @@ impl ValidatorBid {
             delegation_rate,
             vesting_schedule,
             inactive,
+            eviction_era,
         }
     }
 
@@ -217,12 +225,15 @@ impl ValidatorBid {
     /// Sets given bid's `inactive` field to `false`
     pub fn activate(&mut self) -> bool {
         self.inactive = false;
+        self.eviction_era = None;
         false
     }
 
     /// Sets given bid's `inactive` field to `true`
-    pub fn deactivate(&mut self) -> bool {
+    /// and store eviction era id
+    pub fn deactivate(&mut self, era_id: EraId) -> bool {
         self.inactive = true;
+        self.eviction_era = Some(era_id);
         true
     }
 }
@@ -242,6 +253,7 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(&mut result)?;
         self.vesting_schedule.write_bytes(&mut result)?;
         self.inactive.write_bytes(&mut result)?;
+        self.eviction_era.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -252,6 +264,7 @@ impl ToBytes for ValidatorBid {
             + self.delegation_rate.serialized_length()
             + self.vesting_schedule.serialized_length()
             + self.inactive.serialized_length()
+            + self.eviction_era.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -261,6 +274,7 @@ impl ToBytes for ValidatorBid {
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
+        self.eviction_era.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -273,6 +287,7 @@ impl FromBytes for ValidatorBid {
         let (delegation_rate, bytes) = FromBytes::from_bytes(bytes)?;
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
+        let (eviction_era, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -281,6 +296,7 @@ impl FromBytes for ValidatorBid {
                 delegation_rate,
                 vesting_schedule,
                 inactive,
+                eviction_era,
             },
             bytes,
         ))
@@ -296,6 +312,7 @@ impl From<Bid> for ValidatorBid {
             delegation_rate: *bid.delegation_rate(),
             vesting_schedule: bid.vesting_schedule().cloned(),
             inactive: bid.inactive(),
+            eviction_era: None,
         }
     }
 }
@@ -305,7 +322,7 @@ mod tests {
     use crate::{
         bytesrepr,
         system::auction::{bid::VestingSchedule, DelegationRate, ValidatorBid},
-        AccessRights, PublicKey, SecretKey, URef, U512,
+        AccessRights, EraId, PublicKey, SecretKey, URef, U512,
     };
 
     #[test]
@@ -319,6 +336,7 @@ mod tests {
             delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
+            eviction_era: None,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -334,6 +352,7 @@ mod tests {
             delegation_rate: DelegationRate::max_value(),
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: true,
+            eviction_era: Some(EraId::default()),
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

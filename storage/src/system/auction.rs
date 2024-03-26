@@ -500,8 +500,9 @@ pub trait Auction:
                 bids_modified = true;
             }
 
+            let current_era_id = self.read_era_id()?;
             if evicted_validators.contains(validator_public_key) {
-                bids_modified = validator_bid.deactivate();
+                bids_modified = validator_bid.deactivate(current_era_id);
             }
         }
 
