@@ -3,10 +3,12 @@ set -e
 shopt -s expand_aliases
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+NCTL_HOME="$ROOT_DIR/../casper-nctl"
+NCTL_CASPER_HOME="$ROOT_DIR"
 
 # Activate Environment
 pushd "$ROOT_DIR"
-source $(pwd)/utils/nctl/activate
+source "$NCTL_HOME/activate"
 
 # Call compile wrapper for client, launcher, and nctl-compile
 bash -c "$ROOT_DIR/ci/nctl_compile.sh"
