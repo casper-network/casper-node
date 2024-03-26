@@ -19,8 +19,7 @@ use crate::{
 use casper_binary_port::SpeculativeExecutionResult;
 use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
-    data_access_layer::{Block, DataAccessLayer},
-    global_state::state::lmdb::LmdbGlobalState,
+    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
 use casper_types::{BlockHash, Chainspec, EraId, Key};
 use once_cell::sync::Lazy;

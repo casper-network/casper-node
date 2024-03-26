@@ -24,9 +24,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
-    BlockHash, BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec,
-    ChecksumRegistry, Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion,
-    PublicKey, Transaction, TransactionCategory, U512,
+    BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
+    Transaction, TransactionCategory, U512,
 };
 
 use super::{
