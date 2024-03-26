@@ -2,7 +2,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::Effects,
-    Gas, InvalidTransaction, Transfer,
+    BlockHash, Digest, Gas, InvalidTransaction, Transfer,
 };
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::new(|| {
     SpeculativeExecutionResult::new(
+        BlockHash::new(Digest::from([0; Digest::LENGTH])),
         vec![],
         Gas::zero(),
         Gas::zero(),
@@ -20,6 +21,8 @@ static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::ne
 });
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SpeculativeExecutionResult {
+    /// Block hash against which the execution was performed.
+    block_hash: BlockHash,
     /// List of transfers that happened during execution.
     transfers: Vec<Transfer>,
     /// Gas limit.
@@ -36,6 +39,7 @@ pub struct SpeculativeExecutionResult {
 
 impl SpeculativeExecutionResult {
     pub fn new(
+        block_hash: BlockHash,
         transfers: Vec<Transfer>,
         limit: Gas,
         consumed: Gas,
@@ -50,6 +54,7 @@ impl SpeculativeExecutionResult {
             effects,
             messages,
             error,
+            block_hash,
         }
     }
 
@@ -69,6 +74,7 @@ impl From<InvalidTransaction> for SpeculativeExecutionResult {
             effects: Default::default(),
             messages: Default::default(),
             error: Some(format!("{}", invalid_transaction)),
+            block_hash: Default::default(),
         }
     }
 }
@@ -87,6 +93,7 @@ impl ToBytes for SpeculativeExecutionResult {
             + ToBytes::serialized_length(&self.effects)
             + ToBytes::serialized_length(&self.messages)
             + ToBytes::serialized_length(&self.error)
+            + ToBytes::serialized_length(&self.block_hash)
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -95,7 +102,8 @@ impl ToBytes for SpeculativeExecutionResult {
         self.consumed.write_bytes(writer)?;
         self.effects.write_bytes(writer)?;
         self.messages.write_bytes(writer)?;
-        self.error.write_bytes(writer)
+        self.error.write_bytes(writer)?;
+        self.block_hash.write_bytes(writer)
     }
 }
 
@@ -107,6 +115,7 @@ impl FromBytes for SpeculativeExecutionResult {
         let (effects, bytes) = Effects::from_bytes(bytes)?;
         let (messages, bytes) = Messages::from_bytes(bytes)?;
         let (error, bytes) = Option::<String>::from_bytes(bytes)?;
+        let (block_hash, bytes) = BlockHash::from_bytes(bytes)?;
         Ok((
             SpeculativeExecutionResult {
                 transfers,
@@ -115,12 +124,13 @@ impl FromBytes for SpeculativeExecutionResult {
                 effects,
                 messages,
                 error,
+                block_hash,
             },
             bytes,
         ))
     }
 }
-//
+
 // #[cfg(test)]
 // mod tests {
 //     // use super::*;
