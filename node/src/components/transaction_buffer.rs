@@ -611,11 +611,6 @@ impl TransactionBuffer {
             .total_transactions
             .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
     }
-
-    #[cfg(test)]
-    pub fn prices(&self) -> BTreeMap<EraId, u8> {
-        self.prices.clone()
-    }
 }
 
 impl<REv> InitializedComponent<REv> for TransactionBuffer
