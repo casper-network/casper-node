@@ -90,6 +90,9 @@ pub struct CoreConfig {
     /// The delay in number of eras for paying out the unbonding amount.
     pub unbonding_delay: u64,
 
+    /// The delay in number of eras for automatically undelegating all delegators from an inactive validator
+    pub inactive_validator_undelegation_delay: u64,
+
     /// Round seigniorage rate represented as a fractional number.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub round_seigniorage_rate: Ratio<u64>,
@@ -193,6 +196,8 @@ impl CoreConfig {
         let locked_funds_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let vesting_schedule_period = TimeDiff::from_seconds(rng.gen_range(600..604_800));
         let unbonding_delay = rng.gen_range((auction_delay + 1)..1_000_000_000);
+        let inactive_validator_undelegation_delay =
+            rng.gen_range((auction_delay + 1)..1_000_000_000);
         let round_seigniorage_rate = Ratio::new(
             rng.gen_range(1..1_000_000_000),
             rng.gen_range(1..1_000_000_000),
@@ -247,6 +252,7 @@ impl CoreConfig {
             locked_funds_period,
             vesting_schedule_period,
             unbonding_delay,
+            inactive_validator_undelegation_delay,
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,
@@ -287,6 +293,7 @@ impl Default for CoreConfig {
             locked_funds_period: Default::default(),
             vesting_schedule_period: Default::default(),
             unbonding_delay: 7,
+            inactive_validator_undelegation_delay: 36,
             round_seigniorage_rate: Ratio::new(1, 4_200_000_000_000_000_000),
             max_associated_keys: DEFAULT_MAX_ASSOCIATED_KEYS,
             max_runtime_call_stack_height: DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
@@ -329,6 +336,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.locked_funds_period.to_bytes()?);
         buffer.extend(self.vesting_schedule_period.to_bytes()?);
         buffer.extend(self.unbonding_delay.to_bytes()?);
+        buffer.extend(self.inactive_validator_undelegation_delay.to_bytes()?);
         buffer.extend(self.round_seigniorage_rate.to_bytes()?);
         buffer.extend(self.max_associated_keys.to_bytes()?);
         buffer.extend(self.max_runtime_call_stack_height.to_bytes()?);
@@ -367,6 +375,9 @@ impl ToBytes for CoreConfig {
             + self.locked_funds_period.serialized_length()
             + self.vesting_schedule_period.serialized_length()
             + self.unbonding_delay.serialized_length()
+            + self
+                .inactive_validator_undelegation_delay
+                .serialized_length()
             + self.round_seigniorage_rate.serialized_length()
             + self.max_associated_keys.serialized_length()
             + self.max_runtime_call_stack_height.serialized_length()
@@ -405,6 +416,7 @@ impl FromBytes for CoreConfig {
         let (locked_funds_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (vesting_schedule_period, remainder) = TimeDiff::from_bytes(remainder)?;
         let (unbonding_delay, remainder) = u64::from_bytes(remainder)?;
+        let (inactive_validator_undelegation_delay, remainder) = u64::from_bytes(remainder)?;
         let (round_seigniorage_rate, remainder) = Ratio::<u64>::from_bytes(remainder)?;
         let (max_associated_keys, remainder) = u32::from_bytes(remainder)?;
         let (max_runtime_call_stack_height, remainder) = u32::from_bytes(remainder)?;
@@ -438,6 +450,7 @@ impl FromBytes for CoreConfig {
             locked_funds_period,
             vesting_schedule_period,
             unbonding_delay,
+            inactive_validator_undelegation_delay,
             round_seigniorage_rate,
             max_associated_keys,
             max_runtime_call_stack_height,

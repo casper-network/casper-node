@@ -53,6 +53,8 @@ locked_funds_period = '0 days'
 vesting_schedule_period = '0 weeks'
 # Default number of eras that need to pass to be able to withdraw unbonded funds.
 unbonding_delay = 7
+# Default number of eras that a validator remains inactive, after which all of their delegators are automatically undelegated.
+inactive_validator_undelegation_delay = 36
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
