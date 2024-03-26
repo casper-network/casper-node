@@ -78,7 +78,7 @@ pub const MAX_TOTAL_UREFS: usize = 100;
 
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
-const ENTITY_PREFIX: &str = "entity-addr-";
+const ENTITY_PREFIX: &str = "entity-";
 const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 const CONTRACT_ENTITY_PREFIX: &str = "contract-";
 const SYSTEM_ENTITY_PREFIX: &str = "system-";

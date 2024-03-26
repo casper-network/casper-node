@@ -21,8 +21,8 @@ use casper_types::{
     AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Groups, Key, Package, PackageHash,
-    PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferV1,
-    TransferV1Addr, URef, U512,
+    PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferAddr,
+    TransferV1, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -81,7 +81,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     );
     let deploy_info = DeployInfo::new(
         DeployHash::from_raw([55; 32]),
-        &[TransferV1Addr::new([1; 32]), TransferV1Addr::new([2; 32])],
+        &[TransferAddr::new([1; 32]), TransferAddr::new([2; 32])],
         AccountHash::new([100; 32]),
         URef::new([10; 32], AccessRights::READ_ADD_WRITE),
         U512::from(2_500_000_000u64),
@@ -205,7 +205,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
         const HASH_KEY: Key = Key::Hash([42; 32]);
         const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
-        const LEGACY_TRANSFER_KEY: Key = Key::Transfer(TransferV1Addr::new([42; 32]));
+        const TRANSFER_KEY: Key = Key::Transfer(TransferAddr::new([42; 32]));
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
@@ -236,7 +236,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
         keys.insert(
             "LegacyTransfer".to_string(),
-            ABITestCase::from_inputs(vec![LEGACY_TRANSFER_KEY.into()])?,
+            ABITestCase::from_inputs(vec![TRANSFER_KEY.into()])?,
         );
         keys.insert(
             "DeployInfo".to_string(),

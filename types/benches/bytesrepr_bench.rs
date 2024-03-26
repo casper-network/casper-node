@@ -16,7 +16,7 @@ use casper_types::{
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
     Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash,
-    TransferV1Addr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_V1_ADDR_LENGTH, U128, U256, U512,
+    TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512,
     UREF_ADDR_LENGTH,
 };
 
@@ -647,9 +647,9 @@ fn deserialize_transfer(b: &mut Bencher) {
 fn sample_deploy_info(transfer_len: u16) -> DeployInfo {
     let transfers = (0..transfer_len)
         .map(|i| {
-            let mut tmp = [0u8; TRANSFER_V1_ADDR_LENGTH];
+            let mut tmp = [0u8; TRANSFER_ADDR_LENGTH];
             U256::from(i).to_little_endian(&mut tmp);
-            TransferV1Addr::new(tmp)
+            TransferAddr::new(tmp)
         })
         .collect::<Vec<_>>();
     DeployInfo::new(

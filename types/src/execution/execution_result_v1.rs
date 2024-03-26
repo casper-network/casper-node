@@ -22,7 +22,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, Key, TransferV1, TransferV1Addr, U128, U256, U512,
+    CLValue, DeployInfo, Key, TransferAddr, TransferV1, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -104,7 +104,7 @@ pub enum ExecutionResultV1 {
         /// The effect of executing the deploy.
         effect: ExecutionEffect,
         /// A record of version 1 Transfers performed while executing the deploy.
-        transfers: Vec<TransferV1Addr>,
+        transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
         cost: U512,
         /// The error message associated with executing the deploy.
@@ -115,7 +115,7 @@ pub enum ExecutionResultV1 {
         /// The effect of executing the deploy.
         effect: ExecutionEffect,
         /// A record of Transfers performed while executing the deploy.
-        transfers: Vec<TransferV1Addr>,
+        transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
         cost: U512,
     },
@@ -153,7 +153,7 @@ impl Distribution<ExecutionResultV1> for Standard {
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = Vec::new();
         for _ in 0..transfer_count {
-            transfers.push(TransferV1Addr::new(rng.gen()))
+            transfers.push(TransferAddr::new(rng.gen()))
         }
 
         if rng.gen() {
@@ -240,7 +240,7 @@ impl FromBytes for ExecutionResultV1 {
         match TryFrom::try_from(tag)? {
             ExecutionResultTag::Failure => {
                 let (effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
-                let (transfers, remainder) = Vec::<TransferV1Addr>::from_bytes(remainder)?;
+                let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV1::Failure {
@@ -253,7 +253,7 @@ impl FromBytes for ExecutionResultV1 {
             }
             ExecutionResultTag::Success => {
                 let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
-                let (transfers, remainder) = Vec::<TransferV1Addr>::from_bytes(remainder)?;
+                let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV1::Success {
                     effect: execution_effect,

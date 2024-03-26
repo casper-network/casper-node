@@ -22,7 +22,7 @@ use crate::{account::AccountHash, TransactionV1Hash, URef, U512};
 #[cfg(any(feature = "testing", feature = "json-schema", test))]
 use crate::{Gas, InitiatorAddr, TransactionHash};
 pub use error::TransferFromStrError;
-pub use transfer_v1::{TransferV1, TransferV1Addr, TRANSFER_V1_ADDR_LENGTH};
+pub use transfer_v1::{TransferAddr, TransferV1, TRANSFER_ADDR_LENGTH};
 pub use transfer_v2::TransferV2;
 
 const V1_TAG: u8 = 0;
@@ -180,8 +180,8 @@ pub mod gens {
         transaction::gens::deploy_hash_arb,
     };
 
-    pub fn transfer_v1_addr_arb() -> impl Strategy<Value = TransferV1Addr> {
-        array::uniform32(<u8>::arbitrary()).prop_map(TransferV1Addr::new)
+    pub fn transfer_v1_addr_arb() -> impl Strategy<Value = TransferAddr> {
+        array::uniform32(<u8>::arbitrary()).prop_map(TransferAddr::new)
     }
 
     pub fn transfer_v1_arb() -> impl Strategy<Value = TransferV1> {

@@ -46,7 +46,7 @@ use crate::{
     transaction::gens::deploy_hash_arb,
     transfer::{
         gens::{transfer_v1_addr_arb, transfer_v1_arb},
-        TransferV1Addr,
+        TransferAddr,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
@@ -128,7 +128,7 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
         u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
         u2_slice_32().prop_map(Key::Hash),
         u2_slice_32().prop_map(|bytes| Key::URef(URef::new(bytes, AccessRights::NONE))),
-        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferV1Addr::new(bytes))),
+        u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
         u2_slice_32().prop_map(Key::Dictionary),
     ]
 }
