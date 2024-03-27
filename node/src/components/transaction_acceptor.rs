@@ -17,7 +17,7 @@ use casper_types::{
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
-    PackageIdentifier, ProtocolVersion, SystemConfig, Transaction, TransactionConfig,
+    PackageIdentifier, Transaction,
     TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
@@ -72,11 +72,7 @@ impl<REv> ReactorEventT for REv where
 #[derive(Debug, DataSize)]
 pub struct TransactionAcceptor {
     acceptor_config: Config,
-    chain_name: String,
-    protocol_version: ProtocolVersion,
-    cost_table: SystemConfig,
-    transaction_config: TransactionConfig,
-    max_associated_keys: u32,
+    chainspec: Arc<Chainspec>,
     administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
     metrics: metrics::Metrics,
@@ -86,7 +82,7 @@ pub struct TransactionAcceptor {
 impl TransactionAcceptor {
     pub(crate) fn new(
         acceptor_config: Config,
-        chainspec: &Chainspec,
+        chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         let administrators = chainspec
@@ -95,16 +91,13 @@ impl TransactionAcceptor {
             .iter()
             .map(|public_key| public_key.to_account_hash())
             .collect();
+        let balance_hold_interval =  chainspec.core_config.balance_hold_interval.millis();
         Ok(TransactionAcceptor {
             acceptor_config,
-            chain_name: chainspec.network_config.name.clone(),
-            protocol_version: chainspec.protocol_version(),
-            cost_table: chainspec.system_costs_config,
-            transaction_config: chainspec.transaction_config,
-            max_associated_keys: chainspec.core_config.max_associated_keys,
+            chainspec,
             administrators,
             metrics: metrics::Metrics::new(registry)?,
-            balance_hold_interval: chainspec.core_config.balance_hold_interval.millis(),
+            balance_hold_interval,
         })
     }
 
@@ -122,20 +115,17 @@ impl TransactionAcceptor {
         let is_config_compliant = match &event_metadata.transaction {
             Transaction::Deploy(deploy) => deploy
                 .is_config_compliant(
-                    &self.chain_name,
-                    &self.cost_table,
-                    &self.transaction_config,
-                    self.max_associated_keys,
+                    &self.chainspec.network_config.name,
+                    &self.chainspec.system_costs_config,
+                    &self.chainspec.transaction_config,
+                    self.chainspec.core_config.max_associated_keys,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(|err| Error::InvalidTransaction(err.into())),
             Transaction::V1(txn) => txn
                 .is_config_compliant(
-                    &self.chain_name,
-                    &self.cost_table,
-                    &self.transaction_config,
-                    self.max_associated_keys,
+                    &self.chainspec,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
@@ -673,7 +663,7 @@ impl TransactionAcceptor {
         };
 
         let entity_version_key =
-            EntityVersionKey::new(self.protocol_version.value().major, entity_version);
+            EntityVersionKey::new(self.chainspec.protocol_config.version.value().major, entity_version);
 
         if package.is_version_missing(entity_version_key) {
             let error = Error::parameter_failure(

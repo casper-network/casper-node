@@ -1,3 +1,4 @@
+use core::fmt::{Display, Formatter};
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
@@ -22,6 +23,19 @@ pub enum PricingHandling {
     Classic,
     /// The costs are fixed, per the cost tables.
     Fixed,
+}
+
+impl Display for PricingHandling {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            PricingHandling::Classic => {
+                write!(f, "PricingHandling::Classic")
+            }
+            PricingHandling::Fixed => {
+                write!(f, "PricingHandling::Fixed")
+            }
+        }
+    }
 }
 
 impl ToBytes for PricingHandling {

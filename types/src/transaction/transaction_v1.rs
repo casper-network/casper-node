@@ -35,8 +35,8 @@ use super::{GasLimited, InitiatorAddrAndSecretKey};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
-    TransactionSessionKind,
+   Chainspec, crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
+    TransactionSessionKind
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
@@ -51,6 +51,7 @@ pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError
 pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
+use crate::chainspec::PricingHandling;
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -350,17 +351,17 @@ impl TransactionV1 {
     #[cfg(any(feature = "std", test))]
     pub fn is_config_compliant(
         &self,
-        chain_name: &str,
-        cost_table: &SystemConfig,
-        transaction_config: &TransactionConfig,
-        max_associated_keys: u32,
+        chainspec: &Chainspec,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), InvalidTransactionV1> {
+        let transaction_config = chainspec.transaction_config;
         self.is_valid_size(transaction_config.max_transaction_size)?;
 
+        let chain_name = chainspec.network_config.name.clone();
+
         let header = self.header();
-        if header.chain_name() != chain_name {
+        if header.chain_name() != &chain_name {
             debug!(
                 transaction_hash = %self.hash(),
                 transaction_header = %header,
@@ -373,7 +374,41 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(transaction_config, timestamp_leeway, at, &self.hash)?;
+        let price_handling = chainspec.core_config.pricing_handling;
+        let price_mode = header.pricing_mode();
+
+        match price_mode {
+            PricingMode::Classic { .. } => {
+                if let PricingHandling::Classic = price_handling {
+                } else {
+                    return Err(InvalidTransactionV1::InvalidPricingMode {
+                        price_handling,
+                        price_mode: price_mode.clone(),
+                    })
+                }
+            }
+            PricingMode::Fixed { .. } => {
+                if let PricingHandling::Fixed = price_handling {
+                } else {
+                    return Err(InvalidTransactionV1::InvalidPricingMode {
+                        price_handling,
+                        price_mode: price_mode.clone(),
+                    })
+                }
+            }
+            PricingMode::Reserved { .. } => {
+                // Currently Reserved isn't implemented and we should
+                // not be accepting transactions with this mode.
+                return Err(InvalidTransactionV1::InvalidPricingMode {
+                    price_handling,
+                    price_mode: price_mode.clone(),
+                })
+            }
+        }
+
+        header.is_valid(&transaction_config, timestamp_leeway, at, &self.hash)?;
+
+        let max_associated_keys = chainspec.core_config.max_associated_keys;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -388,7 +423,7 @@ impl TransactionV1 {
             });
         }
 
-        let gas_limit = self.gas_limit(cost_table, None)?;
+        let gas_limit = self.gas_limit(&chainspec.system_costs_config, None)?;
         let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
         if gas_limit > block_gas_limit {
             debug!(
@@ -402,7 +437,7 @@ impl TransactionV1 {
             });
         }
 
-        self.body.is_valid(transaction_config)
+        self.body.is_valid(&transaction_config)
     }
 
     // This method is not intended to be used by third party crates.
@@ -926,15 +961,15 @@ mod tests {
             .with_chain_name(chain_name)
             .build()
             .unwrap();
-        let cost_table = SystemConfig::default();
-        let transaction_config = TransactionConfig::default();
         let current_timestamp = transaction.timestamp();
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret
+        };
         transaction
             .is_config_compliant(
-                chain_name,
-                &cost_table,
-                &transaction_config,
-                MAX_ASSOCIATED_KEYS,
+                &chainspec,
                 TimeDiff::default(),
                 current_timestamp,
             )
@@ -946,9 +981,6 @@ mod tests {
         let rng = &mut TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2";
-        let cost_table = SystemConfig::default();
-        let transaction_config = TransactionConfig::default();
-
         let transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(wrong_chain_name)
             .build()
@@ -960,14 +992,16 @@ mod tests {
         };
 
         let current_timestamp = transaction.timestamp();
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = expected_chain_name.to_string();
+            ret
+        };
         assert_eq!(
             transaction.is_config_compliant(
-                expected_chain_name,
-                &cost_table,
-                &transaction_config,
-                MAX_ASSOCIATED_KEYS,
+                &chainspec,
                 TimeDiff::default(),
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -981,7 +1015,6 @@ mod tests {
     fn not_acceptable_due_to_excessive_ttl() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
         let transaction_config = TransactionConfig::default();
         let ttl = transaction_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
         let transaction = TransactionV1Builder::new_random(rng)
@@ -996,14 +1029,16 @@ mod tests {
         };
 
         let current_timestamp = transaction.timestamp();
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret
+        };
         assert_eq!(
             transaction.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &transaction_config,
-                MAX_ASSOCIATED_KEYS,
+                &chainspec,
                 TimeDiff::default(),
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1017,8 +1052,6 @@ mod tests {
     fn not_acceptable_due_to_timestamp_in_future() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let transaction_config = TransactionConfig::default();
         let leeway = TimeDiff::from_seconds(2);
 
         let transaction = TransactionV1Builder::new_random(rng)
@@ -1033,12 +1066,15 @@ mod tests {
             got: transaction.timestamp(),
         };
 
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret
+        };
+
         assert_eq!(
             transaction.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &transaction_config,
-                MAX_ASSOCIATED_KEYS,
+                &chainspec,
                 leeway,
                 current_timestamp
             ),
@@ -1054,8 +1090,6 @@ mod tests {
     fn not_acceptable_due_to_excessive_approvals() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let transaction_config = TransactionConfig::default();
         let mut transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
             .build()
@@ -1072,14 +1106,18 @@ mod tests {
             max_associated_keys: MAX_ASSOCIATED_KEYS,
         };
 
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret.core_config.max_associated_keys = MAX_ASSOCIATED_KEYS;
+            ret
+        };
+
         assert_eq!(
             transaction.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &transaction_config,
-                MAX_ASSOCIATED_KEYS,
+                &chainspec,
                 TimeDiff::default(),
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );

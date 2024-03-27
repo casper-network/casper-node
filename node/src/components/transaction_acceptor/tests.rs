@@ -34,7 +34,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PublicKey, SecretKey,
     StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind,
-    TransactionV1, TransactionV1Builder, URef, U512,
+    TransactionV1, TransactionV1Builder, URef, U512, ProtocolVersion,
 };
 
 use super::*;
@@ -883,7 +883,7 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
         let transaction_acceptor =
-            TransactionAcceptor::new(Config::default(), chainspec.as_ref(), registry).unwrap();
+            TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry).unwrap();
 
         let storage = Storage::new(
             &storage_withdir,
