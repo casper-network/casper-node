@@ -5,7 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::Display;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{ProtocolVersion, PublicKey};
@@ -525,7 +525,7 @@ impl BlockAcquisitionState {
         let new_state = match self {
             BlockAcquisitionState::Initialized(block_hash, signatures) => {
                 if header.block_hash() == *block_hash {
-                    info!(
+                    debug!(
                         "BlockAcquisition: registering header for: {:?}, height: {}",
                         block_hash,
                         header.height()
@@ -575,7 +575,7 @@ impl BlockAcquisitionState {
                         actual: *actual_block_hash,
                     });
                 }
-                info!(
+                debug!(
                     "BlockAcquisition: registering block for: {}",
                     header.block_hash()
                 );
@@ -842,7 +842,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::Complete(..) => return Ok(None),
         };
         let ret = currently_acquiring_sigs.then_some(acceptance);
-        info!(
+        debug!(
             signature=%cloned_sig,
             ?ret,
             "BlockAcquisition: registering finality signature for: {}",
@@ -869,7 +869,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlock(block, signatures, acquired)
                 if !need_execution_state =>
             {
-                info!(
+                debug!(
                     "BlockAcquisition: registering approvals hashes for: {}",
                     block.hash()
                 );
@@ -885,7 +885,7 @@ impl BlockAcquisitionState {
                 if need_execution_state =>
             {
                 deploys.apply_approvals_hashes(approvals_hashes)?;
-                info!(
+                debug!(
                     "BlockAcquisition: registering approvals hashes for: {}",
                     block.hash()
                 );
@@ -926,7 +926,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlock(block, signatures, deploys)
                 if need_execution_state =>
             {
-                info!(
+                debug!(
                     "BlockAcquisition: registering global state for: {}",
                     block.hash()
                 );
@@ -980,7 +980,7 @@ impl BlockAcquisitionState {
                 _,
                 acq @ ExecutionResultsAcquisition::Needed { .. },
             ) if need_execution_state => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering execution results hash for: {}",
                     block.hash()
                 );
@@ -1023,7 +1023,7 @@ impl BlockAcquisitionState {
                 deploys,
                 exec_results_acq,
             ) if need_execution_state => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering execution result or chunk for: {}",
                     block.hash()
                 );
@@ -1109,7 +1109,7 @@ impl BlockAcquisitionState {
                 deploys,
                 ExecutionResultsAcquisition::Complete { checksum, .. },
             ) if need_execution_state => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering execution results stored notification for: {}",
                     block.hash()
                 );
@@ -1184,7 +1184,7 @@ impl BlockAcquisitionState {
                 return Ok(None);
             }
         };
-        info!("BlockAcquisition: registering deploy for: {}", block.hash());
+        debug!("BlockAcquisition: registering deploy for: {}", block.hash());
         let maybe_acceptance = deploys.apply_deploy(deploy_id);
         if deploys.needs_deploy().is_none() {
             let new_state =
@@ -1237,7 +1237,7 @@ impl BlockAcquisitionState {
     ) -> Result<(), BlockAcquisitionError> {
         match self {
             BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, enqueued) => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering block enqueued for execution for: {}",
                     block_hash
                 );
@@ -1269,7 +1269,7 @@ impl BlockAcquisitionState {
 
         let new_state = match self {
             BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _) => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering block executed for: {}",
                     *block.hash()
                 );
@@ -1304,7 +1304,7 @@ impl BlockAcquisitionState {
 
         let new_state = match self {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
-                info!(
+                debug!(
                     "BlockAcquisition: registering marked complete for: {}",
                     *block.hash()
                 );
