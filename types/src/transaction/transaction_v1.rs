@@ -382,7 +382,6 @@ impl TransactionV1 {
                 if let PricingHandling::Classic = price_handling {
                 } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
-                        price_handling,
                         price_mode: price_mode.clone(),
                     });
                 }
@@ -391,7 +390,6 @@ impl TransactionV1 {
                 if let PricingHandling::Fixed = price_handling {
                 } else {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
-                        price_handling,
                         price_mode: price_mode.clone(),
                     });
                 }
@@ -400,7 +398,6 @@ impl TransactionV1 {
                 // Currently Reserved isn't implemented and we should
                 // not be accepting transactions with this mode.
                 return Err(InvalidTransactionV1::InvalidPricingMode {
-                    price_handling,
                     price_mode: price_mode.clone(),
                 });
             }
@@ -1133,7 +1130,6 @@ mod tests {
 
         let current_timestamp = reserved_transaction.timestamp();
         let expected_error = InvalidTransactionV1::InvalidPricingMode {
-            price_handling: expected_pricing_handling,
             price_mode: reserved_mode,
         };
         assert_eq!(
@@ -1173,7 +1169,6 @@ mod tests {
 
         let current_timestamp = fixed_mode_transaction.timestamp();
         let expected_error = InvalidTransactionV1::InvalidPricingMode {
-            price_handling: PricingHandling::Classic,
             price_mode: fixed_mode_transaction.pricing_mode().clone(),
         };
 
@@ -1210,7 +1205,6 @@ mod tests {
 
         let current_timestamp = classic_mode_transaction.timestamp();
         let expected_error = InvalidTransactionV1::InvalidPricingMode {
-            price_handling: PricingHandling::Fixed,
             price_mode: classic_mode_transaction.pricing_mode().clone(),
         };
 

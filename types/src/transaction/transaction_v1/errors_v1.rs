@@ -13,8 +13,6 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-#[cfg(feature = "std")]
-use crate::{chainspec::PricingHandling};
 use crate::{
     bytesrepr, crypto, CLType, DisplayIter, TimeDiff,
     Timestamp, U512, PricingMode,
@@ -152,8 +150,6 @@ pub enum InvalidTransaction {
     UnableToCalculateGasLimit,
     /// Invalid combination of pricing handling and pricing mode.
     InvalidPricingMode {
-        /// The price handling as determined by the chainspec.
-        price_handling: PricingHandling,
         /// The pricing mode as specified by the transaction.
         price_mode: PricingMode,
     },
@@ -278,10 +274,9 @@ impl Display for InvalidTransaction {
                 write!(formatter, "unable to calculate gas limit",)
             }
             InvalidTransaction::InvalidPricingMode {
-                price_handling,
                 price_mode,
             } => {
-                write!(formatter, "received a transaction with mode {price_mode} with price handling {price_handling}")
+                write!(formatter, "received a transaction with an invalid mode {price_mode}")
             }
         }
     }
