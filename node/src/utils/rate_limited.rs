@@ -122,9 +122,8 @@ impl RateLimited {
             return None;
         }
 
-        if let Ok(permit) = self.remaining.try_acquire() {
-            permit.forget();
-            return Some(self.skipped.swap(0, Ordering::Relaxed));
+        if let Some(rv) = self.consume_permit() {
+            return Some(rv);
         }
 
         // We failed to acquire a ticket. Check if we can refill tickets.
@@ -156,14 +155,23 @@ impl RateLimited {
         }
 
         // Regardless, tickets have been added at this point. Try one more time before giving up.
-        if let Ok(permit) = self.remaining.try_acquire() {
-            permit.forget();
-            Some(self.skipped.swap(0, Ordering::Relaxed))
+        if let Some(rv) = self.consume_permit() {
+            Some(rv)
         } else {
             self.skipped.fetch_add(1, Ordering::Relaxed);
-
             None
         }
+    }
+
+    /// Consume a permit from the counter/semaphore.
+    ///
+    /// Will reset skip count to 0 on success, and return the number of skipped calls.
+    #[inline(always)]
+    pub(crate) fn consume_permit(&self) -> Option<u64> {
+        let permit = self.remaining.try_acquire().ok()?;
+
+        permit.forget();
+        Some(self.skipped.swap(0, Ordering::Relaxed))
     }
 }
 
