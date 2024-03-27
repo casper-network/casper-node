@@ -179,6 +179,7 @@ impl RateLimited {
 mod tests {
     use std::{
         sync::atomic::{AtomicUsize, Ordering},
+        thread,
         time::Duration,
     };
 
@@ -204,5 +205,34 @@ mod tests {
 
         // We expect one call in the default configuration.
         assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn rate_limiting_refreshes_properly() {
+        let mut drop_counts = Vec::new();
+
+        let run = |dc: &mut Vec<u64>| {
+            rate_limited!(
+                RATE_LIMITED_IS_RATE_LIMITED_TEST,
+                2,
+                Duration::from_secs(1),
+                |dropped| {
+                    dc.push(dropped);
+                }
+            );
+        };
+
+        for _ in 0..5 {
+            run(&mut drop_counts);
+        }
+        assert_eq!(&[0, 0], drop_counts.as_slice());
+
+        // Sleep long enough for the counter to refresh.
+        thread::sleep(Duration::from_secs(2));
+
+        for _ in 0..5 {
+            run(&mut drop_counts);
+        }
+        assert_eq!(&[0, 0, 3, 0], drop_counts.as_slice());
     }
 }
