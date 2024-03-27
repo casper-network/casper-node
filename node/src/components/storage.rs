@@ -126,7 +126,7 @@ pub struct Storage {
     /// Storage location.
     root: PathBuf,
     /// Block store
-    pub(crate) block_store: IndexedLmdbBlockStore<'static>,
+    pub(crate) block_store: IndexedLmdbBlockStore,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
     /// The activation point era of the current protocol version.

@@ -647,13 +647,16 @@ impl GasLimited for TransactionV1 {
                     },
                 )?
             }
-            PricingMode::Reserved { paid_amount, .. } => {
-                let actual_price = 1;
+            PricingMode::Reserved {
+                paid_amount,
+                strike_price,
+                ..
+            } => {
                 // prepaid, if receipt is legit (future use, not currently implemented)
-                Gas::from_motes(Motes::new(*paid_amount), actual_price).ok_or(
+                Gas::from_motes(Motes::new(*paid_amount), *strike_price).ok_or(
                     InvalidTransactionV1::GasPriceConversion {
                         amount: paid_amount.as_u64(),
-                        gas_price: actual_price,
+                        gas_price: *strike_price,
                     },
                 )?
             }

@@ -89,7 +89,7 @@ impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
 }
 
-impl<'a> VersionedValue for Transfers<'a> {
+impl VersionedValue for Transfers {
     type Legacy = Vec<TransferV1>;
 }
 

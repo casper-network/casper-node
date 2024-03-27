@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
@@ -12,35 +10,27 @@ use casper_types::{
 /// It exists to allow the `impl From<Vec<TransferV1>>` to be written, making the type suitable for
 /// use as a parameter in a `VersionedDatabases`.
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Eq)]
-pub(in crate::block_store) struct Transfers<'a>(Cow<'a, Vec<Transfer>>);
+pub(in crate::block_store) struct Transfers(Vec<Transfer>);
 
-impl<'a> Transfers<'a> {
+impl Transfers {
     pub(in crate::block_store) fn into_owned(self) -> Vec<Transfer> {
-        self.0.into_owned()
+        self.0
     }
 }
 
-impl<'a> From<Vec<TransferV1>> for Transfers<'a> {
+impl From<Vec<TransferV1>> for Transfers {
     fn from(v1_transfers: Vec<TransferV1>) -> Self {
-        Transfers(Cow::Owned(
-            v1_transfers.into_iter().map(Transfer::V1).collect(),
-        ))
+        Transfers(v1_transfers.into_iter().map(Transfer::V1).collect())
     }
 }
 
-impl<'a> From<Vec<Transfer>> for Transfers<'a> {
+impl From<Vec<Transfer>> for Transfers {
     fn from(transfers: Vec<Transfer>) -> Self {
-        Transfers(Cow::Owned(transfers))
+        Transfers(transfers)
     }
 }
 
-impl<'a> From<&'a Vec<Transfer>> for Transfers<'a> {
-    fn from(transfers: &'a Vec<Transfer>) -> Self {
-        Transfers(Cow::Borrowed(transfers))
-    }
-}
-
-impl<'a> ToBytes for Transfers<'a> {
+impl ToBytes for Transfers {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -54,9 +44,9 @@ impl<'a> ToBytes for Transfers<'a> {
     }
 }
 
-impl<'a> FromBytes for Transfers<'a> {
+impl FromBytes for Transfers {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         Vec::<Transfer>::from_bytes(bytes)
-            .map(|(transfers, remainder)| (Transfers(Cow::Owned(transfers)), remainder))
+            .map(|(transfers, remainder)| (Transfers(transfers), remainder))
     }
 }
