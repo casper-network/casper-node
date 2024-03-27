@@ -25,7 +25,17 @@ use casper_storage::{
     data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight}, addressable_entity::{AddressableEntity, NamedKeys}, bytesrepr::Bytes, global_state::TrieMerkleProof, testing::TestRng, Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512, PricingMode};
+use casper_types::{
+    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
+    addressable_entity::{AddressableEntity, NamedKeys},
+    bytesrepr::Bytes,
+    global_state::TrieMerkleProof,
+    testing::TestRng,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
+    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
+};
 
 use super::*;
 use crate::{
@@ -550,7 +560,7 @@ impl TestScenario {
                     .with_pricing_mode(PricingMode::Classic {
                         payment_amount: 10000u64,
                         gas_price: 1u8,
-                        standard_payment: true
+                        standard_payment: true,
                     })
                     .with_chain_name("casper-example")
                     .build()
@@ -2316,5 +2326,10 @@ async fn should_accept_transaction_v1_signed_by_admin_from_client() {
 async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
     let test_scenario = TestScenario::InvalidPricingModeForTransactionV1;
     let result = run_transaction_acceptor(test_scenario).await;
-    assert!(matches!(result, Err(super::Error::InvalidTransaction(InvalidTransaction::V1(InvalidTransactionV1::InvalidPricingMode { .. })))))
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidPricingMode { .. }
+        )))
+    ))
 }

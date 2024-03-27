@@ -360,7 +360,7 @@ impl TransactionV1 {
         let chain_name = chainspec.network_config.name.clone();
 
         let header = self.header();
-        if header.chain_name() != &chain_name {
+        if header.chain_name() != chain_name {
             debug!(
                 transaction_hash = %self.hash(),
                 transaction_header = %header,
@@ -368,7 +368,7 @@ impl TransactionV1 {
                 "invalid chain identifier"
             );
             return Err(InvalidTransactionV1::InvalidChainName {
-                expected: chain_name.to_string(),
+                expected: chain_name,
                 got: header.chain_name().to_string(),
             });
         }

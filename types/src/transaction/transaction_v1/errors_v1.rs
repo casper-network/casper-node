@@ -13,10 +13,7 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{
-    bytesrepr, crypto, CLType, DisplayIter, TimeDiff,
-    Timestamp, U512, PricingMode,
-};
+use crate::{bytesrepr, crypto, CLType, DisplayIter, PricingMode, TimeDiff, Timestamp, U512};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -273,10 +270,11 @@ impl Display for InvalidTransaction {
             InvalidTransaction::UnableToCalculateGasLimit => {
                 write!(formatter, "unable to calculate gas limit",)
             }
-            InvalidTransaction::InvalidPricingMode {
-                price_mode,
-            } => {
-                write!(formatter, "received a transaction with an invalid mode {price_mode}")
+            InvalidTransaction::InvalidPricingMode { price_mode } => {
+                write!(
+                    formatter,
+                    "received a transaction with an invalid mode {price_mode}"
+                )
             }
         }
     }
