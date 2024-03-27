@@ -152,23 +152,6 @@ impl TransactionAcceptor {
             );
         }
 
-        // // If this has been received from the speculative exec server, use the block specified in
-        // // the request, otherwise use the highest complete block.
-        // if let Source::SpeculativeExec = &event_metadata.source {
-        //     let account_key = match event_metadata.transaction.initiator_addr() {
-        //         InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
-        //         InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-        //     };
-        //
-        //     return effect_builder
-        //         .get_addressable_entity(*block_header.state_root_hash(), account_key)
-        //         .event(move |result| Event::GetAddressableEntityResult {
-        //             event_metadata,
-        //             maybe_entity: result.into_option(),
-        //             block_header,
-        //         });
-        // }
-
         effect_builder
             .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {

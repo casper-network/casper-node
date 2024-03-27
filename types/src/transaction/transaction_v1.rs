@@ -32,11 +32,11 @@ use super::{
 #[cfg(any(feature = "std", test))]
 use super::{GasLimited, InitiatorAddrAndSecretKey};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::testing::TestRng;
+use crate::{testing::TestRng, Chainspec,
+            chainspec::PricingHandling};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    chainspec::PricingHandling,
-    crypto, Chainspec, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
     TransactionRuntime, TransactionSessionKind,
 };
 #[cfg(any(feature = "std", test))]

@@ -13,9 +13,11 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
+#[cfg(feature = "std")]
+use crate::{chainspec::PricingHandling};
 use crate::{
-    bytesrepr, chainspec::PricingHandling, crypto, CLType, DisplayIter, PricingMode, TimeDiff,
-    Timestamp, U512,
+    bytesrepr, crypto, CLType, DisplayIter, TimeDiff,
+    Timestamp, U512, PricingMode,
 };
 
 /// Returned when a [`TransactionV1`] fails validation.

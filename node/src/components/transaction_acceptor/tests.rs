@@ -25,17 +25,7 @@ use casper_storage::{
     data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
-    addressable_entity::{AddressableEntity, NamedKeys},
-    bytesrepr::Bytes,
-    global_state::TrieMerkleProof,
-    testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
-    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
-    TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
-};
+use casper_types::{account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight}, addressable_entity::{AddressableEntity, NamedKeys}, bytesrepr::Bytes, global_state::TrieMerkleProof, testing::TestRng, Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512, PricingMode};
 
 use super::*;
 use crate::{
@@ -207,6 +197,7 @@ enum TestScenario {
     DeployWithoutTransferTarget,
     DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
+    InvalidPricingModeForTransactionV1,
 }
 
 impl TestScenario {
@@ -246,7 +237,8 @@ impl TestScenario {
             | TestScenario::FromClientSessionContractPackage(..)
             | TestScenario::FromClientSignedByAdmin(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::DeployWithNativeTransferInPayment => Source::Client,
+            | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::InvalidPricingModeForTransactionV1 => Source::Client,
         }
     }
 
@@ -553,6 +545,18 @@ impl TestScenario {
                     }
                 }
             }
+            TestScenario::InvalidPricingModeForTransactionV1 => {
+                let classic_mode_transaction = TransactionV1Builder::new_random(rng)
+                    .with_pricing_mode(PricingMode::Classic {
+                        payment_amount: 10000u64,
+                        gas_price: 1u8,
+                        standard_payment: true
+                    })
+                    .with_chain_name("casper-example")
+                    .build()
+                    .expect("must create classic mode transaction");
+                Transaction::from(classic_mode_transaction)
+            }
         }
     }
 
@@ -606,6 +610,7 @@ impl TestScenario {
                     | ContractPackageScenario::MissingContractVersion => false,
                 }
             }
+            TestScenario::InvalidPricingModeForTransactionV1 => false,
         }
     }
 
@@ -1093,6 +1098,7 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::DeployWithMangledTransferAmount
             | TestScenario::DeployWithoutTransferTarget
             | TestScenario::DeployWithoutTransferAmount
+            | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::FromClientExpired(_) => {
                 matches!(
                     event,
@@ -2304,4 +2310,11 @@ async fn should_accept_transaction_v1_signed_by_admin_from_client() {
     let test_scenario = TestScenario::FromClientSignedByAdmin(TxnType::V1);
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
+    let test_scenario = TestScenario::InvalidPricingModeForTransactionV1;
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(matches!(result, Err(super::Error::InvalidTransaction(InvalidTransaction::V1(InvalidTransactionV1::InvalidPricingMode { .. })))))
 }
