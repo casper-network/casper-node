@@ -35,8 +35,9 @@ use super::{GasLimited, InitiatorAddrAndSecretKey};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-   Chainspec, crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
-    TransactionSessionKind
+    chainspec::PricingHandling,
+    crypto, Chainspec, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionRuntime, TransactionSessionKind,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
@@ -51,7 +52,6 @@ pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError
 pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
-use crate::chainspec::PricingHandling;
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -384,7 +384,7 @@ impl TransactionV1 {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_handling,
                         price_mode: price_mode.clone(),
-                    })
+                    });
                 }
             }
             PricingMode::Fixed { .. } => {
@@ -393,7 +393,7 @@ impl TransactionV1 {
                     return Err(InvalidTransactionV1::InvalidPricingMode {
                         price_handling,
                         price_mode: price_mode.clone(),
-                    })
+                    });
                 }
             }
             PricingMode::Reserved { .. } => {
@@ -402,7 +402,7 @@ impl TransactionV1 {
                 return Err(InvalidTransactionV1::InvalidPricingMode {
                     price_handling,
                     price_mode: price_mode.clone(),
-                })
+                });
             }
         }
 
@@ -968,11 +968,7 @@ mod tests {
             ret
         };
         transaction
-            .is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-            )
+            .is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
             .expect("should be acceptable");
     }
 
@@ -998,11 +994,7 @@ mod tests {
             ret
         };
         assert_eq!(
-            transaction.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-            ),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1035,11 +1027,7 @@ mod tests {
             ret
         };
         assert_eq!(
-            transaction.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-            ),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1073,11 +1061,7 @@ mod tests {
         };
 
         assert_eq!(
-            transaction.is_config_compliant(
-                &chainspec,
-                leeway,
-                current_timestamp
-            ),
+            transaction.is_config_compliant(&chainspec, leeway, current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1114,11 +1098,7 @@ mod tests {
         };
 
         assert_eq!(
-            transaction.is_config_compliant(
-                &chainspec,
-                TimeDiff::default(),
-                current_timestamp,
-            ),
+            transaction.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp,),
             Err(expected_error)
         );
         assert!(
@@ -1171,7 +1151,9 @@ mod tests {
 
         let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
-            .with_pricing_mode(PricingMode::Fixed {gas_price_tolerance: 1u8})
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: 1u8,
+            })
             .build()
             .expect("must create fixed mode transaction");
 
@@ -1208,11 +1190,13 @@ mod tests {
             "transaction should not have run expensive `is_verified` call"
         );
 
-        assert!(fixed_mode_transaction.is_config_compliant(
-            &fixed_handling_chainspec,
-            TimeDiff::default(),
-            current_timestamp
-        ).is_ok());
+        assert!(fixed_mode_transaction
+            .is_config_compliant(
+                &fixed_handling_chainspec,
+                TimeDiff::default(),
+                current_timestamp
+            )
+            .is_ok());
 
         let classic_mode_transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
@@ -1227,7 +1211,7 @@ mod tests {
         let current_timestamp = classic_mode_transaction.timestamp();
         let expected_error = InvalidTransactionV1::InvalidPricingMode {
             price_handling: PricingHandling::Fixed,
-            price_mode: classic_mode_transaction.pricing_mode().clone()
+            price_mode: classic_mode_transaction.pricing_mode().clone(),
         };
 
         assert_eq!(
@@ -1243,10 +1227,12 @@ mod tests {
             "transaction should not have run expensive `is_verified` call"
         );
 
-        assert!(classic_mode_transaction.is_config_compliant(
-            &classic_handling_chainspec,
-            TimeDiff::default(),
-            current_timestamp
-        ).is_ok());
+        assert!(classic_mode_transaction
+            .is_config_compliant(
+                &classic_handling_chainspec,
+                TimeDiff::default(),
+                current_timestamp
+            )
+            .is_ok());
     }
 }

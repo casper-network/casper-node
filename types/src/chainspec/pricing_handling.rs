@@ -1,8 +1,8 @@
-use core::fmt::{Display, Formatter};
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes},
 };
+use core::fmt::{Display, Formatter};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};

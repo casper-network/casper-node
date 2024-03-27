@@ -13,8 +13,10 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{bytesrepr, crypto, CLType, DisplayIter, TimeDiff, Timestamp, U512, PricingMode};
-use crate::chainspec::PricingHandling;
+use crate::{
+    bytesrepr, chainspec::PricingHandling, crypto, CLType, DisplayIter, PricingMode, TimeDiff,
+    Timestamp, U512,
+};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -152,7 +154,7 @@ pub enum InvalidTransaction {
         price_handling: PricingHandling,
         /// The pricing mode as specified by the transaction.
         price_mode: PricingMode,
-    }
+    },
 }
 
 impl Display for InvalidTransaction {
@@ -273,7 +275,10 @@ impl Display for InvalidTransaction {
             InvalidTransaction::UnableToCalculateGasLimit => {
                 write!(formatter, "unable to calculate gas limit",)
             }
-            InvalidTransaction::InvalidPricingMode { price_handling, price_mode} => {
+            InvalidTransaction::InvalidPricingMode {
+                price_handling,
+                price_mode,
+            } => {
                 write!(formatter, "received a transaction with mode {price_mode} with price handling {price_handling}")
             }
         }
@@ -310,7 +315,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::EmptyModuleBytes
             | InvalidTransaction::GasPriceConversion { .. }
             | InvalidTransaction::UnableToCalculateGasLimit
-            | InvalidTransaction::InvalidPricingMode { .. }=> None,
+            | InvalidTransaction::InvalidPricingMode { .. } => None,
         }
     }
 }

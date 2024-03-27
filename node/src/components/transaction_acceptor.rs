@@ -17,8 +17,8 @@ use casper_types::{
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Transaction,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
+    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
+    TransactionTarget, U512,
 };
 
 use crate::{
@@ -91,7 +91,7 @@ impl TransactionAcceptor {
             .iter()
             .map(|public_key| public_key.to_account_hash())
             .collect();
-        let balance_hold_interval =  chainspec.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
         Ok(TransactionAcceptor {
             acceptor_config,
             chainspec,
@@ -662,8 +662,10 @@ impl TransactionAcceptor {
             }
         };
 
-        let entity_version_key =
-            EntityVersionKey::new(self.chainspec.protocol_config.version.value().major, entity_version);
+        let entity_version_key = EntityVersionKey::new(
+            self.chainspec.protocol_config.version.value().major,
+            entity_version,
+        );
 
         if package.is_version_missing(entity_version_key) {
             let error = Error::parameter_failure(

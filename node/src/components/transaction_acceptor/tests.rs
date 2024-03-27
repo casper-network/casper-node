@@ -32,9 +32,9 @@ use casper_types::{
     global_state::TrieMerkleProof,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
-    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PublicKey, SecretKey,
-    StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind,
-    TransactionV1, TransactionV1Builder, URef, U512, ProtocolVersion,
+    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;

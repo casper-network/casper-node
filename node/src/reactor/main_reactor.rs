@@ -1205,8 +1205,11 @@ impl reactor::Reactor for MainReactor {
         );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let transaction_acceptor =
-            TransactionAcceptor::new(config.transaction_acceptor, Arc::clone(&chainspec), registry)?;
+        let transaction_acceptor = TransactionAcceptor::new(
+            config.transaction_acceptor,
+            Arc::clone(&chainspec),
+            registry,
+        )?;
         let transaction_buffer =
             TransactionBuffer::new(Arc::clone(&chainspec), config.transaction_buffer, registry)?;
 
