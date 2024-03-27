@@ -1,10 +1,13 @@
 use once_cell::sync::Lazy;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
+use rand::distributions::{Alphanumeric, DistString};
+
+#[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -69,10 +72,9 @@ impl SpeculativeExecutionResult {
         &SPECULATIVE_EXECUTION_RESULT
     }
 
-    #[cfg(test)]
-    fn random(rng: &mut TestRng) -> Self {
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         use casper_types::contract_messages::Message;
-        use rand::distributions::{Alphanumeric, DistString};
 
         let random_messages = |rng: &mut TestRng| -> Messages {
             let count = rng.gen_range(16..128);
