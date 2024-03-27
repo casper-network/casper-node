@@ -57,6 +57,7 @@ use crate::{
         FinalitySignature, FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
+    utils::rate_limited::rate_limited,
     NodeRng,
 };
 
@@ -1052,8 +1053,11 @@ impl BlockSynchronizer {
                         hash_being_synced,
                         hash_requested,
                     } => {
-                        warn!(%hash_being_synced, %hash_requested,
-                        "BlockSynchronizer: global state sync is processing another request");
+                        rate_limited!(
+                            PROCESSING_ANOTHER_REQUEST,
+                            |dropped| warn!(%hash_being_synced, %hash_requested, dropped,
+                        "BlockSynchronizer: global state sync is processing another request")
+                        );
                         (None, Vec::new())
                     }
                 }
