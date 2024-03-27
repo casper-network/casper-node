@@ -31,14 +31,13 @@ use super::{
 };
 #[cfg(any(feature = "std", test))]
 use super::{GasLimited, InitiatorAddrAndSecretKey};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{testing::TestRng, Chainspec,
-            chainspec::PricingHandling};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
-    TransactionRuntime, TransactionSessionKind,
+    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
+    TransactionSessionKind,
 };
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::{chainspec::PricingHandling, testing::TestRng, Chainspec};
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
 pub use errors_v1::{
@@ -395,11 +394,13 @@ impl TransactionV1 {
                 }
             }
             PricingMode::Reserved { .. } => {
-                // Currently Reserved isn't implemented and we should
-                // not be accepting transactions with this mode.
-                return Err(InvalidTransactionV1::InvalidPricingMode {
-                    price_mode: price_mode.clone(),
-                });
+                if !chainspec.core_config.allow_reservations {
+                    // Currently Reserved isn't implemented and we should
+                    // not be accepting transactions with this mode.
+                    return Err(InvalidTransactionV1::InvalidPricingMode {
+                        price_mode: price_mode.clone(),
+                    });
+                }
             }
         }
 
@@ -1115,6 +1116,7 @@ mod tests {
         let reserved_mode = PricingMode::Reserved {
             receipt: Default::default(),
             paid_amount: Default::default(),
+            strike_price: Default::default(),
         };
 
         let reserved_transaction = TransactionV1Builder::new_random(rng)
@@ -1128,8 +1130,6 @@ mod tests {
             ret.network_config.name = chain_name.to_string();
             ret
         };
-
-        let expected_pricing_handling = chainspec.core_config.pricing_handling;
 
         let current_timestamp = reserved_transaction.timestamp();
         let expected_error = InvalidTransactionV1::InvalidPricingMode {
