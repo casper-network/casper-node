@@ -158,3 +158,35 @@ impl RateLimited {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
+
+    #[test]
+    fn rate_limited_is_rate_limited() {
+        let counter = AtomicUsize::new(0);
+
+        let run = || {
+            rate_limited!(
+                RATE_LIMITED_IS_RATE_LIMITED_TEST,
+                1,
+                Duration::from_secs(60),
+                |dropped| {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                    assert_eq!(dropped, 0);
+                }
+            );
+        };
+
+        for _ in 0..10 {
+            run();
+        }
+
+        // We expect one call in the default configuration.
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+}
