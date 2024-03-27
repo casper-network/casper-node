@@ -1126,4 +1126,127 @@ mod tests {
             "transaction should not have run expensive `is_verified` call"
         );
     }
+
+    #[test]
+    fn not_acceptable_due_to_invalid_pricing_modes() {
+        let rng = &mut TestRng::new();
+        let chain_name = "net-1";
+
+        let reserved_mode = PricingMode::Reserved {
+            receipt: Default::default(),
+            paid_amount: Default::default(),
+        };
+
+        let reserved_transaction = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(reserved_mode.clone())
+            .build()
+            .expect("must be able to create a reserved transaction");
+
+        let chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret
+        };
+
+        let expected_pricing_handling = chainspec.core_config.pricing_handling;
+
+        let current_timestamp = reserved_transaction.timestamp();
+        let expected_error = InvalidTransactionV1::InvalidPricingMode {
+            price_handling: expected_pricing_handling,
+            price_mode: reserved_mode,
+        };
+        assert_eq!(
+            reserved_transaction.is_config_compliant(
+                &chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+            ),
+            Err(expected_error)
+        );
+        assert!(
+            reserved_transaction.is_verified.get().is_none(),
+            "transaction should not have run expensive `is_verified` call"
+        );
+
+        let fixed_mode_transaction = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Fixed {gas_price_tolerance: 1u8})
+            .build()
+            .expect("must create fixed mode transaction");
+
+        let fixed_handling_chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret.core_config.pricing_handling = PricingHandling::Fixed;
+            ret
+        };
+
+        let classic_handling_chainspec = {
+            let mut ret = Chainspec::default();
+            ret.network_config.name = chain_name.to_string();
+            ret.core_config.pricing_handling = PricingHandling::Classic;
+            ret
+        };
+
+        let current_timestamp = fixed_mode_transaction.timestamp();
+        let expected_error = InvalidTransactionV1::InvalidPricingMode {
+            price_handling: PricingHandling::Classic,
+            price_mode: fixed_mode_transaction.pricing_mode().clone(),
+        };
+
+        assert_eq!(
+            fixed_mode_transaction.is_config_compliant(
+                &classic_handling_chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+            ),
+            Err(expected_error)
+        );
+        assert!(
+            fixed_mode_transaction.is_verified.get().is_none(),
+            "transaction should not have run expensive `is_verified` call"
+        );
+
+        assert!(fixed_mode_transaction.is_config_compliant(
+            &fixed_handling_chainspec,
+            TimeDiff::default(),
+            current_timestamp
+        ).is_ok());
+
+        let classic_mode_transaction = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Classic {
+                payment_amount: 100000,
+                gas_price: 1,
+                standard_payment: true,
+            })
+            .build()
+            .expect("must create classic transaction");
+
+        let current_timestamp = classic_mode_transaction.timestamp();
+        let expected_error = InvalidTransactionV1::InvalidPricingMode {
+            price_handling: PricingHandling::Fixed,
+            price_mode: classic_mode_transaction.pricing_mode().clone()
+        };
+
+        assert_eq!(
+            classic_mode_transaction.is_config_compliant(
+                &fixed_handling_chainspec,
+                TimeDiff::default(),
+                current_timestamp,
+            ),
+            Err(expected_error)
+        );
+        assert!(
+            classic_mode_transaction.is_verified.get().is_none(),
+            "transaction should not have run expensive `is_verified` call"
+        );
+
+        assert!(classic_mode_transaction.is_config_compliant(
+            &classic_handling_chainspec,
+            TimeDiff::default(),
+            current_timestamp
+        ).is_ok());
+    }
 }
