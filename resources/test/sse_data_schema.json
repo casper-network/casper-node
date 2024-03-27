@@ -1700,7 +1700,8 @@
               "type": "object",
               "required": [
                 "paid_amount",
-                "receipt"
+                "receipt",
+                "strike_price"
               ],
               "properties": {
                 "receipt": {
@@ -1718,6 +1719,12 @@
                       "$ref": "#/definitions/U512"
                     }
                   ]
+                },
+                "strike_price": {
+                  "description": "The gas price at the time of reservation.",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -2187,7 +2194,7 @@
                   "description": "A record of version 1 Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/TransferV1Addr"
+                    "$ref": "#/definitions/TransferAddr"
                   }
                 },
                 "cost": {
@@ -2235,7 +2242,7 @@
                   "description": "A record of Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/TransferV1Addr"
+                    "$ref": "#/definitions/TransferAddr"
                   }
                 },
                 "cost": {
@@ -2661,7 +2668,7 @@
           "description": "Version 1 transfers performed by the Deploy.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/TransferV1Addr"
+            "$ref": "#/definitions/TransferAddr"
           }
         },
         "from": {
@@ -2691,7 +2698,7 @@
       },
       "additionalProperties": false
     },
-    "TransferV1Addr": {
+    "TransferAddr": {
       "description": "Hex-encoded version 1 transfer address.",
       "type": "string"
     },

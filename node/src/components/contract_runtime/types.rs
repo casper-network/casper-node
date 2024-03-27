@@ -160,6 +160,10 @@ impl ExecutionArtifactBuilder {
         }
         if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
             self.error_message = Some(format!("{}", err));
+            // NOTE: if holding balance fails, we revert any prior effects.
+            // and only commit effects produced by balance hold (if any).
+            self.effects = hold_result.effects();
+            return Ok(self);
         }
         self.with_appended_effects(hold_result.effects());
         Ok(self)
