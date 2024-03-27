@@ -118,7 +118,12 @@ impl RateLimited {
     /// Returns `Some` on success with the count of skipped items that now has been reset to 0. Will
     /// add tickets if `per` has passed since the last top-up.
     pub(crate) fn acquire(&self, count: usize, per: Duration) -> Option<u64> {
-        if self.remaining.try_acquire().is_ok() {
+        if count == 0 {
+            return None;
+        }
+
+        if let Ok(permit) = self.remaining.try_acquire() {
+            permit.forget();
             return Some(self.skipped.swap(0, Ordering::Relaxed));
         }
 
@@ -130,6 +135,7 @@ impl RateLimited {
         if last_refresh + interval > now {
             // No dice, not enough time has passed. Indicate we skipped our output and return.
             self.skipped.fetch_add(1, Ordering::Relaxed);
+
             return None;
         }
 
@@ -150,10 +156,12 @@ impl RateLimited {
         }
 
         // Regardless, tickets have been added at this point. Try one more time before giving up.
-        if self.remaining.try_acquire().is_ok() {
+        if let Ok(permit) = self.remaining.try_acquire() {
+            permit.forget();
             Some(self.skipped.swap(0, Ordering::Relaxed))
         } else {
             self.skipped.fetch_add(1, Ordering::Relaxed);
+
             None
         }
     }
