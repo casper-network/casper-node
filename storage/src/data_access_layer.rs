@@ -15,6 +15,7 @@ pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
 mod flush;
+pub mod forced_undelegate;
 mod genesis;
 mod protocol_upgrade;
 pub mod prune;

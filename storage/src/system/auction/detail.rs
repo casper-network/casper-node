@@ -208,7 +208,6 @@ where
 pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
     max_delegators_per_validator: u32,
-    minimum_delegation_amount: u64,
 ) -> Result<(), ApiError> {
     if provider.get_caller() != PublicKey::System.to_account_hash() {
         return Err(Error::InvalidCaller.into());
@@ -228,17 +227,14 @@ pub fn process_unbond_requests<P: Auction + ?Sized>(
             // current era id + unbonding delay is equal or greater than the `era_of_creation` that
             // was calculated on `unbond` attempt.
             if current_era_id >= unbonding_purse.era_of_creation() + unbonding_delay {
-                match handle_redelegation(
-                    provider,
-                    unbonding_purse,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                )? {
+                match handle_redelegation(provider, unbonding_purse, max_delegators_per_validator)?
+                {
                     UnbondRedelegationOutcome::SuccessfullyRedelegated => {
                         // noop; on successful redelegation, no actual unbond occurs
                     }
                     uro @ UnbondRedelegationOutcome::NonexistantRedelegationTarget
                     | uro @ UnbondRedelegationOutcome::DelegationAmountBelowCap
+                    | uro @ UnbondRedelegationOutcome::DelegationAmountAboveCap
                     | uro @ UnbondRedelegationOutcome::RedelegationTargetHasNoVacancy
                     | uro @ UnbondRedelegationOutcome::RedelegationTargetIsUnstaked
                     | uro @ UnbondRedelegationOutcome::Withdrawal => {
@@ -429,13 +425,13 @@ enum UnbondRedelegationOutcome {
     RedelegationTargetHasNoVacancy,
     RedelegationTargetIsUnstaked,
     DelegationAmountBelowCap,
+    DelegationAmountAboveCap,
 }
 
 fn handle_redelegation<P>(
     provider: &mut P,
     unbonding_purse: &UnbondingPurse,
     max_delegators_per_validator: u32,
-    minimum_delegation_amount: u64,
 ) -> Result<UnbondRedelegationOutcome, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -452,7 +448,6 @@ where
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
-        minimum_delegation_amount,
     );
     match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
@@ -461,6 +456,9 @@ where
         }
         Err(ApiError::AuctionError(err)) if err == Error::DelegationAmountTooSmall as u8 => {
             Ok(UnbondRedelegationOutcome::DelegationAmountBelowCap)
+        }
+        Err(ApiError::AuctionError(err)) if err == Error::DelegationAmountTooLarge as u8 => {
+            Ok(UnbondRedelegationOutcome::DelegationAmountAboveCap)
         }
         Err(ApiError::AuctionError(err)) if err == Error::ValidatorNotFound as u8 => {
             Ok(UnbondRedelegationOutcome::NonexistantRedelegationTarget)
@@ -482,7 +480,6 @@ pub fn handle_delegation<P>(
     source: URef,
     amount: U512,
     max_delegators_per_validator: u32,
-    minimum_delegation_amount: u64,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -491,13 +488,15 @@ where
         return Err(Error::BondTooSmall.into());
     }
 
-    if amount < U512::from(minimum_delegation_amount) {
-        return Err(Error::DelegationAmountTooSmall.into());
-    }
-
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
-    let _ = read_validator_bid(provider, &validator_bid_addr.into())?;
+    let validator_bid = read_validator_bid(provider, &validator_bid_addr.into())?;
+    if amount < U512::from(validator_bid.minimum_delegation_amount()) {
+        return Err(Error::DelegationAmountTooSmall.into());
+    }
+    if amount > U512::from(validator_bid.maximum_delegation_amount()) {
+        return Err(Error::DelegationAmountTooLarge.into());
+    }
 
     // is there already a record for this delegator?
     let delegator_bid_key =

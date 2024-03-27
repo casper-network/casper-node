@@ -21,6 +21,8 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        minimum_delegation_amount: u64,
+        maximum_delegation_amount: u64,
     },
     WithdrawBid {
         public_key: PublicKey,
@@ -31,7 +33,6 @@ pub enum AuctionMethod {
         validator_public_key: PublicKey,
         amount: U512,
         max_delegators_per_validator: u32,
-        minimum_delegation_amount: u64,
     },
     Undelegate {
         delegator_public_key: PublicKey,
@@ -43,7 +44,6 @@ pub enum AuctionMethod {
         validator_public_key: PublicKey,
         amount: U512,
         new_validator: PublicKey,
-        minimum_delegation_amount: u64,
     },
 }
 
@@ -97,10 +97,16 @@ impl AuctionMethod {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+        let minimum_delegation_amount =
+            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
+        let maximum_delegation_amount =
+            Self::get_named_argument(runtime_args, auction::ARG_MINIMUM_DELEGATION_AMOUNT)?;
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
             amount,
+            minimum_delegation_amount,
+            maximum_delegation_amount,
         })
     }
 
@@ -122,14 +128,12 @@ impl AuctionMethod {
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
 
         Ok(Self::Delegate {
             delegator_public_key,
             validator_public_key,
             amount,
             max_delegators_per_validator,
-            minimum_delegation_amount,
         })
     }
 
@@ -150,21 +154,18 @@ impl AuctionMethod {
 
     pub fn redelegate_from_args(
         runtime_args: &RuntimeArgs,
-        chainspec: &Chainspec,
+        _chainspec: &Chainspec,
     ) -> Result<Self, ()> {
         let delegator_public_key = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator_public_key = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
         let new_validator = Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-        let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-
         Ok(Self::Redelegate {
             delegator_public_key,
             validator_public_key,
             amount,
             new_validator,
-            minimum_delegation_amount,
         })
     }
 
