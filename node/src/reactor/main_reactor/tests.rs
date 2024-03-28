@@ -743,7 +743,7 @@ impl TestFixture {
         } = balance_result
         {
             let purse = URef::new(purse_addr, AccessRights::all());
-            return (purse, available_balance);
+            (purse, available_balance)
         } else {
             panic!("failed balance result")
         }

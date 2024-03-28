@@ -29,15 +29,19 @@ use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "std")]
 use num_rational::Ratio;
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 
+#[cfg(feature = "std")]
+use crate::TransactionConfig;
+
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionConfig,
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
@@ -395,6 +399,7 @@ impl Block {
     }
 
     /// Returns the utilization of the block against a given chainspec.
+    #[cfg(feature = "std")]
     pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
         match self {
             Block::V1(_) => {
