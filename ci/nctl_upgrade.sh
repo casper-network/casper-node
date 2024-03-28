@@ -53,7 +53,7 @@ function get_remotes() {
     local CI_JSON_CONFIG_FILE
     local PROTO_1
 
-    CI_JSON_CONFIG_FILE="$NCTL/ci/ci.json"
+    CI_JSON_CONFIG_FILE="$NCTL_CASPER_HOME/ci/ci.json"
     PROTO_1=$(jq -r '.nctl_upgrade_tests."protocol_1"' "$CI_JSON_CONFIG_FILE")
     nctl-stage-set-remotes "$PROTO_1"
 }
