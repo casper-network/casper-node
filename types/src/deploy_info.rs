@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    serde_helpers, DeployHash, TransferV1Addr, URef, U512,
+    serde_helpers, DeployHash, TransferAddr, URef, U512,
 };
 
 /// Information relating to the given Deploy.
@@ -26,7 +26,7 @@ pub struct DeployInfo {
     )]
     pub deploy_hash: DeployHash,
     /// Version 1 transfers performed by the Deploy.
-    pub transfers: Vec<TransferV1Addr>,
+    pub transfers: Vec<TransferAddr>,
     /// Account identifier of the creator of the Deploy.
     pub from: AccountHash,
     /// Source purse used for payment of the Deploy.
@@ -39,7 +39,7 @@ impl DeployInfo {
     /// Creates a [`DeployInfo`].
     pub fn new(
         deploy_hash: DeployHash,
-        transfers: &[TransferV1Addr],
+        transfers: &[TransferAddr],
         from: AccountHash,
         source: URef,
         gas: U512,
@@ -58,7 +58,7 @@ impl DeployInfo {
 impl FromBytes for DeployInfo {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (deploy_hash, rem) = DeployHash::from_bytes(bytes)?;
-        let (transfers, rem) = Vec::<TransferV1Addr>::from_bytes(rem)?;
+        let (transfers, rem) = Vec::<TransferAddr>::from_bytes(rem)?;
         let (from, rem) = AccountHash::from_bytes(rem)?;
         let (source, rem) = URef::from_bytes(rem)?;
         let (gas, rem) = U512::from_bytes(rem)?;

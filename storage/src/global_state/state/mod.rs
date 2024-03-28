@@ -794,8 +794,8 @@ pub trait StateProvider {
         BalanceHoldResult::success(
             total_balance,
             available_balance,
-            held_amount,
             request.hold_amount(),
+            held_amount,
             effects,
         )
     }

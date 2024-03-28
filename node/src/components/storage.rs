@@ -126,7 +126,7 @@ pub struct Storage {
     /// Storage location.
     root: PathBuf,
     /// Block store
-    pub(crate) block_store: IndexedLmdbBlockStore<'static>,
+    pub(crate) block_store: IndexedLmdbBlockStore,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
     /// The activation point era of the current protocol version.
@@ -2307,16 +2307,5 @@ impl Storage {
             block_height: block_hash_and_height.block_height,
             execution_result,
         })
-    }
-
-    pub(crate) fn get_utilization_for_era(&self, era_id: EraId) -> Option<u64> {
-        let era_utilization = match self.utilization_tracker.get(&era_id) {
-            Some(utilization) => utilization,
-            None => return None,
-        };
-
-        let total_utilization: u64 = era_utilization.values().sum();
-
-        Some(total_utilization)
     }
 }

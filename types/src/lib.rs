@@ -22,7 +22,6 @@
 extern crate alloc;
 
 extern crate core;
-
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
@@ -199,7 +198,7 @@ pub use transaction::{
     DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
 pub use transfer::{
-    Transfer, TransferFromStrError, TransferV1, TransferV1Addr, TransferV2, TRANSFER_V1_ADDR_LENGTH,
+    Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV2, TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{

@@ -262,8 +262,8 @@ mod tests {
     use crate::{
         account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
-        AccessRights, DeployHash, Digest, Key, PublicKey, TransferV1Addr, URef,
-        TRANSFER_V1_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
+        AccessRights, DeployHash, Digest, Key, PublicKey, TransferAddr, URef, TRANSFER_ADDR_LENGTH,
+        U128, U256, U512, UREF_ADDR_LENGTH,
     };
 
     #[cfg(feature = "json-schema")]
@@ -425,7 +425,7 @@ mod tests {
                 r#"{"cl_type":"Key","parsed":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}"#,
             );
 
-            let key_transfer = Key::Transfer(TransferV1Addr::new([4; TRANSFER_V1_ADDR_LENGTH]));
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 key_transfer,
                 r#"{"cl_type":"Key","parsed":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}"#,
@@ -647,7 +647,7 @@ mod tests {
                 r#"{"cl_type":{"Option":"Key"},"parsed":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}"#,
             );
 
-            let key_transfer = Key::Transfer(TransferV1Addr::new([4; TRANSFER_V1_ADDR_LENGTH]));
+            let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 Some(key_transfer),
                 r#"{"cl_type":{"Option":"Key"},"parsed":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}"#,

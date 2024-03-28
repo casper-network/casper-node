@@ -52,13 +52,13 @@ use crate::{
         mint::BalanceHoldAddr,
     },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferFromStrError, TransferV1Addr,
-    TRANSFER_V1_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
+    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
-const LEGACY_TRANSFER_PREFIX: &str = "transfer-";
+const TRANSFER_PREFIX: &str = "transfer-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
 const BALANCE_HOLD_PREFIX: &str = "balance-hold-";
@@ -79,7 +79,7 @@ pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Hash`].
 pub const KEY_HASH_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Transfer`].
-pub const KEY_LEGACY_TRANSFER_LENGTH: usize = TRANSFER_V1_ADDR_LENGTH;
+pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
 pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
@@ -93,8 +93,7 @@ const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
-const KEY_LEGACY_TRANSFER_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + KEY_LEGACY_TRANSFER_LENGTH;
+const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRANSFER_LENGTH;
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
@@ -136,7 +135,7 @@ pub enum KeyTag {
     Account = 0,
     Hash = 1,
     URef = 2,
-    LegacyTransfer = 3,
+    Transfer = 3,
     DeployInfo = 4,
     EraInfo = 5,
     Balance = 6,
@@ -166,7 +165,7 @@ impl KeyTag {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
-            3 => KeyTag::LegacyTransfer,
+            3 => KeyTag::Transfer,
             4 => KeyTag::DeployInfo,
             5 => KeyTag::EraInfo,
             6 => KeyTag::Balance,
@@ -197,7 +196,7 @@ impl Display for KeyTag {
             KeyTag::Account => write!(f, "Account"),
             KeyTag::Hash => write!(f, "Hash"),
             KeyTag::URef => write!(f, "URef"),
-            KeyTag::LegacyTransfer => write!(f, "LegacyTransfer"),
+            KeyTag::Transfer => write!(f, "Transfer"),
             KeyTag::DeployInfo => write!(f, "DeployInfo"),
             KeyTag::EraInfo => write!(f, "EraInfo"),
             KeyTag::Balance => write!(f, "Balance"),
@@ -245,7 +244,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::Account as u8 => KeyTag::Account,
             tag if tag == KeyTag::Hash as u8 => KeyTag::Hash,
             tag if tag == KeyTag::URef as u8 => KeyTag::URef,
-            tag if tag == KeyTag::LegacyTransfer as u8 => KeyTag::LegacyTransfer,
+            tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
             tag if tag == KeyTag::DeployInfo as u8 => KeyTag::DeployInfo,
             tag if tag == KeyTag::EraInfo as u8 => KeyTag::EraInfo,
             tag if tag == KeyTag::Balance as u8 => KeyTag::Balance,
@@ -285,7 +284,7 @@ pub enum Key {
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
     /// A `Key` under which a (legacy) transfer is stored.
-    Transfer(TransferV1Addr),
+    Transfer(TransferAddr),
     /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
     /// A `Key` under which an era info is stored.
@@ -356,7 +355,7 @@ pub enum FromStrError {
     /// URef parse error.
     URef(uref::FromStrError),
     /// Legacy Transfer parse error.
-    LegacyTransfer(TransferFromStrError),
+    Transfer(TransferFromStrError),
     /// DeployInfo parse error.
     DeployInfo(String),
     /// EraInfo parse error.
@@ -423,7 +422,7 @@ impl Display for FromStrError {
             FromStrError::Account(error) => write!(f, "account-key from string error: {}", error),
             FromStrError::Hash(error) => write!(f, "hash-key from string error: {}", error),
             FromStrError::URef(error) => write!(f, "uref-key from string error: {}", error),
-            FromStrError::LegacyTransfer(error) => {
+            FromStrError::Transfer(error) => {
                 write!(f, "legacy-transfer-key from string error: {}", error)
             }
             FromStrError::DeployInfo(error) => {
@@ -488,7 +487,7 @@ impl Key {
             Key::Account(_) => String::from("Key::Account"),
             Key::Hash(_) => String::from("Key::Hash"),
             Key::URef(_) => String::from("Key::URef"),
-            Key::Transfer(_) => String::from("Key::LegacyTransfer"),
+            Key::Transfer(_) => String::from("Key::Transfer"),
             Key::DeployInfo(_) => String::from("Key::DeployInfo"),
             Key::EraInfo(_) => String::from("Key::EraInfo"),
             Key::Balance(_) => String::from("Key::Balance"),
@@ -536,7 +535,7 @@ impl Key {
             Key::Transfer(transfer_v1_addr) => {
                 format!(
                     "{}{}",
-                    LEGACY_TRANSFER_PREFIX,
+                    TRANSFER_PREFIX,
                     base16::encode_lower(&transfer_v1_addr.value())
                 )
             }
@@ -651,12 +650,12 @@ impl Key {
             return Ok(Key::DeployInfo(DeployHash::new(Digest::from(hash_array))));
         }
 
-        if let Some(hex) = input.strip_prefix(LEGACY_TRANSFER_PREFIX) {
-            let v1_addr = checksummed_hex::decode(hex)
-                .map_err(|error| FromStrError::LegacyTransfer(TransferFromStrError::from(error)))?;
-            let addr_array = <[u8; TRANSFER_V1_ADDR_LENGTH]>::try_from(v1_addr.as_ref())
-                .map_err(|error| FromStrError::LegacyTransfer(TransferFromStrError::from(error)))?;
-            return Ok(Key::Transfer(TransferV1Addr::new(addr_array)));
+        if let Some(hex) = input.strip_prefix(TRANSFER_PREFIX) {
+            let addr = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Transfer(TransferFromStrError::from(error)))?;
+            let addr_array = <[u8; TRANSFER_ADDR_LENGTH]>::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Transfer(TransferFromStrError::from(error)))?;
+            return Ok(Key::Transfer(TransferAddr::new(addr_array)));
         }
 
         match URef::from_formatted_str(input) {
@@ -806,7 +805,9 @@ impl Key {
         match EntityAddr::from_formatted_str(input) {
             Ok(entity_addr) => return Ok(Key::AddressableEntity(entity_addr)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
-            Err(error) => return Err(FromStrError::AddressableEntity(error.to_string())),
+            Err(error) => {
+                return Err(FromStrError::AddressableEntity(error.to_string()));
+            }
         }
 
         match ByteCodeAddr::from_formatted_string(input) {
@@ -1217,7 +1218,7 @@ impl Display for Key {
             Key::Hash(addr) => write!(f, "Key::Hash({})", base16::encode_lower(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
             Key::Transfer(transfer_v1_addr) => {
-                write!(f, "Key::LegacyTransfer({})", transfer_v1_addr)
+                write!(f, "Key::Transfer({})", transfer_v1_addr)
             }
             Key::DeployInfo(addr) => write!(
                 f,
@@ -1301,7 +1302,7 @@ impl Tagged<KeyTag> for Key {
             Key::Account(_) => KeyTag::Account,
             Key::Hash(_) => KeyTag::Hash,
             Key::URef(_) => KeyTag::URef,
-            Key::Transfer(_) => KeyTag::LegacyTransfer,
+            Key::Transfer(_) => KeyTag::Transfer,
             Key::DeployInfo(_) => KeyTag::DeployInfo,
             Key::EraInfo(_) => KeyTag::EraInfo,
             Key::Balance(_) => KeyTag::Balance,
@@ -1400,7 +1401,7 @@ impl ToBytes for Key {
             }
             Key::Hash(_) => KEY_HASH_SERIALIZED_LENGTH,
             Key::URef(_) => KEY_UREF_SERIALIZED_LENGTH,
-            Key::Transfer(_) => KEY_LEGACY_TRANSFER_SERIALIZED_LENGTH,
+            Key::Transfer(_) => KEY_TRANSFER_SERIALIZED_LENGTH,
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
@@ -1479,8 +1480,8 @@ impl FromBytes for Key {
                 let (uref, rem) = URef::from_bytes(remainder)?;
                 Ok((Key::URef(uref), rem))
             }
-            KeyTag::LegacyTransfer => {
-                let (transfer_v1_addr, rem) = TransferV1Addr::from_bytes(remainder)?;
+            KeyTag::Transfer => {
+                let (transfer_v1_addr, rem) = TransferAddr::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_v1_addr), rem))
             }
             KeyTag::DeployInfo => {
@@ -1601,7 +1602,7 @@ impl Distribution<Key> for Standard {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
-            3 => Key::Transfer(TransferV1Addr::new(rng.gen())),
+            3 => Key::Transfer(TransferAddr::new(rng.gen())),
             4 => Key::DeployInfo(DeployHash::from_raw(rng.gen())),
             5 => Key::EraInfo(EraId::new(rng.gen())),
             6 => Key::Balance(rng.gen()),
@@ -1634,7 +1635,7 @@ mod serde_helpers {
         Account(&'a AccountHash),
         Hash(&'a HashAddr),
         URef(&'a URef),
-        LegacyTransfer(&'a TransferV1Addr),
+        Transfer(&'a TransferAddr),
         #[serde(with = "crate::serde_helpers::deploy_hash_as_array")]
         DeployInfo(&'a DeployHash),
         EraInfo(&'a EraId),
@@ -1662,7 +1663,7 @@ mod serde_helpers {
         Account(AccountHash),
         Hash(HashAddr),
         URef(URef),
-        LegacyTransfer(TransferV1Addr),
+        Transfer(TransferAddr),
         #[serde(with = "crate::serde_helpers::deploy_hash_as_array")]
         DeployInfo(DeployHash),
         EraInfo(EraId),
@@ -1691,9 +1692,7 @@ mod serde_helpers {
                 Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
                 Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
                 Key::URef(uref) => BinarySerHelper::URef(uref),
-                Key::Transfer(transfer_v1_addr) => {
-                    BinarySerHelper::LegacyTransfer(transfer_v1_addr)
-                }
+                Key::Transfer(transfer_v1_addr) => BinarySerHelper::Transfer(transfer_v1_addr),
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
@@ -1727,9 +1726,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Account(account_hash) => Key::Account(account_hash),
                 BinaryDeserHelper::Hash(hash_addr) => Key::Hash(hash_addr),
                 BinaryDeserHelper::URef(uref) => Key::URef(uref),
-                BinaryDeserHelper::LegacyTransfer(transfer_v1_addr) => {
-                    Key::Transfer(transfer_v1_addr)
-                }
+                BinaryDeserHelper::Transfer(transfer_v1_addr) => Key::Transfer(transfer_v1_addr),
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
@@ -1793,7 +1790,7 @@ mod tests {
     };
 
     const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
-    const ENTITY_PREFIX: &str = "entity-addr-";
+    const ENTITY_PREFIX: &str = "entity-";
     const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 
     const BYTE_CODE_PREFIX: &str = "byte-code-";
@@ -1802,7 +1799,7 @@ mod tests {
     const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
     const HASH_KEY: Key = Key::Hash([42; 32]);
     const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
-    const TRANSFER_KEY: Key = Key::Transfer(TransferV1Addr::new([42; 32]));
+    const TRANSFER_KEY: Key = Key::Transfer(TransferAddr::new([42; 32]));
     const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
@@ -1945,7 +1942,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", TRANSFER_KEY),
-            format!("Key::LegacyTransfer({})", HEX_STRING)
+            format!("Key::Transfer({})", HEX_STRING)
         );
         assert_eq!(
             format!("{}", DEPLOY_INFO_KEY),
@@ -2039,14 +2036,14 @@ mod tests {
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
             format!(
-                "Key::Message(addressable-entity-contract-{}-{})",
+                "Key::Message(entity-contract-{}-{})",
                 HEX_STRING, HEX_STRING
             )
         );
         assert_eq!(
             format!("{}", MESSAGE_KEY),
             format!(
-                "Key::Message(addressable-entity-contract-{}-{}-{})",
+                "Key::Message(entity-contract-{}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
         );
@@ -2395,7 +2392,7 @@ mod tests {
         round_trip(&Key::Account(AccountHash::new(zeros)));
         round_trip(&Key::Hash(zeros));
         round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
-        round_trip(&Key::Transfer(TransferV1Addr::new(zeros)));
+        round_trip(&Key::Transfer(TransferAddr::new(zeros)));
         round_trip(&Key::DeployInfo(DeployHash::from_raw(zeros)));
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));

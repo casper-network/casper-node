@@ -28,9 +28,9 @@ use casper_types::{
 };
 
 #[derive(DataSize, Debug)]
-pub struct IndexedLmdbBlockStore<'s> {
+pub struct IndexedLmdbBlockStore {
     /// Block store
-    block_store: LmdbBlockStore<'s>,
+    block_store: LmdbBlockStore,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
@@ -39,8 +39,8 @@ pub struct IndexedLmdbBlockStore<'s> {
     transaction_hash_index: BTreeMap<TransactionHash, BlockHashHeightAndEra>,
 }
 
-impl<'s> IndexedLmdbBlockStore<'s> {
-    fn get_reader(&self) -> Result<IndexedLmdbBlockStoreReadTransaction<'s, '_>, BlockStoreError> {
+impl IndexedLmdbBlockStore {
+    fn get_reader(&self) -> Result<IndexedLmdbBlockStoreReadTransaction<'_>, BlockStoreError> {
         let txn = self
             .block_store
             .env
@@ -125,10 +125,10 @@ impl<'s> IndexedLmdbBlockStore<'s> {
     }
 
     pub fn new(
-        block_store: LmdbBlockStore<'s>,
+        block_store: LmdbBlockStore,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
-    ) -> Result<IndexedLmdbBlockStore<'s>, BlockStoreError> {
+    ) -> Result<IndexedLmdbBlockStore, BlockStoreError> {
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
         let mut block_height_index = BTreeMap::new();
@@ -336,15 +336,15 @@ fn initialize_execution_result_dbs(
     info!("execution result databases initialized");
     Ok(())
 }
-pub struct IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+pub struct IndexedLmdbBlockStoreRWTransaction<'t> {
     txn: RwTransaction<'t>,
-    block_store: &'t LmdbBlockStore<'s>,
+    block_store: &'t LmdbBlockStore,
     block_height_index: TempMap<'t, u64, BlockHash>,
     switch_block_era_id_index: TempMap<'t, EraId, BlockHash>,
     transaction_hash_index: TempMap<'t, TransactionHash, BlockHashHeightAndEra>,
 }
 
-impl<'s, 't> IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> IndexedLmdbBlockStoreRWTransaction<'t> {
     /// Check if the block height index can be updated.
     fn should_update_block_height_index(
         &self,
@@ -419,9 +419,9 @@ impl<'s, 't> IndexedLmdbBlockStoreRWTransaction<'s, 't> {
     }
 }
 
-pub struct IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+pub struct IndexedLmdbBlockStoreReadTransaction<'t> {
     txn: RoTransaction<'t>,
-    block_store: &'t IndexedLmdbBlockStore<'s>,
+    block_store: &'t IndexedLmdbBlockStore,
 }
 
 enum LmdbBlockStoreIndex {
@@ -441,7 +441,7 @@ enum DataType {
     BlockSignatures,
 }
 
-impl<'s, 't> IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> IndexedLmdbBlockStoreReadTransaction<'t> {
     fn block_hash_from_index(&self, index: LmdbBlockStoreIndex) -> Option<&BlockHash> {
         match index {
             LmdbBlockStoreIndex::BlockHeight(position) => match position {
@@ -540,7 +540,7 @@ impl<'s, 't> IndexedLmdbBlockStoreReadTransaction<'s, 't> {
     }
 }
 
-impl<'s, 't> BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn commit(self) -> Result<(), BlockStoreError> {
         Ok(())
     }
@@ -550,7 +550,7 @@ impl<'s, 't> BlockStoreTransaction for IndexedLmdbBlockStoreReadTransaction<'s, 
     }
 }
 
-impl<'s, 't> BlockStoreTransaction for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> BlockStoreTransaction for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn commit(self) -> Result<(), BlockStoreError> {
         self.txn
             .commit()
@@ -567,9 +567,9 @@ impl<'s, 't> BlockStoreTransaction for IndexedLmdbBlockStoreRWTransaction<'s, 't
     }
 }
 
-impl<'s> BlockStoreProvider for IndexedLmdbBlockStore<'s> {
-    type Reader<'t> = IndexedLmdbBlockStoreReadTransaction<'s, 't> where 's: 't;
-    type ReaderWriter<'t> = IndexedLmdbBlockStoreRWTransaction<'s, 't> where 's: 't;
+impl BlockStoreProvider for IndexedLmdbBlockStore {
+    type Reader<'t> = IndexedLmdbBlockStoreReadTransaction<'t>;
+    type ReaderWriter<'t> = IndexedLmdbBlockStoreRWTransaction<'t>;
 
     fn checkout_ro(&self) -> Result<Self::Reader<'_>, BlockStoreError> {
         self.get_reader()
@@ -592,7 +592,7 @@ impl<'s> BlockStoreProvider for IndexedLmdbBlockStore<'s> {
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
         self.block_store
             .block_store
@@ -604,7 +604,7 @@ impl<'s, 't> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreReadTransacti
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<BlockHash, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.block_store
             .block_store
@@ -618,9 +618,7 @@ impl<'s, 't> DataReader<BlockHash, BlockHeader> for IndexedLmdbBlockStoreReadTra
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, ApprovalsHashes>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
         self.block_store
             .block_store
@@ -634,9 +632,7 @@ impl<'s, 't> DataReader<BlockHash, ApprovalsHashes>
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, BlockSignatures>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
         self.block_store
             .block_store
@@ -650,7 +646,7 @@ impl<'s, 't> DataReader<BlockHash, BlockSignatures>
     }
 }
 
-impl<'s, 't> DataReader<BlockHeight, Block> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<BlockHeight, Block> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHeight) -> Result<Option<Block>, BlockStoreError> {
         self.read_block_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)))
     }
@@ -663,7 +659,7 @@ impl<'s, 't> DataReader<BlockHeight, Block> for IndexedLmdbBlockStoreReadTransac
     }
 }
 
-impl<'s, 't> DataReader<BlockHeight, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<BlockHeight, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHeight) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.read_block_header_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(key)))
     }
@@ -676,9 +672,7 @@ impl<'s, 't> DataReader<BlockHeight, BlockHeader> for IndexedLmdbBlockStoreReadT
     }
 }
 
-impl<'s, 't> DataReader<BlockHeight, ApprovalsHashes>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<BlockHeight, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHeight) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
         self.read_approvals_hashes_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(
             key,
@@ -693,9 +687,7 @@ impl<'s, 't> DataReader<BlockHeight, ApprovalsHashes>
     }
 }
 
-impl<'s, 't> DataReader<BlockHeight, BlockSignatures>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<BlockHeight, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: BlockHeight) -> Result<Option<BlockSignatures>, BlockStoreError> {
         self.read_block_signatures_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Key(
             key,
@@ -711,7 +703,7 @@ impl<'s, 't> DataReader<BlockHeight, BlockSignatures>
 }
 
 /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-impl<'s, 't> DataReader<EraId, Block> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<EraId, Block> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: EraId) -> Result<Option<Block>, BlockStoreError> {
         self.read_block_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(
             key,
@@ -728,7 +720,7 @@ impl<'s, 't> DataReader<EraId, Block> for IndexedLmdbBlockStoreReadTransaction<'
 
 /// Retrieves single switch block header by era ID by looking it up in the index and returning
 /// it.
-impl<'s, 't> DataReader<EraId, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<EraId, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: EraId) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.read_block_header_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Key(
             key,
@@ -743,7 +735,7 @@ impl<'s, 't> DataReader<EraId, BlockHeader> for IndexedLmdbBlockStoreReadTransac
     }
 }
 
-impl<'s, 't> DataReader<EraId, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<EraId, ApprovalsHashes> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: EraId) -> Result<Option<ApprovalsHashes>, BlockStoreError> {
         self.read_approvals_hashes_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(
             IndexPosition::Key(key),
@@ -758,7 +750,7 @@ impl<'s, 't> DataReader<EraId, ApprovalsHashes> for IndexedLmdbBlockStoreReadTra
     }
 }
 
-impl<'s, 't> DataReader<EraId, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<EraId, BlockSignatures> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: EraId) -> Result<Option<BlockSignatures>, BlockStoreError> {
         self.read_block_signatures_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(
             IndexPosition::Key(key),
@@ -773,7 +765,7 @@ impl<'s, 't> DataReader<EraId, BlockSignatures> for IndexedLmdbBlockStoreReadTra
     }
 }
 
-impl<'s, 't> DataReader<Tip, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<Tip, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, _key: Tip) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.read_block_header_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip))
     }
@@ -786,7 +778,7 @@ impl<'s, 't> DataReader<Tip, BlockHeader> for IndexedLmdbBlockStoreReadTransacti
     }
 }
 
-impl<'s, 't> DataReader<Tip, Block> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<Tip, Block> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, _key: Tip) -> Result<Option<Block>, BlockStoreError> {
         self.read_block_indexed(LmdbBlockStoreIndex::BlockHeight(IndexPosition::Tip))
     }
@@ -799,9 +791,7 @@ impl<'s, 't> DataReader<Tip, Block> for IndexedLmdbBlockStoreReadTransaction<'s,
     }
 }
 
-impl<'s, 't> DataReader<LatestSwitchBlock, BlockHeader>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<LatestSwitchBlock, BlockHeader> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, _key: LatestSwitchBlock) -> Result<Option<BlockHeader>, BlockStoreError> {
         self.read_block_header_indexed(LmdbBlockStoreIndex::SwitchBlockEraId(IndexPosition::Tip))
     }
@@ -814,8 +804,8 @@ impl<'s, 't> DataReader<LatestSwitchBlock, BlockHeader>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, BlockHashHeightAndEra>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
+impl<'t> DataReader<TransactionHash, BlockHashHeightAndEra>
+    for IndexedLmdbBlockStoreReadTransaction<'t>
 {
     fn read(&self, key: TransactionHash) -> Result<Option<BlockHashHeightAndEra>, BlockStoreError> {
         Ok(self.block_store.transaction_hash_index.get(&key).copied())
@@ -826,9 +816,7 @@ impl<'s, 't> DataReader<TransactionHash, BlockHashHeightAndEra>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, Transaction>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<TransactionHash, Transaction> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
         self.block_store
             .block_store
@@ -844,8 +832,8 @@ impl<'s, 't> DataReader<TransactionHash, Transaction>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
+impl<'t> DataReader<TransactionHash, BTreeSet<Approval>>
+    for IndexedLmdbBlockStoreReadTransaction<'t>
 {
     fn read(&self, key: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
@@ -864,9 +852,7 @@ impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, ExecutionResult>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
-{
+impl<'t> DataReader<TransactionHash, ExecutionResult> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, key: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
         self.block_store
             .block_store
@@ -884,7 +870,7 @@ impl<'s, 't> DataReader<TransactionHash, ExecutionResult>
     }
 }
 
-impl<'s, 't> DataReader<StateStoreKey, Vec<u8>> for IndexedLmdbBlockStoreReadTransaction<'s, 't> {
+impl<'t> DataReader<StateStoreKey, Vec<u8>> for IndexedLmdbBlockStoreReadTransaction<'t> {
     fn read(&self, StateStoreKey(key): StateStoreKey) -> Result<Option<Vec<u8>>, BlockStoreError> {
         self.block_store
             .block_store
@@ -898,8 +884,8 @@ impl<'s, 't> DataReader<StateStoreKey, Vec<u8>> for IndexedLmdbBlockStoreReadTra
     }
 }
 
-impl<'s, 't> DataReader<(DbTableId, Vec<u8>), DbRawBytesSpec>
-    for IndexedLmdbBlockStoreReadTransaction<'s, 't>
+impl<'t> DataReader<(DbTableId, Vec<u8>), DbRawBytesSpec>
+    for IndexedLmdbBlockStoreReadTransaction<'t>
 {
     fn read(
         &self,
@@ -926,7 +912,7 @@ impl<'s, 't> DataReader<(DbTableId, Vec<u8>), DbRawBytesSpec>
     }
 }
 
-impl<'s, 't> DataWriter<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataWriter<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'t> {
     /// Writes a block to storage.
     ///
     /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
@@ -1009,7 +995,7 @@ impl<'s, 't> DataWriter<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction
     }
 }
 
-impl<'s, 't> DataWriter<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataWriter<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &ApprovalsHashes) -> Result<BlockHash, BlockStoreError> {
         self.block_store.write_approvals_hashes(&mut self.txn, data)
     }
@@ -1020,7 +1006,7 @@ impl<'s, 't> DataWriter<BlockHash, ApprovalsHashes> for IndexedLmdbBlockStoreRWT
     }
 }
 
-impl<'s, 't> DataWriter<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataWriter<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &BlockSignatures) -> Result<BlockHash, BlockStoreError> {
         self.block_store
             .write_finality_signatures(&mut self.txn, data)
@@ -1032,7 +1018,7 @@ impl<'s, 't> DataWriter<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWT
     }
 }
 
-impl<'s, 't> DataWriter<BlockHash, BlockHeader> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataWriter<BlockHash, BlockHeader> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &BlockHeader) -> Result<BlockHash, BlockStoreError> {
         let block_hash = data.block_hash();
         let block_height = data.height();
@@ -1071,9 +1057,7 @@ impl<'s, 't> DataWriter<BlockHash, BlockHeader> for IndexedLmdbBlockStoreRWTrans
     }
 }
 
-impl<'s, 't> DataWriter<TransactionHash, Transaction>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
-{
+impl<'t> DataWriter<TransactionHash, Transaction> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &Transaction) -> Result<TransactionHash, BlockStoreError> {
         self.block_store.write_transaction(&mut self.txn, data)
     }
@@ -1083,8 +1067,8 @@ impl<'s, 't> DataWriter<TransactionHash, Transaction>
     }
 }
 
-impl<'s, 't> DataWriter<TransactionHash, TransactionFinalizedApprovals>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
+impl<'t> DataWriter<TransactionHash, TransactionFinalizedApprovals>
+    for IndexedLmdbBlockStoreRWTransaction<'t>
 {
     fn write(
         &mut self,
@@ -1110,8 +1094,8 @@ impl<'s, 't> DataWriter<TransactionHash, TransactionFinalizedApprovals>
     }
 }
 
-impl<'s, 't> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
+impl<'t> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
+    for IndexedLmdbBlockStoreRWTransaction<'t>
 {
     fn write(
         &mut self,
@@ -1148,7 +1132,7 @@ impl<'s, 't> DataWriter<BlockHashHeightAndEra, BlockExecutionResults>
     }
 }
 
-impl<'s, 't> DataWriter<BlockHash, BlockTransfers> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataWriter<BlockHash, BlockTransfers> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &BlockTransfers) -> Result<BlockHash, BlockStoreError> {
         self.block_store
             .write_transfers(&mut self.txn, &data.block_hash, &data.transfers)
@@ -1160,9 +1144,7 @@ impl<'s, 't> DataWriter<BlockHash, BlockTransfers> for IndexedLmdbBlockStoreRWTr
     }
 }
 
-impl<'s, 't> DataWriter<Cow<'static, [u8]>, StateStore>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
-{
+impl<'t> DataWriter<Cow<'static, [u8]>, StateStore> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn write(&mut self, data: &StateStore) -> Result<Cow<'static, [u8]>, BlockStoreError> {
         self.block_store
             .write_state_store(&mut self.txn, data.key.clone(), &data.value)?;
@@ -1174,9 +1156,7 @@ impl<'s, 't> DataWriter<Cow<'static, [u8]>, StateStore>
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, Transaction>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
-{
+impl<'t> DataReader<TransactionHash, Transaction> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn read(&self, query: TransactionHash) -> Result<Option<Transaction>, BlockStoreError> {
         self.block_store
             .transaction_dbs
@@ -1189,7 +1169,7 @@ impl<'s, 't> DataReader<TransactionHash, Transaction>
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<BlockSignatures>, BlockStoreError> {
         self.block_store.get_block_signatures(&self.txn, &key)
     }
@@ -1199,8 +1179,8 @@ impl<'s, 't> DataReader<BlockHash, BlockSignatures> for IndexedLmdbBlockStoreRWT
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
+impl<'t> DataReader<TransactionHash, BTreeSet<Approval>>
+    for IndexedLmdbBlockStoreRWTransaction<'t>
 {
     fn read(&self, query: TransactionHash) -> Result<Option<BTreeSet<Approval>>, BlockStoreError> {
         self.block_store
@@ -1217,7 +1197,7 @@ impl<'s, 't> DataReader<TransactionHash, BTreeSet<Approval>>
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<Block>, BlockStoreError> {
         self.block_store.get_single_block(&self.txn, &key)
     }
@@ -1227,9 +1207,7 @@ impl<'s, 't> DataReader<BlockHash, Block> for IndexedLmdbBlockStoreRWTransaction
     }
 }
 
-impl<'s, 't> DataReader<TransactionHash, ExecutionResult>
-    for IndexedLmdbBlockStoreRWTransaction<'s, 't>
-{
+impl<'t> DataReader<TransactionHash, ExecutionResult> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn read(&self, query: TransactionHash) -> Result<Option<ExecutionResult>, BlockStoreError> {
         self.block_store
             .execution_result_dbs
@@ -1245,7 +1223,7 @@ impl<'s, 't> DataReader<TransactionHash, ExecutionResult>
     }
 }
 
-impl<'s, 't> DataReader<BlockHash, Vec<Transfer>> for IndexedLmdbBlockStoreRWTransaction<'s, 't> {
+impl<'t> DataReader<BlockHash, Vec<Transfer>> for IndexedLmdbBlockStoreRWTransaction<'t> {
     fn read(&self, key: BlockHash) -> Result<Option<Vec<Transfer>>, BlockStoreError> {
         self.block_store.get_transfers(&self.txn, &key)
     }
