@@ -251,6 +251,12 @@ impl Chainspec {
         self.core_config.pricing_handling = pricing_handling;
         self
     }
+
+    /// Set allow reservations.
+    pub fn with_allow_reservations(&mut self, allow_reservations: bool) -> &mut Self {
+        self.core_config.allow_reservations = allow_reservations;
+        self
+    }
 }
 
 impl ToBytes for Chainspec {

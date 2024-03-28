@@ -2058,4 +2058,120 @@ mod tests {
             deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
+
+    #[test]
+    fn should_use_payment_amount_for_classic_payment() {
+        let payment_amount = 500u64;
+        let mut rng = TestRng::new();
+        let chain_name = "net-1";
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Classic);
+
+        let config = chainspec.transaction_config;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => U512::from(payment_amount)
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            config.deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let mut gas_price = 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount),
+            "in classic pricing, the user selected amount should be the cost if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount) * gas_price,
+            "in classic pricing, the cost should == user selected amount * gas_price"
+        );
+    }
+
+    #[test]
+    fn should_use_cost_table_for_fixed_payment() {
+        let payment_amount = 500u64;
+        let mut rng = TestRng::new();
+        let chain_name = "net-1";
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Classic);
+
+        let config = chainspec.transaction_config;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => U512::from(payment_amount)
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            config.deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let mut gas_price = 1;
+        let limit = deploy.gas_limit(&chainspec).expect("should limit").value();
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost, limit,
+            "in fixed pricing, the cost & limit should == if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            limit * gas_price,
+            "in fixed pricing, the cost should == limit * gas_price"
+        );
+    }
 }

@@ -15,7 +15,7 @@ use super::Transaction;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, U512,
+    Digest,
 };
 
 const CLASSIC_TAG: u8 = 0;
@@ -56,7 +56,7 @@ pub enum PricingMode {
         /// Pre-paid receipt.
         receipt: Digest,
         /// Price paid in the past to reserve space in a future block.
-        paid_amount: U512,
+        paid_amount: u64,
         /// The gas price at the time of reservation.
         strike_price: u8,
     },
@@ -210,7 +210,7 @@ impl FromBytes for PricingMode {
             }
             RESERVED_TAG => {
                 let (receipt, remainder) = Digest::from_bytes(remainder)?;
-                let (paid_amount, remainder) = U512::from_bytes(remainder)?;
+                let (paid_amount, remainder) = u64::from_bytes(remainder)?;
                 let (strike_price, remainder) = u8::from_bytes(remainder)?;
                 Ok((
                     PricingMode::Reserved {
