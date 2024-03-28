@@ -669,7 +669,7 @@ where
     }
 
     /// Validates whether keys used in the `value` are not forged.
-    fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
+    pub(crate) fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(_) => Ok(()),
@@ -743,7 +743,7 @@ where
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
-    fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
+    pub(crate) fn validate_writeable(&self, key: &Key) -> Result<(), ExecError> {
         if self.is_writeable(key) {
             Ok(())
         } else {

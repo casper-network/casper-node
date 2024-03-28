@@ -97,6 +97,10 @@ where
                 ProviderError::AddressableEntityByAccountHash(account_hash)
             })
     }
+
+    fn is_valid_uref(&self, uref: &URef) -> bool {
+        self.context.access_rights().has_access_rights_to_uref(uref)
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors
