@@ -641,10 +641,10 @@ impl GasLimited for TransactionV1 {
                         // in the future (such as the upcoming burn feature),
                         // this logic will need to be expanded to self.mint_costs().field?
                         // for the value for each verb...see how auction is set up below.
-                        costs.mint_costs().transfer
+                        costs.mint_costs().transfer as u64
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
-                        match entry_point {
+                        let amount = match entry_point {
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
@@ -659,7 +659,8 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
                             TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
                             TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
-                        }
+                        };
+                        amount as u64
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
                     } else {

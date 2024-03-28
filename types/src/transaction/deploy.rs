@@ -1193,7 +1193,7 @@ impl GasLimited for Deploy {
             PricingHandling::Fixed => {
                 // in fixed, the computation limit is fixed per the chainspec settings
                 let computation_limit = if self.is_transfer() {
-                    costs.mint_costs().transfer
+                    costs.mint_costs().transfer as u64
                 } else {
                     costs.standard_transaction_limit()
                 };

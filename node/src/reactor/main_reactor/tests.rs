@@ -192,8 +192,8 @@ impl TestFixture {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let min_motes = 1_000_000_000_000u64; // 1000 token
-        let max_motes = min_motes * 100; // 100_000 token
+        let min_motes = 100_000_000_000_000_000u64;
+        let max_motes = min_motes * 100;
         let balance = U512::from(rng.gen_range(min_motes..max_motes));
 
         // Override accounts with those generated from the keys.

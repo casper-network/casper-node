@@ -13,10 +13,10 @@ use crate::{
 };
 
 /// Default gas limit of install / upgrade contracts
-pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u32 = 3_500_000_000;
+pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
 
 /// Default gas limit of standard transactions
-pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u32 = 350_000_000;
+pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
 /// Definition of costs in the system.
 ///
@@ -27,10 +27,10 @@ pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u32 = 350_000_000;
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     /// Standard transaction gas limit expressed in gas.
-    standard_transaction_gas_limit: u32,
+    standard_transaction_gas_limit: u64,
 
     /// Install or upgrade transaction gas limit expressed in gas.
-    install_upgrade_gas_limit: u32,
+    install_upgrade_gas_limit: u64,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
@@ -48,8 +48,8 @@ pub struct SystemConfig {
 impl SystemConfig {
     /// Creates new system config instance.
     pub fn new(
-        install_upgrade_gas_limit: u32,
-        standard_transaction_gas_limit: u32,
+        install_upgrade_gas_limit: u64,
+        standard_transaction_gas_limit: u64,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
@@ -66,12 +66,12 @@ impl SystemConfig {
     }
 
     /// Returns install / upgrade cost.
-    pub fn install_upgrade_limit(&self) -> u32 {
+    pub fn install_upgrade_limit(&self) -> u64 {
         self.install_upgrade_gas_limit
     }
 
     /// Returns standard / flat cost.
-    pub fn standard_transaction_limit(&self) -> u32 {
+    pub fn standard_transaction_limit(&self) -> u64 {
         self.standard_transaction_gas_limit
     }
 
@@ -191,8 +191,8 @@ pub mod gens {
 
     prop_compose! {
         pub fn system_config_arb()(
-            install_upgrade_gas_limit in num::u32::ANY,
-            standard_transaction_gas_limit in num::u32::ANY,
+            install_upgrade_gas_limit in num::u64::ANY,
+            standard_transaction_gas_limit in num::u64::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),

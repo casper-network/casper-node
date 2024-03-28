@@ -142,7 +142,6 @@ where
             }
             Ok(None) => Ok(None),
             Err(TrackingCopyError::BytesRepr(_)) => Err(Error::Serialization),
-            Err(TrackingCopyError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
                 error!("StorageProvider::read_bid: {:?}", err);
                 Err(Error::Storage)
@@ -174,7 +173,6 @@ where
             }
             Ok(None) => Ok(Vec::new()),
             Err(TrackingCopyError::BytesRepr(_)) => Err(Error::Serialization),
-            Err(TrackingCopyError::GasLimit) => Err(Error::GasLimit),
             Err(err) => {
                 error!("StorageProvider::read_unbonds: {:?}", err);
                 Err(Error::Storage)
