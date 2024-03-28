@@ -69,7 +69,7 @@ use casper_types::{
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
     EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
-    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    Transaction, TransactionConfig, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -148,6 +148,8 @@ pub struct Storage {
     max_ttl: MaxTtl,
     /// The hash of the chain name.
     chain_name_hash: ChainNameDigest,
+    /// The transaction config as specified by the chainspec.
+    transaction_config: TransactionConfig,
     /// The utilization of blocks.
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
@@ -178,8 +180,8 @@ impl Display for HighestOrphanedBlockResult {
 }
 
 impl<REv> Component<REv> for Storage
-where
-    REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
+    where
+        REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
 {
     type Event = Event;
 
@@ -245,6 +247,7 @@ impl Storage {
         recent_era_count: u64,
         registry: Option<&Registry>,
         force_resync: bool,
+        transaction_config: TransactionConfig,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -289,6 +292,7 @@ impl Storage {
             utilization_tracker: BTreeMap::new(),
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
+            transaction_config,
         };
 
         if force_resync {
@@ -392,8 +396,8 @@ impl Storage {
         effect_builder: EffectBuilder<REv>,
         incoming: &NetRequestIncoming,
     ) -> Result<Effects<Event>, GetRequestError>
-    where
-        REv: From<NetworkRequest<Message>> + Send,
+        where
+            REv: From<NetworkRequest<Message>> + Send,
     {
         if self.enable_mem_deduplication {
             let unique_id = incoming.message.unique_id();
@@ -865,7 +869,7 @@ impl Storage {
                                 signature.era_id(),
                                 signature.chain_name_hash(),
                             )
-                            .into(),
+                                .into(),
                         }
                     };
                 match (&mut block_signatures, *signature) {
@@ -960,8 +964,10 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
+                let transaction_config = self.transaction_config;
                 responder
                     .respond(self.put_executed_block(
+                        transaction_config,
                         &block,
                         &approvals_hashes,
                         execution_results,
@@ -1036,7 +1042,7 @@ impl Storage {
     #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a>(
         &self,
-        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
+        transaction_hashes: impl Iterator<Item=&'a TransactionHash>,
     ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
     {
         let mut ro_txn = self.block_store.checkout_ro()?;
@@ -1051,13 +1057,14 @@ impl Storage {
 
     pub(crate) fn put_executed_block(
         &mut self,
+        transaction_config: TransactionConfig,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
-        let transaction_hash_count = block.transaction_count();
         let era_id = block.era_id();
+        let block_utilization_score = block.block_utilization(transaction_config);
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1068,17 +1075,13 @@ impl Storage {
         })?;
         txn.commit()?;
 
-        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
-            block_score.insert(block.height(), transaction_hash_count);
-        };
-
         match self.utilization_tracker.get_mut(&era_id) {
             Some(block_score) => {
-                block_score.insert(block.height(), transaction_hash_count);
+                block_score.insert(block.height(), block_utilization_score);
             }
             None => {
                 let mut block_score = BTreeMap::new();
-                block_score.insert(block.height(), transaction_hash_count);
+                block_score.insert(block.height(), block_utilization_score);
                 self.utilization_tracker.insert(era_id, block_score);
             }
         }
@@ -1267,8 +1270,8 @@ impl Storage {
         let mut transactions = vec![];
         for (transaction, _) in (self
             .get_transactions_with_finalized_approvals(block.all_transactions())?)
-        .into_iter()
-        .flatten()
+            .into_iter()
+            .flatten()
         {
             transactions.push(transaction)
         }
@@ -1630,7 +1633,7 @@ impl Storage {
     fn get_transaction_with_finalized_approvals(
         &self,
         txn: &mut (impl DataReader<TransactionHash, Transaction>
-                  + DataReader<TransactionHash, BTreeSet<Approval>>),
+        + DataReader<TransactionHash, BTreeSet<Approval>>),
         transaction_hash: &TransactionHash,
     ) -> Result<Option<(Transaction, Option<BTreeSet<Approval>>)>, FatalStorageError> {
         let maybe_transaction: Option<Transaction> = txn.read(*transaction_hash)?;
@@ -1735,9 +1738,9 @@ impl Storage {
         serialized_id: &[u8],
         fetch_response: FetchResponse<T, T::Id>,
     ) -> Result<Effects<Event>, FatalStorageError>
-    where
-        REv: From<NetworkRequest<Message>> + Send,
-        T: FetchItem,
+        where
+            REv: From<NetworkRequest<Message>> + Send,
+            T: FetchItem,
     {
         let serialized = fetch_response
             .to_serialized()
@@ -1860,7 +1863,7 @@ impl Storage {
                 block.era_id(),
                 self.chain_name_hash,
             )
-            .into(),
+                .into(),
         }
     }
 
@@ -1927,8 +1930,8 @@ impl Storage {
     fn get_execution_results_with_transaction_headers(
         &self,
         txn: &mut (impl DataReader<BlockHash, Block>
-                  + DataReader<TransactionHash, ExecutionResult>
-                  + DataReader<TransactionHash, Transaction>),
+        + DataReader<TransactionHash, ExecutionResult>
+        + DataReader<TransactionHash, Transaction>),
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
     {
@@ -1967,11 +1970,11 @@ impl Storage {
         &mut self,
         era_id: EraId,
         block_height: u64,
-        transaction_count: u64,
+        block_utilization: u64,
     ) -> Option<(u64, u64)> {
         let ret = match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
-                utilization.entry(block_height).or_insert(transaction_count);
+                utilization.entry(block_height).or_insert(block_utilization);
 
                 let transaction_count = utilization.values().into_iter().sum();
                 let block_count = utilization.keys().len() as u64;
@@ -1980,12 +1983,12 @@ impl Storage {
             }
             None => {
                 let mut utilization = BTreeMap::new();
-                utilization.insert(block_height, transaction_count);
+                utilization.insert(block_height, block_utilization);
 
                 self.utilization_tracker.insert(era_id, utilization);
 
                 let block_count = 1u64;
-                Some((transaction_count, block_count))
+                Some((block_utilization, block_count))
             }
         };
 
@@ -1998,8 +2001,8 @@ impl Storage {
 
 /// Decodes an item's ID, typically from an incoming request.
 fn decode_item_id<T>(raw: &[u8]) -> Result<T::Id, GetRequestError>
-where
-    T: FetchItem,
+    where
+        T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
 }
@@ -2078,10 +2081,10 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
             }
         }
         ExecutionResult::V2(ExecutionResultV2 {
-            transfers,
-            error_message,
-            ..
-        }) => {
+                                transfers,
+                                error_message,
+                                ..
+                            }) => {
             if error_message.is_none() {
                 for transfer in transfers {
                     all_transfers.push(transfer.clone());

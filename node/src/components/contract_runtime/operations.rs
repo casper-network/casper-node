@@ -453,7 +453,7 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
@@ -486,10 +486,10 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+                return Err(BlockExecutionError::DistributeBlockRewards(bre));
             }
             BlockRewardsResult::Success {
                 post_state_hash, ..
@@ -513,7 +513,7 @@ pub fn execute_finalized_block(
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
             StepResult::Success {
@@ -651,9 +651,9 @@ pub fn execute_finalized_block(
         (None, None) => None,
         (
             Some(InternalEraReport {
-                equivocators,
-                inactive_validators,
-            }),
+                     equivocators,
+                     inactive_validators,
+                 }),
             Some((next_era_validator_weights, next_era_gas_price)),
         ) => Some(EraEndV2::new(
             equivocators,
@@ -736,8 +736,8 @@ pub(super) fn speculatively_execute<S>(
     block_header: BlockHeader,
     transaction: Transaction,
 ) -> SpeculativeExecutionResult
-where
-    S: StateProvider,
+    where
+        S: StateProvider,
 {
     let state_root_hash = block_header.state_root_hash();
     let block_time = block_header
@@ -811,14 +811,14 @@ fn commit_step(
 /// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
 /// be a Merkle root hash of the chunks derived from the serialized results.
 pub(crate) fn compute_execution_results_checksum<'a>(
-    execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
+    execution_results_iter: impl Iterator<Item=&'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
     // Serialize the execution results as if they were `Vec<ExecutionResult>`.
     let serialized_length = U32_SERIALIZED_LENGTH
         + execution_results_iter
-            .clone()
-            .map(|exec_result| exec_result.serialized_length())
-            .sum::<usize>();
+        .clone()
+        .map(|exec_result| exec_result.serialized_length())
+        .sum::<usize>();
     let mut serialized = vec![];
     serialized
         .try_reserve_exact(serialized_length)

@@ -29,6 +29,7 @@ use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use num_rational::Ratio;
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -36,7 +37,7 @@ use schemars::JsonSchema;
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp, TransactionConfig,
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
@@ -390,6 +391,40 @@ impl Block {
                 (block.body.deploy_hashes().len() + block.body.transfer_hashes().len()) as u64
             }
             Block::V2(block_v2) => block_v2.all_transactions().count() as u64,
+        }
+    }
+
+    /// Returns the utilization of the block against a given chainspec.
+    pub fn block_utilization(&self, transaction_config: TransactionConfig) -> u64 {
+        match self {
+            Block::V1(_) => {
+                // We shouldnt be tracking this for legacy blocks
+                0
+            }
+            Block::V2(block_v2) => {
+                let has_hit_slot_limt = {
+                    (block_v2.mint().count() as u32 >= transaction_config.block_max_mint_count)
+                        || (block_v2.auction().count() as u32
+                            >= transaction_config.block_max_auction_count)
+                        || (block_v2.standard().count() as u32
+                            >= transaction_config.block_max_standard_count)
+                        || (block_v2.install_upgrade().count() as u32
+                            >= transaction_config.block_max_install_upgrade_count)
+                };
+
+                let per_block_capacity = (transaction_config.block_max_mint_count
+                    + transaction_config.block_max_auction_count
+                    + transaction_config.block_max_standard_count
+                    + transaction_config.block_max_install_upgrade_count)
+                    as u64;
+
+                if has_hit_slot_limt {
+                    100u64
+                } else {
+                    let num = block_v2.all_transactions().count() as u64;
+                    Ratio::new(num * 100, per_block_capacity).to_integer()
+                }
+            }
         }
     }
 

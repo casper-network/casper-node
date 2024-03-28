@@ -9,7 +9,7 @@ use tempfile::TempDir;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
     ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
-    TransactionCategory, U512,
+    TransactionCategory, TransactionConfig, U512,
 };
 
 use super::*;
@@ -103,6 +103,7 @@ impl reactor::Reactor for Reactor {
             RECENT_ERA_COUNT,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 

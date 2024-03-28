@@ -19,7 +19,7 @@ use tracing::debug;
 
 use casper_types::{
     testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignatureV2,
-    ProtocolVersion, TimeDiff, Transaction,
+    ProtocolVersion, TimeDiff, Transaction, TransactionConfig,
 };
 
 use super::*;
@@ -169,6 +169,7 @@ impl reactor::Reactor for Reactor {
             RECENT_ERA_COUNT,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 

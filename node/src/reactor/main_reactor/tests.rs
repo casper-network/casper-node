@@ -20,22 +20,16 @@ use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult, TotalSupplyRequest, TotalSupplyResult},
+    data_access_layer::{
+        balance::BalanceHandling, BalanceRequest, BalanceResult, BidsRequest, BidsResult,
+        TotalSupplyRequest, TotalSupplyResult,
+    },
     global_state::state::{StateProvider, StateReader},
 };
-use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
-    system::{
-        auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        AUCTION,
-    },
-    testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
-    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
-};
+use casper_types::{execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2}, system::{
+    auction::{BidAddr, BidKind, BidsExt, DelegationRate},
+    AUCTION,
+}, testing::TestRng, AccessRights, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionV1Builder, URef, ValidatorConfig, U512, HoldsEpoch};
 
 use crate::{
     components::{
@@ -432,8 +426,8 @@ impl TestFixture {
     ///
     /// Returns an error if the condition isn't met in time.
     async fn try_run_until<F>(&mut self, condition: F, within: Duration) -> Result<(), Elapsed>
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .try_settle_on(&mut self.rng, condition, within)
@@ -444,8 +438,8 @@ impl TestFixture {
     ///
     /// Panics if the condition isn't met in time.
     async fn run_until<F>(&mut self, condition: F, within: Duration)
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .settle_on(&mut self.rng, condition, within)
@@ -474,7 +468,7 @@ impl TestFixture {
             },
             within,
         )
-        .await
+            .await
     }
 
     /// Runs the network until all nodes reach the given completed block height.
@@ -504,14 +498,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should reach {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should reach {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes' storage components have stored the switch block header for
@@ -533,14 +527,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored switch block header for {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored switch block header for {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes have executed the given transaction and stored the
@@ -564,14 +558,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored execution result for {} within {} seconds",
-                txn_hash,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored execution result for {} within {} seconds",
+                    txn_hash,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     async fn schedule_upgrade_for_era_two(&mut self) {
@@ -697,6 +691,52 @@ impl TestFixture {
         price.gas_price()
     }
 
+    #[track_caller]
+    fn check_account_balance_at_tip(&self, account_public_key: PublicKey) -> (URef, U512) {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let highest_block = runner
+            .main_reactor()
+            .storage
+            .read_highest_block()
+            .expect("should have block");
+
+        let block_time = highest_block.clone_header().timestamp();
+
+        let holds_epoch =
+            HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.balance_hold_interval);
+
+        let balance_request = BalanceRequest::from_public_key(
+            *highest_block.state_root_hash(),
+            highest_block.protocol_version(),
+            account_public_key,
+            BalanceHandling::Available { holds_epoch },
+        );
+
+        let balance_result = runner
+            .main_reactor()
+            .contract_runtime
+            .data_access_layer()
+            .balance(balance_request);
+
+        if let BalanceResult::Success {
+            purse_addr,
+            available_balance,
+            ..
+        } = balance_result
+        {
+            let purse = URef::new(purse_addr, AccessRights::all());
+            return (purse, available_balance);
+        } else {
+            panic!("failed balance result")
+        }
+    }
+
     async fn inject_transaction(&mut self, txn: Transaction) {
         // saturate the network with the transactions via just making them all store and accept it
         // they're all validators so one of them should propose it
@@ -741,11 +781,11 @@ impl TestFixture {
         {
             ExecutionResult::V1(_) => unreachable!(),
             ExecutionResult::V2(ExecutionResultV2 {
-                effects,
-                consumed: gas,
-                error_message,
-                ..
-            }) => {
+                                    effects,
+                                    consumed: gas,
+                                    error_message,
+                                    ..
+                                }) => {
                 if error_message.is_none() {
                     effects.transforms().to_vec()
                 } else {
@@ -766,7 +806,7 @@ impl TestFixture {
     pub fn run_until_stopped(
         self,
         rng: TestRng,
-    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+    ) -> impl futures::Future<Output=(TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
     }
 }
@@ -1437,10 +1477,10 @@ async fn empty_block_validation_regression() {
         .inner_mut()
         .set_filter(move |event| match event {
             MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
-                era_id,
-                block_payload: _,
-                block_context,
-            })) => {
+                                                                       era_id,
+                                                                       block_payload: _,
+                                                                       block_context,
+                                                                   })) => {
                 info!("Accusing everyone else!");
                 // We hook into the NewBlockPayload event to replace the block being proposed with
                 // an empty one that accuses all the validators, except the malicious validator.
@@ -1833,10 +1873,13 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 20000; //milliseconds
+const ERA_DURATION: u64 = 20000;
+//milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000; //milliseconds
-const TIME_OUT: u64 = 600; //seconds
+const BLOCK_TIME: u64 = 2000;
+//milliseconds
+const TIME_OUT: u64 = 600;
+//seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
@@ -2009,16 +2052,16 @@ async fn run_rewards_network_scenario(
             let rewarded_blocks = &blocks[rewarded_range];
             let block_reward = (Ratio::<U512>::one()
                 - fixture
-                    .chainspec
-                    .core_config
-                    .finality_signature_proportion
-                    .into_u512())
+                .chainspec
+                .core_config
+                .finality_signature_proportion
+                .into_u512())
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let signatures_reward = fixture
                 .chainspec
                 .core_config
@@ -2026,10 +2069,10 @@ async fn run_rewards_network_scenario(
                 .into_u512()
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
                 None
             } else {
@@ -2041,10 +2084,10 @@ async fn run_rewards_network_scenario(
                         .into_u512()
                         * recomputed_total_supply[&(i - 2)]
                         * fixture
-                            .chainspec
-                            .core_config
-                            .round_seigniorage_rate
-                            .into_u512(),
+                        .chainspec
+                        .core_config
+                        .round_seigniorage_rate
+                        .into_u512(),
                 )
             };
 
@@ -2192,8 +2235,8 @@ async fn run_rewards_network_scenario(
                     .get(era)
                     .expect("expected recalculated supply")
                     - recomputed_total_supply
-                        .get(&(era - 1))
-                        .expect("expected recalculated supply"),
+                    .get(&(era - 1))
+                    .expect("expected recalculated supply"),
                 "supply growth does not match rewards at era {}",
                 era
             )
@@ -2222,7 +2265,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2246,7 +2289,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2270,7 +2313,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2294,7 +2337,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2318,7 +2361,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2342,7 +2385,7 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2368,7 +2411,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2394,7 +2437,7 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2420,7 +2463,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2446,7 +2489,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2472,7 +2515,7 @@ async fn run_reward_network_highway_no_finality() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2492,9 +2535,6 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
         minimum_era_height: 5,
         lower_threshold: 0,
         upper_threshold: 1,
-        max_standard_count: 1,
-        max_staking_count: 1,
-        max_install_count: 1,
         max_transfer_count: 1,
         max_gas_price,
         ..Default::default()
@@ -2511,22 +2551,28 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let switch_block = fixture.switch_block(ERA_ONE);
 
     let mut current_era = switch_block.era_id();
+    let chain_name = fixture.chainspec.network_config.name.clone();
+    let (purse, _) = fixture.check_account_balance_at_tip(alice_public_key.clone());
 
     // Run the network at load for at least 5 eras.
     for _ in 0..5 {
         let target_public_key = PublicKey::random(&mut fixture.rng);
-        let mut native_transfer = Deploy::native_transfer(
-            fixture.chainspec.network_config.name.clone(),
-            alice_public_key.clone(),
+        let fixed_native_mint_transaction = TransactionV1Builder::new_transfer(
+            10_000_000_000u64,
+            Some(purse),
             target_public_key,
             None,
-            Timestamp::now(),
-            TimeDiff::from_seconds(1200),
-            max_gas_price as u64,
-        );
+        )
+            .expect("must get builder")
+            .with_chain_name(chain_name.clone())
+            .with_secret_key(&alice_secret_key)
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: max_gas_price,
+            })
+            .build()
+            .expect("must get transaction");
 
-        native_transfer.sign(&alice_secret_key);
-        let txn = Transaction::Deploy(native_transfer);
+        let txn = Transaction::V1(fixed_native_mint_transaction);
         fixture.inject_transaction(txn).await;
         let next_era = current_era.successor();
         fixture
@@ -2538,6 +2584,35 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+    let target_public_key = PublicKey::random(&mut fixture.rng);
+
+    let fixed_native_mint_transaction =
+        TransactionV1Builder::new_transfer(10_000_000_000u64, Some(purse), target_public_key, None)
+            .expect("must get builder")
+            .with_chain_name(chain_name)
+            .with_secret_key(&alice_secret_key)
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: max_gas_price,
+            })
+            .build()
+            .expect("must get transaction");
+
+    let txn = Transaction::V1(fixed_native_mint_transaction);
+    let txn_hash = txn.hash();
+
+    let (_, balance_before) = fixture.check_account_balance_at_tip(alice_public_key.clone());
+
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+
+    let (_, balance_after) = fixture.check_account_balance_at_tip(alice_public_key.clone());
+
+    let current_gas_price = fixture.highest_complete_block().maybe_current_gas_price().expect("must have gas price");
+    let cost = fixture.chainspec.system_costs_config.mint_costs().transfer * (current_gas_price as u32);
+    assert_eq!(balance_before, balance_after + U512::from(cost));
 
     // Run the network at zero load and ensure the value falls back to the floor.
     for _ in 0..5 {

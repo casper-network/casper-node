@@ -34,7 +34,7 @@ use casper_types::{
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
     InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode, ProtocolVersion,
     PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
-    TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
+    TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -910,6 +910,7 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.recent_era_count(),
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
