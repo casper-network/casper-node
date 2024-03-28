@@ -159,7 +159,7 @@
         "value": "bid-addr-00306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
       }
     ],
-    "output": "0f306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+    "output": "0f00306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
   },
   "WriteValidatorBid": {
     "input": [

@@ -1,3 +1,5 @@
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -102,6 +104,30 @@ impl SystemConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl SystemConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
+        // this causes flaky test failures if the random result exceeds i64::MAX
+        let install_upgrade_gas_limit = rng.gen::<u32>() as u64;
+        let standard_transaction_gas_limit = rng.gen::<u32>() as u64;
+        let auction_costs = rng.gen();
+        let mint_costs = rng.gen();
+        let handle_payment_costs = rng.gen();
+        let standard_payment_costs = rng.gen();
+
+        SystemConfig {
+            install_upgrade_gas_limit,
+            standard_transaction_gas_limit,
+            auction_costs,
+            mint_costs,
+            handle_payment_costs,
+            standard_payment_costs,
+        }
+    }
+}
+
 impl Default for SystemConfig {
     fn default() -> Self {
         Self {
@@ -191,13 +217,15 @@ pub mod gens {
 
     prop_compose! {
         pub fn system_config_arb()(
-            install_upgrade_gas_limit in num::u64::ANY,
-            standard_transaction_gas_limit in num::u64::ANY,
+            install_upgrade_gas_limit in num::u32::ANY,
+            standard_transaction_gas_limit in num::u32::ANY,
             auction_costs in auction_costs_arb(),
             mint_costs in mint_costs_arb(),
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
         ) -> SystemConfig {
+            let install_upgrade_gas_limit = install_upgrade_gas_limit as u64;
+            let standard_transaction_gas_limit =standard_transaction_gas_limit as u64;
             SystemConfig {
                 install_upgrade_gas_limit,
                 standard_transaction_gas_limit,

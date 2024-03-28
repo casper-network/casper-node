@@ -1714,11 +1714,9 @@
                 },
                 "paid_amount": {
                   "description": "Price paid in the past to reserve space in a future block.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
                 },
                 "strike_price": {
                   "description": "The gas price at the time of reservation.",

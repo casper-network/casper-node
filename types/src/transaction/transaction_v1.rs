@@ -36,8 +36,9 @@ use crate::{
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
     TransactionSessionKind,
 };
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{chainspec::PricingHandling, testing::TestRng, Chainspec};
+#[cfg(any(feature = "std", test))]
+use crate::{chainspec::Chainspec, chainspec::PricingHandling};
+
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, TransactionConfig, U512};
 pub use errors_v1::{
@@ -51,6 +52,9 @@ pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError
 pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -1312,6 +1316,7 @@ mod tests {
         reserved_pricing(500u64, 2u8);
     }
 
+    #[cfg(test)]
     fn reserved_pricing(paid_amount: u64, strike_price: u8) {
         let mut chainspec = Chainspec::default();
         let chain_name = "net-1";
