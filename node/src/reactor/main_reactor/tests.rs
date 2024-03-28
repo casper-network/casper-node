@@ -96,6 +96,14 @@ struct ConfigsOverride {
     finality_signature_proportion: Ratio<u64>,
     signature_rewards_max_delay: u64,
     storage_multiplier: u8,
+    max_transfer_count: u32,
+    max_standard_count: u32,
+    max_staking_count: u32,
+    max_install_count: u32,
+    max_gas_price: u8,
+    min_gas_price: u8,
+    upper_threshold: u64,
+    lower_threshold: u64,
 }
 
 impl Default for ConfigsOverride {
@@ -111,6 +119,14 @@ impl Default for ConfigsOverride {
             finality_signature_proportion: Ratio::new(1, 3),
             signature_rewards_max_delay: 5,
             storage_multiplier: 1,
+            max_transfer_count: 1000,
+            max_standard_count: 100,
+            max_staking_count: 200,
+            max_install_count: 2,
+            max_gas_price: 3,
+            min_gas_price: 1,
+            upper_threshold: 90,
+            lower_threshold: 50,
         }
     }
 }
@@ -216,6 +232,14 @@ impl TestFixture {
             finality_signature_proportion,
             signature_rewards_max_delay,
             storage_multiplier,
+            max_transfer_count,
+            max_standard_count,
+            max_staking_count,
+            max_install_count,
+            max_gas_price: max,
+            min_gas_price: min,
+            upper_threshold: go_up,
+            lower_threshold: go_down,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -227,6 +251,16 @@ impl TestFixture {
         chainspec.core_config.consensus_protocol = consensus_protocol;
         chainspec.core_config.finders_fee = finders_fee;
         chainspec.core_config.finality_signature_proportion = finality_signature_proportion;
+        chainspec.core_config.minimum_block_time = minimum_block_time;
+        chainspec.core_config.minimum_era_height = minimum_era_height;
+        chainspec.vacancy_config.min_gas_price = min;
+        chainspec.vacancy_config.max_gas_price = max;
+        chainspec.vacancy_config.upper_threshold = go_up;
+        chainspec.vacancy_config.lower_threshold = go_down;
+        chainspec.transaction_config.block_max_standard_count = max_standard_count;
+        chainspec.transaction_config.block_max_auction_count = max_staking_count;
+        chainspec.transaction_config.block_max_mint_count = max_transfer_count;
+        chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
@@ -648,6 +682,20 @@ impl TestFixture {
         };
 
         *system_contract_registry.get(system_contract_name).unwrap()
+    }
+
+    #[track_caller]
+    fn get_current_era_price(&self) -> u8 {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let price = runner.main_reactor().contract_runtime.current_era_price();
+
+        price.gas_price()
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
@@ -2423,4 +2471,82 @@ async fn run_reward_network_highway_no_finality() {
         },
     )
     .await;
+}
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
+    let alice_stake = 200_000_000_000_u64;
+    let bob_stake = 300_000_000_000_u64;
+    let charlie_stake = 300_000_000_000_u64;
+    let initial_stakes = InitialStakes::FromVec(vec![
+        alice_stake.into(),
+        bob_stake.into(),
+        charlie_stake.into(),
+    ]);
+
+    let max_gas_price: u8 = 3;
+
+    let spec_override = ConfigsOverride {
+        minimum_era_height: 5,
+        lower_threshold: 0,
+        upper_threshold: 1,
+        max_standard_count: 1,
+        max_staking_count: 1,
+        max_install_count: 1,
+        max_transfer_count: 1,
+        max_gas_price,
+        ..Default::default()
+    };
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+
+    fixture
+        .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
+        .await;
+
+    let switch_block = fixture.switch_block(ERA_ONE);
+
+    let mut current_era = switch_block.era_id();
+
+    // Run the network at load for at least 5 eras.
+    for _ in 0..5 {
+        let target_public_key = PublicKey::random(&mut fixture.rng);
+        let mut native_transfer = Deploy::native_transfer(
+            fixture.chainspec.network_config.name.clone(),
+            alice_public_key.clone(),
+            target_public_key,
+            None,
+            Timestamp::now(),
+            TimeDiff::from_seconds(1200),
+            max_gas_price as u64,
+        );
+
+        native_transfer.sign(&alice_secret_key);
+        let txn = Transaction::Deploy(native_transfer);
+        fixture.inject_transaction(txn).await;
+        let next_era = current_era.successor();
+        fixture
+            .run_until_stored_switch_block_header(next_era, ONE_MIN)
+            .await;
+        current_era = next_era;
+    }
+
+    let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
+    let actual_gas_price = fixture.get_current_era_price();
+    assert_eq!(actual_gas_price, expected_gas_price);
+
+    // Run the network at zero load and ensure the value falls back to the floor.
+    for _ in 0..5 {
+        let next_era = current_era.successor();
+        fixture
+            .run_until_stored_switch_block_header(next_era, ONE_MIN)
+            .await;
+        current_era = next_era;
+    }
+
+    let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
+    let actual_gas_price = fixture.get_current_era_price();
+    assert_eq!(actual_gas_price, expected_gas_price);
 }

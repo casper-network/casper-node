@@ -60,7 +60,6 @@ pub(crate) enum FunctionIndex {
     RandomBytes,
     DictionaryReadFuncIndex,
     EnableContractVersion,
-    AddSessionVersion,
     ManageMessageTopic,
     EmitMessage,
 }

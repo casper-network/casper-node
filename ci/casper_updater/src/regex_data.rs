@@ -28,6 +28,11 @@ pub mod types {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
+                "storage/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
                 "execution_engine/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -255,24 +260,15 @@ pub mod chainspec_protocol_version {
                 chainspec_toml_replacement,
             ),
             DependentFile::new(
-                "node/src/components/rpc_server/rpcs/docs.rs",
-                Regex::new(r#"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)"#).unwrap(),
-                rpcs_docs_rs_replacement,
-            ),
-            DependentFile::new(
-                "resources/test/rpc_schema_hashing.json",
-                Regex::new(r#"(?m)("version":\s*|"api_version":\s*)"([^"]+)"#).unwrap(),
-                replacement,
+                "resources/local/chainspec.toml.in",
+                REGEX.clone(),
+                chainspec_toml_replacement,
             ),
         ]
     });
 
     fn chainspec_toml_replacement(updated_version: &str) -> String {
         format!(r#"$1'{}"#, updated_version)
-    }
-
-    fn rpcs_docs_rs_replacement(updated_version: &str) -> String {
-        format!(r#"$1({})"#, updated_version.replace('.', ", "))
     }
 }
 
@@ -283,11 +279,18 @@ pub mod chainspec_activation_point {
         Lazy::new(|| Regex::new(r#"(?m)(^activation_point =) (.+)"#).unwrap());
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![DependentFile::new(
-            "resources/production/chainspec.toml",
-            REGEX.clone(),
-            chainspec_toml_replacement,
-        )]
+        vec![
+            DependentFile::new(
+                "resources/production/chainspec.toml",
+                REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+            DependentFile::new(
+                "resources/local/chainspec.toml.in",
+                REGEX.clone(),
+                chainspec_toml_replacement,
+            ),
+        ]
     });
 
     fn chainspec_toml_replacement(updated_activation_point: &str) -> String {

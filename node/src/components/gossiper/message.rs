@@ -15,16 +15,16 @@ pub(crate) enum Message<T: GossipItem> {
     /// Gossiped out to random peers to notify them of an item we hold.
     Gossip(T::Id),
     /// Response to a `Gossip` message.  If `is_already_held` is false, the recipient should treat
-    /// this as a `GetRequest` and send a `GetResponse` containing the item.
+    /// this as a `GetItem` message and send an `Item` message containing the item.
     GossipResponse {
         item_id: T::Id,
         is_already_held: bool,
     },
-    // Request to get an item we were previously told about, but the peer timed out and we never
-    // received it.
+    /// Request to get an item we were previously told about, but the peer timed out and we never
+    /// received it.
     GetItem(T::Id),
-    // Response to either a `GossipResponse` with `is_already_held` set to `false` or to a
-    // `GetItem` message. Contains the actual item requested.
+    /// Response to either a `GossipResponse` with `is_already_held` set to `false` or to a
+    /// `GetItem` message. Contains the actual item requested.
     Item(Box<T>),
 }
 

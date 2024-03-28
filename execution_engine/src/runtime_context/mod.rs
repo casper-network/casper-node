@@ -1445,7 +1445,7 @@ where
     ) -> Result<Result<(), MessageTopicError>, ExecError> {
         let entity_key: Key = self.get_entity_key();
         let entity_addr = entity_key
-            .into_entity_hash()
+            .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
         // Take the addressable entity out of the global state

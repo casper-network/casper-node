@@ -916,11 +916,11 @@ impl Distribution<EntityKind> for Standard {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntityAddr {
     /// The address for a system entity account or contract.
-    System(HashAddr),
+    System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to an Account.
-    Account(HashAddr),
+    Account(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
     /// The address of an entity that corresponds to a Userland smart contract.
-    SmartContract(HashAddr),
+    SmartContract(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
 }
 
 impl EntityAddr {

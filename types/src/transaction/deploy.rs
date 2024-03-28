@@ -1114,6 +1114,46 @@ impl Deploy {
             )),
         )
     }
+
+    /// Creates a native transfer, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn native_transfer(
+        chain_name: String,
+        sender_public_key: PublicKey,
+        receiver_public_key: PublicKey,
+        amount: Option<U512>,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        gas_price: u64,
+    ) -> Self {
+        let amount = amount.unwrap_or_else(|| U512::from(DEFAULT_MIN_TRANSFER_MOTES));
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+
+        let transfer_args = runtime_args! {
+            "amount" => amount,
+            "source" => sender_public_key.to_account_hash(),
+            "target" => receiver_public_key.to_account_hash(),
+        };
+
+        let session = ExecutableDeployItem::Transfer {
+            args: transfer_args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            gas_price,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(sender_public_key)),
+        )
+    }
 }
 
 impl hash::Hash for Deploy {

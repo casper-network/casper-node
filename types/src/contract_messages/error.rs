@@ -17,7 +17,7 @@ pub enum FromStrError {
     /// String not formatted correctly.
     Formatting,
     /// Cannot parse entity hash.
-    EntityHashParseError(String),
+    EntityAddrParseError(String),
     /// Cannot parse message topic hash.
     MessageTopicParseError(String),
     /// Failed to decode address portion of URef.
@@ -58,8 +58,8 @@ impl Display for FromStrError {
             FromStrError::Formatting => {
                 write!(f, "string not properly formatted")
             }
-            FromStrError::EntityHashParseError(err) => {
-                write!(f, "could not parse entity hash: {}", err)
+            FromStrError::EntityAddrParseError(err) => {
+                write!(f, "could not parse entity addr: {}", err)
             }
             FromStrError::MessageTopicParseError(err) => {
                 write!(f, "could not parse topic hash: {}", err)

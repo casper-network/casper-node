@@ -492,6 +492,12 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
+    GetBlockUtilizationScore {
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+        responder: Responder<Option<(u64, u64)>>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -644,6 +650,9 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get raw data {}::{:?}", record_id, key)
             }
+            StorageRequest::GetBlockUtilizationScore { era_id, .. } => {
+                write!(formatter, "get utilization score for era {}", era_id)
+            }
         }
     }
 }
@@ -686,6 +695,7 @@ impl Display for MarkBlockCompletedRequest {
 pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
+        era_id: EraId,
         responder: Responder<AppendableBlock>,
     },
 }
@@ -693,11 +703,13 @@ pub(crate) enum TransactionBufferRequest {
 impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionBufferRequest::GetAppendableBlock { timestamp, .. } => {
+            TransactionBufferRequest::GetAppendableBlock {
+                timestamp, era_id, ..
+            } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {}",
-                    timestamp
+                    "request for appendable block at instant {} for era {}",
+                    timestamp, era_id
                 )
             }
         }
@@ -828,6 +840,11 @@ pub(crate) enum ContractRuntimeRequest {
         /// Results
         responder: Responder<Result<SpeculativeExecutionResult, engine_state::Error>>,
     },
+    UpdateRuntimePrice(EraId, u8),
+    GetEraGasPrice {
+        era_id: EraId,
+        responder: Responder<Option<u8>>,
+    },
 }
 
 impl Display for ContractRuntimeRequest {
@@ -912,6 +929,12 @@ impl Display for ContractRuntimeRequest {
                     transaction.hash(),
                     execution_prestate.state_root_hash
                 )
+            }
+            ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
+                write!(formatter, "updating price to {}", era_gas_price)
+            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {
+                write!(formatter, "Get gas price for era {}", era_id)
             }
         }
     }

@@ -6,12 +6,12 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, BlockV2, Transaction, TransactionId};
+use casper_types::{Block, BlockV2, EraId, Timestamp, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
-    effect::requests::TransactionBufferRequest,
-    types::FinalizedBlock,
+    effect::{requests::TransactionBufferRequest, Responder},
+    types::{appendable_block::AppendableBlock, FinalizedBlock},
 };
 
 #[derive(Debug, From, DataSize)]
@@ -26,6 +26,8 @@ pub(crate) enum Event {
     VersionedBlock(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
+    UpdateEraGasPrice(EraId, u8),
+    GetGasPriceResult(Option<u8>, EraId, Timestamp, Responder<AppendableBlock>),
 }
 
 impl Display for Event {
@@ -66,6 +68,16 @@ impl Display for Event {
             }
             Event::Expire => {
                 write!(formatter, "expire transactions")
+            }
+            Event::UpdateEraGasPrice(era_id, next_era_gas_price) => {
+                write!(
+                    formatter,
+                    "gas price {} for era {}",
+                    next_era_gas_price, era_id
+                )
+            }
+            Event::GetGasPriceResult(_, era_id, _, _) => {
+                write!(formatter, "retrieving gas price for era {}", era_id)
             }
         }
     }

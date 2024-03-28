@@ -52,7 +52,7 @@ nctl-view-faucet-account
 <summary>Sample faucet account details</summary>
 
 ```bash
-2022-06-21T10:06:56.354497 [INFO] [226848] NCTL :: faucet a/c secret key    : /home/ubuntu/casper-node/utils/nctl/assets/net-1/faucet/secret_key.pem
+2022-06-21T10:06:56.354497 [INFO] [226848] NCTL :: faucet a/c secret key    : /home/ubuntu/casper-nctl/assets/net-1/faucet/secret_key.pem
 2022-06-21T10:06:56.356638 [INFO] [226848] NCTL :: faucet a/c key           : 0146e3d5235a9c895d22eba969f390d0217aedbe0b8abcda0ea7ed0c27b3cd9d36
 2022-06-21T10:06:56.358489 [INFO] [226848] NCTL :: faucet a/c hash          : ba94ea5ab81adceb47ca4a0502f926633b5643d90beae3bdf3f55117ceaf2297
 2022-06-21T10:06:56.360308 [INFO] [226848] NCTL :: faucet a/c purse         : uref-bc30bba7e0701b726e89c08154b6037a8bc4b0bb8635595fb254f6081f0da0b1-007
@@ -103,7 +103,7 @@ After the deploy is successful, you can view the new NamedKey `special_value` in
 <summary>Sample faucet account details after successful deploy</summary>
 
 ```bash
-2022-06-21T10:11:49.190801 [INFO] [226848] NCTL :: faucet a/c secret key    : /home/ubuntu/casper-node/utils/nctl/assets/net-1/faucet/secret_key.pem
+2022-06-21T10:11:49.190801 [INFO] [226848] NCTL :: faucet a/c secret key    : /home/ubuntu/casper-nctl/assets/net-1/faucet/secret_key.pem
 2022-06-21T10:11:49.192818 [INFO] [226848] NCTL :: faucet a/c key           : 0146e3d5235a9c895d22eba969f390d0217aedbe0b8abcda0ea7ed0c27b3cd9d36
 2022-06-21T10:11:49.194613 [INFO] [226848] NCTL :: faucet a/c hash          : ba94ea5ab81adceb47ca4a0502f926633b5643d90beae3bdf3f55117ceaf2297
 2022-06-21T10:11:49.196407 [INFO] [226848] NCTL :: faucet a/c purse         : uref-bc30bba7e0701b726e89c08154b6037a8bc4b0bb8635595fb254f6081f0da0b1-007
