@@ -1,4 +1,5 @@
 mod binary_port;
+mod transactions;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,24 +22,27 @@ use tracing::{error, info};
 
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, BalanceRequest, BalanceResult, BidsRequest, BidsResult,
+        balance::{BalanceHandling, BalanceResult},
+        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
         TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
+    account::AccountHash,
+    crypto,
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
         AUCTION,
     },
     testing::TestRng,
-    AccessRights, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec,
-    ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, HoldsEpoch, Key, Motes, NextUpgrade,
-    PricingMode, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, SystemEntityRegistry,
-    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionV1Builder, URef, ValidatorConfig,
-    U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
+    PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
+    StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -108,6 +112,39 @@ struct ConfigsOverride {
     min_gas_price: u8,
     upper_threshold: u64,
     lower_threshold: u64,
+    refund_handling_override: Option<RefundHandling>,
+    fee_handling_override: Option<FeeHandling>,
+    pricing_handling_override: Option<PricingHandling>,
+    allow_reservations_override: Option<bool>,
+    balance_hold_interval_override: Option<TimeDiff>,
+}
+
+impl ConfigsOverride {
+    fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        self.refund_handling_override = Some(refund_handling);
+        self
+    }
+
+    fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling_override = Some(fee_handling);
+        self
+    }
+
+    fn with_pricing_handling(mut self, pricing_handling: PricingHandling) -> Self {
+        self.pricing_handling_override = Some(pricing_handling);
+        self
+    }
+
+    #[allow(unused)]
+    fn with_allow_reservations(mut self, allow_reservations: bool) -> Self {
+        self.allow_reservations_override = Some(allow_reservations);
+        self
+    }
+
+    fn with_balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval_override = Some(balance_hold_interval);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -131,6 +168,11 @@ impl Default for ConfigsOverride {
             min_gas_price: 1,
             upper_threshold: 90,
             lower_threshold: 50,
+            refund_handling_override: None,
+            fee_handling_override: None,
+            pricing_handling_override: None,
+            allow_reservations_override: None,
+            balance_hold_interval_override: None,
         }
     }
 }
@@ -244,6 +286,11 @@ impl TestFixture {
             min_gas_price: min,
             upper_threshold: go_up,
             lower_threshold: go_down,
+            refund_handling_override,
+            fee_handling_override,
+            pricing_handling_override,
+            allow_reservations_override,
+            balance_hold_interval_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -268,6 +315,22 @@ impl TestFixture {
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
+
+        if let Some(refund_handling) = refund_handling_override {
+            chainspec.core_config.refund_handling = refund_handling;
+        }
+        if let Some(fee_handling) = fee_handling_override {
+            chainspec.core_config.fee_handling = fee_handling;
+        }
+        if let Some(pricing_handling) = pricing_handling_override {
+            chainspec.core_config.pricing_handling = pricing_handling;
+        }
+        if let Some(allow_reservations) = allow_reservations_override {
+            chainspec.core_config.allow_reservations = allow_reservations;
+        }
+        if let Some(balance_hold_interval) = balance_hold_interval_override {
+            chainspec.core_config.balance_hold_interval = balance_hold_interval;
+        }
 
         let mut fixture = TestFixture {
             rng,
@@ -559,11 +622,30 @@ impl TestFixture {
         self.try_run_until(
             move |nodes: &Nodes| {
                 nodes.values().all(|runner| {
-                    runner
+                    if runner
                         .main_reactor()
                         .storage()
                         .read_execution_result(txn_hash)
                         .is_some()
+                    {
+                        let exec_info = runner
+                            .main_reactor()
+                            .storage()
+                            .read_execution_info(*txn_hash);
+
+                        if let Some(exec_info) = exec_info {
+                            runner
+                                .main_reactor()
+                                .storage()
+                                .read_block_header_by_height(exec_info.block_height, true)
+                                .unwrap()
+                                .is_some()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
                 })
             },
             within,
