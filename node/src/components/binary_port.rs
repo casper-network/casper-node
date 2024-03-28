@@ -59,7 +59,7 @@ use crate::{
     },
     reactor::{main_reactor::MainEvent, Finalize, QueueKind},
     types::NodeRng,
-    utils::ListeningError,
+    utils::{display_error, ListeningError},
 };
 
 use self::{error::Error, metrics::Metrics};
@@ -945,7 +945,7 @@ async fn handle_client<REv>(
 
     if let Err(err) = client_loop(server, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
-        info!(%addr, %err, "binary port client handler error");
+        info!(%addr, err=display_error(&err), "binary port client handler error");
     }
 }
 
