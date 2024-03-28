@@ -302,7 +302,7 @@ impl FromBytes for TransactionWithExecutionInfo {
 
 /// A query result for a dictionary item, contains the dictionary item key and a global state query
 /// result.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryQueryResult {
     key: Key,
     query_result: GlobalStateQueryResult,
@@ -359,7 +359,7 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use crate::testing::TestRng;
+    use crate::{execution::ExecutionResult, testing::TestRng, BlockHash, CLValue, StoredValue};
 
     #[test]
     fn uptime_roundtrip() {
@@ -420,6 +420,31 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&ConsensusStatus::new(
             PublicKey::random(rng),
             Some(TimeDiff::from_millis(rng.gen())),
+        ));
+    }
+
+    #[test]
+    fn transaction_with_execution_info_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&TransactionWithExecutionInfo::new(
+            Transaction::random(rng),
+            rng.gen::<bool>().then(|| ExecutionInfo {
+                block_hash: BlockHash::random(rng),
+                block_height: rng.gen(),
+                execution_result: rng.gen::<bool>().then(|| ExecutionResult::random(rng)),
+            }),
+        ));
+    }
+
+    #[test]
+    fn dictionary_query_result_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&DictionaryQueryResult::new(
+            Key::Account(rng.gen()),
+            GlobalStateQueryResult::new(
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                vec![],
+            ),
         ));
     }
 }
