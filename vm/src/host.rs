@@ -16,42 +16,22 @@ use tracing::error;
 use vm_common::{
     flags::{EntryPointFlags, ReturnFlags},
     keyspace::Keyspace,
+    selector::Selector,
 };
 
 use crate::{
-    backend::{Caller, Context, MeteringPoints, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{self, Address, GlobalStateReader},
-    ConfigBuilder, VMError, VMResult, VM,
+    wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
+    ConfigBuilder, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecuteTarget, Executor,
+    ExecutorV2, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
 };
 
 use self::abi::ReadInfo;
 
-/// Represents the result of a host function call.
-///
-/// 0 is used as a success.
-#[derive(Debug)]
-pub enum HostError {
-    /// Callee contract reverted.
-    CalleeReverted = 1,
-    /// Called contract trapped.
-    CalleeTrapped = 2,
-    /// Called contract reached gas limit.
-    CalleeGasDepleted = 3,
-}
-
-type HostResult = Result<(), HostError>;
-
-pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
-    match result {
-        Ok(()) => 0,
-        Err(error) => error as u32,
-    }
-}
-
 /// Write value under a key.
-pub(crate) fn casper_write<S: GlobalStateReader>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_write<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
     key_space: u64,
     key_ptr: u32,
     key_size: u32,
@@ -78,8 +58,8 @@ pub(crate) fn casper_write<S: GlobalStateReader>(
     Ok(0)
 }
 
-pub(crate) fn casper_print<S: GlobalStateReader>(
-    caller: impl Caller<S>,
+pub(crate) fn casper_print<S: GlobalStateReader, E: Executor>(
+    caller: impl Caller<S, E>,
     message_ptr: u32,
     message_size: u32,
 ) -> VMResult<()> {
@@ -90,8 +70,8 @@ pub(crate) fn casper_print<S: GlobalStateReader>(
 }
 
 /// Write value under a key.
-pub(crate) fn casper_read<S: GlobalStateReader>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
     key_tag: u64,
     key_ptr: u32,
     key_size: u32,
@@ -163,8 +143,8 @@ fn keyspace_to_global_state_key<'a>(address: [u8; 32], keyspace: Keyspace<'a>) -
     }
 }
 
-pub(crate) fn casper_copy_input<S: GlobalStateReader>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_copy_input<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> VMResult<u32> {
@@ -186,8 +166,8 @@ pub(crate) fn casper_copy_input<S: GlobalStateReader>(
 }
 
 /// Returns from the execution of a smart contract with an optional flags.
-pub(crate) fn casper_return<S: GlobalStateReader>(
-    caller: impl Caller<S>,
+pub(crate) fn casper_return<S: GlobalStateReader, E: Executor>(
+    caller: impl Caller<S, E>,
     flags: u32,
     data_ptr: u32,
     data_len: u32,
@@ -204,8 +184,8 @@ pub(crate) fn casper_return<S: GlobalStateReader>(
     Err(VMError::Return { flags, data })
 }
 
-pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<S, E>,
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
@@ -348,7 +328,7 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
 
         match constructors.first() {
             Some(first_constructor) => {
-                let mut vm = VM::new();
+                let mut vm = WasmEngine::new();
 
                 let storage = caller.context().storage.fork2();
 
@@ -361,6 +341,7 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
                 let new_context = Context {
                     address: contract_hash,
                     storage,
+                    executor: caller.context().executor.clone(),
                 };
 
                 let new_config = ConfigBuilder::new()
@@ -395,7 +376,7 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
                     Err(VMError::OutOfGas) => {
                         todo!()
                     }
-                    Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
+                    Err(VMError::Trap(trap_code)) => todo!(), // (None, Err(HostError::CalleeTrapped(trap_code))),
                     Err(other_error) => todo!("{other_error:?}"),
                 };
 
@@ -472,8 +453,8 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn casper_call<S: GlobalStateReader + 'static>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>(
+    mut caller: impl Caller<S, E>,
     address_ptr: u32,
     address_len: u32,
     value: u64,
@@ -497,157 +478,87 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static>(
     let address: Address = address.try_into().unwrap(); // TODO: Error handling
     let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
 
-    let key = Key::AddressableEntity(EntityAddr::SmartContract(address)); // TODO: Error handling
-    let contract = caller
-        .context_mut()
-        .storage
-        .read(&key)
-        .expect("should read contract");
+    let tracking_copy = caller.context().storage.fork2();
 
-    match contract {
-        Some(StoredValue::ContractV2(ContractV2::V2(manifest))) => {
-            let wasm_key = match manifest.bytecode_addr {
-                ByteCodeAddr::V1CasperWasm(wasm_hash) => {
-                    Key::ByteCode(ByteCodeAddr::V1CasperWasm(wasm_hash))
-                }
-                ByteCodeAddr::Empty => {
-                    // Note: What should happen?
-                    todo!("empty bytecode addr")
-                }
-            };
+    // Take the gas spent so far and use it as a limit for the new VM.
+    let gas_limit = caller
+        .gas_consumed()
+        .try_into_remaining()
+        .expect("should be remaining");
 
-            // Note: Bytecode stored in the GlobalStateReader has a "kind" option - currently we know we have a v2 bytecode as the stored contract is of "V2" variant.
-            let wasm_bytes = caller
-                .context_mut()
-                .storage
-                .read(&wasm_key)
-                .expect("should read wasm")
-                .expect("should have wasm bytes")
-                .into_byte_code()
-                .expect("should be byte code")
-                .take_bytes();
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_address(address)
+        .with_gas_limit(gas_limit)
+        .with_target(ExecuteTarget::Contract {
+            address,
+            selector: Selector::new(selector),
+        })
+        .with_input(input_data)
+        .build()
+        .expect("should build");
 
-            let mut vm = VM::new();
+    let (gas_usage, host_result) = match caller
+        .context()
+        .executor
+        .execute(tracking_copy, execute_request)
+    {
+        Ok(ExecuteResult {
+            host_error,
+            output,
+            gas_usage,
+            tracking_copy_parts,
+        }) => {
+            if let Some(output) = output {
+                let out_ptr: u32 = if cb_alloc != 0 {
+                    caller.alloc(cb_alloc, output.len(), cb_ctx)?
+                } else {
+                    // treats alloc_ctx as data
+                    cb_ctx
+                };
 
-            let storage = caller.context().storage.fork2();
-
-            let new_context = Context {
-                address: address.try_into().unwrap(),
-                storage,
-            };
-
-            let current_config = caller.config().clone();
-
-            // Take the gas spent so far and use it as a limit for the new VM.
-            let gas_limit = caller
-                .gas_consumed()
-                .try_into_remaining()
-                .expect("should be remaining");
-
-            let new_config = ConfigBuilder::new()
-                .with_gas_limit(gas_limit)
-                .with_memory_limit(current_config.memory_limit)
-                .with_input(input_data)
-                .build();
-
-            let mut new_instance = vm
-                .prepare(wasm_bytes, new_context, new_config)
-                .expect("should prepare instance");
-
-            // NOTE: We probably don't need to keep instances alive for repeated calls
-
-            let function_index = {
-                // let entry_points = manifest.entry_points;
-                let entry_point = manifest
-                    .entry_points
-                    .into_iter()
-                    .find_map(|entry_point| {
-                        if entry_point.selector == selector {
-                            Some(entry_point)
-                        } else {
-                            None
-                        }
-                    })
-                    .expect("should find entry point");
-                entry_point.function_index
-            };
-
-            // Call function by the index
-            let (call_result, gas_usage) = new_instance.call_function(function_index);
-
-            let (return_data, host_result) = match call_result {
-                Ok(()) => {
-                    // Contract did not call `casper_return` - implies that it did not revert, and
-                    // did not pass any data.
-                    (None, Ok(()))
-                }
-                Err(VMError::Return { flags, data }) => {
-                    // If the contract called `casper_return` function with revert bit set, we have
-                    // to pass the reverted code to the caller.
-                    let host_result = if flags.contains(ReturnFlags::REVERT) {
-                        Err(HostError::CalleeReverted)
-                    } else {
-                        Ok(())
-                    };
-                    (data, host_result)
-                }
-                Err(VMError::OutOfGas) => {
-                    todo!()
-                }
-                Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
-                Err(other_error) => todo!("{other_error:?}"),
-            };
-
-            // Calculate how much gas was spent during execution of the called contract.
-            let gas_spent = gas_usage
-                .gas_limit
-                .checked_sub(gas_usage.remaining_points)
-                .expect("remaining points always below or equal to the limit");
-
-            match caller.consume_gas(gas_spent) {
-                MeteringPoints::Remaining(_) => {}
-                MeteringPoints::Exhausted => {
-                    todo!("exhausted")
+                if out_ptr != 0 {
+                    caller.memory_write(out_ptr, &output)?;
                 }
             }
 
-            match &host_result {
-                Ok(()) | Err(HostError::CalleeReverted) => {
-                    // Called contract did return data by calling `casper_return` function.
-                    if let Some(returned_data) = return_data {
-                        let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
-                        caller.memory_write(out_ptr, &returned_data)?;
-                    }
+            let host_result = match host_error {
+                Some(host_error) => Err(host_error),
+                None => {
+                    caller
+                        .context_mut()
+                        .storage
+                        .merge_raw_parts(tracking_copy_parts);
+                    Ok(())
                 }
-                Err(_other_host_error) => {}
-            }
+            };
 
-            match host_result {
-                Ok(()) => {
-                    // Execution succeeded, merge all effects into the caller.
-                    let new_context = new_instance.teardown();
-                    caller.context_mut().storage.merge(new_context.storage);
-                }
-                Err(HostError::CalleeGasDepleted)
-                | Err(HostError::CalleeReverted)
-                | Err(HostError::CalleeTrapped) => {
-                    // Error means no changes to the storage
-                }
-            }
-
-            Ok(host_result)
+            (gas_usage, host_result)
         }
-        Some(stored_value) => {
-            todo!("unsupported contract type: {stored_value:?}")
+        Err(ExecuteError::Preparation(preparation_error)) => {
+            // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+            unreachable!("Preparation error: {:?}", preparation_error)
         }
-        None => todo!("not found"),
+    };
+
+    let gas_spent = gas_usage
+        .gas_limit
+        .checked_sub(gas_usage.remaining_points)
+        .expect("remaining points always below or equal to the limit");
+
+    match caller.consume_gas(gas_spent) {
+        MeteringPoints::Remaining(_) => {}
+        MeteringPoints::Exhausted => {
+            todo!("exhausted")
+        }
     }
+
+    Ok(host_result)
 }
 
 const CASPER_ENV_CALLER: u64 = 0;
 
-pub(crate) fn casper_env_read<S: GlobalStateReader>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_env_read<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
     env_path: u32,
     env_path_length: u32,
     cb_alloc: u32,
@@ -694,8 +605,8 @@ pub(crate) fn casper_env_read<S: GlobalStateReader>(
     }
 }
 
-pub(crate) fn casper_env_caller<S: GlobalStateReader>(
-    mut caller: impl Caller<S>,
+pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
     dest_ptr: u32,
     dest_len: u32,
 ) -> VMResult<u32> {

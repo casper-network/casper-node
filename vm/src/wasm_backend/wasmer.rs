@@ -6,8 +6,6 @@ use std::{
 };
 
 use bytes::Bytes;
-use casper_storage::global_state::{self, state::StateReader};
-use casper_types::{Key, StoredValue};
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
     Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table,
@@ -17,21 +15,30 @@ use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering;
 
 use crate::{
-    host, storage::GlobalStateReader, Config, ExportError, MemoryError, TrapCode, VMResult,
+    host, storage::GlobalStateReader, u32_from_host_result, Config, Executor, TrapCode, VMResult,
 };
 
 use self::metering_middleware::make_wasmer_metering_middleware;
 
-use super::{Caller, Context, Error as BackendError, GasUsage, MeteringPoints, WasmInstance};
+use super::{Caller, Context, GasUsage, MeteringPoints, PreparationError, WasmInstance};
 use crate::VMError;
 
-impl From<wasmer::MemoryAccessError> for MemoryError {
+impl From<wasmer::MemoryAccessError> for TrapCode {
     fn from(error: wasmer::MemoryAccessError) -> Self {
         match error {
-            wasmer::MemoryAccessError::HeapOutOfBounds => MemoryError::HeapOutOfBounds,
-            wasmer::MemoryAccessError::Overflow => MemoryError::Overflow,
-            wasmer::MemoryAccessError::NonUtf8String => MemoryError::NonUtf8String,
-            _ => todo!(),
+            wasmer::MemoryAccessError::HeapOutOfBounds | wasmer::MemoryAccessError::Overflow => {
+                // As according to Wasm spec section `Memory Instructions` any access to memory that is out of bounds of the memory's current size is a trap.
+                // Reference: https://webassembly.github.io/spec/core/syntax/instructions.html#memory-instructions
+                TrapCode::MemoryOutOfBounds
+            }
+            wasmer::MemoryAccessError::NonUtf8String => {
+                // This can happen only when using wasmer's utf8 reading routines which we don't need.
+                unreachable!("NonUtf8String")
+            }
+            _ => {
+                // All errors are handled and converted to a trap code, but we have to add this as wasmer's errors are #[non_exhaustive]
+                unreachable!("Unexpected error: {:?}", error)
+            }
         }
     }
 }
@@ -40,8 +47,10 @@ impl From<wasmer_types::TrapCode> for TrapCode {
     fn from(value: wasmer_types::TrapCode) -> Self {
         match value {
             wasmer_types::TrapCode::StackOverflow => TrapCode::StackOverflow,
-            wasmer_types::TrapCode::HeapAccessOutOfBounds => TrapCode::HeapAccessOutOfBounds,
-            wasmer_types::TrapCode::HeapMisaligned => TrapCode::HeapMisaligned,
+            wasmer_types::TrapCode::HeapAccessOutOfBounds => TrapCode::MemoryOutOfBounds,
+            wasmer_types::TrapCode::HeapMisaligned => {
+                unreachable!("Atomic operations are not supported")
+            }
             wasmer_types::TrapCode::TableAccessOutOfBounds => TrapCode::TableAccessOutOfBounds,
             wasmer_types::TrapCode::IndirectCallToNull => TrapCode::IndirectCallToNull,
             wasmer_types::TrapCode::BadSignature => TrapCode::BadSignature,
@@ -58,19 +67,19 @@ impl From<wasmer_types::TrapCode> for TrapCode {
 
 pub(crate) struct WasmerEngine {}
 
-struct WasmerEnv<S: GlobalStateReader> {
+struct WasmerEnv<S: GlobalStateReader, E: Executor> {
     config: Config,
-    context: Context<S>,
+    context: Context<S, E>,
     instance: Weak<Instance>,
     bytecode: Bytes,
     exported_runtime: Option<ExportedRuntime>,
 }
 
-pub(crate) struct WasmerCaller<'a, S: GlobalStateReader> {
-    env: FunctionEnvMut<'a, WasmerEnv<S>>,
+pub(crate) struct WasmerCaller<'a, S: GlobalStateReader, E: Executor> {
+    env: FunctionEnvMut<'a, WasmerEnv<S, E>>,
 }
 
-impl<'a, S: GlobalStateReader + 'static> WasmerCaller<'a, S> {
+impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> WasmerCaller<'a, S, E> {
     fn with_memory<T>(&self, f: impl FnOnce(MemoryView<'_>) -> T) -> T {
         let mem = &self.env.data().exported_runtime().memory;
         let binding = self.env.as_store_ref();
@@ -104,24 +113,28 @@ impl<'a, S: GlobalStateReader + 'static> WasmerCaller<'a, S> {
     }
 }
 
-impl<'a, S: GlobalStateReader + 'static> Caller<S> for WasmerCaller<'a, S> {
+impl<'a, S: GlobalStateReader + 'static, E: Executor + 'static> Caller<S, E>
+    for WasmerCaller<'a, S, E>
+{
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
         Ok(self
             .with_memory(|mem| mem.write(offset.into(), data))
-            .map_err(|memory_error| VMError::Memory(memory_error.into()))?)
+            .map_err(TrapCode::from)
+            .map_err(VMError::Trap)?)
     }
 
-    fn context(&self) -> &Context<S> {
+    fn context(&self) -> &Context<S, E> {
         &self.env.data().context
     }
-    fn context_mut(&mut self) -> &mut Context<S> {
+    fn context_mut(&mut self) -> &mut Context<S, E> {
         &mut self.env.data_mut().context
     }
 
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
         Ok(self
             .with_memory(|mem| mem.read(offset.into(), output))
-            .map_err(|memory_error| VMError::Memory(memory_error.into()))?)
+            .map_err(TrapCode::from)
+            .map_err(VMError::Trap)?)
     }
 
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
@@ -139,11 +152,9 @@ impl<'a, S: GlobalStateReader + 'static> Caller<S> for WasmerCaller<'a, S> {
         let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref
             .typed(&store)
             .unwrap_or_else(|error| panic!("{error:?}"));
-        let ptr =
-            match alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx) {
-                Ok(ptr) => ptr,
-                Err(runtime_error) => todo!("{:?}", runtime_error),
-            };
+        let ptr = alloc_callback
+            .call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)
+            .map_err(handle_wasmer_runtime_error)?;
         Ok(ptr)
     }
 
@@ -175,10 +186,10 @@ impl<'a, S: GlobalStateReader + 'static> Caller<S> for WasmerCaller<'a, S> {
     }
 }
 
-impl<S: GlobalStateReader> WasmerEnv<S> {}
+impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {}
 
-impl<S: GlobalStateReader> WasmerEnv<S> {
-    fn new(config: Config, context: Context<S>, code: Bytes) -> Self {
+impl<S: GlobalStateReader, E: Executor> WasmerEnv<S, E> {
+    fn new(config: Config, context: Context<S, E>, code: Bytes) -> Self {
         Self {
             config,
             context,
@@ -205,47 +216,40 @@ pub(crate) struct ExportedRuntime {
     pub(crate) exports: Exports,
 }
 
-pub(crate) struct WasmerInstance<S: GlobalStateReader> {
+pub(crate) struct WasmerInstance<S: GlobalStateReader, E: Executor + 'static> {
     instance: Arc<Instance>,
-    env: FunctionEnv<WasmerEnv<S>>,
+    env: FunctionEnv<WasmerEnv<S, E>>,
     store: Store,
     config: Config,
 }
 
-fn handle_wasmer_result<T: Debug>(wasmer_result: Result<T, RuntimeError>) -> VMResult<T> {
-    match wasmer_result {
-        Ok(result) => Ok(result),
-        Err(error) => match error.downcast::<VMError>() {
-            Ok(vm_error) => Err(vm_error),
-            Err(wasmer_runtime_error) => {
-                // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
-                // our code.
-                let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
-                Err(VMError::Trap(wasmer_trap_code.into()))
-            }
-        },
+fn handle_wasmer_runtime_error(error: RuntimeError) -> VMError {
+    match error.downcast::<VMError>() {
+        Ok(vm_error) => vm_error,
+        Err(wasmer_runtime_error) => {
+            // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
+            // our code.
+            let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
+            VMError::Trap(wasmer_trap_code.into())
+        }
     }
 }
 
-impl<S> WasmerInstance<S>
+impl<S, E> WasmerInstance<S, E>
 where
     S: GlobalStateReader + 'static,
+    E: Executor + 'static,
 {
-    fn wasmer_env(&self) -> &WasmerEnv<S> {
-        self.env.as_ref(&self.store)
-    }
-
     pub(crate) fn call_export(&mut self, name: &str) -> Result<(), VMError> {
         let exported_call_func: TypedFunction<(), ()> = self
             .instance
             .exports
             .get_typed_function(&self.store, name)
-            .map_err(|export_error| match export_error {
-                wasmer::ExportError::IncompatibleType => ExportError::IncompatibleType,
-                wasmer::ExportError::Missing(name) => ExportError::Missing(name),
-            })?;
-        let result = exported_call_func.call(&mut self.store.as_store_mut());
-        handle_wasmer_result(result)
+            .expect("Validated module has expected export");
+        let () = exported_call_func
+            .call(&mut self.store.as_store_mut())
+            .map_err(handle_wasmer_runtime_error)?;
+        Ok(())
     }
 
     fn call_function(&mut self, function_index: u32) -> Result<(), VMError> {
@@ -281,15 +285,17 @@ where
             }
         };
 
-        let wasmer_result = function.call(&mut self.store.as_store_mut());
-        handle_wasmer_result(wasmer_result)
+        let () = function
+            .call(&mut self.store.as_store_mut())
+            .map_err(handle_wasmer_runtime_error)?;
+        Ok(())
     }
 
     pub(crate) fn from_wasm_bytes<C: Into<Bytes>>(
         wasm_bytes: C,
-        context: Context<S>,
+        context: Context<S, E>,
         config: Config,
-    ) -> Result<Self, BackendError> {
+    ) -> Result<Self, PreparationError> {
         // let mut store = Engine
         let engine = {
             let mut singlepass_compiler = Singlepass::new();
@@ -304,7 +310,7 @@ where
         let wasm_bytes: Bytes = wasm_bytes.into();
 
         let module = Module::new(&engine, &wasm_bytes)
-            .map_err(|error| BackendError::Compile(error.to_string()))?;
+            .map_err(|error| PreparationError::Compile(error.to_string()))?;
 
         let mut store = Store::new(engine);
 
@@ -319,7 +325,7 @@ where
                 shared: false,
             },
         )
-        .map_err(|error| BackendError::Memory(error.to_string()))?;
+        .map_err(|error| PreparationError::Memory(error.to_string()))?;
 
         let imports = {
             let mut imports = Imports::new();
@@ -331,7 +337,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      key_space: u64,
                      key_ptr: u32,
                      key_size: u32,
@@ -356,7 +362,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      key_space: u64,
                      key_ptr: u32,
                      key_size: u32,
@@ -382,7 +388,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>, message_ptr: u32, message_size: u32| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>, message_ptr: u32, message_size: u32| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_print(wasmer_caller, message_ptr, message_size)
                     },
@@ -395,7 +401,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>, flags, data_ptr, data_len| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>, flags, data_ptr, data_len| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_return(wasmer_caller, flags, data_ptr, data_len)
                     },
@@ -408,7 +414,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      cb_alloc: u32,
                      cb_ctx: u32|
                      -> VMResult<u32> {
@@ -424,7 +430,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      flags: u32,
                      data_ptr: u32,
                      data_len: u32| {
@@ -440,7 +446,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      code_ptr: u32,
                      code_size: u32,
                      manifest_ptr: u32,
@@ -460,7 +466,7 @@ where
                             result_ptr,
                         ) {
                             Ok(Ok(())) => Ok(0),
-                            Ok(Err(call_error)) => Ok(call_error as u32),
+                            Ok(Err(call_error)) => Ok(call_error.into_u32()),
                             Err(error) => Err(error),
                         }
                     },
@@ -473,7 +479,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      address_ptr: u32,
                      address_len: u32,
                      value: u64,
@@ -494,8 +500,7 @@ where
                             cb_alloc,
                             cb_ctx,
                         ) {
-                            Ok(Ok(())) => Ok(0),
-                            Ok(Err(call_error)) => Ok(call_error as u32),
+                            Ok(host_result) => Ok(u32_from_host_result(host_result)),
                             Err(error) => Err(error),
                         }
                     },
@@ -508,7 +513,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
                      env_path,
                      env_path_size,
                      cb_alloc: u32,
@@ -531,7 +536,7 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S>>, dest_ptr, dest_len| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>, dest_ptr, dest_len| {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_env_caller(wasmer_caller, dest_ptr, dest_len)
                     },
@@ -546,7 +551,7 @@ where
 
         let instance = {
             let instance = Instance::new(&mut store, &module, &imports)
-                .map_err(|error| BackendError::Instantiation(error.to_string()))?;
+                .map_err(|error| PreparationError::Instantiation(error.to_string()))?;
 
             // We don't necessarily need atomic counter. Arc's purpose is to be able to retrieve a
             // Weak reference to the instance to be able to invoke recursive calls to the wasm
@@ -562,7 +567,7 @@ where
         let table = match instance.exports.get_table("__indirect_function_table") {
             Ok(table) => Some(table.clone()),
             Err(error @ wasmer::ExportError::IncompatibleType) => {
-                return Err(BackendError::MissingExport(error.to_string()))
+                return Err(PreparationError::MissingExport(error.to_string()))
             }
             Err(wasmer::ExportError::Missing(_)) => None,
         };
@@ -592,9 +597,10 @@ where
     }
 }
 
-impl<S> WasmInstance<S> for WasmerInstance<S>
+impl<S, E> WasmInstance<S, E> for WasmerInstance<S, E>
 where
     S: GlobalStateReader + 'static,
+    E: Executor + 'static,
 {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
         let vm_result = self.call_export(name);
@@ -639,7 +645,7 @@ where
     }
 
     /// Consume instance object and retrieve the [`Context`] object.
-    fn teardown(self) -> Context<S> {
+    fn teardown(self) -> Context<S, E> {
         let WasmerInstance { env, mut store, .. } = self;
 
         let mut env_mut = env.into_mut(&mut store);
@@ -649,6 +655,7 @@ where
         Context {
             storage: data.context.storage.fork2(),
             address: data.context.address,
+            executor: data.context.executor.clone(),
         }
     }
 }

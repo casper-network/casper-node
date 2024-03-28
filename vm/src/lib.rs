@@ -1,21 +1,84 @@
-pub mod backend;
 pub mod chain;
 pub(crate) mod host;
 pub mod storage;
+pub mod wasm_backend;
+use std::sync::Arc;
+
 use bytes::Bytes;
 
-use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
-use casper_storage::global_state::{self, state::StateReader};
-use casper_types::{Key, StoredValue};
+use casper_storage::{
+    global_state::{self, state::StateReader},
+    tracking_copy::{TrackingCopyCache, TrackingCopyParts},
+};
+use casper_types::{
+    contract_messages::Messages, contracts::ContractV2, execution::Effects, ByteCodeAddr, Digest,
+    EntityAddr, Key, StoredValue,
+};
+use either::Either;
+use storage::{Address, GlobalStateReader, TrackingCopy};
 use thiserror::Error;
-use vm_common::flags::ReturnFlags;
+use vm_common::{flags::ReturnFlags, selector::Selector};
+use wasm_backend::{wasmer::WasmerInstance, Context, GasUsage, PreparationError, WasmInstance};
 
-struct Arguments {
-    bytes: Bytes,
+const CALLEE_SUCCEED: u32 = 0;
+const CALLEE_REVERTED: u32 = 1;
+const CALLEE_TRAPPED: u32 = 2;
+const CALLEE_GAS_DEPLETED: u32 = 3;
+
+/// Represents the result of a host function call.
+///
+/// 0 is used as a success.
+#[derive(Debug)]
+#[repr(u32)]
+pub enum HostError {
+    /// Callee contract reverted.
+    CalleeReverted,
+    /// Called contract trapped.
+    CalleeTrapped(TrapCode),
+    /// Called contract reached gas limit.
+    CalleeGasDepleted,
 }
 
+// no revert: output
+// revert: output
+// trap: no output
+// gas depleted: no output
+
+type HostResult = Result<(), HostError>;
+
+impl HostError {
+    pub(crate) fn into_u32(self) -> u32 {
+        match self {
+            HostError::CalleeReverted => CALLEE_REVERTED,
+            HostError::CalleeTrapped(_) => CALLEE_TRAPPED,
+            HostError::CalleeGasDepleted => CALLEE_GAS_DEPLETED,
+        }
+    }
+}
+
+pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
+    match result {
+        Ok(_) => CALLEE_SUCCEED,
+        Err(host_error) => host_error.into_u32(),
+    }
+}
+
+/// `WasmEngine` is a struct that represents a WebAssembly engine.
+///
+/// This struct is used to encapsulate the operations and state of a WebAssembly engine.
+/// Currently, it does not hold any data (`()`), but it can be extended in the future to hold
+/// different compiler instances, configuration options, cached artifacts, state information,
+/// etc.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// let engine = WasmEngine::new();
+/// ```
 #[derive(Clone)]
-pub struct VM;
+pub struct WasmEngine(());
 
 #[derive(Debug, Error)]
 pub enum Resolver {
@@ -56,9 +119,7 @@ pub enum TrapCode {
     #[error("call stack exhausted")]
     StackOverflow,
     #[error("out of bounds memory access")]
-    HeapAccessOutOfBounds,
-    #[error("misaligned heap")]
-    HeapMisaligned,
+    MemoryOutOfBounds,
     #[error("undefined element: out of bounds table access")]
     TableAccessOutOfBounds,
     #[error("uninitialized element")]
@@ -88,18 +149,21 @@ pub enum VMError {
     },
     #[error("Out of gas")]
     OutOfGas,
-    #[error(transparent)]
-    Export(#[from] ExportError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     ///
     /// NOTE: for supporting multiple different backends we may want to abstract this a bit and
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Trap: {0}")]
     Trap(TrapCode),
-    #[error("Error resolving a function: {0}")]
-    Resolver(Resolver),
-    #[error("Memory error: {0}")]
-    Memory(#[from] MemoryError),
+}
+
+impl VMError {
+    pub fn into_output_data(self) -> Option<Bytes> {
+        match self {
+            VMError::Return { data, .. } => data,
+            _ => None,
+        }
+    }
 }
 
 pub type VMResult<T> = Result<T, VMError>;
@@ -154,29 +218,320 @@ impl ConfigBuilder {
     }
 }
 
-impl VM {
-    pub fn prepare<
-        S: StateReader<Key, StoredValue, Error = global_state::error::Error> + 'static,
-        C: Into<Bytes>,
-    >(
+impl WasmEngine {
+    pub fn prepare<S: GlobalStateReader + 'static, E: Executor + 'static, C: Into<Bytes>>(
         &mut self,
         wasm_bytes: C,
-        context: Context<S>,
+        context: Context<S, E>,
         config: Config,
-    ) -> Result<impl WasmInstance<S>, BackendError> {
+    ) -> Result<impl WasmInstance<S, E>, PreparationError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
-
         Ok(instance)
     }
 
     pub fn new() -> Self {
-        VM
+        WasmEngine(())
     }
 }
 
-impl Default for VM {
+impl Default for WasmEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ExecutorConfig {
+    memory_limit: u32,
+}
+
+impl ExecutorConfig {
+    pub fn new() -> ExecutorConfigBuilder {
+        ExecutorConfigBuilder::default()
+    }
+}
+
+pub struct ExecutorConfigBuilder {
+    memory_limit: Option<u32>,
+}
+
+impl Default for ExecutorConfigBuilder {
+    fn default() -> Self {
+        Self { memory_limit: None }
+    }
+}
+
+impl ExecutorConfigBuilder {
+    pub fn with_memory_limit(mut self, memory_limit: u32) -> Self {
+        self.memory_limit = Some(memory_limit);
+        self
+    }
+
+    pub fn build(self) -> Result<ExecutorConfig, &'static str> {
+        let memory_limit = self.memory_limit.ok_or("Memory limit is not set")?;
+
+        Ok(ExecutorConfig { memory_limit })
+    }
+}
+
+#[derive(Clone)]
+pub struct ExecutorV2 {
+    config: ExecutorConfig,
+    vm: Arc<WasmEngine>,
+}
+
+pub trait Executor: Clone + Send {
+    fn execute<R: GlobalStateReader + 'static>(
+        &self,
+        tracking_copy: TrackingCopy<R>,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecuteResult, ExecuteError>;
+}
+
+const DEFAULT_WASM_ENTRY_POINT: &str = "call";
+
+/// Error that can occur during execution, before the Wasm virtual machine is involved.
+///
+/// This error is returned by the `execute` function. It contains information about the error that occurred.
+#[derive(Debug, Error)]
+pub enum ExecuteError {
+    /// Error while preparing Wasm instance: export not found, validation, compilation errors, etc.
+    ///
+    /// No wasm was executed at this point.
+    #[error("Wasm error error: {0}")]
+    Preparation(#[from] PreparationError),
+}
+
+pub enum ExecuteTarget {
+    /// Execute Wasm bytes directly.
+    WasmBytes(Bytes),
+    /// Execute a stored contract by its address.
+    Contract {
+        address: Address,
+        selector: Selector,
+    },
+}
+
+/// Request to execute a Wasm contract.
+pub struct ExecuteRequest {
+    address: Address,
+    gas_limit: u64,
+    target: ExecuteTarget,
+    input: Bytes,
+}
+
+pub struct ExecuteRequestBuilder {
+    address: Option<Address>,
+    gas_limit: Option<u64>,
+    target: Option<ExecuteTarget>,
+    input: Option<Bytes>,
+}
+
+impl Default for ExecuteRequestBuilder {
+    fn default() -> Self {
+        Self {
+            address: None,
+            gas_limit: None,
+            target: None,
+            input: None,
+        }
+    }
+}
+
+impl ExecuteRequestBuilder {
+    pub fn with_address(mut self, address: Address) -> Self {
+        self.address = Some(address);
+        self
+    }
+
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = Some(gas_limit);
+        self
+    }
+
+    pub fn with_target(mut self, target: ExecuteTarget) -> Self {
+        self.target = Some(target);
+        self
+    }
+
+    pub fn with_input(mut self, input: Bytes) -> Self {
+        self.input = Some(input);
+        self
+    }
+
+    pub fn build(self) -> Result<ExecuteRequest, &'static str> {
+        let address = self.address.ok_or("Address is not set")?;
+        let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
+        let target = self.target.ok_or("Target is not set")?;
+        let input = self.input.ok_or("Input is not set")?;
+
+        Ok(ExecuteRequest {
+            address,
+            gas_limit,
+            target,
+            input,
+        })
+    }
+}
+
+/// Result of executing a Wasm contract.
+#[derive(Debug)]
+pub struct ExecuteResult {
+    /// Error while executing Wasm: traps, memory access errors, etc.
+    host_error: Option<HostError>,
+    /// Output produced by the Wasm contract.
+    output: Option<Bytes>,
+    /// Gas usage.
+    gas_usage: GasUsage,
+    /// Effects produced by the execution.
+    tracking_copy_parts: TrackingCopyParts,
+}
+
+impl ExecutorV2 {
+    pub fn new(config: ExecutorConfig) -> Self {
+        let vm = WasmEngine::new();
+        ExecutorV2 {
+            config,
+            vm: Arc::new(vm),
+        }
+    }
+}
+
+impl Executor for ExecutorV2 {
+    fn execute<R: GlobalStateReader + 'static>(
+        &self,
+        mut tracking_copy: TrackingCopy<R>,
+        execute_request: ExecuteRequest,
+    ) -> Result<ExecuteResult, ExecuteError> {
+        let ExecuteRequest {
+            address,
+            gas_limit,
+            target,
+            input,
+        } = execute_request;
+
+        let (wasm_bytes, export_or_selector) = match target {
+            ExecuteTarget::WasmBytes(wasm_bytes) => {
+                // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
+                (wasm_bytes, Either::Left(DEFAULT_WASM_ENTRY_POINT))
+            }
+            ExecuteTarget::Contract { address, selector } => {
+                let key = Key::AddressableEntity(EntityAddr::SmartContract(address)); // TODO: Error handling
+                let contract = tracking_copy.read(&key).expect("should read contract");
+
+                match contract {
+                    Some(StoredValue::ContractV2(ContractV2::V2(manifest))) => {
+                        let wasm_key = match manifest.bytecode_addr {
+                            ByteCodeAddr::V1CasperWasm(wasm_hash) => {
+                                Key::ByteCode(ByteCodeAddr::V1CasperWasm(wasm_hash))
+                            }
+                            ByteCodeAddr::Empty => {
+                                // Note: What should happen?
+                                todo!("empty bytecode addr")
+                            }
+                        };
+
+                        // Note: Bytecode stored in the GlobalStateReader has a "kind" option - currently we know we have a v2 bytecode as the stored contract is of "V2" variant.
+                        let wasm_bytes = tracking_copy
+                            .read(&wasm_key)
+                            .expect("should read wasm")
+                            .expect("should have wasm bytes")
+                            .into_byte_code()
+                            .expect("should be byte code")
+                            .take_bytes();
+
+                        let function_index = {
+                            // let entry_points = manifest.entry_points;
+                            let entry_point = manifest
+                                .entry_points
+                                .into_iter()
+                                .find_map(|entry_point| {
+                                    if entry_point.selector == selector.get() {
+                                        Some(entry_point)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .expect("should find entry point");
+                            entry_point.function_index
+                        };
+
+                        (Bytes::from(wasm_bytes), Either::Right(function_index))
+                    }
+                    Some(_stored_contract) => {
+                        panic!("Stored contract is not of V2 variant");
+                    }
+                    None => {
+                        panic!("No code found");
+                    }
+                }
+            }
+        };
+        let mut vm = WasmEngine::new();
+
+        let mut initial_tracking_copy = tracking_copy.fork2();
+
+        let context = Context {
+            address,
+            storage: tracking_copy,
+            executor: ExecutorV2::new(self.config),
+        };
+
+        let wasm_instance_config = ConfigBuilder::new()
+            .with_gas_limit(gas_limit)
+            .with_memory_limit(self.config.memory_limit)
+            .with_input(input)
+            .build();
+
+        let mut instance = vm.prepare(wasm_bytes, context, wasm_instance_config)?;
+
+        let (vm_result, gas_usage) = match export_or_selector {
+            Either::Left(export) => instance.call_export(export),
+            Either::Right(function_index) => instance.call_function(function_index),
+        };
+
+        let context = instance.teardown();
+
+        let Context {
+            storage: final_tracking_copy,
+            ..
+        } = context;
+
+        match vm_result {
+            Ok(()) => Ok(ExecuteResult {
+                host_error: None,
+                output: None,
+                gas_usage,
+                tracking_copy_parts: final_tracking_copy.into_raw_parts(),
+            }),
+            Err(VMError::Return { flags, data }) => {
+                let host_error = if flags.contains(ReturnFlags::REVERT) {
+                    Some(HostError::CalleeReverted)
+                } else {
+                    initial_tracking_copy.merge(final_tracking_copy);
+                    None
+                };
+
+                Ok(ExecuteResult {
+                    host_error,
+                    output: data,
+                    gas_usage,
+                    tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+                })
+            }
+            Err(VMError::OutOfGas) => Ok(ExecuteResult {
+                host_error: Some(HostError::CalleeGasDepleted),
+                output: None,
+                gas_usage,
+                tracking_copy_parts: final_tracking_copy.into_raw_parts(),
+            }),
+            Err(VMError::Trap(trap_code)) => Ok(ExecuteResult {
+                host_error: Some(HostError::CalleeTrapped(trap_code)),
+                output: None,
+                gas_usage,
+                tracking_copy_parts: initial_tracking_copy.into_raw_parts(),
+            }),
+        }
     }
 }

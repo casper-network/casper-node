@@ -21,7 +21,7 @@ use casper_types::{
 };
 
 use super::{
-    meter::count_meter::Count, TrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
+    meter::count_meter::Count, GenericTrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
 };
 use crate::{
     global_state::state::{self, StateProvider, StateReader},
@@ -682,7 +682,7 @@ proptest! {
 
 #[test]
 fn cache_reads_invalidation() {
-    let mut tc_cache = TrackingCopyCache::new(2, Count);
+    let mut tc_cache = GenericTrackingCopyCache::new(2, Count);
     let (k1, v1) = (
         Key::Hash([1u8; 32]),
         StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
@@ -705,7 +705,7 @@ fn cache_reads_invalidation() {
 
 #[test]
 fn cache_writes_not_invalidated() {
-    let mut tc_cache = TrackingCopyCache::new(2, Count);
+    let mut tc_cache = GenericTrackingCopyCache::new(2, Count);
     let (k1, v1) = (
         Key::Hash([1u8; 32]),
         StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),

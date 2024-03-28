@@ -4,20 +4,29 @@ use thiserror::Error;
 
 use crate::{
     storage::{Address, GlobalStateReader, TrackingCopy},
-    Config, VMError, VMResult,
+    Config, Executor, VMError, VMResult,
 };
 
 #[derive(Debug)]
 pub struct GasUsage {
+    /// The amount of gas used by the execution.
     pub(crate) gas_limit: u64,
+    /// The amount of gas remaining after the execution.
     pub(crate) remaining_points: u64,
-    // pub(crate) external_operations: u64, i.e. alloc/dealloc
+}
+
+impl GasUsage {
+    pub fn calculate_gas_cost(&self) -> u64 {
+        debug_assert!(self.remaining_points <= self.gas_limit);
+        self.gas_limit - self.remaining_points
+    }
 }
 
 /// Container that holds all relevant modules necessary to process an execution request.
-pub struct Context<S: GlobalStateReader> {
+pub struct Context<S: GlobalStateReader, E: Executor> {
     pub address: Address,
     pub storage: TrackingCopy<S>,
+    pub executor: E,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -41,10 +50,10 @@ impl MeteringPoints {
 /// This allows access for important instances such as the context object that was passed to the
 /// instance, wasm linear memory access, etc.
 
-pub(crate) trait Caller<S: GlobalStateReader> {
+pub(crate) trait Caller<S: GlobalStateReader, E: Executor> {
     fn config(&self) -> &Config;
-    fn context(&self) -> &Context<S>;
-    fn context_mut(&mut self) -> &mut Context<S>;
+    fn context(&self) -> &Context<S, E>;
+    fn context_mut(&mut self) -> &mut Context<S, E>;
     /// Returns currently running *unmodified* bytecode.
     fn bytecode(&self) -> Bytes;
 
@@ -66,7 +75,7 @@ pub(crate) trait Caller<S: GlobalStateReader> {
 }
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum PreparationError {
     #[error("Missing export {0}")]
     MissingExport(String),
     #[error("Compile error: {0}")]
@@ -77,8 +86,8 @@ pub enum Error {
     Instantiation(String),
 }
 
-pub trait WasmInstance<S: GlobalStateReader> {
+pub trait WasmInstance<S: GlobalStateReader, E: Executor> {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
     fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage);
-    fn teardown(self) -> Context<S>;
+    fn teardown(self) -> Context<S, E>;
 }

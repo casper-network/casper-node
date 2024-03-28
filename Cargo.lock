@@ -2286,9 +2286,9 @@ version = "0.1.0"
 
 [[package]]
 name = "either"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
+checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
 dependencies = [
  "serde",
 ]
@@ -7107,6 +7107,7 @@ dependencies = [
  "casper-types",
  "criterion 0.5.1",
  "digest 0.10.7",
+ "either",
  "num-derive 0.4.1",
  "num-traits",
  "rand",

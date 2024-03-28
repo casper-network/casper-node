@@ -31,6 +31,8 @@ tracing = "0.1.40"
 vm-common = { path = "../vm-common"}
 casper-storage = { path = "../storage" }
 
+either = "1.10"
+
 [[bench]]
 name = "vm_call"
 harness = false

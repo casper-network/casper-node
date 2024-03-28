@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt::Debug};
 
 /// Trait for measuring "size" of key-value pairs.
-pub trait Meter<K, V> {
+pub trait Meter<K, V>: Copy + Default + Debug {
     fn measure(&self, k: &K, v: &V) -> usize;
 
     fn measure_keys(&self, keys: &BTreeSet<K>) -> usize;
@@ -12,7 +12,7 @@ pub mod heap_meter {
 
     use crate::tracking_copy::byte_size::ByteSize;
 
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Default, Debug)]
     pub struct HeapSize;
 
     impl<K: ByteSize, V: ByteSize> super::Meter<K, V> for HeapSize {
@@ -34,7 +34,7 @@ pub mod heap_meter {
 pub mod count_meter {
     use std::collections::BTreeSet;
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     pub struct Count;
 
     impl<K, V> super::Meter<K, V> for Count {

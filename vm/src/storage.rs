@@ -5,7 +5,7 @@ use vm_common::flags::EntryPointFlags;
 
 pub(crate) type TrackingCopy<R> = casper_storage::TrackingCopy<R>;
 
-pub(crate) trait GlobalStateReader:
+pub trait GlobalStateReader:
     StateReader<Key, StoredValue, Error = global_state::error::Error>
 {
 }

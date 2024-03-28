@@ -12,6 +12,7 @@ mod tests;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     convert::{From, TryInto},
+    fmt::Debug,
     sync::Arc,
 };
 
@@ -142,8 +143,8 @@ impl Query {
 /// Keeps track of already accessed keys.
 /// We deliberately separate cached Reads from cached mutations
 /// because we want to invalidate Reads' cache so it doesn't grow too fast.
-#[derive(Clone)]
-pub struct TrackingCopyCache<M: Copy> {
+#[derive(Clone, Debug)]
+pub struct GenericTrackingCopyCache<M: Copy + Debug> {
     max_cache_size: usize,
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
@@ -153,13 +154,13 @@ pub struct TrackingCopyCache<M: Copy> {
     meter: M,
 }
 
-impl<M: Meter<Key, StoredValue> + Copy> TrackingCopyCache<M> {
+impl<M: Meter<Key, StoredValue> + Copy + Default> GenericTrackingCopyCache<M> {
     /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`,
     /// above which least-recently-used elements of the cache are invalidated.
     /// Measurements of elements' "size" is done with the usage of `Meter`
     /// instance.
-    pub fn new(max_cache_size: usize, meter: M) -> TrackingCopyCache<M> {
-        TrackingCopyCache {
+    pub fn new(max_cache_size: usize, meter: M) -> GenericTrackingCopyCache<M> {
+        GenericTrackingCopyCache {
             max_cache_size,
             current_cache_size: 0,
             reads_cached: LinkedHashMap::new(),
@@ -168,6 +169,11 @@ impl<M: Meter<Key, StoredValue> + Copy> TrackingCopyCache<M> {
             prunes_cached: HashSet::new(),
             meter,
         }
+    }
+
+    /// Creates instance of `TrackingCopyCache` with specified `max_cache_size`, above which least-recently-used elements of the cache are invalidated. Measurements of elements' "size" is done with the usage of default `Meter` instance.
+    pub fn new_default(max_cache_size: usize) -> GenericTrackingCopyCache<M> {
+        GenericTrackingCopyCache::new(max_cache_size, M::default())
     }
 
     /// Inserts `key` and `value` pair to Read cache.
@@ -235,13 +241,16 @@ impl<M: Meter<Key, StoredValue> + Copy> TrackingCopyCache<M> {
     }
 }
 
+/// An alias for a `TrackingCopyCache` with `HeapSize` as the meter.
+pub type TrackingCopyCache = GenericTrackingCopyCache<HeapSize>;
+
 /// An interface for the global state that caches all operations (reads and writes) instead of
 /// applying them directly to the state. This way the state remains unmodified, while the user can
 /// interact with it as if it was being modified in real time.
 #[derive(Clone)]
 pub struct TrackingCopy<R> {
     reader: Arc<R>,
-    cache: TrackingCopyCache<HeapSize>,
+    cache: TrackingCopyCache,
     effects: Effects,
     max_query_depth: u64,
     messages: Messages,
@@ -275,6 +284,8 @@ impl From<CLValueError> for AddResult {
     }
 }
 
+pub type TrackingCopyParts = (TrackingCopyCache, Effects, Messages);
+
 impl<R: StateReader<Key, StoredValue>> TrackingCopy<R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
@@ -284,7 +295,7 @@ where
         TrackingCopy {
             reader: Arc::new(reader),
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
-            cache: TrackingCopyCache::new(1024 * 16, HeapSize),
+            cache: GenericTrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
             max_query_depth,
             messages: Vec::new(),
@@ -325,9 +336,22 @@ where
         }
     }
 
-    /// Merges the caches and effects of the other `TrackingCopy` but keeps the reader instance.
+    /// Merges the caches and effects of the other `TrackingCopy` into this instance.
     pub fn merge(&mut self, other: TrackingCopy<R>) {
         *self = other;
+    }
+
+    /// Merges the caches and effects of the other `TrackingCopy` but keeps the reader instance.
+    pub fn merge_raw_parts(&mut self, raw_parts: TrackingCopyParts) {
+        let (cache, effects, messages) = raw_parts;
+        self.cache = cache;
+        self.effects = effects;
+        self.messages = messages;
+    }
+
+    /// Returns the `TrackingCopy`'s cache and effects, consuming the `TrackingCopy`.
+    pub fn into_raw_parts(self) -> TrackingCopyParts {
+        (self.cache, self.effects, self.messages)
     }
 
     /// Returns a copy of the execution effects cached by this instance.

@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use vm::{
-    backend::{Context, WasmInstance},
     storage::{self, Storage},
-    ExecuteRequest, VM,
+    wasm_backend::{Context, WasmInstance},
+    ExecuteRequest, WasmEngine,
 };
 
 // use super::*;
@@ -61,7 +61,7 @@ impl Storage for MockStorage {
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("call", |b| {
-        let mut vm = VM::new();
+        let mut vm = WasmEngine::new();
         let storage = MockStorage::default();
 
         let execute_request = ExecuteRequest {
