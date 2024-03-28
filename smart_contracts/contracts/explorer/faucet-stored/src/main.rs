@@ -114,7 +114,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         let set_variables = EntryPoint::new(
@@ -135,7 +135,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         let authorize_to = EntryPoint::new(
@@ -146,7 +146,7 @@ pub extern "C" fn call() {
             )],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         entry_points.add_entry_point(faucet);

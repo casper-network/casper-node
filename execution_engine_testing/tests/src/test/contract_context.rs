@@ -1,9 +1,8 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 
-use casper_types::{package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casper_types::{runtime_args, Key, RuntimeArgs, ENTITY_INITIAL_VERSION};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -38,7 +37,7 @@ fn should_enforce_intended_execution_contexts() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -95,7 +94,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -130,7 +129,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 

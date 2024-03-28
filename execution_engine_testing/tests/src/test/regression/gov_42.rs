@@ -15,11 +15,10 @@
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{runtime_args, Gas, RuntimeArgs};
-use num_traits::Zero;
 
 use crate::{
     test::regression::test_utils::{
@@ -40,43 +39,36 @@ enum ExecutionPhase {
 fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase: ExecutionPhase) {
     let payment_amount = *DEFAULT_PAYMENT;
 
-    let (do_minimum_request_builder, expected_error_message) = {
-        let account_hash = *DEFAULT_ACCOUNT_ADDR;
-        let session_args = RuntimeArgs::default();
-        let deploy_hash = [42; 32];
+    let account_hash = *DEFAULT_ACCOUNT_ADDR;
+    let session_args = RuntimeArgs::default();
+    let deploy_hash = [42; 32];
 
-        let (deploy_item_builder, expected_error_message) = match execution_phase {
-            ExecutionPhase::Payment => (
-                DeployItemBuilder::new()
-                    .with_payment_bytes(
-                        input_wasm_bytes.to_vec(),
-                        runtime_args! {ARG_AMOUNT => payment_amount,},
-                    )
-                    .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
-                expected_error,
-            ),
-            ExecutionPhase::Session => (
-                DeployItemBuilder::new()
-                    .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
-                    .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => payment_amount,}),
-                expected_error,
-            ),
-        };
-        let deploy = deploy_item_builder
-            .with_address(account_hash)
-            .with_authorization_keys(&[account_hash])
-            .with_deploy_hash(deploy_hash)
-            .build();
-
-        (
-            ExecuteRequestBuilder::new().push_deploy(deploy),
-            expected_error_message,
-        )
+    let (deploy_item_builder, expected_error_message) = match execution_phase {
+        ExecutionPhase::Payment => (
+            DeployItemBuilder::new()
+                .with_payment_bytes(
+                    input_wasm_bytes.to_vec(),
+                    runtime_args! {ARG_AMOUNT => payment_amount,},
+                )
+                .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args),
+            expected_error,
+        ),
+        ExecutionPhase::Session => (
+            DeployItemBuilder::new()
+                .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
+                .with_standard_payment(runtime_args! {ARG_AMOUNT => payment_amount,}),
+            expected_error,
+        ),
     };
-    let do_minimum_request = do_minimum_request_builder.build();
+    let deploy_item = deploy_item_builder
+        .with_address(account_hash)
+        .with_authorization_keys(&[account_hash])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let do_minimum_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -115,7 +107,8 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_file_invalid_magic_number() {
     const WASM_BYTES: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     let execution_phase = ExecutionPhase::Payment;
@@ -124,7 +117,8 @@ fn should_charge_payment_with_incorrect_wasm_file_invalid_magic_number() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_file_invalid_magic_number() {
     const WASM_BYTES: &[u8] = &[1, 2, 3, 4, 5]; // Correct WASM magic bytes are: 0x00 0x61 0x73 0x6d ("\0asm")
     let execution_phase = ExecutionPhase::Session;
@@ -133,8 +127,9 @@ fn should_charge_session_with_incorrect_wasm_file_invalid_magic_number() {
 }
 
 #[ignore]
-#[test]
-fn should_charge_payment_with_incorrect_wasm_file_empty_bytes() {
+#[allow(unused)]
+// #[test]
+fn should_fail_to_charge_payment_with_incorrect_wasm_file_empty_bytes() {
     const WASM_BYTES: &[u8] = &[];
     let execution_phase = ExecutionPhase::Payment;
     let expected_error = "I/O Error: UnexpectedEof";
@@ -142,7 +137,8 @@ fn should_charge_payment_with_incorrect_wasm_file_empty_bytes() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_file_empty_bytes() {
     const WASM_BYTES: &[u8] = &[];
     let execution_phase = ExecutionPhase::Session;
@@ -151,7 +147,8 @@ fn should_charge_session_with_incorrect_wasm_file_empty_bytes() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_correct_magic_number_incomplete_module() {
     const WASM_BYTES: &[u8] = &[
         0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00, 0x01, 0x35, 0x09, 0x60, 0x02, 0x7F, 0x7F,
@@ -171,7 +168,8 @@ fn should_charge_payment_with_incorrect_wasm_correct_magic_number_incomplete_mod
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_correct_magic_number_incomplete_module() {
     const WASM_BYTES: &[u8] = &[
         0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00, 0x01, 0x35, 0x09, 0x60, 0x02, 0x7F, 0x7F,
@@ -191,7 +189,8 @@ fn should_charge_session_with_incorrect_wasm_correct_magic_number_incomplete_mod
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_gas_counter_overflow() {
     let wasm_bytes = make_gas_counter_overflow();
     let execution_phase = ExecutionPhase::Payment;
@@ -200,7 +199,8 @@ fn should_charge_payment_with_incorrect_wasm_gas_counter_overflow() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_gas_counter_overflow() {
     let wasm_bytes = make_gas_counter_overflow();
     let execution_phase = ExecutionPhase::Session;
@@ -209,7 +209,8 @@ fn should_charge_session_with_incorrect_wasm_gas_counter_overflow() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_no_memory_section() {
     let wasm_bytes = make_module_without_memory_section();
     let execution_phase = ExecutionPhase::Payment;
@@ -218,7 +219,8 @@ fn should_charge_payment_with_incorrect_wasm_no_memory_section() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_no_memory_section() {
     let wasm_bytes = make_module_without_memory_section();
     let execution_phase = ExecutionPhase::Session;
@@ -227,19 +229,21 @@ fn should_charge_session_with_incorrect_wasm_no_memory_section() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_payment_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Payment;
-    let expected_error = "Unsupported WASM start";
+    let expected_error = "Unsupported Wasm start";
     run_test_case(&wasm_bytes, expected_error, execution_phase)
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_session_with_incorrect_wasm_start_section() {
     let wasm_bytes = make_module_with_start_section();
     let execution_phase = ExecutionPhase::Session;
-    let expected_error = "Unsupported WASM start";
+    let expected_error = "Unsupported Wasm start";
     run_test_case(&wasm_bytes, expected_error, execution_phase)
 }

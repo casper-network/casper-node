@@ -36,7 +36,7 @@ pub(crate) fn is_fixture_generator_enabled() -> bool {
 
 /// This is a special place in the global state where fixture contains a registry.
 #[cfg(test)]
-pub(crate) const CONTRACT_REGISTRY_SPECIAL_ADDRESS: Key =
+pub(crate) const ENTRY_REGISTRY_SPECIAL_ADDRESS: Key =
     Key::URef(URef::new([0u8; 32], AccessRights::all()));
 
 fn path_to_lmdb_fixtures() -> PathBuf {
@@ -88,6 +88,7 @@ pub fn builder_from_global_state_fixture(
         LmdbWasmTestBuilder::open(
             &path_to_gs,
             ChainspecConfig::default(),
+            lmdb_fixture_state.genesis_protocol_version(),
             lmdb_fixture_state.post_state_hash,
         ),
         lmdb_fixture_state,

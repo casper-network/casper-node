@@ -1,8 +1,8 @@
 mod error;
 
 use super::{
-    super::{InitiatorAddr, InitiatorAddrAndSecretKey},
-    Deploy, DeployHash, ExecutableDeployItem, TransferTarget,
+    super::{InitiatorAddr, InitiatorAddrAndSecretKey, TransferTarget},
+    Deploy, DeployHash, ExecutableDeployItem,
 };
 use crate::{PublicKey, SecretKey, TimeDiff, Timestamp, URef, U512};
 pub use error::DeployBuilderError;
@@ -62,11 +62,11 @@ impl<'a> DeployBuilder<'a> {
     ///   * that payment code is provided by either calling
     ///     [`with_standard_payment`](Self::with_standard_payment) or
     ///     [`with_payment`](Self::with_payment)
-    pub fn new_transfer<C: Into<String>, A: Into<U512>>(
+    pub fn new_transfer<C: Into<String>, A: Into<U512>, T: Into<TransferTarget>>(
         chain_name: C,
         amount: A,
         maybe_source: Option<URef>,
-        target: TransferTarget,
+        target: T,
         maybe_transfer_id: Option<u64>,
     ) -> Self {
         let session =

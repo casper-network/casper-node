@@ -141,7 +141,8 @@ pub enum TransactionEntryPoint {
     #[cfg_attr(
         feature = "json-schema",
         schemars(
-            description = "The `activate_bid` native entry point, used to used to reactivate an inactive bid."
+            description = "The `activate_bid` native entry point, used to used to reactivate an \
+            inactive bid."
         )
     )]
     ActivateBid,
@@ -161,6 +162,20 @@ impl TransactionEntryPoint {
             REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
             ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
             _ => unreachable!(),
+        }
+    }
+
+    /// Does this entry point kind require holds epoch?
+    pub fn requires_holds_epoch(&self) -> bool {
+        match self {
+            TransactionEntryPoint::AddBid
+            | TransactionEntryPoint::Delegate
+            | TransactionEntryPoint::Custom(_)
+            | TransactionEntryPoint::Transfer => true,
+            TransactionEntryPoint::WithdrawBid
+            | TransactionEntryPoint::Undelegate
+            | TransactionEntryPoint::Redelegate
+            | TransactionEntryPoint::ActivateBid => false,
         }
     }
 }

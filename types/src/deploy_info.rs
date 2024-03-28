@@ -25,7 +25,7 @@ pub struct DeployInfo {
         schemars(with = "DeployHash", description = "Hex-encoded Deploy hash.")
     )]
     pub deploy_hash: DeployHash,
-    /// Transfers performed by the Deploy.
+    /// Version 1 transfers performed by the Deploy.
     pub transfers: Vec<TransferAddr>,
     /// Account identifier of the creator of the Deploy.
     pub from: AccountHash,
@@ -104,45 +104,23 @@ impl ToBytes for DeployInfo {
     }
 }
 
-/// Generators for a `Deploy`
+/// Generators for a `DeployInfo`
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub(crate) mod gens {
-    use alloc::vec::Vec;
-
-    use proptest::{
-        array,
-        collection::{self, SizeRange},
-        prelude::{Arbitrary, Strategy},
-    };
+    use proptest::{collection, prelude::Strategy};
 
     use crate::{
-        account::AccountHash,
-        gens::{u512_arb, uref_arb},
-        DeployHash, DeployInfo, TransferAddr,
+        gens::{account_hash_arb, u512_arb, uref_arb},
+        transaction::gens::deploy_hash_arb,
+        transfer::gens::transfer_v1_addr_arb,
+        DeployInfo,
     };
 
-    pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
-        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
-    }
-
-    pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {
-        array::uniform32(<u8>::arbitrary()).prop_map(TransferAddr::new)
-    }
-
-    pub fn transfers_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<TransferAddr>> {
-        collection::vec(transfer_addr_arb(), size)
-    }
-
-    pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
-        array::uniform32(<u8>::arbitrary()).prop_map(AccountHash::new)
-    }
-
-    /// Creates an arbitrary `Deploy`
     pub fn deploy_info_arb() -> impl Strategy<Value = DeployInfo> {
         let transfers_length_range = 0..5;
         (
             deploy_hash_arb(),
-            transfers_arb(transfers_length_range),
+            collection::vec(transfer_v1_addr_arb(), transfers_length_range),
             account_hash_arb(),
             uref_arb(),
             u512_arb(),

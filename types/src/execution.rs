@@ -11,7 +11,7 @@ mod transform_kind;
 pub use effects::Effects;
 pub use execution_result::ExecutionResult;
 pub use execution_result_v1::ExecutionResultV1;
-pub use execution_result_v2::ExecutionResultV2;
+pub use execution_result_v2::{ExecutionResultV2, PaymentInfo};
 pub use transform::TransformV2;
 pub use transform_error::TransformError;
 pub use transform_kind::{TransformInstruction, TransformKindV2};

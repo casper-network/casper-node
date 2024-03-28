@@ -57,7 +57,7 @@ where
     let accounts = stakes
         .into_iter()
         .map(|(pk, stake)| {
-            let motes = Motes::new(stake.into());
+            let motes = Motes::new(stake);
             let validator_config = ValidatorConfig::new(motes, DelegationRate::zero());
             AccountConfig::new(pk, motes, Some(validator_config))
         })

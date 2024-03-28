@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Deploy, DeployConfigFailure, DeployHash, Transaction,
+    Deploy, DeployHash, InvalidDeploy, Transaction,
 };
 
 use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
@@ -15,7 +15,7 @@ pub(crate) struct LegacyDeploy(Deploy);
 
 impl FetchItem for LegacyDeploy {
     type Id = DeployHash;
-    type ValidationError = DeployConfigFailure;
+    type ValidationError = InvalidDeploy;
     type ValidationMetadata = EmptyValidationMetadata;
 
     const TAG: Tag = Tag::LegacyDeploy;

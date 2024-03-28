@@ -1,10 +1,9 @@
-use once_cell::sync::Lazy;
 use rand::Rng;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
     LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion};
@@ -13,14 +12,12 @@ use crate::lmdb_fixture;
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 #[ignore]
 #[test]
@@ -35,8 +32,8 @@ fn should_commit_chainspec_registry_during_genesis() {
         ChainspecRegistry::new_with_genesis(&chainspec_bytes, &genesis_account);
 
     let run_genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
         chainspec_registry,
     );
@@ -73,8 +70,8 @@ fn should_fail_to_commit_genesis_when_missing_genesis_accounts_hash() {
         ChainspecRegistry::new_with_optional_global_state(&chainspec_bytes, None);
 
     let run_genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         DEFAULT_EXEC_CONFIG.clone(),
         incomplete_chainspec_registry,
     );
@@ -99,7 +96,7 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
         builder
     } else {
         let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
-        builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
         builder
     };
 
@@ -116,8 +113,8 @@ fn should_upgrade_chainspec_registry(cfg: TestConfig) {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .with_chainspec_registry(upgraded_chainspec_registry)
             .build()

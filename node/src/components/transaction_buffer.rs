@@ -39,7 +39,7 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        FinalizedBlock, TransactionExt, TransactionFootprint,
+        FinalizedBlock, TransactionFootprint,
     },
     NodeRng,
 };
@@ -254,10 +254,6 @@ impl TransactionBuffer {
             error!(%transaction_hash, "TransactionBuffer: invalid transaction must not be buffered");
             return;
         }
-        if self.dead.contains(&transaction_hash) {
-            info!(%transaction_hash, "TransactionBuffer: attempt to register already dead transaction");
-            return;
-        }
         if self
             .hold
             .values()
@@ -266,10 +262,10 @@ impl TransactionBuffer {
             info!(%transaction_hash, "TransactionBuffer: attempt to register already held transaction");
             return;
         }
-        let footprint = match transaction.footprint(&self.chainspec) {
-            Some(footprint) => footprint,
-            None => {
-                error!(%transaction_hash, "TransactionBuffer: unable to created transaction footprint");
+        let footprint = match TransactionFootprint::new(&self.chainspec, &transaction) {
+            Ok(footprint) => footprint,
+            Err(invalid_transaction_error) => {
+                error!(%transaction_hash, ?invalid_transaction_error, "TransactionBuffer: unable to created transaction footprint");
                 return;
             }
         };
@@ -395,7 +391,7 @@ impl TransactionBuffer {
             .filter(|(th, _)| !self.dead.contains(th))
             .filter(|(_, (_, maybe_data))| match maybe_data {
                 None => false,
-                Some(footprint) => footprint.gas_tolerance() >= (current_era_gas_price as u64),
+                Some(footprint) => footprint.gas_price_tolerance() >= (current_era_gas_price),
             })
             .filter_map(|(th, (_, maybe_data))| {
                 maybe_data

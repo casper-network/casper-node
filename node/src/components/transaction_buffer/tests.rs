@@ -356,6 +356,7 @@ fn get_appendable_block_when_transfers_are_of_one_category() {
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -386,6 +387,7 @@ fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -417,6 +419,7 @@ fn get_appendable_block_when_standards_are_of_one_category() {
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -446,6 +449,7 @@ fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
         block_max_install_upgrade_count: 0,
         block_max_standard_count: 10,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
     let chainspec = Chainspec {
@@ -485,6 +489,7 @@ fn block_fully_saturated() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -585,6 +590,7 @@ fn block_not_fully_saturated() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -689,6 +695,7 @@ fn excess_transactions_do_not_sneak_into_transfer_bucket() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -753,6 +760,7 @@ fn excess_transactions_do_not_sneak_into_staking_bucket() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -817,6 +825,7 @@ fn excess_transactions_do_not_sneak_into_install_upgrades_bucket() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 
@@ -881,6 +890,7 @@ fn excess_transactions_do_not_sneak_into_standards_bucket() {
         block_max_install_upgrade_count: max_install_upgrade,
         block_max_standard_count: max_standard,
         block_max_approval_count: 210,
+        block_gas_limit: u64::MAX, // making sure this test does not hit gas limit first
         ..Default::default()
     };
 

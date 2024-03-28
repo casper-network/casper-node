@@ -17,8 +17,8 @@ const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
 const RUN_EXECUTE_HELP: &str = "time in seconds to execute but not commit a contract";
 
-const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
-const APPLY_EFFECT_HELP: &str = "time in seconds to commit the execution effects of a contract";
+const COMMIT_EFFECT_NAME: &str = "contract_runtime_commit_effects";
+const COMMIT_EFFECT_HELP: &str = "time in seconds to commit the effects of a tranasction execution";
 
 const COMMIT_GENESIS_NAME: &str = "contract_runtime_commit_genesis";
 const COMMIT_GENESIS_HELP: &str = "time in seconds to commit an genesis";
@@ -76,7 +76,7 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 #[derive(Debug)]
 pub struct Metrics {
     pub(super) run_execute: Histogram,
-    pub(super) apply_effect: Histogram,
+    pub(super) commit_effects: Histogram,
     pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
@@ -124,10 +124,10 @@ impl Metrics {
                 RUN_EXECUTE_HELP,
                 common_buckets.clone(),
             )?,
-            apply_effect: utils::register_histogram_metric(
+            commit_effects: utils::register_histogram_metric(
                 registry,
-                APPLY_EFFECT_NAME,
-                APPLY_EFFECT_HELP,
+                COMMIT_EFFECT_NAME,
+                COMMIT_EFFECT_HELP,
                 common_buckets.clone(),
             )?,
             run_query: utils::register_histogram_metric(
@@ -224,7 +224,7 @@ impl Metrics {
 impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.run_execute);
-        unregister_metric!(self.registry, self.apply_effect);
+        unregister_metric!(self.registry, self.commit_effects);
         unregister_metric!(self.registry, self.commit_genesis);
         unregister_metric!(self.registry, self.commit_upgrade);
         unregister_metric!(self.registry, self.run_query);

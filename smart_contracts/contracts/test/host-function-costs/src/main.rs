@@ -281,7 +281,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -290,7 +290,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -299,7 +299,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -307,7 +307,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -316,7 +316,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -324,7 +324,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -333,7 +333,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point = EntryPoint::new(
@@ -341,7 +341,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -350,7 +350,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_BYTES, <Vec<u8>>::cl_type())],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -359,7 +359,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -368,7 +368,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -377,7 +377,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -386,7 +386,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 

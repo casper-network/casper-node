@@ -1,6 +1,5 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use num::Zero;
 
 #[cfg(any(feature = "testing", test))]
 use rand::{distributions::Standard, prelude::*};
@@ -69,7 +68,7 @@ impl AccountConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let public_key =
             PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap());
-        let balance = Motes::new(rng.gen());
+        let balance = Motes::new(rng.gen::<u64>());
         let validator = rng.gen();
 
         AccountConfig {

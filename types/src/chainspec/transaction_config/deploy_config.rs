@@ -11,9 +11,6 @@ use crate::{
     Motes,
 };
 
-#[cfg(any(feature = "std", test))]
-use crate::U512;
-
 /// The default  maximum number of motes that payment code execution can cost.
 pub const DEFAULT_MAX_PAYMENT_MOTES: u64 = 2_500_000_000;
 
@@ -37,7 +34,7 @@ pub struct DeployConfig {
 impl DeployConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        let max_payment_cost = Motes::new(U512::from(rng.gen_range(1_000_000..1_000_000_000)));
+        let max_payment_cost = Motes::new(rng.gen_range(1_000_000..1_000_000_000));
         let max_dependencies = 0;
         let payment_args_max_length = rng.gen();
         let session_args_max_length = rng.gen();
@@ -55,7 +52,7 @@ impl DeployConfig {
 impl Default for DeployConfig {
     fn default() -> Self {
         DeployConfig {
-            max_payment_cost: Motes::new(U512::from(DEFAULT_MAX_PAYMENT_MOTES)),
+            max_payment_cost: Motes::new(DEFAULT_MAX_PAYMENT_MOTES),
             max_dependencies: 0,
             payment_args_max_length: 1024,
             session_args_max_length: 1024,

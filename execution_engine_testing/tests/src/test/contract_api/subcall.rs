@@ -1,12 +1,9 @@
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
-use casper_types::{
-    package::ENTITY_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
-};
+use casper_types::{runtime_args, RuntimeArgs, StorageCosts, ENTITY_INITIAL_VERSION, U512};
 
 const ARG_TARGET: &str = "target_contract";
 const ARG_GAS_AMOUNT: &str = "gas_amount";
@@ -43,7 +40,7 @@ fn should_charge_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(do_nothing_request).expect_success().commit();
 
@@ -51,11 +48,11 @@ fn should_charge_gas_for_subcall() {
 
     builder.exec(no_subcall_request).expect_success().commit();
 
-    let do_nothing_cost = builder.exec_costs(0)[0];
+    let do_nothing_cost = builder.exec_cost(0);
 
-    let do_something_cost = builder.exec_costs(1)[0];
+    let do_something_cost = builder.exec_cost(1);
 
-    let no_subcall_cost = builder.exec_costs(2)[0];
+    let no_subcall_cost = builder.exec_cost(2);
 
     assert_ne!(
         do_nothing_cost, do_something_cost,
@@ -131,7 +128,7 @@ fn should_add_all_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(add_zero_gas_from_session_request)
@@ -150,10 +147,10 @@ fn should_add_all_gas_for_subcall() {
         .expect_success()
         .commit();
 
-    let add_zero_gas_from_session_cost = builder.exec_costs(0)[0];
-    let add_some_gas_from_session_cost = builder.exec_costs(1)[0];
-    let add_zero_gas_via_subcall_cost = builder.exec_costs(2)[0];
-    let add_some_gas_via_subcall_cost = builder.exec_costs(3)[0];
+    let add_zero_gas_from_session_cost = builder.exec_cost(0);
+    let add_some_gas_from_session_cost = builder.exec_cost(1);
+    let add_zero_gas_via_subcall_cost = builder.exec_cost(2);
+    let add_some_gas_via_subcall_cost = builder.exec_cost(3);
 
     let expected_gas = U512::from(StorageCosts::default().gas_per_byte()) * gas_to_add;
     assert!(
@@ -187,7 +184,7 @@ fn expensive_subcall_should_cost_more() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     // store the contracts first
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(store_do_nothing_request)
@@ -239,9 +236,9 @@ fn expensive_subcall_should_cost_more() {
         .expect_success()
         .commit();
 
-    let do_nothing_cost = builder.exec_costs(2)[0];
+    let do_nothing_cost = builder.exec_cost(2);
 
-    let expensive_calculation_cost = builder.exec_costs(3)[0];
+    let expensive_calculation_cost = builder.exec_cost(3);
 
     assert!(
         do_nothing_cost < expensive_calculation_cost,

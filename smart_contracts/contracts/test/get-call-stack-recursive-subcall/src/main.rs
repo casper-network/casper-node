@@ -37,7 +37,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         let forwarder_session_entry_point = EntryPoint::new(
             METHOD_FORWARDER_SESSION_NAME.to_string(),
@@ -47,7 +47,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Caller,
         );
         entry_points.add_entry_point(forwarder_contract_entry_point);
         entry_points.add_entry_point(forwarder_session_entry_point);

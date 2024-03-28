@@ -12,7 +12,7 @@ use core::{
     str::FromStr,
 };
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 
 #[cfg(doc)]
@@ -31,6 +31,7 @@ use rand::{
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use tracing::warn;
 
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
@@ -46,7 +47,10 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     package::PackageHash,
-    system::auction::{BidAddr, BidAddrTag},
+    system::{
+        auction::{BidAddr, BidAddrTag},
+        mint::BalanceHoldAddr,
+    },
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
     TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
@@ -54,13 +58,15 @@ use crate::{
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
+const TRANSFER_PREFIX: &str = "transfer-";
 const ERA_INFO_PREFIX: &str = "era-";
 const BALANCE_PREFIX: &str = "balance-";
+const BALANCE_HOLD_PREFIX: &str = "balance-hold-";
 const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
 const UNBOND_PREFIX: &str = "unbond-";
-const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
+const SYSTEM_ENTITY_REGISTRY_PREFIX: &str = "system-entity-registry-";
 const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
@@ -95,7 +101,7 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UNBOND_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
-const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
+const KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH: usize =
@@ -106,7 +112,7 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
-    + EntityAddr::ENTITY_ADDR_LENGTH
+    + EntityAddr::LENGTH
     + TOPIC_NAME_HASH_LENGTH
     + U8_SERIALIZED_LENGTH
     + U32_SERIALIZED_LENGTH;
@@ -136,7 +142,7 @@ pub enum KeyTag {
     Bid = 7,
     Withdraw = 8,
     Dictionary = 9,
-    SystemContractRegistry = 10,
+    SystemEntityRegistry = 10,
     EraSummary = 11,
     Unbond = 12,
     ChainspecRegistry = 13,
@@ -148,12 +154,14 @@ pub enum KeyTag {
     Message = 19,
     NamedKey = 20,
     BlockMessageCount = 21,
+    BalanceHold = 22,
 }
 
 impl KeyTag {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..22) {
+    /// Returns a random `KeyTag`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..=22) {
             0 => KeyTag::Account,
             1 => KeyTag::Hash,
             2 => KeyTag::URef,
@@ -164,7 +172,7 @@ impl KeyTag {
             7 => KeyTag::Bid,
             8 => KeyTag::Withdraw,
             9 => KeyTag::Dictionary,
-            10 => KeyTag::SystemContractRegistry,
+            10 => KeyTag::SystemEntityRegistry,
             11 => KeyTag::EraSummary,
             12 => KeyTag::Unbond,
             13 => KeyTag::ChainspecRegistry,
@@ -176,6 +184,7 @@ impl KeyTag {
             19 => KeyTag::Message,
             20 => KeyTag::NamedKey,
             21 => KeyTag::BlockMessageCount,
+            22 => KeyTag::BalanceHold,
             _ => panic!(),
         }
     }
@@ -194,7 +203,7 @@ impl Display for KeyTag {
             KeyTag::Bid => write!(f, "Bid"),
             KeyTag::Withdraw => write!(f, "Withdraw"),
             KeyTag::Dictionary => write!(f, "Dictionary"),
-            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
+            KeyTag::SystemEntityRegistry => write!(f, "SystemEntityRegistry"),
             KeyTag::EraSummary => write!(f, "EraSummary"),
             KeyTag::Unbond => write!(f, "Unbond"),
             KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
@@ -206,6 +215,7 @@ impl Display for KeyTag {
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
+            KeyTag::BalanceHold => write!(f, "BalanceHold"),
         }
     }
 }
@@ -241,7 +251,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::Bid as u8 => KeyTag::Bid,
             tag if tag == KeyTag::Withdraw as u8 => KeyTag::Withdraw,
             tag if tag == KeyTag::Dictionary as u8 => KeyTag::Dictionary,
-            tag if tag == KeyTag::SystemContractRegistry as u8 => KeyTag::SystemContractRegistry,
+            tag if tag == KeyTag::SystemEntityRegistry as u8 => KeyTag::SystemEntityRegistry,
             tag if tag == KeyTag::EraSummary as u8 => KeyTag::EraSummary,
             tag if tag == KeyTag::Unbond as u8 => KeyTag::Unbond,
             tag if tag == KeyTag::ChainspecRegistry as u8 => KeyTag::ChainspecRegistry,
@@ -253,6 +263,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::Message as u8 => KeyTag::Message,
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
             tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
+            tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -272,7 +283,7 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which a transfer is stored.
+    /// A `Key` under which a (legacy) transfer is stored.
     Transfer(TransferAddr),
     /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
@@ -287,7 +298,7 @@ pub enum Key {
     /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
     /// which a dictionary is stored.
     Dictionary(DictionaryAddr),
-    /// A `Key` under which system contract hashes are stored.
+    /// A `Key` under which system entity hashes are stored.
     SystemEntityRegistry,
     /// A `Key` under which current era info is stored.
     EraSummary,
@@ -311,6 +322,8 @@ pub enum Key {
     NamedKey(NamedKeyAddr),
     /// A `Key` under which the total number of emitted messages in the last block is stored.
     BlockMessageCount,
+    /// A `Key` under which a hold on a purse balance is stored.
+    BalanceHold(BalanceHoldAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -341,7 +354,7 @@ pub enum FromStrError {
     Hash(String),
     /// URef parse error.
     URef(uref::FromStrError),
-    /// Transfer parse error.
+    /// Legacy Transfer parse error.
     Transfer(TransferFromStrError),
     /// DeployInfo parse error.
     DeployInfo(String),
@@ -355,8 +368,8 @@ pub enum FromStrError {
     Withdraw(String),
     /// Dictionary parse error.
     Dictionary(String),
-    /// System contract registry parse error.
-    SystemContractRegistry(String),
+    /// System entity registry parse error.
+    SystemEntityRegistry(String),
     /// Era summary parse error.
     EraSummary(String),
     /// Unbond parse error.
@@ -379,6 +392,8 @@ pub enum FromStrError {
     NamedKey(String),
     /// BlockMessageCount key parse error.
     BlockMessageCount(String),
+    /// Balance hold parse error.
+    BalanceHold(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -386,12 +401,6 @@ pub enum FromStrError {
 impl From<addressable_entity::FromStrError> for FromStrError {
     fn from(error: addressable_entity::FromStrError) -> Self {
         FromStrError::Account(error)
-    }
-}
-
-impl From<TransferFromStrError> for FromStrError {
-    fn from(error: TransferFromStrError) -> Self {
-        FromStrError::Transfer(error)
     }
 }
 
@@ -413,7 +422,9 @@ impl Display for FromStrError {
             FromStrError::Account(error) => write!(f, "account-key from string error: {}", error),
             FromStrError::Hash(error) => write!(f, "hash-key from string error: {}", error),
             FromStrError::URef(error) => write!(f, "uref-key from string error: {}", error),
-            FromStrError::Transfer(error) => write!(f, "transfer-key from string error: {}", error),
+            FromStrError::Transfer(error) => {
+                write!(f, "legacy-transfer-key from string error: {}", error)
+            }
             FromStrError::DeployInfo(error) => {
                 write!(f, "deploy-info-key from string error: {}", error)
             }
@@ -424,7 +435,7 @@ impl Display for FromStrError {
             FromStrError::Dictionary(error) => {
                 write!(f, "dictionary-key from string error: {}", error)
             }
-            FromStrError::SystemContractRegistry(error) => {
+            FromStrError::SystemEntityRegistry(error) => {
                 write!(
                     f,
                     "system-contract-registry-key from string error: {}",
@@ -460,6 +471,9 @@ impl Display for FromStrError {
             FromStrError::BlockMessageCount(error) => {
                 write!(f, "block-message-count-key form string error: {}", error)
             }
+            FromStrError::BalanceHold(error) => {
+                write!(f, "balance-hold from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -480,18 +494,19 @@ impl Key {
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
             Key::Dictionary(_) => String::from("Key::Dictionary"),
-            Key::SystemEntityRegistry => String::from("Key::SystemContractRegistry"),
+            Key::SystemEntityRegistry => String::from("Key::SystemEntityRegistry"),
             Key::EraSummary => String::from("Key::EraSummary"),
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
             Key::Package(_) => String::from("Key::Package"),
-            Key::AddressableEntity(..) => String::from("Key::AddressableEntity"),
-            Key::ByteCode(..) => String::from("Key::ByteCode"),
+            Key::AddressableEntity(_) => String::from("Key::AddressableEntity"),
+            Key::ByteCode(_) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
             Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
+            Key::BalanceHold(_) => String::from("Key::BalanceHold"),
         }
     }
 
@@ -517,12 +532,18 @@ impl Key {
             Key::Account(account_hash) => account_hash.to_formatted_string(),
             Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
-            Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
-            Key::DeployInfo(addr) => {
+            Key::Transfer(transfer_v1_addr) => {
+                format!(
+                    "{}{}",
+                    TRANSFER_PREFIX,
+                    base16::encode_lower(&transfer_v1_addr.value())
+                )
+            }
+            Key::DeployInfo(deploy_hash) => {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    base16::encode_lower(addr.as_ref())
+                    base16::encode_lower(deploy_hash.as_ref())
                 )
             }
             Key::EraInfo(era_id) => {
@@ -547,7 +568,7 @@ impl Key {
             Key::SystemEntityRegistry => {
                 format!(
                     "{}{}",
-                    SYSTEM_CONTRACT_REGISTRY_PREFIX,
+                    SYSTEM_ENTITY_REGISTRY_PREFIX,
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
@@ -598,6 +619,10 @@ impl Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BalanceHold(balance_hold_addr) => {
+                let tail = BalanceHoldAddr::to_formatted_string(&balance_hold_addr);
+                format!("{}{}", BALANCE_HOLD_PREFIX, tail)
+            }
         }
     }
 
@@ -625,10 +650,12 @@ impl Key {
             return Ok(Key::DeployInfo(DeployHash::new(Digest::from(hash_array))));
         }
 
-        match TransferAddr::from_formatted_str(input) {
-            Ok(transfer_addr) => return Ok(Key::Transfer(transfer_addr)),
-            Err(TransferFromStrError::InvalidPrefix) => {}
-            Err(error) => return Err(error.into()),
+        if let Some(hex) = input.strip_prefix(TRANSFER_PREFIX) {
+            let addr = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Transfer(TransferFromStrError::from(error)))?;
+            let addr_array = <[u8; TRANSFER_ADDR_LENGTH]>::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Transfer(TransferFromStrError::from(error)))?;
+            return Ok(Key::Transfer(TransferAddr::new(addr_array)));
         }
 
         match URef::from_formatted_str(input) {
@@ -650,6 +677,12 @@ impl Key {
             let era_id = EraId::from_str(era_id_str)
                 .map_err(|error| FromStrError::EraInfo(error.to_string()))?;
             return Ok(Key::EraInfo(era_id));
+        }
+
+        // note: BALANCE_HOLD must come before BALANCE due to overlapping head (balance-)
+        if let Some(hex) = input.strip_prefix(BALANCE_HOLD_PREFIX) {
+            let balance_hold_addr = BalanceHoldAddr::from_formatted_string(hex)?;
+            return Ok(Key::BalanceHold(balance_hold_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BALANCE_PREFIX) {
@@ -728,11 +761,11 @@ impl Key {
             return Ok(Key::Dictionary(addr));
         }
 
-        if let Some(registry_address) = input.strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX) {
+        if let Some(registry_address) = input.strip_prefix(SYSTEM_ENTITY_REGISTRY_PREFIX) {
             let padded_bytes = checksummed_hex::decode(registry_address)
-                .map_err(|error| FromStrError::SystemContractRegistry(error.to_string()))?;
+                .map_err(|error| FromStrError::SystemEntityRegistry(error.to_string()))?;
             let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
-                FromStrError::SystemContractRegistry(
+                FromStrError::SystemEntityRegistry(
                     "Failed to deserialize system registry key".to_string(),
                 )
             })?;
@@ -772,7 +805,9 @@ impl Key {
         match EntityAddr::from_formatted_str(input) {
             Ok(entity_addr) => return Ok(Key::AddressableEntity(entity_addr)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
-            Err(error) => return Err(FromStrError::AddressableEntity(error.to_string())),
+            Err(error) => {
+                return Err(FromStrError::AddressableEntity(error.to_string()));
+            }
         }
 
         match ByteCodeAddr::from_formatted_string(input) {
@@ -797,7 +832,7 @@ impl Key {
             let padded_bytes = checksummed_hex::decode(message_count)
                 .map_err(|error| FromStrError::BlockMessageCount(error.to_string()))?;
             let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
-                FromStrError::SystemContractRegistry(
+                FromStrError::SystemEntityRegistry(
                     "Failed to deserialize block message count key".to_string(),
                 )
             })?;
@@ -903,6 +938,16 @@ impl Key {
         }
     }
 
+    /// Returns a reference to the inner `BalanceHoldAddr` if `self` is of type
+    /// [`Key::BalanceHold`], otherwise returns `None`.
+    pub fn as_balance_hold(&self) -> Option<&BalanceHoldAddr> {
+        if let Self::BalanceHold(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
     /// Returns the inner [`URef`] if `self` is of type [`Key::URef`], otherwise returns `None`.
     pub fn into_uref(self) -> Option<URef> {
         match self {
@@ -955,11 +1000,9 @@ impl Key {
         entity_hash: AddressableEntityHash,
     ) -> Self {
         let entity_addr = match entity_kind_tag {
-            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
-            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
-            EntityKindTag::SmartContract => {
-                EntityAddr::new_contract_entity_addr(entity_hash.value())
-            }
+            EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
+            EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
         };
 
         Key::AddressableEntity(entity_addr)
@@ -1034,7 +1077,7 @@ impl Key {
         }
     }
 
-    /// Returns if they inner Key is for a system contract entity.
+    /// Returns if the inner address is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
         if let Self::AddressableEntity(entity_addr) = self {
             return match entity_addr.tag() {
@@ -1068,6 +1111,104 @@ impl Key {
             false
         }
     }
+
+    /// Is the record under this key readable by the entity corresponding to the imputed address?
+    pub fn is_readable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can read everything
+            return true;
+        }
+        let ret = match self {
+            Key::BidAddr(_) => {
+                // all bids are public information
+                true
+            }
+            Key::URef(uref) => {
+                // uref's require explicit permissions
+                uref.is_readable()
+            }
+            Key::SystemEntityRegistry | Key::Package(_) => {
+                // the system entities and all packages are public info
+                true
+            }
+            Key::Unbond(account_hash) => {
+                // and an account holder can read their own account record
+                entity_addr.tag() == EntityKindTag::Account
+                    && entity_addr.value() == account_hash.value()
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can read its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            Key::ByteCode(_)
+            | Key::Account(_)
+            | Key::Hash(_)
+            | Key::AddressableEntity(_)
+            | Key::Balance(_)
+            | Key::BalanceHold(_)
+            | Key::Dictionary(_)
+            | Key::Message(_)
+            | Key::BlockMessageCount => true,
+            _ => false,
+        };
+        if !ret {
+            let reading_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?reading_entity_key, attempted_key=?self,  "attempt to read without permission")
+        }
+        ret
+    }
+
+    /// Is the record under this key addable by the entity corresponding to the imputed address?
+    pub fn is_addable(&self, entity_addr: &EntityAddr) -> bool {
+        // unlike readable / writeable which are universally supported,
+        //  only some data types support commutative add / extension
+        let ret = match self {
+            Key::URef(uref) => uref.is_addable(),
+            Key::AddressableEntity(addr_entity_addr) => {
+                // an entity can extend itself (only associated keys, currently)
+                entity_addr == addr_entity_addr
+            }
+            Key::NamedKey(named_key_addr) => {
+                // an entity can extend its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // other data types do not support commutative addition / extension
+                let adding_entity_key = Key::AddressableEntity(*entity_addr);
+                warn!(?adding_entity_key, attempted_key=?self,  "attempt to add on an unsupported data type");
+                return false; // we want the above more explicit warn message, not both messages.
+            }
+        };
+        if !ret {
+            let adding_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?adding_entity_key, attempted_key=?self,  "attempt to add without permission");
+        }
+        ret
+    }
+
+    /// Is the record under this key writeable by the entity corresponding to the imputed address?
+    pub fn is_writeable(&self, entity_addr: &EntityAddr) -> bool {
+        if entity_addr.is_system() {
+            // the system can write everything
+            return true;
+        }
+        let ret = match self {
+            Key::URef(uref) => uref.is_writeable(),
+            Key::NamedKey(named_key_addr) => {
+                // an entity can write to its own named keys
+                &named_key_addr.entity_addr() == entity_addr
+            }
+            _ => {
+                // only the system can write other kinds of records
+                false
+            }
+        };
+        if !ret {
+            let writing_entity_key = Key::AddressableEntity(*entity_addr);
+            warn!(?writing_entity_key, attempted_key=?self,  "attempt to write without permission")
+        }
+        ret
+    }
 }
 
 impl Display for Key {
@@ -1076,7 +1217,9 @@ impl Display for Key {
             Key::Account(account_hash) => write!(f, "Key::Account({})", account_hash),
             Key::Hash(addr) => write!(f, "Key::Hash({})", base16::encode_lower(&addr)),
             Key::URef(uref) => write!(f, "Key::{}", uref), /* Display impl for URef will append */
-            Key::Transfer(transfer_addr) => write!(f, "Key::Transfer({})", transfer_addr),
+            Key::Transfer(transfer_v1_addr) => {
+                write!(f, "Key::Transfer({})", transfer_v1_addr)
+            }
             Key::DeployInfo(addr) => write!(
                 f,
                 "Key::DeployInfo({})",
@@ -1093,7 +1236,7 @@ impl Display for Key {
             }
             Key::SystemEntityRegistry => write!(
                 f,
-                "Key::SystemContractRegistry({})",
+                "Key::SystemEntityRegistry({})",
                 base16::encode_lower(&PADDING_BYTES)
             ),
             Key::EraSummary => write!(
@@ -1140,6 +1283,9 @@ impl Display for Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BalanceHold(balance_hold_addr) => {
+                write!(f, "Key::BalanceHold({})", balance_hold_addr)
+            }
         }
     }
 }
@@ -1163,7 +1309,7 @@ impl Tagged<KeyTag> for Key {
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
             Key::Dictionary(_) => KeyTag::Dictionary,
-            Key::SystemEntityRegistry => KeyTag::SystemContractRegistry,
+            Key::SystemEntityRegistry => KeyTag::SystemEntityRegistry,
             Key::EraSummary => KeyTag::EraSummary,
             Key::Unbond(_) => KeyTag::Unbond,
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
@@ -1175,6 +1321,7 @@ impl Tagged<KeyTag> for Key {
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
             Key::BlockMessageCount => KeyTag::BlockMessageCount,
+            Key::BalanceHold(_) => KeyTag::BalanceHold,
         }
     }
 }
@@ -1195,12 +1342,6 @@ impl From<URef> for Key {
 impl From<AccountHash> for Key {
     fn from(account_hash: AccountHash) -> Key {
         Key::Account(account_hash)
-    }
-}
-
-impl From<TransferAddr> for Key {
-    fn from(transfer_addr: TransferAddr) -> Key {
-        Key::Transfer(transfer_addr)
     }
 }
 
@@ -1267,29 +1408,29 @@ impl ToBytes for Key {
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
-            Key::SystemEntityRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
+            Key::SystemEntityRegistry => KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH,
             Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
             Key::ChecksumRegistry => KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH,
-            Key::BidAddr(bid_addr) => match bid_addr.tag() {
-                BidAddrTag::Unified => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length() - 1,
-                BidAddrTag::Validator | BidAddrTag::Delegator => {
-                    KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
-                }
-            },
+            Key::BidAddr(bid_addr) => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length(),
             Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
-            Key::AddressableEntity(..) => {
-                U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
+            Key::AddressableEntity(entity_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length()
             }
             Key::ByteCode(byte_code_addr) => {
-                U8_SERIALIZED_LENGTH + byte_code_addr.serialized_length()
+                KEY_ID_SERIALIZED_LENGTH + byte_code_addr.serialized_length()
             }
             Key::Message(message_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
-            Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
+            Key::NamedKey(named_key_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + named_key_addr.serialized_length()
+            }
             Key::BlockMessageCount => KEY_BLOCK_MESSAGE_COUNT_SERIALIZED_LENGTH,
+            Key::BalanceHold(balance_hold_addr) => {
+                U8_SERIALIZED_LENGTH + balance_hold_addr.serialized_length()
+            }
         }
     }
 
@@ -1312,19 +1453,13 @@ impl ToBytes for Key {
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BlockMessageCount => PADDING_BYTES.write_bytes(writer),
-            Key::BidAddr(bid_addr) => match bid_addr.tag() {
-                BidAddrTag::Unified => {
-                    let bytes = bid_addr.to_bytes()?;
-                    writer.extend(&bytes[1..]);
-                    Ok(())
-                }
-                BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
-            },
+            Key::BidAddr(bid_addr) => bid_addr.write_bytes(writer),
             Key::Package(package_addr) => package_addr.write_bytes(writer),
             Key::AddressableEntity(entity_addr) => entity_addr.write_bytes(writer),
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
+            Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
         }
     }
 }
@@ -1346,8 +1481,8 @@ impl FromBytes for Key {
                 Ok((Key::URef(uref), rem))
             }
             KeyTag::Transfer => {
-                let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
-                Ok((Key::Transfer(transfer_addr), rem))
+                let (transfer_v1_addr, rem) = TransferAddr::from_bytes(remainder)?;
+                Ok((Key::Transfer(transfer_v1_addr), rem))
             }
             KeyTag::DeployInfo => {
                 let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
@@ -1373,7 +1508,7 @@ impl FromBytes for Key {
                 let (addr, rem) = DictionaryAddr::from_bytes(remainder)?;
                 Ok((Key::Dictionary(addr), rem))
             }
-            KeyTag::SystemContractRegistry => {
+            KeyTag::SystemEntityRegistry => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::SystemEntityRegistry, rem))
             }
@@ -1421,6 +1556,10 @@ impl FromBytes for Key {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::BlockMessageCount, rem))
             }
+            KeyTag::BalanceHold => {
+                let (balance_hold_addr, rem) = BalanceHoldAddr::from_bytes(remainder)?;
+                Ok((Key::BalanceHold(balance_hold_addr), rem))
+            }
         }
     }
 }
@@ -1452,17 +1591,18 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
         Key::BlockMessageCount => unimplemented!(),
+        Key::BalanceHold(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=21) {
+        match rng.gen_range(0..=22) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
-            3 => Key::Transfer(rng.gen()),
+            3 => Key::Transfer(TransferAddr::new(rng.gen())),
             4 => Key::DeployInfo(DeployHash::from_raw(rng.gen())),
             5 => Key::EraInfo(EraId::new(rng.gen())),
             6 => Key::Balance(rng.gen()),
@@ -1479,8 +1619,9 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
-            20 => Key::NamedKey(rng.gen()),
+            20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
             21 => Key::BlockMessageCount,
+            22 => Key::BalanceHold(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1502,7 +1643,7 @@ mod serde_helpers {
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
-        SystemContractRegistry,
+        SystemEntityRegistry,
         EraSummary,
         Unbond(&'a AccountHash),
         ChainspecRegistry,
@@ -1514,6 +1655,7 @@ mod serde_helpers {
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
         BlockMessageCount,
+        BalanceHold(&'a BalanceHoldAddr),
     }
 
     #[derive(Deserialize)]
@@ -1529,7 +1671,7 @@ mod serde_helpers {
         Bid(AccountHash),
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
-        SystemContractRegistry,
+        SystemEntityRegistry,
         EraSummary,
         Unbond(AccountHash),
         ChainspecRegistry,
@@ -1541,6 +1683,7 @@ mod serde_helpers {
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
         BlockMessageCount,
+        BalanceHold(BalanceHoldAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1549,14 +1692,14 @@ mod serde_helpers {
                 Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
                 Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
                 Key::URef(uref) => BinarySerHelper::URef(uref),
-                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
+                Key::Transfer(transfer_v1_addr) => BinarySerHelper::Transfer(transfer_v1_addr),
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
-                Key::SystemEntityRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::SystemEntityRegistry => BinarySerHelper::SystemEntityRegistry,
                 Key::EraSummary => BinarySerHelper::EraSummary,
                 Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
@@ -1568,8 +1711,11 @@ mod serde_helpers {
                     BinarySerHelper::AddressableEntity(entity_addr)
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
-                Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
+                Key::NamedKey(named_key_addr) => BinarySerHelper::NamedKey(named_key_addr),
                 Key::BlockMessageCount => BinarySerHelper::BlockMessageCount,
+                Key::BalanceHold(balance_hold_addr) => {
+                    BinarySerHelper::BalanceHold(balance_hold_addr)
+                }
             }
         }
     }
@@ -1580,14 +1726,14 @@ mod serde_helpers {
                 BinaryDeserHelper::Account(account_hash) => Key::Account(account_hash),
                 BinaryDeserHelper::Hash(hash_addr) => Key::Hash(hash_addr),
                 BinaryDeserHelper::URef(uref) => Key::URef(uref),
-                BinaryDeserHelper::Transfer(transfer_addr) => Key::Transfer(transfer_addr),
+                BinaryDeserHelper::Transfer(transfer_v1_addr) => Key::Transfer(transfer_v1_addr),
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
-                BinaryDeserHelper::SystemContractRegistry => Key::SystemEntityRegistry,
+                BinaryDeserHelper::SystemEntityRegistry => Key::SystemEntityRegistry,
                 BinaryDeserHelper::EraSummary => Key::EraSummary,
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
@@ -1601,6 +1747,9 @@ mod serde_helpers {
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
                 BinaryDeserHelper::BlockMessageCount => Key::BlockMessageCount,
+                BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
+                    Key::BalanceHold(balance_hold_addr)
+                }
             }
         }
     }
@@ -1636,12 +1785,12 @@ mod tests {
     use crate::{
         account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
         bytesrepr::{Error, FromBytes},
-        transfer::TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
         uref::UREF_FORMATTED_STRING_PREFIX,
-        AccessRights, URef,
+        AccessRights, BlockTime, URef,
     };
 
-    const ENTITY_PREFIX: &str = "addressable-entity-";
+    const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
+    const ENTITY_PREFIX: &str = "entity-";
     const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 
     const BYTE_CODE_PREFIX: &str = "byte-code-";
@@ -1660,34 +1809,36 @@ mod tests {
     const DELEGATOR_BID_KEY: Key = Key::BidAddr(BidAddr::new_delegator_addr(([2; 32], [9; 32])));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
+    const SYSTEM_ENTITY_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
     const ERA_SUMMARY_KEY: Key = Key::EraSummary;
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
     const PACKAGE_KEY: Key = Key::Package([42; 32]);
     const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_system_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_system([42; 32]));
     const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_account_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_account([42; 32]));
     const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_smart_contract([42; 32]));
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        EntityAddr::new_contract_entity_addr([42u8; 32]),
+        EntityAddr::new_smart_contract([42; 32]),
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
-        EntityAddr::new_contract_entity_addr([42u8; 32]),
+        EntityAddr::new_smart_contract([42u8; 32]),
         TopicNameHash::new([2; 32]),
         15,
     ));
     const NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-        EntityAddr::new_contract_entity_addr([42; 32]),
+        EntityAddr::new_smart_contract([42; 32]),
         [43; 32],
     ));
     const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
+    const BALANCE_HOLD: Key =
+        Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1699,7 +1850,7 @@ mod tests {
         BID_KEY,
         WITHDRAW_KEY,
         DICTIONARY_KEY,
-        SYSTEM_CONTRACT_REGISTRY_KEY,
+        SYSTEM_ENTITY_REGISTRY_KEY,
         ERA_SUMMARY_KEY,
         UNBOND_KEY,
         CHAINSPEC_REGISTRY_KEY,
@@ -1717,6 +1868,7 @@ mod tests {
         MESSAGE_KEY,
         NAMED_KEY,
         BLOCK_MESSAGE_COUNT,
+        BALANCE_HOLD,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -1826,9 +1978,9 @@ mod tests {
             format!("Key::Dictionary({})", HEX_STRING)
         );
         assert_eq!(
-            format!("{}", SYSTEM_CONTRACT_REGISTRY_KEY),
+            format!("{}", SYSTEM_ENTITY_REGISTRY_KEY),
             format!(
-                "Key::SystemContractRegistry({})",
+                "Key::SystemEntityRegistry({})",
                 base16::encode_lower(&PADDING_BYTES)
             )
         );
@@ -1884,26 +2036,24 @@ mod tests {
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
             format!(
-                "Key::Message(addressable-entity-contract-{}-{})",
+                "Key::Message(entity-contract-{}-{})",
                 HEX_STRING, HEX_STRING
             )
         );
-
         assert_eq!(
             format!("{}", MESSAGE_KEY),
             format!(
-                "Key::Message(addressable-entity-contract-{}-{}-{})",
+                "Key::Message(entity-contract-{}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
         );
-
         assert_eq!(
             format!("{}", BLOCK_MESSAGE_COUNT),
             format!(
                 "Key::BlockMessageCount({})",
                 base16::encode_lower(&PADDING_BYTES)
             )
-        )
+        );
     }
 
     #[test]
@@ -2093,7 +2243,7 @@ mod tests {
             Key::from_formatted_str(TRANSFER_ADDR_FORMATTED_STRING_PREFIX)
                 .unwrap_err()
                 .to_string()
-                .starts_with("transfer-key from string error: ")
+                .starts_with("legacy-transfer-key from string error: ")
         );
         assert!(Key::from_formatted_str(DEPLOY_INFO_PREFIX)
             .unwrap_err()
@@ -2119,7 +2269,7 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("dictionary-key from string error: "));
-        assert!(Key::from_formatted_str(SYSTEM_CONTRACT_REGISTRY_PREFIX)
+        assert!(Key::from_formatted_str(SYSTEM_ENTITY_REGISTRY_PREFIX)
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
@@ -2185,6 +2335,15 @@ mod tests {
             Key::from_formatted_str(no_prefix).unwrap_err().to_string(),
             "unknown prefix for key"
         );
+
+        let balance_hold_err = Key::from_formatted_str(BALANCE_HOLD_PREFIX)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            balance_hold_err.starts_with("balance-hold from string error: "),
+            "{}",
+            bid_addr_err
+        );
     }
 
     #[test]
@@ -2245,26 +2404,55 @@ mod tests {
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Package(zeros));
-        round_trip(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(
+        round_trip(&Key::AddressableEntity(EntityAddr::new_system(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_account(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_smart_contract(
             zeros,
         )));
-        round_trip(&Key::AddressableEntity(
-            EntityAddr::new_account_entity_addr(zeros),
-        ));
-        round_trip(&Key::AddressableEntity(
-            EntityAddr::new_contract_entity_addr(zeros),
-        ));
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
-            EntityAddr::new_contract_entity_addr(zeros),
+            EntityAddr::new_smart_contract(zeros),
             nines.into(),
         )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            EntityAddr::new_contract_entity_addr(zeros),
+            EntityAddr::new_smart_contract(zeros),
             nines.into(),
             1,
         )));
+        round_trip(&Key::NamedKey(NamedKeyAddr::default()));
         round_trip(&Key::BlockMessageCount);
+        round_trip(&Key::BalanceHold(BalanceHoldAddr::default()));
+    }
+
+    #[test]
+    fn bytesrepr_serialization_roundtrip() {
+        bytesrepr::test_serialization_roundtrip(&ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&HASH_KEY);
+        bytesrepr::test_serialization_roundtrip(&UREF_KEY);
+        bytesrepr::test_serialization_roundtrip(&TRANSFER_KEY);
+        bytesrepr::test_serialization_roundtrip(&DEPLOY_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_INFO_KEY);
+        bytesrepr::test_serialization_roundtrip(&BALANCE_KEY);
+        bytesrepr::test_serialization_roundtrip(&BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&WITHDRAW_KEY);
+        bytesrepr::test_serialization_roundtrip(&DICTIONARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&SYSTEM_ENTITY_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&ERA_SUMMARY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNBOND_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHAINSPEC_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&CHECKSUM_REGISTRY_KEY);
+        bytesrepr::test_serialization_roundtrip(&UNIFIED_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&VALIDATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&DELEGATOR_BID_KEY);
+        bytesrepr::test_serialization_roundtrip(&PACKAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SYSTEM_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_ACCOUNT_KEY);
+        bytesrepr::test_serialization_roundtrip(&ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_EMPTY_KEY);
+        bytesrepr::test_serialization_roundtrip(&BYTE_CODE_V1_WASM_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_TOPIC_KEY);
+        bytesrepr::test_serialization_roundtrip(&MESSAGE_KEY);
+        bytesrepr::test_serialization_roundtrip(&NAMED_KEY);
     }
 }

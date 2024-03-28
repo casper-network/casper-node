@@ -39,18 +39,3 @@ wat = "1.0.47"
 [features]
 use-as-wasm = ["casper-engine-test-support/use-as-wasm"]
 fixture-generators = []
-
-[lib]
-bench = false
-
-[[bench]]
-name = "transfer_bench"
-harness = false
-
-[[bench]]
-name = "auction_bench"
-harness = false
-
-[[bin]]
-name = "disk_use"
-path = "bin/disk_use.rs"

@@ -3,9 +3,8 @@ use std::cell::RefCell;
 
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_BLOCK_TIME, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_BLOCK_TIME, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::ExecutionResult;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
@@ -201,7 +200,7 @@ impl<'a> ContractQueryView<'a> {
             .query(
                 None,
                 Key::message_topic(
-                    EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                    EntityAddr::new_smart_contract(self.contract_hash.value()),
                     topic_name_hash,
                 ),
                 &[],
@@ -228,7 +227,7 @@ impl<'a> ContractQueryView<'a> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
             Key::message(
-                EntityAddr::new_contract_entity_addr(self.contract_hash.value()),
+                EntityAddr::new_smart_contract(self.contract_hash.value()),
                 topic_name_hash,
                 message_index,
             ),
@@ -248,7 +247,7 @@ fn should_emit_messages() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -359,7 +358,7 @@ fn should_emit_message_on_empty_topic_in_new_block() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -398,7 +397,7 @@ fn should_add_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
@@ -462,7 +461,7 @@ fn should_not_add_duplicate_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -516,7 +515,7 @@ fn should_not_exceed_configured_limits() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
 
@@ -600,7 +599,7 @@ fn should_carry_message_topics_on_upgraded_contract(use_initializer: bool) {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, true);
     let contract_hash = upgrade_messages_emitter_contract(&builder, use_initializer, false);
@@ -639,7 +638,7 @@ fn should_not_emit_messages_from_account() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Request to run a deploy that tries to register a message topic without a stored contract.
     let install_request = ExecuteRequestBuilder::standard(
@@ -678,7 +677,7 @@ fn should_charge_expected_gas_for_storage() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -783,7 +782,7 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
 
@@ -853,7 +852,7 @@ fn should_register_topic_on_contract_creation() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, false);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -900,7 +899,7 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, false);
     let _ = upgrade_messages_emitter_contract(&builder, false, true);
@@ -932,7 +931,7 @@ fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, false);
     let _ = upgrade_messages_emitter_contract(&builder, false, true);
@@ -944,7 +943,7 @@ fn should_produce_per_block_message_ordering() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let emitter_contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, emitter_contract_hash);
@@ -957,20 +956,17 @@ fn should_produce_per_block_message_ordering() {
         .expect("should have at least one topic");
 
     let assert_last_message_block_index = |expected_index: u64| {
-        match &**builder
-            .borrow()
-            .get_last_exec_result()
-            .unwrap()
-            .get(0)
-            .unwrap()
-        {
-            ExecutionResult::Failure { .. } => {
-                panic!("Expected that the message was emitted but the request did not produce successful execution effects");
-            }
-            ExecutionResult::Success { messages, .. } => {
-                assert_eq!(messages.get(0).unwrap().block_index(), expected_index);
-            }
-        };
+        assert_eq!(
+            builder
+                .borrow()
+                .get_last_exec_result()
+                .unwrap()
+                .messages()
+                .get(0)
+                .unwrap()
+                .block_index(),
+            expected_index
+        )
     };
 
     let query_message_count = || -> Option<(BlockTime, u64)> {

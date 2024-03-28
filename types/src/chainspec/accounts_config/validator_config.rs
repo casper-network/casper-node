@@ -44,7 +44,7 @@ impl ValidatorConfig {
     /// Returns a random `ValidatorConfig`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let bonded_amount = Motes::new(U512::from(rng.gen::<u64>()));
+        let bonded_amount = Motes::new(rng.gen::<u64>());
         let delegation_rate = rng.gen();
 
         ValidatorConfig {

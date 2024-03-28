@@ -1,12 +1,12 @@
 use std::{fmt::Debug, io, path::PathBuf};
 
+use casper_binary_port::RecordId;
 use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    binary_port::RecordId, bytesrepr, crypto, BlockBody, BlockHash, BlockHeader,
-    BlockValidationError, DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
-    TransactionHash,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use crate::types::VariantMismatch;
@@ -180,6 +180,9 @@ pub enum FatalStorageError {
     /// BlockStoreError
     #[error(transparent)]
     BlockStoreError(#[from] BlockStoreError),
+    /// BlockStoreError
+    #[error("unexpected record id {0}")]
+    UnexpectedRecordId(RecordId),
 }
 
 impl From<Box<BlockValidationError>> for FatalStorageError {

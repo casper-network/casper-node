@@ -191,7 +191,7 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
-    entity_addr: EntityAddr,
+    entity_hash: EntityAddr, // TODO: this should be EntityAddr
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
@@ -215,7 +215,7 @@ impl Message {
         block_index: u64,
     ) -> Self {
         Self {
-            entity_addr: source,
+            entity_hash: source,
             message,
             topic_name,
             topic_name_hash,
@@ -225,8 +225,8 @@ impl Message {
     }
 
     /// Returns a reference to the identity of the entity that produced the message.
-    pub fn entity_addr(&self) -> &EntityAddr {
-        &self.entity_addr
+    pub fn entity_hash(&self) -> &EntityAddr {
+        &self.entity_hash
     }
 
     /// Returns a reference to the payload of the message.
@@ -257,14 +257,14 @@ impl Message {
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the checksum record for the message in global state.
     pub fn message_key(&self) -> Key {
-        Key::message(self.entity_addr, self.topic_name_hash, self.topic_index)
+        Key::message(self.entity_hash, self.topic_name_hash, self.topic_index)
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the control record for the topic of this message in global
     /// state.
     pub fn topic_key(&self) -> Key {
-        Key::message_topic(self.entity_addr, self.topic_name_hash)
+        Key::message_topic(self.entity_hash, self.topic_name_hash)
     }
 
     /// Returns the checksum of the message.
@@ -279,7 +279,7 @@ impl Message {
 impl ToBytes for Message {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.entity_addr.to_bytes()?);
+        buffer.append(&mut self.entity_hash.to_bytes()?);
         buffer.append(&mut self.message.to_bytes()?);
         buffer.append(&mut self.topic_name.to_bytes()?);
         buffer.append(&mut self.topic_name_hash.to_bytes()?);
@@ -289,7 +289,7 @@ impl ToBytes for Message {
     }
 
     fn serialized_length(&self) -> usize {
-        self.entity_addr.serialized_length()
+        self.entity_hash.serialized_length()
             + self.message.serialized_length()
             + self.topic_name.serialized_length()
             + self.topic_name_hash.serialized_length()
@@ -308,7 +308,7 @@ impl FromBytes for Message {
         let (block_index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
-                entity_addr,
+                entity_hash: entity_addr,
                 message,
                 topic_name,
                 topic_name_hash,
@@ -328,7 +328,7 @@ impl Distribution<Message> for Standard {
         let message = Alphanumeric.sample_string(rng, 64).into();
 
         Message {
-            entity_addr: rng.gen(),
+            entity_hash: rng.gen(),
             message,
             topic_name,
             topic_name_hash,
@@ -356,7 +356,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(
-            EntityAddr::new_contract_entity_addr([1; KEY_HASH_LENGTH]),
+            EntityAddr::new_smart_contract([1; KEY_HASH_LENGTH]),
             message_payload,
             "test_topic".to_string(),
             TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),

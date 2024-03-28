@@ -255,6 +255,12 @@ pub enum Error {
     /// assert_eq!(37, Error::AccumulationPurseKeyUnexpectedType as u8);
     /// ```
     AccumulationPurseKeyUnexpectedType = 37,
+    /// Internal error: invalid fee and / or refund settings encountered during payment processing.
+    /// ```
+    /// # use casper_types::system::handle_payment::Error;
+    /// assert_eq!(38, Error::IncompatiblePaymentSettings as u8);
+    /// ```
+    IncompatiblePaymentSettings = 38,
 }
 
 impl Display for Error {
@@ -325,6 +331,9 @@ impl Display for Error {
             Error::AccumulationPurseNotFound => formatter.write_str("Accumulation purse not found"),
             Error::AccumulationPurseKeyUnexpectedType => {
                 formatter.write_str("Accumulation purse has unexpected type")
+            }
+            Error::IncompatiblePaymentSettings => {
+                formatter.write_str("Incompatible payment settings")
             }
         }
     }
@@ -399,6 +408,9 @@ impl TryFrom<u8> for Error {
             v if v == Error::AccumulationPurseNotFound as u8 => Error::AccumulationPurseNotFound,
             v if v == Error::AccumulationPurseKeyUnexpectedType as u8 => {
                 Error::AccumulationPurseKeyUnexpectedType
+            }
+            v if v == Error::IncompatiblePaymentSettings as u8 => {
+                Error::IncompatiblePaymentSettings
             }
             _ => return Err(()),
         };

@@ -202,13 +202,13 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let topic_addr = MessageAddr::new_topic_addr(
-            EntityAddr::new_contract_entity_addr([1; KEY_HASH_LENGTH]),
+            EntityAddr::new_smart_contract([1; KEY_HASH_LENGTH]),
             [2; TOPIC_NAME_HASH_LENGTH].into(),
         );
         bytesrepr::test_serialization_roundtrip(&topic_addr);
 
         let message_addr = MessageAddr::new_message_addr(
-            EntityAddr::new_contract_entity_addr([1; KEY_HASH_LENGTH]),
+            EntityAddr::new_smart_contract([1; KEY_HASH_LENGTH]),
             [2; TOPIC_NAME_HASH_LENGTH].into(),
             3,
         );

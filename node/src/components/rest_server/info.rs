@@ -3,10 +3,9 @@ use std::str;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    binary_port::ConsensusValidatorChanges, ChainspecRawBytes, EraId, ProtocolVersion, PublicKey,
-    ValidatorChange,
-};
+use casper_binary_port::ConsensusValidatorChanges;
+
+use casper_types::{ChainspecRawBytes, EraId, ProtocolVersion, PublicKey, ValidatorChange};
 
 /// A single change to a validator's status in the given era.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]

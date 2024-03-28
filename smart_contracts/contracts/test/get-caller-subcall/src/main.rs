@@ -42,7 +42,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::ByteArray(32),
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

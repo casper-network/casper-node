@@ -25,7 +25,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     let n: u32 = runtime::get_named_arg("n");

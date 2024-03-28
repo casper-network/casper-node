@@ -97,17 +97,14 @@ static PRIVATE_CHAIN_GENESIS_VALIDATORS: Lazy<BTreeMap<PublicKey, GenesisValidat
 static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut default_accounts = Vec::new();
 
-    let proposer_account = GenesisAccount::account(
-        DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        Motes::new(U512::zero()),
-        None,
-    );
+    let proposer_account =
+        GenesisAccount::account(DEFAULT_PROPOSER_PUBLIC_KEY.clone(), Motes::zero(), None);
     default_accounts.push(proposer_account);
 
     // One normal account that starts at genesis
     default_accounts.push(GenesisAccount::account(
         ACCOUNT_1_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     ));
 
@@ -119,7 +116,7 @@ static PRIVATE_CHAIN_DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| 
             public_key,
             // Genesis validators for a private network doesn't have balances, but they are part of
             // fixed set of validators
-            balance: Motes::new(U512::zero()),
+            balance: Motes::zero(),
             validator: Some(genesis_validator),
         });
     }
@@ -148,15 +145,13 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-        .with_refund_handling(PRIVATE_CHAIN_REFUND_HANDLING)
-        .with_fee_handling(PRIVATE_CHAIN_FEE_HANDLING)
         .build()
 });
 
 static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<GenesisRequest> = Lazy::new(|| {
     GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG.clone(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )

@@ -6,7 +6,7 @@ use crate::{
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, Chainspec,
     ContextAccessRights, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
-    StoredValue, TransactionHash, TransferAddr, URef, U512,
+    StoredValue, TransactionHash, Transfer, URef, U512,
 };
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
@@ -20,11 +20,12 @@ pub struct Config {
     compute_rewards: bool,
     max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
+    balance_hold_interval: u64,
 }
 
 impl Config {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub const fn new(
         transfer_config: TransferConfig,
         fee_handling: FeeHandling,
         refund_handling: RefundHandling,
@@ -33,6 +34,7 @@ impl Config {
         compute_rewards: bool,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
+        balance_hold_interval: u64,
     ) -> Self {
         Config {
             transfer_config,
@@ -43,6 +45,7 @@ impl Config {
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         }
     }
 
@@ -55,6 +58,7 @@ impl Config {
         let compute_rewards = chainspec.core_config.compute_rewards;
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
+        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
         Config::new(
             transfer_config,
             fee_handling,
@@ -64,6 +68,7 @@ impl Config {
             compute_rewards,
             max_delegators_per_validator,
             minimum_delegation_amount,
+            balance_hold_interval,
         )
     }
 
@@ -87,7 +92,7 @@ impl Config {
         self.allow_auction_bids
     }
 
-    pub fn should_compute_rewards(&self) -> bool {
+    pub fn compute_rewards(&self) -> bool {
         self.compute_rewards
     }
 
@@ -97,6 +102,10 @@ impl Config {
 
     pub fn minimum_delegation_amount(&self) -> u64 {
         self.minimum_delegation_amount
+    }
+
+    pub fn balance_hold_interval(&self) -> u64 {
+        self.balance_hold_interval
     }
 
     pub fn set_transfer_config(self, transfer_config: TransferConfig) -> Self {
@@ -109,6 +118,7 @@ impl Config {
             allow_auction_bids: self.allow_auction_bids,
             minimum_delegation_amount: self.minimum_delegation_amount,
             compute_rewards: self.compute_rewards,
+            balance_hold_interval: self.balance_hold_interval,
         }
     }
 }
@@ -229,7 +239,7 @@ pub struct RuntimeNative<S> {
     named_keys: NamedKeys,
     access_rights: ContextAccessRights,
     remaining_spending_limit: U512,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     phase: Phase,
 }
 
@@ -239,8 +249,8 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        protocol_version: ProtocolVersion,
         config: Config,
+        protocol_version: ProtocolVersion,
         id: Id,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         address: AccountHash,
@@ -335,8 +345,16 @@ where
         &self.named_keys
     }
 
-    pub fn access_rights(&self) -> &ContextAccessRights {
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
+    pub fn access_rights(&mut self) -> &ContextAccessRights {
         &self.access_rights
+    }
+
+    pub fn access_rights_mut(&mut self) -> &mut ContextAccessRights {
+        &mut self.access_rights
     }
 
     pub fn extend_access_rights(&mut self, urefs: &[URef]) {
@@ -351,23 +369,16 @@ where
         self.remaining_spending_limit = remaining;
     }
 
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         &self.transfers
     }
 
-    pub fn push_transfer(&mut self, transfer_addr: TransferAddr) {
-        self.transfers.push(transfer_addr);
+    pub fn push_transfer(&mut self, transfer: Transfer) {
+        self.transfers.push(transfer);
     }
 
     pub fn id(&self) -> &Id {
         &self.id
-    }
-
-    pub fn maybe_transaction_hash(&self) -> Option<TransactionHash> {
-        match self.id {
-            Id::Transaction(ret) => Some(ret),
-            Id::Seed(_) => None,
-        }
     }
 
     pub fn phase(&self) -> Phase {
@@ -386,7 +397,7 @@ where
         self.config.compute_rewards
     }
 
-    pub fn into_transfers(self) -> Vec<TransferAddr> {
+    pub fn into_transfers(self) -> Vec<Transfer> {
         self.transfers
     }
 }

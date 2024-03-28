@@ -37,17 +37,17 @@ fn should_run_ee_1152_regression_test() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_STAKE.into()),
+                Motes::new(VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );
         let validator_2 = GenesisAccount::account(
             DELEGATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_STAKE.into()),
+                Motes::new(VALIDATOR_STAKE),
                 DelegationRate::zero(),
             )),
         );

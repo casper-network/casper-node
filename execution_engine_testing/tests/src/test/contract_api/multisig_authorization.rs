@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
@@ -146,21 +146,19 @@ fn test_multisig_auth(
     authorization_keys: &[AccountHash],
 ) -> bool {
     let mut builder = setup();
-    let exec_request = {
-        let session_args = runtime_args! {};
-        let payment_args = runtime_args! {
-            ARG_AMOUNT => *DEFAULT_PAYMENT
-        };
-        let deploy_hash = [42; 32];
-        let deploy = DeployItemBuilder::new()
-            .with_address(caller)
-            .with_stored_session_named_key(CONTRACT_KEY, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(authorization_keys)
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let session_args = runtime_args! {};
+    let payment_args = runtime_args! {
+        ARG_AMOUNT => *DEFAULT_PAYMENT
     };
+    let deploy_hash = [42; 32];
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(caller)
+        .with_stored_session_named_key(CONTRACT_KEY, entry_point, session_args)
+        .with_standard_payment(payment_args)
+        .with_authorization_keys(authorization_keys)
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request).commit();
 
     match builder.get_error() {
@@ -175,7 +173,7 @@ fn test_multisig_auth(
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for account in ROLE_A_KEYS.iter().chain(&ROLE_B_KEYS) {
         let add_key_request = {

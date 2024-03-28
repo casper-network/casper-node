@@ -223,10 +223,10 @@ impl ReactorTrait for Reactor {
             }
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             }) => {
-                assert!(speculative_exec_at_block.is_none());
+                assert!(!is_speculative);
                 let event = transaction_acceptor::Event::Accept {
                     transaction,
                     source: Source::Client,
@@ -382,7 +382,9 @@ impl NetworkedReactor for Reactor {
 fn announce_transaction_received(
     txn: Transaction,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_transaction(txn, None).ignore()
+    |effect_builder: EffectBuilder<Event>| {
+        effect_builder.try_accept_transaction(txn, false).ignore()
+    }
 }
 
 type FetchedTransactionResult = Arc<Mutex<(bool, Option<FetchResult<Transaction>>)>>;

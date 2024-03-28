@@ -45,11 +45,11 @@ pub enum TransactionInvocationTarget {
             description = "Hex-encoded entity address identifying the invocable entity."
         )
     )]
-    InvocableEntity(HashAddr), // currently needs to be of contract tag variant
+    ByHash(HashAddr), // currently needs to be of contract tag variant
     /// The alias identifying the invocable entity.
-    InvocableEntityAlias(String),
+    ByName(String),
     /// The address and optional version identifying the package.
-    Package {
+    ByPackageHash {
         /// The package address.
         #[serde(with = "serde_helpers::raw_32_byte_array")]
         #[cfg_attr(
@@ -63,9 +63,9 @@ pub enum TransactionInvocationTarget {
         version: Option<EntityVersion>,
     },
     /// The alias and optional version identifying the package.
-    PackageAlias {
+    ByPackageName {
         /// The package alias.
-        alias: String,
+        name: String,
         /// The package version.
         ///
         /// If `None`, the latest enabled version is implied.
@@ -75,56 +75,62 @@ pub enum TransactionInvocationTarget {
 
 impl TransactionInvocationTarget {
     /// Returns a new `TransactionInvocationTarget::InvocableEntity`.
-    pub fn new_invocable_entity(addr: HashAddr) -> Self {
-        TransactionInvocationTarget::InvocableEntity(addr)
+    pub fn new_invocable_entity(hash: AddressableEntityHash) -> Self {
+        TransactionInvocationTarget::ByHash(hash.value())
     }
 
     /// Returns a new `TransactionInvocationTarget::InvocableEntityAlias`.
     pub fn new_invocable_entity_alias(alias: String) -> Self {
-        TransactionInvocationTarget::InvocableEntityAlias(alias)
+        TransactionInvocationTarget::ByName(alias)
     }
 
     /// Returns a new `TransactionInvocationTarget::Package`.
-    pub fn new_package(addr: PackageAddr, version: Option<EntityVersion>) -> Self {
-        TransactionInvocationTarget::Package { addr, version }
+    pub fn new_package(hash: PackageHash, version: Option<EntityVersion>) -> Self {
+        TransactionInvocationTarget::ByPackageHash {
+            addr: hash.value(),
+            version,
+        }
     }
 
     /// Returns a new `TransactionInvocationTarget::PackageAlias`.
     pub fn new_package_alias(alias: String, version: Option<EntityVersion>) -> Self {
-        TransactionInvocationTarget::PackageAlias { alias, version }
+        TransactionInvocationTarget::ByPackageName {
+            name: alias,
+            version,
+        }
     }
 
     /// Returns the identifier of the addressable entity, if present.
     pub fn addressable_entity_identifier(&self) -> Option<AddressableEntityIdentifier> {
         match self {
-            TransactionInvocationTarget::InvocableEntity(addr) => Some(
-                AddressableEntityIdentifier::Hash(AddressableEntityHash::new(*addr)),
-            ),
-            TransactionInvocationTarget::InvocableEntityAlias(alias) => {
+            TransactionInvocationTarget::ByHash(addr) => Some(AddressableEntityIdentifier::Hash(
+                AddressableEntityHash::new(*addr),
+            )),
+            TransactionInvocationTarget::ByName(alias) => {
                 Some(AddressableEntityIdentifier::Name(alias.clone()))
             }
-            TransactionInvocationTarget::Package { .. }
-            | TransactionInvocationTarget::PackageAlias { .. } => None,
+            TransactionInvocationTarget::ByPackageHash { .. }
+            | TransactionInvocationTarget::ByPackageName { .. } => None,
         }
     }
 
     /// Returns the identifier of the contract package, if present.
     pub fn package_identifier(&self) -> Option<PackageIdentifier> {
         match self {
-            TransactionInvocationTarget::InvocableEntity(_)
-            | TransactionInvocationTarget::InvocableEntityAlias(_) => None,
-            TransactionInvocationTarget::Package { addr, version } => {
+            TransactionInvocationTarget::ByHash(_) | TransactionInvocationTarget::ByName(_) => None,
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
                 Some(PackageIdentifier::Hash {
                     package_hash: PackageHash::new(*addr),
                     version: *version,
                 })
             }
-            TransactionInvocationTarget::PackageAlias { alias, version } => {
-                Some(PackageIdentifier::Name {
-                    name: alias.clone(),
-                    version: *version,
-                })
-            }
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
+                version,
+            } => Some(PackageIdentifier::Name {
+                name: alias.clone(),
+                version: *version,
+            }),
         }
     }
 
@@ -132,16 +138,16 @@ impl TransactionInvocationTarget {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..4) {
-            INVOCABLE_ENTITY_TAG => TransactionInvocationTarget::InvocableEntity(rng.gen()),
+            INVOCABLE_ENTITY_TAG => TransactionInvocationTarget::ByHash(rng.gen()),
             INVOCABLE_ENTITY_ALIAS_TAG => {
-                TransactionInvocationTarget::InvocableEntityAlias(rng.random_string(1..21))
+                TransactionInvocationTarget::ByName(rng.random_string(1..21))
             }
-            PACKAGE_TAG => TransactionInvocationTarget::Package {
+            PACKAGE_TAG => TransactionInvocationTarget::ByPackageHash {
                 addr: rng.gen(),
                 version: rng.gen::<bool>().then(|| rng.gen::<EntityVersion>()),
             },
-            PACKAGE_ALIAS_TAG => TransactionInvocationTarget::PackageAlias {
-                alias: rng.random_string(1..21),
+            PACKAGE_ALIAS_TAG => TransactionInvocationTarget::ByPackageName {
+                name: rng.random_string(1..21),
                 version: rng.gen::<bool>().then(|| rng.gen::<EntityVersion>()),
             },
             _ => unreachable!(),
@@ -152,32 +158,32 @@ impl TransactionInvocationTarget {
 impl Display for TransactionInvocationTarget {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            TransactionInvocationTarget::InvocableEntity(addr) => {
+            TransactionInvocationTarget::ByHash(addr) => {
                 write!(formatter, "invocable-entity({:10})", HexFmt(addr))
             }
-            TransactionInvocationTarget::InvocableEntityAlias(alias) => {
+            TransactionInvocationTarget::ByName(alias) => {
                 write!(formatter, "invocable-entity({})", alias)
             }
-            TransactionInvocationTarget::Package {
+            TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version: Some(ver),
             } => {
                 write!(formatter, "package({:10}, version {})", HexFmt(addr), ver)
             }
-            TransactionInvocationTarget::Package {
+            TransactionInvocationTarget::ByPackageHash {
                 addr,
                 version: None,
             } => {
                 write!(formatter, "package({:10}, latest)", HexFmt(addr))
             }
-            TransactionInvocationTarget::PackageAlias {
-                alias,
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
                 version: Some(ver),
             } => {
                 write!(formatter, "package({}, version {})", alias, ver)
             }
-            TransactionInvocationTarget::PackageAlias {
-                alias,
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
                 version: None,
             } => {
                 write!(formatter, "package({}, latest)", alias)
@@ -189,20 +195,23 @@ impl Display for TransactionInvocationTarget {
 impl Debug for TransactionInvocationTarget {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            TransactionInvocationTarget::InvocableEntity(addr) => formatter
+            TransactionInvocationTarget::ByHash(addr) => formatter
                 .debug_tuple("InvocableEntity")
                 .field(&HexFmt(addr))
                 .finish(),
-            TransactionInvocationTarget::InvocableEntityAlias(alias) => formatter
+            TransactionInvocationTarget::ByName(alias) => formatter
                 .debug_tuple("InvocableEntityAlias")
                 .field(alias)
                 .finish(),
-            TransactionInvocationTarget::Package { addr, version } => formatter
+            TransactionInvocationTarget::ByPackageHash { addr, version } => formatter
                 .debug_struct("Package")
                 .field("addr", &HexFmt(addr))
                 .field("version", version)
                 .finish(),
-            TransactionInvocationTarget::PackageAlias { alias, version } => formatter
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
+                version,
+            } => formatter
                 .debug_struct("PackageAlias")
                 .field("alias", alias)
                 .field("version", version)
@@ -214,20 +223,23 @@ impl Debug for TransactionInvocationTarget {
 impl ToBytes for TransactionInvocationTarget {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            TransactionInvocationTarget::InvocableEntity(addr) => {
+            TransactionInvocationTarget::ByHash(addr) => {
                 INVOCABLE_ENTITY_TAG.write_bytes(writer)?;
                 addr.write_bytes(writer)
             }
-            TransactionInvocationTarget::InvocableEntityAlias(alias) => {
+            TransactionInvocationTarget::ByName(alias) => {
                 INVOCABLE_ENTITY_ALIAS_TAG.write_bytes(writer)?;
                 alias.write_bytes(writer)
             }
-            TransactionInvocationTarget::Package { addr, version } => {
+            TransactionInvocationTarget::ByPackageHash { addr, version } => {
                 PACKAGE_TAG.write_bytes(writer)?;
                 addr.write_bytes(writer)?;
                 version.write_bytes(writer)
             }
-            TransactionInvocationTarget::PackageAlias { alias, version } => {
+            TransactionInvocationTarget::ByPackageName {
+                name: alias,
+                version,
+            } => {
                 PACKAGE_ALIAS_TAG.write_bytes(writer)?;
                 alias.write_bytes(writer)?;
                 version.write_bytes(writer)
@@ -244,16 +256,15 @@ impl ToBytes for TransactionInvocationTarget {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                TransactionInvocationTarget::InvocableEntity(addr) => addr.serialized_length(),
-                TransactionInvocationTarget::InvocableEntityAlias(alias) => {
-                    alias.serialized_length()
-                }
-                TransactionInvocationTarget::Package { addr, version } => {
+                TransactionInvocationTarget::ByHash(addr) => addr.serialized_length(),
+                TransactionInvocationTarget::ByName(alias) => alias.serialized_length(),
+                TransactionInvocationTarget::ByPackageHash { addr, version } => {
                     addr.serialized_length() + version.serialized_length()
                 }
-                TransactionInvocationTarget::PackageAlias { alias, version } => {
-                    alias.serialized_length() + version.serialized_length()
-                }
+                TransactionInvocationTarget::ByPackageName {
+                    name: alias,
+                    version,
+                } => alias.serialized_length() + version.serialized_length(),
             }
     }
 }
@@ -264,24 +275,27 @@ impl FromBytes for TransactionInvocationTarget {
         match tag {
             INVOCABLE_ENTITY_TAG => {
                 let (addr, remainder) = HashAddr::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::InvocableEntity(addr);
+                let target = TransactionInvocationTarget::ByHash(addr);
                 Ok((target, remainder))
             }
             INVOCABLE_ENTITY_ALIAS_TAG => {
                 let (alias, remainder) = String::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::InvocableEntityAlias(alias);
+                let target = TransactionInvocationTarget::ByName(alias);
                 Ok((target, remainder))
             }
             PACKAGE_TAG => {
                 let (addr, remainder) = PackageAddr::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::Package { addr, version };
+                let target = TransactionInvocationTarget::ByPackageHash { addr, version };
                 Ok((target, remainder))
             }
             PACKAGE_ALIAS_TAG => {
                 let (alias, remainder) = String::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
-                let target = TransactionInvocationTarget::PackageAlias { alias, version };
+                let target = TransactionInvocationTarget::ByPackageName {
+                    name: alias,
+                    version,
+                };
                 Ok((target, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

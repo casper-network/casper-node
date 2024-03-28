@@ -14,7 +14,7 @@ pub trait RuntimeProvider {
 
     fn is_called_from_standard_payment(&self) -> bool;
 
-    /// Get system contract registry.
+    /// Get system entity registry.
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError>;
 
     fn read_addressable_entity_by_account_hash(

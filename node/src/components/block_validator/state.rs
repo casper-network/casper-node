@@ -550,7 +550,7 @@ mod tests {
     };
 
     use super::{super::tests::*, *};
-    use crate::{types::TransactionExt, utils::Loadable};
+    use crate::utils::Loadable;
 
     struct Fixture<'a> {
         rng: &'a mut TestRng,
@@ -574,8 +574,7 @@ mod tests {
                 .map(|transaction| {
                     (
                         transaction.hash(),
-                        transaction
-                            .footprint(&self.chainspec)
+                        TransactionFootprint::new(&self.chainspec, transaction)
                             .expect("must create footprint"),
                     )
                 })
@@ -658,10 +657,10 @@ mod tests {
     }
 
     // Please note: values in the following test cases must much the production chainspec.
-    const MAX_STANDARD_COUNT: u64 = 100;
-    const MAX_AUCTION_COUNT: u64 = 200;
+    const MAX_STANDARD_COUNT: u64 = 50;
+    const MAX_AUCTION_COUNT: u64 = 100;
     const MAX_INSTALL_UPGRADE_COUNT: u64 = 2;
-    const MAX_MINT_COUNT: u64 = 1000;
+    const MAX_MINT_COUNT: u64 = 500;
 
     struct TestCase {
         mint_count: u64,
@@ -1197,7 +1196,7 @@ mod tests {
             Transaction::V1(v1) => TransactionHash::V1(*v1.hash()),
         };
         let chainspec = Chainspec::default();
-        let footprint = transaction.footprint(&chainspec).unwrap();
+        let footprint = TransactionFootprint::new(&chainspec, &transaction).unwrap();
 
         // Ensure trying to add it doesn't change the state.
         let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
@@ -1257,7 +1256,7 @@ mod tests {
         // The invalid transaction should cause the state to go to `Invalid` and the responders to
         // be returned.
         let chainspec = Chainspec::default();
-        let footprint = invalid_transaction.footprint(&chainspec).unwrap();
+        let footprint = TransactionFootprint::new(&chainspec, &invalid_transaction).unwrap();
         let responders = state.try_add_transaction_footprint(&transaction_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));

@@ -1141,7 +1141,7 @@ impl BlockSynchronizer {
                                 }
                             };
                             return effect_builder
-                                .put_execution_results_to_storage(
+                                .put_execution_artifacts_to_storage(
                                     block_hash,
                                     block_height,
                                     era_id,

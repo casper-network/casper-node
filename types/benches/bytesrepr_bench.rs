@@ -11,13 +11,13 @@ use casper_types::{
         ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter, ProtocolVersion, PublicKey,
-    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
-    U512, UREF_ADDR_LENGTH,
+    EntryPoints, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
+    Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash,
+    TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512,
+    UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -473,7 +473,7 @@ fn sample_contract(entry_points_len: u8) -> AddressableEntity {
                 args,
                 casper_types::CLType::U512,
                 EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::AddressableEntity,
+                EntryPointType::Called,
             );
             tmp.add_entry_point(entry_point);
         });
@@ -620,28 +620,28 @@ fn deserialize_bid(delegators_len: u32, b: &mut Bencher) {
     b.iter(|| Bid::from_bytes(black_box(&bid_bytes)));
 }
 
-fn sample_transfer() -> Transfer {
-    Transfer::new(
-        DeployHash::default(),
-        AccountHash::default(),
+fn sample_transfer() -> TransferV2 {
+    TransferV2::new(
+        TransactionHash::V1(TransactionV1Hash::default()),
+        InitiatorAddr::AccountHash(AccountHash::default()),
         None,
         URef::default(),
         URef::default(),
         U512::MAX,
-        U512::from_dec_str("123123123123").unwrap(),
+        Gas::new(U512::from_dec_str("123123123123").unwrap()),
         Some(1u64),
     )
 }
 
 fn serialize_transfer(b: &mut Bencher) {
     let transfer = sample_transfer();
-    b.iter(|| Transfer::to_bytes(&transfer));
+    b.iter(|| TransferV2::to_bytes(&transfer));
 }
 
 fn deserialize_transfer(b: &mut Bencher) {
     let transfer = sample_transfer();
     let transfer_bytes = transfer.to_bytes().unwrap();
-    b.iter(|| Transfer::from_bytes(&transfer_bytes));
+    b.iter(|| TransferV2::from_bytes(&transfer_bytes));
 }
 
 fn sample_deploy_info(transfer_len: u16) -> DeployInfo {

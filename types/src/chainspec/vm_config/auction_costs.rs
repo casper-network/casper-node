@@ -17,13 +17,13 @@ pub const DEFAULT_READ_SEIGNIORAGE_RECIPIENTS_COST: u32 = 10_000;
 /// Default cost of the `add_bid` auction entry point.
 pub const DEFAULT_ADD_BID_COST: u32 = 2_500_000_000;
 /// Default cost of the `withdraw_bid` auction entry point.
-pub const DEFAULT_WITHDRAW_BID_COST: u32 = 2_500_000_000;
+pub const DEFAULT_WITHDRAW_BID_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `delegate` auction entry point.
-pub const DEFAULT_DELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_DELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `redelegate` auction entry point.
-pub const DEFAULT_REDELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_REDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `undelegate` auction entry point.
-pub const DEFAULT_UNDELEGATE_COST: u32 = 2_500_000_000;
+pub const DEFAULT_UNDELEGATE_COST: u32 = DEFAULT_ADD_BID_COST;
 /// Default cost of the `run_auction` auction entry point.
 pub const DEFAULT_RUN_AUCTION_COST: u32 = 10_000;
 /// Default cost of the `slash` auction entry point.

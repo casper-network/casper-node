@@ -91,28 +91,28 @@ pub extern "C" fn call() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_ADD_TOPIC,
         vec![Parameter::new(ARG_TOPIC_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MULTIPLE_MESSAGES,
         vec![Parameter::new(ARG_NUM_MESSAGES_TO_EMIT, u32::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     if register_topic_with_init {

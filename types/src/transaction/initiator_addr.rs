@@ -58,6 +58,18 @@ impl InitiatorAddr {
     }
 }
 
+impl From<PublicKey> for InitiatorAddr {
+    fn from(public_key: PublicKey) -> Self {
+        InitiatorAddr::PublicKey(public_key)
+    }
+}
+
+impl From<AccountHash> for InitiatorAddr {
+    fn from(account_hash: AccountHash) -> Self {
+        InitiatorAddr::AccountHash(account_hash)
+    }
+}
+
 impl Display for InitiatorAddr {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {

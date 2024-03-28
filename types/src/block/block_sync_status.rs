@@ -10,11 +10,10 @@ use crate::{
     BlockHash,
 };
 
-#[cfg(test)]
-use rand::Rng;
-
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 #[cfg(feature = "json-schema")]
 static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
@@ -71,8 +70,9 @@ impl BlockSyncStatus {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         Self {
             block_hash: BlockHash::random(rng),
             block_height: rng.gen::<bool>().then_some(rng.gen()),
@@ -143,8 +143,9 @@ impl BlockSynchronizerStatus {
         &BLOCK_SYNCHRONIZER_STATUS
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         let historical = rng.gen::<bool>().then_some(BlockSyncStatus::random(rng));
         let forward = rng.gen::<bool>().then_some(BlockSyncStatus::random(rng));
         Self {

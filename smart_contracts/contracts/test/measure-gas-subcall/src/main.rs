@@ -44,7 +44,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         entry_points.add_entry_point(entry_point_1);
@@ -54,7 +54,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         entry_points.add_entry_point(entry_point_2);

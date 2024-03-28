@@ -17,7 +17,7 @@ pub fn standard_payment_entry_points() -> EntryPoints {
             err: Box::new(CLType::U32),
         },
         EntryPointAccess::Public,
-        EntryPointType::Session,
+        EntryPointType::Caller,
     );
     entry_points.add_entry_point(entry_point);
 

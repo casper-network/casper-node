@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{BlockHash, BlockHeader, BlockSignatures};
 use crate::EraId;
+#[cfg(doc)]
+use crate::Signature;
 
 /// An error which can result from validating a [`SignedBlockHeader`].
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

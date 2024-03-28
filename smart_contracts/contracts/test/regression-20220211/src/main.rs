@@ -30,7 +30,7 @@ pub extern "C" fn call() {
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     entry_points.add_entry_point(EntryPoint::new(
@@ -38,63 +38,63 @@ pub extern "C" fn call() {
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         PUT_KEY_AS_SESSION,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         PUT_KEY_AS_CONTRACT,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         READ_AS_SESSION,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         READ_AS_CONTRACT,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         WRITE_AS_SESSION,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         WRITE_AS_CONTRACT,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         ADD_AS_SESSION,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         ADD_AS_CONTRACT,
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     let (contract_hash, _contract_version) =
         storage::new_locked_contract(entry_points, None, None, None, None);

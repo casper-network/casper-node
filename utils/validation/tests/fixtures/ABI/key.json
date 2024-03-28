@@ -17,6 +17,15 @@
     ],
     "output": "062a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
   },
+  "BalanceHold": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "balance-hold-002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a0000000000000000"
+      }
+    ],
+    "output": "16002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a0000000000000000"
+  },
   "ChainspecRegistry": {
     "input": [
       {
@@ -80,16 +89,7 @@
     ],
     "output": "012a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
   },
-  "SystemContractRegistry": {
-    "input": [
-      {
-        "type": "Key",
-        "value": "system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000"
-      }
-    ],
-    "output": "0a0000000000000000000000000000000000000000000000000000000000000000"
-  },
-  "Transfer": {
+  "LegacyTransfer": {
     "input": [
       {
         "type": "Key",
@@ -97,6 +97,15 @@
       }
     ],
     "output": "032a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "SystemEntityRegistry": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "system-entity-registry-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0a0000000000000000000000000000000000000000000000000000000000000000"
   },
   "URef": {
     "input": [
@@ -150,7 +159,7 @@
         "value": "bid-addr-00306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
       }
     ],
-    "output": "0f306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+    "output": "0f00306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
   },
   "WriteValidatorBid": {
     "input": [

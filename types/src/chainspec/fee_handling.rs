@@ -26,13 +26,18 @@ pub enum FeeHandling {
     /// Burn the fees.
     Burn,
     /// No fees.
-    None,
+    NoFee,
 }
 
 impl FeeHandling {
     /// Is the Accumulate variant selected?
     pub fn is_accumulate(&self) -> bool {
         matches!(self, FeeHandling::Accumulate)
+    }
+
+    /// Returns true if configured for no fees.
+    pub fn skip_fee_handling(&self) -> bool {
+        matches!(self, FeeHandling::NoFee)
     }
 }
 
@@ -42,7 +47,7 @@ impl ToBytes for FeeHandling {
             FeeHandling::PayToProposer => Ok(vec![FEE_HANDLING_PROPOSER_TAG]),
             FeeHandling::Accumulate => Ok(vec![FEE_HANDLING_ACCUMULATE_TAG]),
             FeeHandling::Burn => Ok(vec![FEE_HANDLING_BURN_TAG]),
-            FeeHandling::None => Ok(vec![FEE_HANDLING_NONE_TAG]),
+            FeeHandling::NoFee => Ok(vec![FEE_HANDLING_NONE_TAG]),
         }
     }
 
@@ -58,7 +63,7 @@ impl FromBytes for FeeHandling {
             FEE_HANDLING_PROPOSER_TAG => Ok((FeeHandling::PayToProposer, rem)),
             FEE_HANDLING_ACCUMULATE_TAG => Ok((FeeHandling::Accumulate, rem)),
             FEE_HANDLING_BURN_TAG => Ok((FeeHandling::Burn, rem)),
-            FEE_HANDLING_NONE_TAG => Ok((FeeHandling::None, rem)),
+            FEE_HANDLING_NONE_TAG => Ok((FeeHandling::NoFee, rem)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -66,10 +71,10 @@ impl FromBytes for FeeHandling {
 
 impl Default for FeeHandling {
     fn default() -> Self {
-        // in 2.x the default is None as there are no fees.
-        // FeeHandling::None
         // in 1.x the (implicit) default was PayToProposer
-        FeeHandling::PayToProposer
+        // FeeHandling::PayToProposer
+        // in 2.x the default is NoFee as there are no fees.
+        FeeHandling::NoFee
     }
 }
 
@@ -92,6 +97,12 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip_for_burn() {
         let fee_config = FeeHandling::Burn;
+        bytesrepr::test_serialization_roundtrip(&fee_config);
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip_for_no_fee() {
+        let fee_config = FeeHandling::NoFee;
         bytesrepr::test_serialization_roundtrip(&fee_config);
     }
 }

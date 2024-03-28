@@ -23,7 +23,7 @@ fn test_check_transfer_success_with_source_only() {
     // create a genesis account.
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -32,8 +32,8 @@ fn test_check_transfer_success_with_source_only() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -48,7 +48,7 @@ fn test_check_transfer_success_with_source_only() {
 
     // build the deploy.
     let deploy_item = DeployItemBuilder::new()
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -56,7 +56,7 @@ fn test_check_transfer_success_with_source_only() {
         .build();
 
     // build a request to execute the deploy.
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();
@@ -72,7 +72,7 @@ fn test_check_transfer_success_with_source_only() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
@@ -85,7 +85,7 @@ fn test_check_transfer_success_with_source_only() {
 fn test_check_transfer_success_with_source_only_errors() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -93,8 +93,8 @@ fn test_check_transfer_success_with_source_only_errors() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -111,14 +111,14 @@ fn test_check_transfer_success_with_source_only_errors() {
     };
 
     let deploy_item = DeployItemBuilder::new()
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // Set up test builder and run genesis.
     let mut builder = LmdbWasmTestBuilder::default();
@@ -133,7 +133,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));
@@ -146,7 +146,7 @@ fn test_check_transfer_success_with_source_only_errors() {
 fn test_check_transfer_success_with_source_and_target() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -154,8 +154,8 @@ fn test_check_transfer_success_with_source_and_target() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -168,14 +168,14 @@ fn test_check_transfer_success_with_source_and_target() {
         ARG_AMOUNT => transfer_amount
     };
     let deploy_item = DeployItemBuilder::new()
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_session_code(path, session_args)
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();
@@ -191,7 +191,7 @@ fn test_check_transfer_success_with_source_and_target() {
     builder.exec(exec_request).commit().expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
-    let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
+    let expected_source_ending_balance = Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE)
         - Motes::new(transfer_amount)
         - Motes::new(transaction_fee);
     let actual_source_ending_balance = Motes::new(builder.get_purse_balance(source_purse));

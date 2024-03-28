@@ -1,4 +1,5 @@
 mod binary_port;
+mod transactions;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -20,10 +21,16 @@ use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult, TotalSupplyRequest, TotalSupplyResult},
+    data_access_layer::{
+        balance::{BalanceHandling, BalanceResult},
+        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
+        TotalSupplyRequest, TotalSupplyResult,
+    },
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
+    account::AccountHash,
+    crypto,
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
@@ -32,9 +39,10 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
-    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
+    PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
+    StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -104,6 +112,39 @@ struct ConfigsOverride {
     min_gas_price: u8,
     upper_threshold: u64,
     lower_threshold: u64,
+    refund_handling_override: Option<RefundHandling>,
+    fee_handling_override: Option<FeeHandling>,
+    pricing_handling_override: Option<PricingHandling>,
+    allow_reservations_override: Option<bool>,
+    balance_hold_interval_override: Option<TimeDiff>,
+}
+
+impl ConfigsOverride {
+    fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        self.refund_handling_override = Some(refund_handling);
+        self
+    }
+
+    fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling_override = Some(fee_handling);
+        self
+    }
+
+    fn with_pricing_handling(mut self, pricing_handling: PricingHandling) -> Self {
+        self.pricing_handling_override = Some(pricing_handling);
+        self
+    }
+
+    #[allow(unused)]
+    fn with_allow_reservations(mut self, allow_reservations: bool) -> Self {
+        self.allow_reservations_override = Some(allow_reservations);
+        self
+    }
+
+    fn with_balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval_override = Some(balance_hold_interval);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -127,6 +168,11 @@ impl Default for ConfigsOverride {
             min_gas_price: 1,
             upper_threshold: 90,
             lower_threshold: 50,
+            refund_handling_override: None,
+            fee_handling_override: None,
+            pricing_handling_override: None,
+            allow_reservations_override: None,
+            balance_hold_interval_override: None,
         }
     }
 }
@@ -192,8 +238,8 @@ impl TestFixture {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let min_motes = 1_000_000_000_000u64; // 1000 token
-        let max_motes = min_motes * 100; // 100_000 token
+        let min_motes = 100_000_000_000_000_000u64;
+        let max_motes = min_motes * 100;
         let balance = U512::from(rng.gen_range(min_motes..max_motes));
 
         // Override accounts with those generated from the keys.
@@ -240,6 +286,11 @@ impl TestFixture {
             min_gas_price: min,
             upper_threshold: go_up,
             lower_threshold: go_down,
+            refund_handling_override,
+            fee_handling_override,
+            pricing_handling_override,
+            allow_reservations_override,
+            balance_hold_interval_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -264,6 +315,22 @@ impl TestFixture {
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
+
+        if let Some(refund_handling) = refund_handling_override {
+            chainspec.core_config.refund_handling = refund_handling;
+        }
+        if let Some(fee_handling) = fee_handling_override {
+            chainspec.core_config.fee_handling = fee_handling;
+        }
+        if let Some(pricing_handling) = pricing_handling_override {
+            chainspec.core_config.pricing_handling = pricing_handling;
+        }
+        if let Some(allow_reservations) = allow_reservations_override {
+            chainspec.core_config.allow_reservations = allow_reservations;
+        }
+        if let Some(balance_hold_interval) = balance_hold_interval_override {
+            chainspec.core_config.balance_hold_interval = balance_hold_interval;
+        }
 
         let mut fixture = TestFixture {
             rng,
@@ -555,11 +622,30 @@ impl TestFixture {
         self.try_run_until(
             move |nodes: &Nodes| {
                 nodes.values().all(|runner| {
-                    runner
+                    if runner
                         .main_reactor()
                         .storage()
                         .read_execution_result(txn_hash)
                         .is_some()
+                    {
+                        let exec_info = runner
+                            .main_reactor()
+                            .storage()
+                            .read_execution_info(*txn_hash);
+
+                        if let Some(exec_info) = exec_info {
+                            runner
+                                .main_reactor()
+                                .storage()
+                                .read_block_header_by_height(exec_info.block_height, true)
+                                .unwrap()
+                                .is_some()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
                 })
             },
             within,
@@ -611,7 +697,6 @@ impl TestFixture {
             .storage
             .read_highest_block()
             .expect("should have block");
-
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
@@ -662,7 +747,7 @@ impl TestFixture {
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
-        // we can get it out of the system contract registry which is just a
+        // we can get it out of the system entity registry which is just a
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
@@ -674,14 +759,14 @@ impl TestFixture {
             .expect("should not have gs storage error")
             .expect("should have stored value");
 
-        let system_contract_registry: SystemEntityRegistry = match maybe_registry {
+        let system_entity_registry: SystemEntityRegistry = match maybe_registry {
             StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
             _ => {
                 panic!("expected CLValue")
             }
         };
 
-        *system_contract_registry.get(system_contract_name).unwrap()
+        *system_entity_registry.get(system_contract_name).unwrap()
     }
 
     #[track_caller]
@@ -741,18 +826,20 @@ impl TestFixture {
             .expect("node 0 should have given execution result")
         {
             ExecutionResult::V1(_) => unreachable!(),
-            ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-                effects.transforms().to_vec()
-            }
-            ExecutionResult::V2(ExecutionResultV2::Failure {
-                cost,
+            ExecutionResult::V2(ExecutionResultV2 {
+                effects,
+                consumed: gas,
                 error_message,
                 ..
             }) => {
-                panic!(
-                    "transaction execution failed: {} cost: {}",
-                    error_message, cost
-                );
+                if error_message.is_none() {
+                    effects.transforms().to_vec()
+                } else {
+                    panic!(
+                        "transaction execution failed: {:?} gas: {}",
+                        error_message, gas
+                    );
+                }
             }
         }
     }
@@ -1360,11 +1447,11 @@ async fn should_store_finalized_approvals() {
     // Run until the transaction gets executed.
     let has_stored_exec_results = |nodes: &Nodes| {
         nodes.values().all(|runner| {
-            runner
+            let read = runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&transaction_hash)
-                .is_some()
+                .read_execution_result(&transaction_hash);
+            read.is_some()
         })
     };
     fixture.run_until(has_stored_exec_results, ONE_MIN).await;
@@ -1728,7 +1815,7 @@ async fn run_redelegate_bid_network() {
     // Inject the transaction and run the network until executed.
     fixture.inject_transaction(txn).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&txn_hash, ONE_MIN)
         .await;
 
     // Ensure execution succeeded and that there is a Write transform for the bid's key.
@@ -1736,6 +1823,7 @@ async fn run_redelegate_bid_network() {
         &bob_public_key,
         Some(&alice_public_key),
     ));
+
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
@@ -1763,18 +1851,18 @@ async fn run_redelegate_bid_network() {
     );
 
     deploy.sign(&alice_secret_key);
-    let txn = Transaction::Deploy(deploy);
-    let txn_hash = txn.hash();
+    let transaction = Transaction::Deploy(deploy);
+    let transaction_hash = transaction.hash();
 
     // Inject the transaction and run the network until executed.
-    fixture.inject_transaction(txn).await;
+    fixture.inject_transaction(transaction).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&transaction_hash, TEN_SECS)
         .await;
 
     // Ensure execution succeeded and that there is a Prune transform for the bid's key.
     fixture
-        .successful_execution_transforms(&txn_hash)
+        .successful_execution_transforms(&transaction_hash)
         .iter()
         .find(|transform| match transform.kind() {
             TransformKindV2::Prune(prune_key) => prune_key == &bid_key,

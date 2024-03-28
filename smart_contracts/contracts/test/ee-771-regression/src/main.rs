@@ -39,7 +39,7 @@ pub extern "C" fn contract_ext() {
                     Parameters::default(),
                     CLType::Unit,
                     EntryPointAccess::Public,
-                    EntryPointType::AddressableEntity,
+                    EntryPointType::Called,
                 );
 
                 entry_points.add_entry_point(entry_point);
@@ -61,7 +61,7 @@ fn store(named_keys: NamedKeys) -> (AddressableEntityHash, EntityVersion) {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         entry_points.add_entry_point(entry_point);

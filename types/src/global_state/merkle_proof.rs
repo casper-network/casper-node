@@ -14,14 +14,14 @@ const TRIE_MERKLE_PROOF_STEP_EXTENSION_ID: u8 = 1;
 /// A component of a proof that an entry exists in the Merkle trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrieMerkleProofStep {
-    /// Corresponds to Trie::Node
+    /// Corresponds to a trie node.
     Node {
         /// Hole index.
         hole_index: u8,
         /// Indexed pointers with hole.
         indexed_pointers_with_hole: Vec<(u8, Pointer)>,
     },
-    /// Corresponds to Trie::Extension
+    /// Corresponds to a trie extension.
     Extension {
         /// Affix bytes.
         affix: Bytes,

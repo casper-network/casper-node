@@ -54,7 +54,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ACCESS_UREF, CLType::URef)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(put_uref_entrypoint);
         let get_uref_entrypoint = EntryPoint::new(
@@ -62,7 +62,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(get_uref_entrypoint);
         let insert_uref_entrypoint = EntryPoint::new(
@@ -70,7 +70,7 @@ pub extern "C" fn call() {
             vec![Parameter::new("contract_hash", CLType::ByteArray(32))],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Caller,
         );
         entry_points.add_entry_point(insert_uref_entrypoint);
         entry_points

@@ -47,7 +47,6 @@ impl TransactionV1Hash {
 
     /// Returns a new `TransactionV1Hash` directly initialized with the provided bytes; no hashing
     /// is done.
-    #[cfg(any(feature = "testing", test))]
     pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
         TransactionV1Hash(Digest::from_raw(raw_digest))
     }

@@ -105,21 +105,21 @@ pub extern "C" fn call() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     ));
 
     let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)

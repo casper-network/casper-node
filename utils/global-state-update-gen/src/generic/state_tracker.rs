@@ -9,10 +9,10 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
-    package::{EntityVersions, Groups, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntityKind,
-    EntryPoints, Key, Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, ProtocolVersion,
+    PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};

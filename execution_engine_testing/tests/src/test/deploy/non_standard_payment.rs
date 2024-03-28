@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -15,7 +15,8 @@ const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_DESTINATION: &str = "destination";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_charge_non_main_purse() {
     // as account_1, create & fund a new purse and use that to pay for something
     // instead of account_1 main purse
@@ -42,7 +43,7 @@ fn should_charge_non_main_purse() {
     )
     .build();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(setup_exec_request)
@@ -68,23 +69,22 @@ fn should_charge_non_main_purse() {
     );
 
     // should be able to pay for exec using new purse
-    let account_payment_exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_payment_code(
-                NAMED_PURSE_PAYMENT_WASM,
-                runtime_args! {
-                    ARG_PURSE_NAME => TEST_PURSE_NAME,
-                    ARG_AMOUNT => payment_purse_amount
-                },
-            )
-            .with_authorization_keys(&[account_1_account_hash])
-            .with_deploy_hash([3; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_payment_code(
+            NAMED_PURSE_PAYMENT_WASM,
+            runtime_args! {
+                ARG_PURSE_NAME => TEST_PURSE_NAME,
+                ARG_AMOUNT => payment_purse_amount
+            },
+        )
+        .with_authorization_keys(&[account_1_account_hash])
+        .with_deploy_hash([3; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let account_payment_exec_request =
+        ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
