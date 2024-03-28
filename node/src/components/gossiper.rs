@@ -143,7 +143,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         requested_count: usize,
-        peers: HashSet<NodeId>,
+        peers: Vec<NodeId>,
     ) -> Effects<Event<T>>
     where
         REv: From<GossiperAnnouncement<T>> + Send,

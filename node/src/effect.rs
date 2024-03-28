@@ -194,11 +194,18 @@ pub(crate) type Effects<Ev> = Multiple<Effect<Ev>>;
 pub(crate) type Multiple<T> = SmallVec<[T; 2]>;
 
 /// The type of peers that should receive the gossip message.
+///
+/// The selection process is as follows:
+///
+/// 1. From all peers
+/// 2. exclude those explicitly specified to be excluded
+/// 3. construct subsequences according to [`GossipTarget`]
+/// 4. then select desired number of peers.
 #[derive(Debug, Serialize, PartialEq, Eq, Hash, Copy, Clone, DataSize)]
 pub(crate) enum GossipTarget {
-    /// Both validators and non validators.
+    /// Alternate between validators and non-validators.
     Mixed(EraId),
-    /// All peers.
+    /// A random subset of all connected peers.
     All,
 }
 
@@ -765,7 +772,7 @@ impl<REv> EffectBuilder<REv> {
         gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
-    ) -> HashSet<NodeId>
+    ) -> Vec<NodeId>
     where
         REv: From<NetworkRequest<P>>,
         P: Send,

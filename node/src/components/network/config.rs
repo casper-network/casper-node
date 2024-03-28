@@ -38,6 +38,9 @@ const DEFAULT_ERROR_TIMEOUT: TimeDiff = TimeDiff::from_seconds(10);
 /// Default value for validator broadcast.
 const DEFAULT_USE_VALIDATOR_BROADCAST: bool = true;
 
+/// Default value for use of mixed gossip.
+const DEFAULT_USE_MIXED_GOSSIP: bool = true;
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -57,6 +60,7 @@ impl Default for Config {
             bubble_timeouts: DEFAULT_BUBBLE_TIMEOUTS,
             error_timeout: DEFAULT_ERROR_TIMEOUT,
             use_validator_broadcast: DEFAULT_USE_VALIDATOR_BROADCAST,
+            use_mixed_gossip: DEFAULT_USE_MIXED_GOSSIP,
         }
     }
 }
@@ -121,6 +125,8 @@ pub struct Config {
     pub error_timeout: TimeDiff,
     /// Whether to restrict broadcasts of certain values to validators.
     pub use_validator_broadcast: bool,
+    /// Whether to enable the use of mixed mode gossiping.
+    pub use_mixed_gossip: bool,
 }
 
 #[cfg(test)]

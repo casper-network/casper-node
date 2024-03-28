@@ -49,7 +49,7 @@ impl TlsRandomData {
         ssl.client_random(&mut combined_random[RLEN..]);
 
         Self {
-            digest: Digest::hash(&combined_random),
+            digest: Digest::hash(combined_random),
         }
     }
 
@@ -61,7 +61,7 @@ impl TlsRandomData {
         rng.fill_bytes(&mut buffer);
 
         Self {
-            digest: Digest::hash(&buffer),
+            digest: Digest::hash(buffer),
         }
     }
 }
