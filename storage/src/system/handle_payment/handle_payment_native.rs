@@ -129,7 +129,6 @@ where
         match <Self as Mint>::reduce_total_supply(self, amount) {
             Ok(ret) => Ok(ret),
             Err(err) => {
-                println!("{}", err);
                 error!("{}", err);
                 Err(Error::ReduceTotalSupply)
             }

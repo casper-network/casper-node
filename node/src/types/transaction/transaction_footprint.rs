@@ -35,12 +35,8 @@ impl TransactionFootprint {
         chainspec: &Chainspec,
         transaction: &Transaction,
     ) -> Result<Self, InvalidTransaction> {
-        let cost_table = &chainspec.system_costs_config;
-        // IMPORTANT: block inclusion is always calculated based upon gas price multiple = 1
-        // Do not confuse actual cost with retail cost.
-        let gas_price: Option<u8> = None;
         let gas_price_tolerance = transaction.gas_price_tolerance()?;
-        let gas_limit = transaction.gas_limit(cost_table, gas_price)?;
+        let gas_limit = transaction.gas_limit(chainspec)?;
         let category = transaction.category();
         let transaction_hash = transaction.hash();
         let body_hash = transaction.body_hash();

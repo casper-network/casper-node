@@ -39,7 +39,7 @@ use crate::{
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{chainspec::PricingHandling, testing::TestRng, Chainspec};
 #[cfg(any(feature = "std", test))]
-use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
+use crate::{Gas, Motes, TransactionConfig, U512};
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
@@ -421,7 +421,7 @@ impl TransactionV1 {
             });
         }
 
-        let gas_limit = self.gas_limit(&chainspec.system_costs_config, None)?;
+        let gas_limit = self.gas_limit(chainspec)?;
         let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
         if gas_limit > block_gas_limit {
             debug!(
@@ -614,22 +614,31 @@ impl Categorized for TransactionV1 {
 impl GasLimited for TransactionV1 {
     type Error = InvalidTransactionV1;
 
-    fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u8>) -> Result<Gas, Self::Error> {
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
+        let gas_limit = self.gas_limit(chainspec)?;
+        let motes = match self.header().pricing_mode() {
+            PricingMode::Classic { .. } | PricingMode::Fixed { .. } => {
+                Motes::from_gas(gas_limit, gas_price)
+                    .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
+            }
+            PricingMode::Reserved { .. } => {
+                Motes::zero() // prepaid
+            }
+        };
+        Ok(motes)
+    }
+
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
+        let costs = chainspec.system_costs_config;
         let gas = match self.header().pricing_mode() {
             PricingMode::Classic {
                 payment_amount,
                 gas_price: user_specified_price,
                 ..
             } => {
-                let actual_price = match gas_price {
-                    Some(system_specified_price) => {
-                        // take the higher of the two possible prices
-                        (*user_specified_price).max(system_specified_price)
-                    }
-                    None => *user_specified_price,
-                };
-                let motes = Motes::new(U512::from(*payment_amount));
-                Gas::from_motes(motes, actual_price).ok_or(
+                let actual_price = (*user_specified_price).max(Self::GAS_PRICE_FLOOR);
+                let base_amount = U512::from(*payment_amount);
+                Gas::from_price(base_amount, actual_price).ok_or(
                     InvalidTransactionV1::GasPriceConversion {
                         amount: *payment_amount,
                         gas_price: actual_price,
@@ -637,9 +646,7 @@ impl GasLimited for TransactionV1 {
                 )?
             }
             PricingMode::Fixed { .. } => {
-                // if gas price is not provided, assume price == 1
-                let gas_price = gas_price.unwrap_or(1);
-                let cost = {
+                let computation_limit = {
                     if self.is_native_mint() {
                         // Because we currently only support one native mint interaction,
                         // native transfer, we can short circuit to return that value.
@@ -672,21 +679,15 @@ impl GasLimited for TransactionV1 {
                         costs.standard_transaction_limit()
                     }
                 };
-                let fixed_cost = U512::from(cost);
-                Gas::from_motes(Motes::new(fixed_cost), gas_price).ok_or(
-                    InvalidTransactionV1::GasPriceConversion {
-                        amount: fixed_cost.as_u64(),
-                        gas_price,
-                    },
-                )?
+                Gas::new(U512::from(computation_limit))
             }
             PricingMode::Reserved {
                 paid_amount,
                 strike_price,
                 ..
             } => {
-                // prepaid, if receipt is legit (future use, not currently implemented)
-                Gas::from_motes(Motes::new(*paid_amount), *strike_price).ok_or(
+                // prepaid, if receipt is legit (future use)
+                Gas::from_price(*paid_amount, *strike_price).ok_or(
                     InvalidTransactionV1::GasPriceConversion {
                         amount: paid_amount.as_u64(),
                         gas_price: *strike_price,

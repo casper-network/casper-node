@@ -145,6 +145,8 @@ pub enum InvalidTransaction {
     },
     /// Unable to calculate gas limit.
     UnableToCalculateGasLimit,
+    /// Unable to calculate gas cost.
+    UnableToCalculateGasCost,
     /// Invalid combination of pricing handling and pricing mode.
     InvalidPricingMode {
         /// The pricing mode as specified by the transaction.
@@ -270,6 +272,9 @@ impl Display for InvalidTransaction {
             InvalidTransaction::UnableToCalculateGasLimit => {
                 write!(formatter, "unable to calculate gas limit",)
             }
+            InvalidTransaction::UnableToCalculateGasCost => {
+                write!(formatter, "unable to calculate gas cost",)
+            }
             InvalidTransaction::InvalidPricingMode { price_mode } => {
                 write!(
                     formatter,
@@ -310,6 +315,7 @@ impl StdError for InvalidTransaction {
             | InvalidTransaction::EmptyModuleBytes
             | InvalidTransaction::GasPriceConversion { .. }
             | InvalidTransaction::UnableToCalculateGasLimit
+            | InvalidTransaction::UnableToCalculateGasCost
             | InvalidTransaction::InvalidPricingMode { .. } => None,
         }
     }

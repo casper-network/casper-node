@@ -115,10 +115,7 @@ impl TransactionAcceptor {
         let is_config_compliant = match &event_metadata.transaction {
             Transaction::Deploy(deploy) => deploy
                 .is_config_compliant(
-                    &self.chainspec.network_config.name,
-                    &self.chainspec.system_costs_config,
-                    &self.chainspec.transaction_config,
-                    self.chainspec.core_config.max_associated_keys,
+                    &self.chainspec,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )

@@ -40,13 +40,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-#[cfg(any(feature = "std", test))]
-use crate::SystemConfig;
-
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
-#[cfg(any(feature = "std", test))]
-use crate::Gas;
 #[cfg(feature = "json-schema")]
 use crate::URef;
 use crate::{
@@ -54,6 +49,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
+#[cfg(any(feature = "std", test))]
+use crate::{Chainspec, Gas, Motes};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
@@ -409,20 +406,23 @@ impl Categorized for Transaction {
     }
 }
 
-/// Calculates gas limit for a transaction.
+/// Calculates gas limit.
 #[cfg(any(feature = "std", test))]
 pub trait GasLimited {
     /// The error type.
     type Error;
 
-    /// Returns the gas limit or an error.
-    fn gas_limit(
-        &self,
-        system_costs: &SystemConfig,
-        gas_price: Option<u8>,
-    ) -> Result<Gas, Self::Error>;
+    /// The minimum allowed gas price (aka the floor).
+    const GAS_PRICE_FLOOR: u8 = 1;
 
-    /// Returns the gas tolerance of transaction sender.
+    /// Returns a gas cost based upon the gas_limit, the gas price,
+    /// and the chainspec settings.
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error>;
+
+    /// Returns the gas / computation limit prior to execution.
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error>;
+
+    /// Returns the gas price tolerance.
     fn gas_price_tolerance(&self) -> Result<u8, Self::Error>;
 }
 
@@ -430,18 +430,23 @@ pub trait GasLimited {
 impl GasLimited for Transaction {
     type Error = InvalidTransaction;
 
-    fn gas_limit(
-        &self,
-        system_costs: &SystemConfig,
-        gas_price: Option<u8>,
-    ) -> Result<Gas, Self::Error> {
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
         match self {
             Transaction::Deploy(deploy) => deploy
-                .gas_limit(system_costs, gas_price)
+                .gas_cost(chainspec, gas_price)
                 .map_err(InvalidTransaction::from),
             Transaction::V1(v1) => v1
-                .gas_limit(system_costs, gas_price)
+                .gas_cost(chainspec, gas_price)
                 .map_err(InvalidTransaction::from),
+        }
+    }
+
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_limit(chainspec)
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1.gas_limit(chainspec).map_err(InvalidTransaction::from),
         }
     }
 

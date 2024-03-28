@@ -53,6 +53,15 @@ impl Gas {
             .map(Self::new)
     }
 
+    /// Converts the given `U512` to `Gas` by dividing it by `gas_price`.
+    ///
+    /// Returns `None` if `gas_price == 0`.
+    pub fn from_price(base_amount: U512, gas_price: u8) -> Option<Self> {
+        base_amount
+            .checked_div(U512::from(gas_price))
+            .map(Self::new)
+    }
+
     /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
     pub fn checked_add(&self, rhs: Self) -> Option<Self> {
         self.0.checked_add(rhs.value()).map(Self::new)

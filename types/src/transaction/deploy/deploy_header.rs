@@ -83,8 +83,25 @@ impl DeployHeader {
         self.expires() < current_instant
     }
 
-    /// Returns the price per gas unit for the `Deploy`.
+    /// Returns the sender's gas price tolerance for block inclusion.
     pub fn gas_price(&self) -> u64 {
+        // in the original implementation, we did not have dynamic gas pricing
+        // but the sender of the deploy could specify a higher gas price,
+        // and the the payment amount would be multiplied by that number
+        // for settlement purposes. This did not increase their computation limit,
+        // only how much they were charged. The intent was, the total cost
+        // would be a consideration for block proposal but in the end we shipped
+        // with an egalitarian subjective fifo proposer. Thus, there was no
+        // functional reason / no benefit to a sender setting gas price to
+        // anything higher than 1.
+        //
+        // As of 2.0 we have dynamic gas prices, this vestigial field has been
+        // repurposed, interpreted to indicate a gas price tolerance.
+        // If this deploy is buffered and the current gas price is higher than this
+        // value, it will not be included in a proposed block.
+        //
+        // This allowing the sender to opt out of block inclusion if the gas price is
+        // higher than they want to pay for.
         self.gas_price
     }
 

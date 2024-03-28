@@ -47,8 +47,6 @@ pub struct TransactionConfig {
     pub max_block_size: u32,
     /// Maximum sum of payment across all transactions included in a block.
     pub block_gas_limit: u64,
-    /// Chainspec configured cost for native transfers.
-    pub native_transfer_cost: u32,
     /// Minimum token amount for a native transfer deploy or transaction (a transfer deploy or
     /// transaction received with an transfer amount less than this will be rejected upon receipt).
     pub native_transfer_minimum_motes: u64,
@@ -76,7 +74,6 @@ impl TransactionConfig {
         let block_max_approval_count = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
-        let native_transfer_cost = 2_500_000_000;
         let native_transfer_minimum_motes =
             rng.gen_range(DEFAULT_MIN_TRANSFER_MOTES..1_000_000_000_000_000);
         let max_timestamp_leeway = TimeDiff::from_seconds(rng.gen_range(0..6));
@@ -93,7 +90,6 @@ impl TransactionConfig {
             block_max_approval_count,
             max_block_size,
             block_gas_limit,
-            native_transfer_cost,
             native_transfer_minimum_motes,
             max_timestamp_leeway,
             deploy_config,
@@ -115,7 +111,6 @@ impl Default for TransactionConfig {
             block_max_approval_count: 2600,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
-            native_transfer_cost: 2_500_000_000,
             native_transfer_minimum_motes: DEFAULT_MIN_TRANSFER_MOTES,
             max_timestamp_leeway: TimeDiff::from_seconds(5),
             deploy_config: DeployConfig::default(),
@@ -135,7 +130,6 @@ impl ToBytes for TransactionConfig {
         self.block_max_approval_count.write_bytes(writer)?;
         self.max_block_size.write_bytes(writer)?;
         self.block_gas_limit.write_bytes(writer)?;
-        self.native_transfer_cost.write_bytes(writer)?;
         self.native_transfer_minimum_motes.write_bytes(writer)?;
         self.max_timestamp_leeway.write_bytes(writer)?;
         self.deploy_config.write_bytes(writer)?;
@@ -158,7 +152,6 @@ impl ToBytes for TransactionConfig {
             + self.block_max_approval_count.serialized_length()
             + self.max_block_size.serialized_length()
             + self.block_gas_limit.serialized_length()
-            + self.native_transfer_cost.serialized_length()
             + self.native_transfer_minimum_motes.serialized_length()
             + self.max_timestamp_leeway.serialized_length()
             + self.deploy_config.serialized_length()
@@ -177,7 +170,6 @@ impl FromBytes for TransactionConfig {
         let (block_max_approval_count, remainder) = u32::from_bytes(remainder)?;
         let (max_block_size, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
-        let (native_transfer_cost, remainder) = u32::from_bytes(remainder)?;
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
         let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
@@ -193,7 +185,6 @@ impl FromBytes for TransactionConfig {
             block_max_approval_count,
             max_block_size,
             block_gas_limit,
-            native_transfer_cost,
             native_transfer_minimum_motes,
             max_timestamp_leeway,
             deploy_config,

@@ -100,9 +100,7 @@ pub fn execute_finalized_block(
         .iter()
         .map(Transaction::fetch_id)
         .collect_vec();
-    let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
-    let gas_price = Some(current_gas_price);
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -133,10 +131,10 @@ pub fn execute_finalized_block(
         // post processing
 
         // NOTE: this is the allowed computation limit   (gas limit)
-        let gas_limit = match transaction.gas_limit(&system_costs, None) {
+        let gas_limit = match transaction.gas_limit(chainspec) {
             Ok(gas) => gas,
             Err(ite) => {
-                debug!(%ite, "invalid transaction (gas limit)");
+                debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
                 artifact_builder.with_invalid_transaction(&ite);
                 artifacts.push(artifact_builder.build());
                 continue;
@@ -145,10 +143,10 @@ pub fn execute_finalized_block(
         artifact_builder.with_gas_limit(gas_limit);
 
         // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-        let cost = match transaction.gas_limit(&system_costs, gas_price) {
-            Ok(gas) => gas.value(),
+        let cost = match transaction.gas_cost(chainspec, current_gas_price) {
+            Ok(motes) => motes.value(),
             Err(ite) => {
-                debug!(%ite, "invalid transaction (cost)");
+                debug!(%transaction_hash, "invalid transaction (motes conversion)");
                 artifact_builder.with_invalid_transaction(&ite);
                 artifacts.push(artifact_builder.build());
                 continue;
@@ -348,10 +346,10 @@ pub fn execute_finalized_block(
                     protocol_version,
                     transaction_hash,
                     HandlePaymentMode::finalize(
-                        gas_limit,
-                        gas_price,
+                        gas_limit.value(),
+                        current_gas_price,
                         cost,
-                        consumed,
+                        consumed.value(),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
                         holds_epoch,
@@ -365,7 +363,7 @@ pub fn execute_finalized_block(
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse for later
                 // distribution
-                let consumed = Gas::new(artifact_builder.consumed());
+                let consumed = Some(artifact_builder.consumed());
                 let handle_payment_request = HandlePaymentRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
@@ -373,7 +371,7 @@ pub fn execute_finalized_block(
                     transaction_hash,
                     HandlePaymentMode::distribute_accumulated(
                         BalanceIdentifier::Accumulate,
-                        Some(consumed),
+                        consumed,
                     ),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
@@ -736,7 +734,7 @@ where
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
-    let gas_limit = match transaction.gas_limit(&chainspec.system_costs_config, None) {
+    let gas_limit = match transaction.gas_limit(chainspec) {
         Ok(gas_limit) => gas_limit,
         Err(_) => {
             return SpeculativeExecutionResult::invalid_gas_limit(transaction);

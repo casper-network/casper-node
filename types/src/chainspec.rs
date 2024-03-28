@@ -233,6 +233,24 @@ impl Chainspec {
             vacancy_config,
         }
     }
+
+    /// Set the chain name;
+    pub fn with_chain_name(&mut self, chain_name: String) -> &mut Self {
+        self.network_config.name = chain_name;
+        self
+    }
+
+    /// Set max associated keys.
+    pub fn with_max_associated_keys(&mut self, max_associated_keys: u32) -> &mut Self {
+        self.core_config.max_associated_keys = max_associated_keys;
+        self
+    }
+
+    /// Set pricing handling.
+    pub fn with_pricing_handling(&mut self, pricing_handling: PricingHandling) -> &mut Self {
+        self.core_config.pricing_handling = pricing_handling;
+        self
+    }
 }
 
 impl ToBytes for Chainspec {

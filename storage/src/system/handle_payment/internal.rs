@@ -1,6 +1,6 @@
 use casper_types::{
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-    FeeHandling, Gas, Key, Phase, PublicKey, RefundHandling, URef, U512,
+    FeeHandling, Key, Phase, PublicKey, RefundHandling, URef, U512,
 };
 use num::{CheckedMul, One};
 use num_rational::Ratio;
@@ -50,10 +50,10 @@ pub fn get_refund_purse<R: RuntimeProvider>(
 ///
 /// Any dust amounts are added to the fee.
 fn calculate_overpayment_and_fee(
-    limit: Gas,
-    gas_price: Option<u8>,
+    limit: U512,
+    gas_price: u8,
     cost: U512,
-    consumed: Gas,
+    consumed: U512,
     available_balance: U512,
     refund_handling: RefundHandling,
 ) -> Result<(U512, U512), Error> {
@@ -97,11 +97,10 @@ fn calculate_overpayment_and_fee(
         return Ok((U512::zero(), cost));
     }
     let unspent = limit.saturating_sub(consumed);
-    if unspent == Gas::zero() {
+    if unspent == U512::zero() {
         return Ok((U512::zero(), cost));
     }
-    let gas_price = gas_price.unwrap_or(1);
-    let base_refund = unspent.value() * gas_price;
+    let base_refund = unspent * gas_price;
     let refund_ratio = match refund_handling {
         RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
             debug_assert!(
@@ -135,10 +134,10 @@ fn calculate_overpayment_and_fee(
 #[allow(clippy::too_many_arguments)]
 pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
-    limit: Gas,
-    gas_price: Option<u8>,
+    limit: U512,
+    gas_price: u8,
     cost: U512,
-    consumed: Gas,
+    consumed: U512,
     source_purse: URef,
     target_purse: URef,
     holds_epoch: Option<u64>,
@@ -238,10 +237,7 @@ pub fn burn<P: MintProvider + RuntimeProvider + StorageProvider>(
         Some(balance) => balance,
         None => return Err(Error::PaymentPurseBalanceNotFound),
     };
-    let burn_amount = match amount {
-        Some(amount) => amount,
-        None => total_balance,
-    };
+    let burn_amount = amount.unwrap_or(total_balance);
     if burn_amount.is_zero() {
         // nothing to burn == noop
         return Ok(());
@@ -261,7 +257,7 @@ pub fn burn<P: MintProvider + RuntimeProvider + StorageProvider>(
 pub fn distribute_accumulated_fees<P>(
     provider: &mut P,
     source_uref: URef,
-    amount: Option<Gas>,
+    amount: Option<U512>,
 ) -> Result<(), Error>
 where
     P: RuntimeProvider + MintProvider,
@@ -279,7 +275,7 @@ where
     let reward_recipients = U512::from(administrative_accounts.len());
 
     let distribute_amount = match amount {
-        Some(amount) => amount.value(),
+        Some(amount) => amount,
         None => provider
             .available_balance(source_uref, None)?
             .unwrap_or_default(),
@@ -329,10 +325,10 @@ mod tests {
 
     #[test]
     fn should_handle_straight_percentages() {
-        let limit = Gas::new(100u64);
-        let gas_price = Some(1);
-        let cost = limit.value();
-        let consumed = Gas::from(50u64);
+        let limit = U512::from(100u64);
+        let gas_price = 1;
+        let cost = limit;
+        let consumed = U512::from(50u64);
         let available = U512::from(1000u64);
         let denom = 100;
 
@@ -344,23 +340,23 @@ mod tests {
             )
             .unwrap();
 
-            let unspent = limit.saturating_sub(consumed).value().as_u64();
+            let unspent = limit.saturating_sub(consumed).as_u64();
             let expected = Ratio::from(unspent)
                 .checked_mul(&refund_ratio)
                 .ok_or(Error::ArithmeticOverflow)
                 .expect("should math")
                 .to_integer();
             assert_eq!(expected, overpay.as_u64(), "overpay");
-            let expected_fee = limit.value().as_u64() - expected;
+            let expected_fee = limit.as_u64() - expected;
             assert_eq!(expected_fee, fee.as_u64(), "fee");
         }
     }
 
     fn test_handle_payment(refund_handling: RefundHandling) {
-        let limit = Gas::new(6u64);
-        let gas_price = Some(1);
-        let cost = limit.value();
-        let consumed = Gas::from(3u64);
+        let limit = U512::from(6u64);
+        let gas_price = 1;
+        let cost = limit;
+        let consumed = U512::from(3u64);
         let available = U512::from(10u64);
         let (overpay, fee) = calculate_overpayment_and_fee(
             limit,
@@ -373,18 +369,18 @@ mod tests {
         .unwrap();
 
         let unspent = limit.saturating_sub(consumed);
-        let expected = unspent.value();
+        let expected = unspent;
         assert_eq!(expected, overpay, "{:?}", refund_handling);
-        let expected_fee = consumed.value();
+        let expected_fee = consumed;
         assert_eq!(expected_fee, fee, "fee");
     }
 
     #[test]
     fn should_roll_over_dust() {
-        let limit = Gas::new(6u64);
-        let gas_price = Some(1);
-        let cost = limit.value();
-        let consumed = Gas::from(3u64);
+        let limit = U512::from(6u64);
+        let gas_price = 1;
+        let cost = limit;
+        let consumed = U512::from(3u64);
         let available = U512::from(10u64);
 
         for percentage in 0..=100 {
@@ -406,10 +402,10 @@ mod tests {
 
     #[test]
     fn should_take_all_of_insufficient_balance() {
-        let limit = Gas::new(6u64);
-        let gas_price = Some(1);
-        let cost = limit.value();
-        let consumed = Gas::from(3u64);
+        let limit = U512::from(6u64);
+        let gas_price = 1;
+        let cost = limit;
+        let consumed = U512::from(3u64);
         let available = U512::from(5u64);
 
         let (overpay, fee) = calculate_overpayment_and_fee(
@@ -431,15 +427,15 @@ mod tests {
 
     #[test]
     fn should_handle_non_1_gas_price() {
-        let limit = Gas::new(6u64);
+        let limit = U512::from(6u64);
         let gas_price = 2;
-        let cost = limit.value() * gas_price;
-        let consumed = Gas::from(3u64);
+        let cost = limit * gas_price;
+        let consumed = U512::from(3u64);
         let available = U512::from(12u64);
 
         let (overpay, fee) = calculate_overpayment_and_fee(
             limit,
-            Some(gas_price),
+            gas_price,
             cost,
             consumed,
             available,
@@ -450,24 +446,24 @@ mod tests {
         .unwrap();
 
         let unspent = limit.saturating_sub(consumed);
-        let expected = unspent.value() * gas_price;
+        let expected = unspent * gas_price;
         assert_eq!(expected, overpay, "overpay");
-        let expected_fee = consumed.value() * gas_price;
+        let expected_fee = consumed * gas_price;
         assert_eq!(expected_fee, fee, "fee");
     }
 
     #[test]
     fn should_handle_extra_cost() {
-        let limit = Gas::new(6u64);
+        let limit = U512::from(6u64);
         let gas_price = 2;
         let extra_cost = U512::from(1u64);
-        let cost = limit.value() * gas_price + extra_cost;
-        let consumed = Gas::from(3u64);
+        let cost = limit * gas_price + extra_cost;
+        let consumed = U512::from(3u64);
         let available = U512::from(21u64);
 
         let (overpay, fee) = calculate_overpayment_and_fee(
             limit,
-            Some(gas_price),
+            gas_price,
             cost,
             consumed,
             available,
@@ -478,9 +474,9 @@ mod tests {
         .unwrap();
 
         let unspent = limit.saturating_sub(consumed);
-        let expected = unspent.value() * gas_price;
+        let expected = unspent * gas_price;
         assert_eq!(expected, overpay, "overpay");
-        let expected_fee = consumed.value() * gas_price + extra_cost;
+        let expected_fee = consumed * gas_price + extra_cost;
         assert_eq!(expected_fee, fee, "fee");
     }
 }
