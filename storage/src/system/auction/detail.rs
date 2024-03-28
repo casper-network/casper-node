@@ -19,6 +19,10 @@ use super::{
     Auction, EraValidators, MintProvider, RuntimeProvider, StorageProvider, ValidatorWeights,
 };
 
+/// Maximum length of bridge records chain.
+/// Used when looking for the most recent bid record to avoid unbounded computations.
+const MAX_BRIDGE_CHAIN_LENGTH: u64 = 20;
+
 fn read_from<P, T>(provider: &mut P, name: &str) -> Result<T, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
@@ -294,15 +298,34 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
 /// Attempts to apply the delegator reward to the existing stake. If the reward recipient has
 /// completely unstaked, applies it to their unbond instead. In either case, returns
 /// the purse the amount should be applied to.
+/// If the `ValidatorBid` public key was changed, attemps to fetch the current
+/// `validator_public_key`.
 pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
-    validator_public_key: PublicKey,
+    mut validator_public_key: PublicKey,
     rewards: impl Iterator<Item = (PublicKey, Ratio<U512>)>,
 ) -> Result<Vec<(AccountHash, U512, URef)>, Error>
 where
     P: RuntimeProvider + StorageProvider,
 {
+    // fetch most recent validator public key if public key was changed
+    // or the validator withdrew their bid completely
+    let mut validator_bid_addr = BidAddr::from(validator_public_key.clone());
+    for _ in 0..MAX_BRIDGE_CHAIN_LENGTH {
+        match provider.read_bid(&validator_bid_addr.into())? {
+            Some(BidKind::Validator(validator_bid)) => {
+                validator_public_key = validator_bid.validator_public_key().clone();
+                break;
+            }
+            Some(BidKind::Bridge(bridge)) => {
+                validator_public_key = bridge.new_validator_public_key().clone();
+                validator_bid_addr = BidAddr::from(validator_public_key.clone());
+            }
+            _ => break,
+        };
+    }
+
     let mut delegator_payouts = Vec::new();
     for (delegator_public_key, delegator_reward) in rewards {
         let bid_key =
@@ -319,7 +342,7 @@ where
             }
             Err(Error::DelegatorNotFound) => {
                 // check to see if there are unbond entries for this recipient
-                // (validator + delegator match), and if their are apply the amount
+                // (validator + delegator match), and if there are apply the amount
                 // to the unbond entry with the highest era.
                 let account_hash = delegator_public_key.to_account_hash();
                 match provider.read_unbonds(&account_hash) {
@@ -380,8 +403,8 @@ pub fn distribute_validator_rewards<P>(
 where
     P: StorageProvider,
 {
-    let bid_key = BidAddr::from(validator_public_key.clone()).into();
-    let bonding_purse = match read_validator_bid(provider, &bid_key) {
+    let bid_key: Key = BidAddr::from(validator_public_key.clone()).into();
+    let bonding_purse = match read_current_validator_bid(provider, bid_key) {
         Ok(mut validator_bid) => {
             let purse = *validator_bid.bonding_purse();
             validator_bid.increase_stake(amount)?;
@@ -389,7 +412,7 @@ where
             purse
         }
         Err(Error::ValidatorNotFound) => {
-            // check to see if there are unbond entries for this recipient, and if their are
+            // check to see if there are unbond entries for this recipient, and if there are
             // apply the amount to the unbond entry with the highest era.
             let account_hash = validator_public_key.to_account_hash();
             match provider.read_unbonds(&account_hash) {
@@ -441,14 +464,19 @@ where
     P: StorageProvider + MintProvider + RuntimeProvider,
 {
     let redelegation_target_public_key = match unbonding_purse.new_validator() {
-        Some(public_key) => public_key,
+        Some(public_key) => {
+            // get updated key if `ValidatorBid` public key was changed
+            let validator_bid_addr = BidAddr::from(public_key.clone());
+            let validator_bid = read_current_validator_bid(provider, validator_bid_addr.into())?;
+            validator_bid.validator_public_key().clone()
+        }
         None => return Ok(UnbondRedelegationOutcome::Withdrawal),
     };
 
     let redelegation = handle_delegation(
         provider,
         unbonding_purse.unbonder_public_key().clone(),
-        redelegation_target_public_key.clone(),
+        redelegation_target_public_key,
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
@@ -565,6 +593,31 @@ where
     } else {
         Err(Error::ValidatorNotFound)
     }
+}
+
+/// Returns current `ValidatorBid` in case the public key was changed.
+pub fn read_current_validator_bid<P>(
+    provider: &mut P,
+    mut bid_key: Key,
+) -> Result<Box<ValidatorBid>, Error>
+where
+    P: StorageProvider + ?Sized,
+{
+    if !bid_key.is_bid_addr_key() {
+        return Err(Error::InvalidKeyVariant);
+    }
+
+    for _ in 0..MAX_BRIDGE_CHAIN_LENGTH {
+        match provider.read_bid(&bid_key)? {
+            Some(BidKind::Validator(validator_bid)) => return Ok(validator_bid),
+            Some(BidKind::Bridge(bridge)) => {
+                let validator_bid_addr = BidAddr::from(bridge.new_validator_public_key().clone());
+                bid_key = validator_bid_addr.into();
+            }
+            _ => break,
+        }
+    }
+    Err(Error::ValidatorNotFound)
 }
 
 pub fn read_delegator_bids<P>(

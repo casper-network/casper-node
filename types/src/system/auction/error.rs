@@ -127,7 +127,7 @@ pub enum Error {
     /// assert_eq!(17, Error::InvalidPublicKey as u8);
     /// ```
     InvalidPublicKey = 17,
-    /// Validator is not not bonded.
+    /// Validator is not bonded.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(18, Error::BondNotFound as u8);
@@ -327,12 +327,19 @@ pub enum Error {
     /// assert_eq!(49, Error::TransferToAdministrator as u8);
     /// ```
     TransferToAdministrator = 49,
+    /// Failed to change validator bid public key.
     /// Failed to transfer desired amount into administrators account.
     /// ```
     /// # use casper_types::system::auction::Error;
     /// assert_eq!(50, Error::ForgedReference as u8);
     /// ```
     ForgedReference = 50,
+    /// Failed to transfer validator bid to new public key.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(51, Error::ValidatorBidExistsAlready as u8);
+    /// ```
+    ValidatorBidExistsAlready = 51,
 }
 
 impl Display for Error {
@@ -389,6 +396,7 @@ impl Display for Error {
             Error::GetAccumulationPurse => formatter.write_str("Get accumulation purse error"),
             Error::TransferToAdministrator => formatter.write_str("Transfer to administrator error"),
             Error::ForgedReference => formatter.write_str("Forged reference"),
+            Error::ValidatorBidExistsAlready => formatter.write_str("Validator bid with given public key already exists"),
         }
     }
 }
@@ -471,6 +479,9 @@ impl TryFrom<u8> for Error {
             d if d == Error::GetAccumulationPurse as u8 => Ok(Error::GetAccumulationPurse),
             d if d == Error::TransferToAdministrator as u8 => Ok(Error::TransferToAdministrator),
             d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
+            d if d == Error::ValidatorBidExistsAlready as u8 => {
+                Ok(Error::ValidatorBidExistsAlready)
+            }
             _ => Err(TryFromU8ForError(())),
         }
     }
