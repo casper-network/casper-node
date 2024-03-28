@@ -609,6 +609,14 @@ where
                 let result: Result<(), mint::Error> = mint_runtime.reduce_total_supply(amount);
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
+            mint::METHOD_BURN => (|| {
+                mint_runtime.charge_system_contract_call(mint_costs.burn)?;
+
+                let purse: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
+                let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
+                let result: Result<(), mint::Error> = mint_runtime.burn(purse, amount);
+                CLValue::from_t(result).map_err(Self::reverter)
+            })(),
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.create)?;

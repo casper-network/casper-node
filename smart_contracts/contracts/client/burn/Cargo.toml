@@ -1,0 +1,16 @@
+[package]
+name = "burn"
+version = "0.1.0"
+authors = ["Igor Bunar <igor@casper.network>", "Jan Hoffmann <jan@casper.network>"]
+edition = "2021"
+
+[[bin]]
+name = "burn"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
