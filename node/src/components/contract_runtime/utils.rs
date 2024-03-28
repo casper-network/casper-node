@@ -46,9 +46,9 @@ static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
 /// The task is a closure that takes no arguments and returns a value.
 /// This function returns a future for that value.
 pub(super) async fn run_intensive_task<T, V>(task: T) -> V
-    where
-        T: 'static + Send + FnOnce() -> V,
-        V: 'static + Send + Debug,
+where
+    T: 'static + Send + FnOnce() -> V,
+    V: 'static + Send + Debug,
 {
     // This will never panic since the semaphore is never closed.
     let _permit = INTENSIVE_TASKS_SEMAPHORE.acquire().await.unwrap();
@@ -78,11 +78,11 @@ pub(super) async fn exec_or_requeue<REv>(
     current_gas_price: u8,
 ) where
     REv: From<ContractRuntimeRequest>
-    + From<ContractRuntimeAnnouncement>
-    + From<StorageRequest>
-    + From<MetaBlockAnnouncement>
-    + From<FatalAnnouncement>
-    + Send,
+        + From<ContractRuntimeAnnouncement>
+        + From<StorageRequest>
+        + From<MetaBlockAnnouncement>
+        + From<FatalAnnouncement>
+        + Send,
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
@@ -94,7 +94,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 chainspec.as_ref(),
                 executable_block.clone(),
             )
-                .await
+            .await
             {
                 Ok(rewards) => rewards,
                 Err(e) => {
@@ -138,7 +138,7 @@ pub(super) async fn exec_or_requeue<REv>(
                     || (executable_block.auction.len() as u32 >= block_max_auction_count)
                     || (executable_block.standard.len() as u32 >= block_max_standard_count)
                     || (executable_block.install_upgrade.len() as u32
-                    >= block_max_install_upgrade_count)
+                        >= block_max_install_upgrade_count)
             };
 
             if has_hit_slot_limt {
@@ -160,7 +160,6 @@ pub(super) async fn exec_or_requeue<REv>(
             }
             Some((utilization, block_count)) => {
                 let era_score = { Ratio::new(utilization, block_count).to_integer() };
-
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
@@ -206,7 +205,7 @@ pub(super) async fn exec_or_requeue<REv>(
             maybe_next_era_gas_price,
         )
     })
-        .await
+    .await
     {
         Ok(ret) => ret,
         Err(error) => {
@@ -240,9 +239,9 @@ pub(super) async fn exec_or_requeue<REv>(
     let current_era_id = block.era_id();
 
     if let Some(StepOutcome {
-                    step_effects,
-                    mut upcoming_era_validators,
-                }) = maybe_step_outcome
+        step_effects,
+        mut upcoming_era_validators,
+    }) = maybe_step_outcome
     {
         effect_builder
             .announce_commit_step_success(current_era_id, step_effects)
@@ -324,9 +323,9 @@ pub(super) async fn exec_or_requeue<REv>(
 
     // We schedule the next block from the queue to be executed:
     if let Some(QueueItem {
-                    executable_block,
-                    meta_block_state,
-                }) = next_block
+        executable_block,
+        meta_block_state,
+    }) = next_block
     {
         metrics.exec_queue_size.dec();
         debug!("ContractRuntime: next block enqueue_block_for_execution");
