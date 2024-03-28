@@ -1006,7 +1006,7 @@ impl Storage {
             StorageRequest::GetBlockUtilizationScore {
                 era_id,
                 block_height,
-                switch_block_utilization: switch_block_utilization,
+                switch_block_utilization,
                 responder,
             } => {
                 let utilization = self.get_block_utilization_score(
