@@ -13,7 +13,7 @@ default-run = "casper-node"
 exclude = ["proptest-regressions"]
 
 [dependencies]
-juliet = "0.2"
+juliet = { version ="0.3", features = ["tracing"] }
 ansi_term = "0.12.1"
 anyhow = "1"
 aquamarine = "0.1.12"
