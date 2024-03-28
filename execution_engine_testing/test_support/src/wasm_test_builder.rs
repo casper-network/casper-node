@@ -1248,7 +1248,7 @@ where
                     Key::addressable_entity_key(EntityKindTag::System, entity_hash),
                     &[],
                 )
-                .expect("must have value"),
+                .ok()?,
         };
 
         if let StoredValue::AddressableEntity(entity) = value {
