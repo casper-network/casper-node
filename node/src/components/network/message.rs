@@ -349,6 +349,19 @@ impl Channel {
     pub(crate) fn into_channel_id(self) -> ChannelId {
         ChannelId::new(self as u8)
     }
+
+    /// Returns the name suitable for metrics.
+    pub(crate) fn metrics_name(&self) -> &'static str {
+        match self {
+            Channel::Network => "network",
+            Channel::SyncDataRequests => "sync_data_requests",
+            Channel::SyncDataResponses => "sync_data_responses",
+            Channel::DataRequests => "data_requests",
+            Channel::DataResponses => "data_responses",
+            Channel::Consensus => "consensus",
+            Channel::BulkGossip => "bulk_gossip",
+        }
+    }
 }
 
 /// Network message payload.

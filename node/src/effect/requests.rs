@@ -126,7 +126,7 @@ pub(crate) enum NetworkRequest<P> {
         exclude: HashSet<NodeId>,
         /// Responder to be called when all messages are queued.
         #[serde(skip_serializing)]
-        auto_closing_responder: AutoClosingResponder<HashSet<NodeId>>,
+        auto_closing_responder: AutoClosingResponder<Vec<NodeId>>,
     },
 }
 

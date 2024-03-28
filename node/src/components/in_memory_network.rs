@@ -279,7 +279,7 @@
 use std::{
     any::Any,
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{self, Display, Formatter},
     sync::{Arc, RwLock},
 };
@@ -578,7 +578,7 @@ where
                 gossip_target: _,
             } => {
                 if let Ok(guard) = self.nodes.read() {
-                    let chosen: HashSet<_> = guard
+                    let chosen: Vec<_> = guard
                         .keys()
                         .filter(|&node_id| !exclude.contains(node_id) && node_id != &self.node_id)
                         .cloned()

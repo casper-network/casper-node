@@ -4,11 +4,14 @@
 //! For example, `buffer_size: PerChannel<usize>` allows to associate a buffer
 //! size of type `usize` to every channel.
 
+use std::convert::Infallible;
+
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use super::Channel;
+use crate::utils::UnwrapInfallible;
 
 /// Allows to hold some data for every channel used in the node.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, DataSize, Serialize, Deserialize)]
@@ -51,16 +54,25 @@ impl<T> PerChannel<T> {
     }
 
     /// Fill the fields for all the channels with a value generated from the given closure.
+    #[inline(always)]
     pub fn init_with(mut initializer: impl FnMut(Channel) -> T) -> Self {
-        PerChannel {
-            network: initializer(Channel::Network),
-            sync_data_request: initializer(Channel::SyncDataRequests),
-            sync_data_responses: initializer(Channel::SyncDataResponses),
-            data_requests: initializer(Channel::DataRequests),
-            data_responses: initializer(Channel::DataResponses),
-            consensus: initializer(Channel::Consensus),
-            bulk_gossip: initializer(Channel::BulkGossip),
-        }
+        Self::try_init_with::<Infallible>(|channel| Ok(initializer(channel))).unwrap_infallible()
+    }
+
+    /// Fill the fields for all the channels with a value generated from the given closure, reducing
+    /// to a single result..
+    pub fn try_init_with<E>(
+        mut initializer: impl FnMut(Channel) -> Result<T, E>,
+    ) -> Result<Self, E> {
+        Ok(PerChannel {
+            network: initializer(Channel::Network)?,
+            sync_data_request: initializer(Channel::SyncDataRequests)?,
+            sync_data_responses: initializer(Channel::SyncDataResponses)?,
+            data_requests: initializer(Channel::DataRequests)?,
+            data_responses: initializer(Channel::DataResponses)?,
+            consensus: initializer(Channel::Consensus)?,
+            bulk_gossip: initializer(Channel::BulkGossip)?,
+        })
     }
 }
 

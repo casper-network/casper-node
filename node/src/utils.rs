@@ -19,6 +19,7 @@ pub mod work_queue;
 use std::{
     any,
     cell::RefCell,
+    convert::Infallible,
     fmt::{self, Debug, Display, Formatter},
     fs::File,
     io::{self, Write},
@@ -402,6 +403,25 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
         match self {
             Either::Left((v, _)) => Either::Left(v),
             Either::Right((v, _)) => Either::Right(v),
+        }
+    }
+}
+
+/// Helper trait to unwrap `Result<T, Infallible>` to `T`.
+pub(crate) trait UnwrapInfallible {
+    type Output;
+
+    fn unwrap_infallible(self) -> Self::Output;
+}
+
+impl<T> UnwrapInfallible for Result<T, Infallible> {
+    type Output = T;
+
+    #[inline]
+    fn unwrap_infallible(self) -> Self::Output {
+        match self {
+            Ok(val) => val,
+            Err(_) => unreachable!(),
         }
     }
 }

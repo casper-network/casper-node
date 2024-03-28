@@ -691,7 +691,7 @@ async fn handle_incoming(
         }
 
         ActiveRoute::new(
-            &mut *guard,
+            &mut guard,
             ctx.clone(),
             peer_id,
             rpc_client,
@@ -794,7 +794,7 @@ impl OutgoingHandler {
             }
             guard.prune_should_not_call(&peer_addr);
 
-            Self::new(&mut *guard, ctx.clone(), peer_addr)
+            Self::new(&mut guard, ctx.clone(), peer_addr)
         };
 
         // We now enter a connection loop. After attempting to connect and serve, we either sleep
@@ -951,7 +951,7 @@ impl OutgoingHandler {
             }
 
             ActiveRoute::new(
-                &mut *guard,
+                &mut guard,
                 self.ctx.clone(),
                 peer_id,
                 rpc_client,
