@@ -139,15 +139,9 @@ impl RateLimited {
         }
 
         // Enough time has passed! Let's see if we won the race for the next refresh.
-        let next_refresh = now + interval;
         if self
             .last_refresh_us
-            .compare_exchange(
-                last_refresh,
-                next_refresh,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
+            .compare_exchange(last_refresh, now, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
             // We won! Add tickets.
@@ -228,7 +222,7 @@ mod tests {
         assert_eq!(&[0, 0], drop_counts.as_slice());
 
         // Sleep long enough for the counter to refresh.
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(Duration::from_secs(1));
 
         for _ in 0..5 {
             run(&mut drop_counts);
