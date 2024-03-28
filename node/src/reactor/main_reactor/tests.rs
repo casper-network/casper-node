@@ -12,6 +12,7 @@ use std::{
 };
 
 use either::Either;
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use num_traits::One;
@@ -781,6 +782,53 @@ impl TestFixture {
         let price = runner.main_reactor().contract_runtime.current_era_price();
 
         price.gas_price()
+    }
+
+    #[track_caller]
+    fn check_account_balance_hold_at_tip(&self, account_public_key: PublicKey) -> U512 {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let highest_block = runner
+            .main_reactor()
+            .storage
+            .read_highest_block()
+            .expect("should have block");
+
+        let block_time = highest_block.clone_header().timestamp();
+
+        let holds_epoch = HoldsEpoch::from_timestamp(
+            block_time,
+            self.chainspec.core_config.balance_hold_interval,
+        );
+
+        let balance_request = BalanceRequest::from_public_key(
+            *highest_block.state_root_hash(),
+            highest_block.protocol_version(),
+            account_public_key,
+            BalanceHandling::Available { holds_epoch },
+        );
+
+        let balance_result = runner
+            .main_reactor()
+            .contract_runtime
+            .data_access_layer()
+            .balance(balance_request);
+
+        if let BalanceResult::Success { balance_holds, .. } = balance_result {
+            balance_holds
+                .values()
+                .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                .collect_vec()
+                .into_iter()
+                .sum()
+        } else {
+            panic!("failed balance result")
+        }
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
@@ -1919,10 +1967,13 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 20000; //milliseconds
+const ERA_DURATION: u64 = 20000;
+//milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000; //milliseconds
-const TIME_OUT: u64 = 600; //seconds
+const BLOCK_TIME: u64 = 2000;
+//milliseconds
+const TIME_OUT: u64 = 600;
+//seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
@@ -2578,9 +2629,6 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
         minimum_era_height: 5,
         lower_threshold: 0,
         upper_threshold: 1,
-        max_standard_count: 1,
-        max_staking_count: 1,
-        max_install_count: 1,
         max_transfer_count: 1,
         max_gas_price,
         ..Default::default()
@@ -2597,22 +2645,23 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let switch_block = fixture.switch_block(ERA_ONE);
 
     let mut current_era = switch_block.era_id();
+    let chain_name = fixture.chainspec.network_config.name.clone();
 
     // Run the network at load for at least 5 eras.
     for _ in 0..5 {
         let target_public_key = PublicKey::random(&mut fixture.rng);
-        let mut native_transfer = Deploy::native_transfer(
-            fixture.chainspec.network_config.name.clone(),
-            alice_public_key.clone(),
-            target_public_key,
-            None,
-            Timestamp::now(),
-            TimeDiff::from_seconds(1200),
-            max_gas_price as u64,
-        );
+        let fixed_native_mint_transaction =
+            TransactionV1Builder::new_transfer(10_000_000_000u64, None, target_public_key, None)
+                .expect("must get builder")
+                .with_chain_name(chain_name.clone())
+                .with_secret_key(&alice_secret_key)
+                .with_pricing_mode(PricingMode::Fixed {
+                    gas_price_tolerance: max_gas_price,
+                })
+                .build()
+                .expect("must get transaction");
 
-        native_transfer.sign(&alice_secret_key);
-        let txn = Transaction::Deploy(native_transfer);
+        let txn = Transaction::V1(fixed_native_mint_transaction);
         fixture.inject_transaction(txn).await;
         let next_era = current_era.successor();
         fixture
@@ -2624,6 +2673,39 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+    let target_public_key = PublicKey::random(&mut fixture.rng);
+
+    let holds_before = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());
+    let amount = 10_000_000_000u64;
+
+    let fixed_native_mint_transaction =
+        TransactionV1Builder::new_transfer(amount, None, target_public_key, None)
+            .expect("must get builder")
+            .with_chain_name(chain_name)
+            .with_secret_key(&alice_secret_key)
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: max_gas_price,
+            })
+            .build()
+            .expect("must get transaction");
+
+    let txn = Transaction::V1(fixed_native_mint_transaction);
+    let txn_hash = txn.hash();
+
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let holds_after = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());
+
+    let current_gas_price = fixture
+        .highest_complete_block()
+        .maybe_current_gas_price()
+        .expect("must have gas price");
+    let cost =
+        fixture.chainspec.system_costs_config.mint_costs().transfer * (current_gas_price as u32);
+    assert_eq!(holds_after, holds_before + U512::from(cost));
 
     // Run the network at zero load and ensure the value falls back to the floor.
     for _ in 0..5 {

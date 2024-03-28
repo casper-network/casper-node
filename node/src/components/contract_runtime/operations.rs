@@ -453,7 +453,7 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
@@ -486,10 +486,10 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+                return Err(BlockExecutionError::DistributeBlockRewards(bre));
             }
             BlockRewardsResult::Success {
                 post_state_hash, ..
@@ -513,7 +513,7 @@ pub fn execute_finalized_block(
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
             StepResult::Success {

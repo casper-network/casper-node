@@ -493,10 +493,15 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
+    /// Retrieve the block utilization score.
     GetBlockUtilizationScore {
+        /// The era id.
         era_id: EraId,
+        /// The block height of the switch block
         block_height: u64,
-        transaction_count: u64,
+        /// The utilization within the switch block.
+        switch_block_utilization: u64,
+        /// Responder, responded once the utilization for the era has been determined.
         responder: Responder<Option<(u64, u64)>>,
     },
 }

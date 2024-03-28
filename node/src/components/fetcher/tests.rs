@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use casper_types::{
     testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, FinalitySignatureV2, Transaction,
-    TransactionHash, TransactionId,
+    TransactionConfig, TransactionHash, TransactionId,
 };
 
 use super::*;
@@ -295,6 +295,7 @@ impl ReactorTrait for Reactor {
             chainspec.core_config.unbonding_delay,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
