@@ -401,11 +401,11 @@ impl TransferRuntimeArgsBuilder {
     }
 
     fn resolve_id(&self) -> Result<Option<u64>, TransferError> {
-        let id_value = self
-            .inner
-            .get(mint::ARG_ID)
-            .ok_or_else(|| TransferError::MissingArgument)?;
-        let id: Option<u64> = self.map_cl_value(id_value)?;
+        let id: Option<u64> = if let Some(id_value) = self.inner.get(mint::ARG_ID) {
+            self.map_cl_value(id_value)?
+        } else {
+            None
+        };
         Ok(id)
     }
 
