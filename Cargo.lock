@@ -3456,6 +3456,7 @@ dependencies = [
  "strum 0.25.0",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
