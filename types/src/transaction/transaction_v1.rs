@@ -347,7 +347,7 @@ impl TransactionV1 {
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn is_config_compliant(
         &self,
         chainspec: &Chainspec,
