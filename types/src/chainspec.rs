@@ -49,12 +49,15 @@ pub use core_config::{
     ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_BALANCE_HOLD_INTERVAL,
 };
 pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::DEFAULT_AUCTION_DELAY;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
+pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
