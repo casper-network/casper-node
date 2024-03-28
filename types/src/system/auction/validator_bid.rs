@@ -88,7 +88,7 @@ impl ValidatorBid {
     pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
         let vesting_schedule = None;
         let inactive = true;
-        let eviction_era = None;
+        let eviction_era = Some(EraId::default());
         let staked_amount = 0.into();
         let delegation_rate = Default::default();
         Self {

@@ -361,7 +361,8 @@
                 "initial_release_timestamp_millis": 18446744073709551615,
                 "locked_amounts": null
               },
-              "inactive": false
+              "inactive": false,
+              "eviction_era": null
             }
           }
         }

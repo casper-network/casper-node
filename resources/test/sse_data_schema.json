@@ -3302,6 +3302,17 @@
         "inactive": {
           "description": "`true` if validator has been \"evicted\"",
           "type": "boolean"
+        },
+        "eviction_era": {
+          "description": "era when validator has been \"evicted\"",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false

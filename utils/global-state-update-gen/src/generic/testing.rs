@@ -759,7 +759,7 @@ fn should_replace_one_validator() {
     let account1_hash = validator1.to_account_hash();
     let mut expected_bid_1 =
         ValidatorBid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(EraId::default());
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // check writes for validator2
@@ -859,7 +859,7 @@ fn should_replace_one_validator_with_unbonding() {
     let account1_hash = validator1.to_account_hash();
     let mut expected_bid_1 =
         ValidatorBid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(EraId::default());
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // check writes for validator2
@@ -1969,7 +1969,7 @@ fn should_handle_unbonding_to_oneself_correctly() {
     let account1_hash = old_validator.to_account_hash();
     let mut expected_bid_1 =
         ValidatorBid::unlocked(old_validator, bid_purse, U512::zero(), Default::default());
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(EraId::default());
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // Check writes for validator2
@@ -2110,7 +2110,7 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
         U512::zero(),
         Default::default(),
     );
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(EraId::default());
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // Check writes for validator2
@@ -2232,7 +2232,7 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
     let account1_hash = old_validator.to_account_hash();
     let mut expected_bid_1 =
         ValidatorBid::unlocked(old_validator, bid_purse, U512::zero(), Default::default());
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(EraId::default());
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // Check writes for validator2
@@ -2406,7 +2406,7 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
         U512::zero(),
         Default::default(),
     );
-    expected_bid_1.deactivate();
+    expected_bid_1.deactivate(WITHDRAW_ERA);
     update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // Check writes for validator2
