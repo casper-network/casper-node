@@ -119,8 +119,12 @@ impl RateLimited {
     /// Returns `Some` on success with the count of skipped items that now has been reset to 0. Will
     /// add tickets if `per` has passed since the last top-up.
     pub(crate) fn acquire(&self, count: usize, per: Duration) -> Option<u64> {
-        if self.remaining.try_acquire().is_ok() {
-            return Some(self.skipped.swap(0, Ordering::Relaxed));
+        if count == 0 {
+            return None;
+        }
+
+        if let Some(rv) = self.consume_permit() {
+            return Some(rv);
         }
 
         // We failed to acquire a ticket. Check if we can refill tickets.
@@ -131,19 +135,14 @@ impl RateLimited {
         if last_refresh + interval > now {
             // No dice, not enough time has passed. Indicate we skipped our output and return.
             self.skipped.fetch_add(1, Ordering::Relaxed);
+
             return None;
         }
 
         // Enough time has passed! Let's see if we won the race for the next refresh.
-        let next_refresh = now + interval;
         if self
             .last_refresh_us
-            .compare_exchange(
-                last_refresh,
-                next_refresh,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
+            .compare_exchange(last_refresh, now, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
             // We won! Add tickets.
@@ -151,11 +150,84 @@ impl RateLimited {
         }
 
         // Regardless, tickets have been added at this point. Try one more time before giving up.
-        if self.remaining.try_acquire().is_ok() {
-            Some(self.skipped.swap(0, Ordering::Relaxed))
+        if let Some(rv) = self.consume_permit() {
+            Some(rv)
         } else {
             self.skipped.fetch_add(1, Ordering::Relaxed);
             None
         }
+    }
+
+    /// Consume a permit from the counter/semaphore.
+    ///
+    /// Will reset skip count to 0 on success, and return the number of skipped calls.
+    #[inline(always)]
+    pub(crate) fn consume_permit(&self) -> Option<u64> {
+        let permit = self.remaining.try_acquire().ok()?;
+
+        permit.forget();
+        Some(self.skipped.swap(0, Ordering::Relaxed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        thread,
+        time::Duration,
+    };
+
+    #[test]
+    fn rate_limited_is_rate_limited() {
+        let counter = AtomicUsize::new(0);
+
+        let run = || {
+            rate_limited!(
+                RATE_LIMITED_IS_RATE_LIMITED_TEST,
+                1,
+                Duration::from_secs(60),
+                |dropped| {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                    assert_eq!(dropped, 0);
+                }
+            );
+        };
+
+        for _ in 0..10 {
+            run();
+        }
+
+        // We expect one call in the default configuration.
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn rate_limiting_refreshes_properly() {
+        let mut drop_counts = Vec::new();
+
+        let run = |dc: &mut Vec<u64>| {
+            rate_limited!(
+                RATE_LIMITED_IS_RATE_LIMITED_TEST,
+                2,
+                Duration::from_secs(1),
+                |dropped| {
+                    dc.push(dropped);
+                }
+            );
+        };
+
+        for _ in 0..5 {
+            run(&mut drop_counts);
+        }
+        assert_eq!(&[0, 0], drop_counts.as_slice());
+
+        // Sleep long enough for the counter to refresh.
+        thread::sleep(Duration::from_secs(1));
+
+        for _ in 0..5 {
+            run(&mut drop_counts);
+        }
+        assert_eq!(&[0, 0, 3, 0], drop_counts.as_slice());
     }
 }
