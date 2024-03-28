@@ -51,7 +51,7 @@ impl DeployItemBuilder {
     }
 
     /// Sets the payment bytes of the deploy to an empty Vec.
-    pub fn with_empty_payment_bytes(self, args: RuntimeArgs) -> Self {
+    pub fn with_standard_payment(self, args: RuntimeArgs) -> Self {
         self.with_payment_bytes(vec![], args)
     }
 

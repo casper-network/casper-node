@@ -84,7 +84,7 @@ fn should_exec_non_stored_code() {
                 ARG_AMOUNT => U512::from(transferred_amount)
             },
         )
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_purse_amount,
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])

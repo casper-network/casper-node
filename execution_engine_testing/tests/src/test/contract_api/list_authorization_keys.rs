@@ -108,7 +108,7 @@ fn test_match(
     let deploy_item = DeployItemBuilder::new()
         .with_address(caller)
         .with_session_code(CONTRACT_LIST_AUTHORIZATION_KEYS, session_args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&signatures)

@@ -530,7 +530,7 @@ fn should_query_dictionary_items_with_test_builder() {
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
     let deploy_item = DeployItemBuilder::new()
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])

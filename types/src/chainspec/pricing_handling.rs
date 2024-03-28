@@ -12,8 +12,8 @@ const PRICING_HANDLING_FIXED_TAG: u8 = 1;
 
 const PRICING_HANDLING_TAG_LENGTH: u8 = 1;
 
-/// Defines what pricing mode a network allows. Correlates to the PricingMode of a [`Transaction`].
-/// Nodes will not accept transactions whose pricing mode does not match.
+/// Defines what pricing mode a network allows. Correlates to the PricingMode of a
+/// [`crate::Transaction`]. Nodes will not accept transactions whose pricing mode does not match.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

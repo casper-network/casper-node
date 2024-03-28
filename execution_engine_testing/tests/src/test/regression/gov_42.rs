@@ -56,7 +56,7 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
         ExecutionPhase::Session => (
             DeployItemBuilder::new()
                 .with_session_bytes(input_wasm_bytes.to_vec(), session_args)
-                .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => payment_amount,}),
+                .with_standard_payment(runtime_args! {ARG_AMOUNT => payment_amount,}),
             expected_error,
         ),
     };

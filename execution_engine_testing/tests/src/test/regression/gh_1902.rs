@@ -124,7 +124,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_stored_session_hash(contract_hash, entry_point, session_args)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(&[sender])
         .with_deploy_hash([43; 32])
         .build();
@@ -160,7 +160,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_stored_session_hash(contract_hash, entry_point, session_args)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(&[sender])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -196,7 +196,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_stored_session_hash(contract_hash, entry_point, session_args)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(&[sender])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -230,7 +230,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_stored_session_hash(contract_hash, entry_point, session_args)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(&[sender])
         .with_deploy_hash([58; 32])
         .build();

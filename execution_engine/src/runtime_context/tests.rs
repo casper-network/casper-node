@@ -18,7 +18,7 @@ use casper_types::{
     execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
-    ContextAccessRights, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
+    ContextAccessRights, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, HoldsEpoch, Key,
     PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
     SystemEntityRegistry, Tagged, TransactionHash, TransactionV1Hash, URef, KEY_HASH_LENGTH, U256,
     U512,
@@ -846,7 +846,7 @@ fn can_roundtrip_key_value_pairs() {
             .expect("should write_ls");
 
         let result = runtime_context
-            .available_balance(&test_uref, None)
+            .available_balance(&test_uref, HoldsEpoch::NOT_APPLICABLE)
             .expect("should read_ls");
 
         let actual = CLValue::from_t(result.value()).unwrap();

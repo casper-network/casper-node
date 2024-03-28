@@ -61,7 +61,7 @@ fn make_request_with_session_bytes<'a>(session_code: Vec<u8>) -> ExecuteRequest<
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(session_code, RuntimeArgs::new())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])

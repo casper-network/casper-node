@@ -1,7 +1,7 @@
 use crate::{data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::AccountHash, execution::Effects, system::mint::BalanceHoldAddrTag, BlockTime, Digest,
-    EntityAddr, ProtocolVersion, PublicKey, TimeDiff, URef, URefAddr, U512,
+    EntityAddr, HoldsEpoch, ProtocolVersion, PublicKey, URef, URefAddr, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -24,7 +24,7 @@ pub struct BalanceHoldRequest {
     hold_kind: BalanceHoldAddrTag,
     hold_amount: U512,
     block_time: BlockTime,
-    hold_interval: TimeDiff,
+    holds_epoch: HoldsEpoch,
     insufficient_handling: InsufficientBalanceHandling,
 }
 
@@ -38,7 +38,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -48,7 +48,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -62,7 +62,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -72,7 +72,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -86,7 +86,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -96,7 +96,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -110,7 +110,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -120,7 +120,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -134,7 +134,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -144,7 +144,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -158,7 +158,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldAddrTag,
         hold_amount: U512,
         block_time: BlockTime,
-        hold_interval: TimeDiff,
+        holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
     ) -> Self {
         BalanceHoldRequest {
@@ -168,7 +168,7 @@ impl BalanceHoldRequest {
             hold_kind,
             hold_amount,
             block_time,
-            hold_interval,
+            holds_epoch,
             insufficient_handling,
         }
     }
@@ -203,9 +203,9 @@ impl BalanceHoldRequest {
         self.block_time
     }
 
-    /// Returns the hold interval.
-    pub fn hold_interval(&self) -> TimeDiff {
-        self.hold_interval
+    /// Returns the holds epoch.
+    pub fn holds_epoch(&self) -> HoldsEpoch {
+        self.holds_epoch
     }
 
     /// Returns insufficient balance handling option.

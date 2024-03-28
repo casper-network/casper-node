@@ -4,7 +4,7 @@ pub mod mint_provider;
 pub mod runtime_provider;
 pub mod storage_provider;
 
-use casper_types::{system::handle_payment::Error, AccessRights, URef, U512};
+use casper_types::{system::handle_payment::Error, AccessRights, HoldsEpoch, URef, U512};
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
@@ -44,7 +44,7 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         consumed: U512,
         source_purse: URef,
         target_purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<(), Error> {
         internal::finalize_payment(
             self,

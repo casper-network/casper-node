@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     bytesrepr::{Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
-    CLType, CLTyped, Timestamp,
+    CLType, CLTyped, TimeDiff, Timestamp,
 };
 
 #[cfg(feature = "datasize")]
@@ -13,6 +13,39 @@ use serde::{Deserialize, Serialize};
 
 /// The number of bytes in a serialized [`BlockTime`].
 pub const BLOCKTIME_SERIALIZED_LENGTH: usize = U64_SERIALIZED_LENGTH;
+
+/// Holds epoch type.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub struct HoldsEpoch(Option<u64>);
+
+impl HoldsEpoch {
+    /// No epoch is applicable.
+    pub const NOT_APPLICABLE: HoldsEpoch = HoldsEpoch(None);
+
+    /// Instance from block time.
+    pub fn from_block_time(block_time: BlockTime, hold_internal: TimeDiff) -> Self {
+        HoldsEpoch(Some(
+            block_time.value().saturating_sub(hold_internal.millis()),
+        ))
+    }
+
+    /// Instance from timestamp.
+    pub fn from_timestamp(timestamp: Timestamp, hold_internal: TimeDiff) -> Self {
+        HoldsEpoch(Some(
+            timestamp.millis().saturating_sub(hold_internal.millis()),
+        ))
+    }
+
+    /// Instance from milliseconds.
+    pub fn from_millis(timestamp_millis: u64, hold_internal_millis: u64) -> Self {
+        HoldsEpoch(Some(timestamp_millis.saturating_sub(hold_internal_millis)))
+    }
+
+    /// Returns the inner value.
+    pub fn value(&self) -> Option<u64> {
+        self.0
+    }
+}
 
 /// A newtype wrapping a [`u64`] which represents the block time.
 #[cfg_attr(feature = "datasize", derive(DataSize))]

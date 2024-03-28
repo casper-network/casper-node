@@ -68,7 +68,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
             ExecuteRequestBuilder::from_deploy_item(
                 &DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
-                    .with_empty_payment_bytes(runtime_args! {
+                    .with_standard_payment(runtime_args! {
                         standard_payment::ARG_AMOUNT => U512::from(150_000_000_000_u64),
                     })
                     .with_stored_session_hash(

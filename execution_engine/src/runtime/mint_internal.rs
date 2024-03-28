@@ -14,7 +14,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
+    AddressableEntity, CLTyped, CLValue, HoldsEpoch, Key, Phase, StoredValue, SystemEntityRegistry,
+    URef, U512,
 };
 
 use super::Runtime;
@@ -143,7 +144,7 @@ where
     fn available_balance(
         &mut self,
         purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error> {
         Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))

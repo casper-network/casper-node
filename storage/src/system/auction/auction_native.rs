@@ -18,7 +18,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, Key, KeyTag, PublicKey, StoredValue, URef, U512,
+    CLTyped, CLValue, HoldsEpoch, Key, KeyTag, PublicKey, StoredValue, URef, U512,
 };
 use std::collections::BTreeSet;
 use tracing::error;
@@ -254,7 +254,7 @@ where
                     contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
-                    None, // unbonding purses do not have holds on them
+                    HoldsEpoch::NOT_APPLICABLE, // unbonding purses do not have holds on them
                 )
                 .map_err(|_| Error::Transfer)?
                 .map_err(|_| Error::Transfer)?;
@@ -272,7 +272,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.addressable_entity().main_purse().addr() == source.addr()
             || self.get_caller() == PublicKey::System.to_account_hash())
@@ -331,7 +331,7 @@ where
     fn available_balance(
         &mut self,
         purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error> {
         match <Self as Mint>::balance(self, purse, holds_epoch) {
             Ok(ret) => Ok(ret),

@@ -25,8 +25,8 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    Transaction, TransactionCategory, U512,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
+    PublicKey, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -84,11 +84,9 @@ pub fn execute_finalized_block(
     let mut state_root_hash = pre_state_root_hash;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
     let block_time = BlockTime::new(executable_block.timestamp.millis());
-    let balance_handling = BalanceHandling::Available {
-        block_time: executable_block.timestamp.millis(),
-        hold_interval: chainspec.core_config.balance_hold_interval.millis(),
-    };
-    let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
+    let holds_epoch =
+        HoldsEpoch::from_block_time(block_time, chainspec.core_config.balance_hold_interval);
+    let balance_handling = BalanceHandling::Available { holds_epoch };
     let proposer = executable_block.proposer.clone();
 
     let start = Instant::now();
@@ -323,6 +321,17 @@ pub fn execute_finalized_block(
         match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a hold for full cost is placed on the payer's purse.
+                let handle_payment_request = HandlePaymentRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandlePaymentMode::clear_holds(balance_identifier.clone(), holds_epoch),
+                );
+                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                artifact_builder
+                    .with_handle_payment_result(&handle_payment_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
                     state_root_hash,
                     protocol_version,
@@ -330,7 +339,7 @@ pub fn execute_finalized_block(
                     BalanceHoldAddrTag::Gas,
                     cost,
                     block_time,
-                    chainspec.core_config.balance_hold_interval,
+                    holds_epoch,
                     insufficient_balance_handling,
                 ));
                 artifact_builder

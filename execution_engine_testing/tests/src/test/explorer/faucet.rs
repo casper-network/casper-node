@@ -3,12 +3,12 @@ use num_rational::Ratio;
 use casper_execution_engine::{engine_state, execution::ExecError};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder,
-    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    TransferRequestBuilder, CHAINSPEC_SYMLINK, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, Key,
-    PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, FeeHandling,
+    Key, PricingHandling, PublicKey, RefundHandling, SecretKey, U512,
 };
 
 // test constants.
@@ -934,6 +934,13 @@ fn faucet_costs() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
 
+    let chainspec = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must build chainspec configuration");
+    let chainspec_config = chainspec
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_pricing_handling(PricingHandling::Fixed);
+    LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
@@ -973,7 +980,7 @@ fn faucet_costs() {
                 ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
             },
         )
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_deploy_hash([3; 32])
         .build();
 
@@ -997,7 +1004,7 @@ fn faucet_costs() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([4; 32])
             .build();
 
@@ -1020,7 +1027,7 @@ fn faucet_costs() {
             ENTRY_POINT_FAUCET,
             runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
         )
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => user_fund_amount})
         .with_deploy_hash([4; 32])
         .build();
 

@@ -2,7 +2,9 @@ use crate::{
     data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{execution::Effects, Digest, ProtocolVersion, TransactionHash, U512};
+use casper_types::{
+    execution::Effects, Digest, HoldsEpoch, ProtocolVersion, TransactionHash, U512,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandlePaymentMode {
@@ -13,7 +15,7 @@ pub enum HandlePaymentMode {
         consumed: U512,
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     },
     Distribute {
         source: BalanceIdentifier,
@@ -22,6 +24,10 @@ pub enum HandlePaymentMode {
     Burn {
         source: BalanceIdentifier,
         amount: Option<U512>,
+    },
+    ClearHolds {
+        source: BalanceIdentifier,
+        holds_epoch: HoldsEpoch,
     },
 }
 
@@ -33,7 +39,7 @@ impl HandlePaymentMode {
         consumed: U512,
         source: BalanceIdentifier,
         target: BalanceIdentifier,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Self {
         HandlePaymentMode::Finalize {
             limit,
@@ -60,6 +66,14 @@ impl HandlePaymentMode {
     /// burned leaving a remaining balance.
     pub fn burn(source: BalanceIdentifier, amount: Option<U512>) -> Self {
         HandlePaymentMode::Burn { source, amount }
+    }
+
+    /// Clear expired holds against source's balance per epoch.
+    pub fn clear_holds(source: BalanceIdentifier, holds_epoch: HoldsEpoch) -> Self {
+        HandlePaymentMode::ClearHolds {
+            source,
+            holds_epoch,
+        }
     }
 }
 

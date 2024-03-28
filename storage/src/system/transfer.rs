@@ -6,8 +6,8 @@ use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     system::{mint, mint::Error as MintError},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, Key, ProtocolVersion,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, CLValueError, HoldsEpoch, Key,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::{
@@ -232,7 +232,7 @@ impl TransferRuntimeArgsBuilder {
         };
         tracking_copy
             .borrow_mut()
-            .get_available_balance(key, None)
+            .get_available_balance(key, HoldsEpoch::NOT_APPLICABLE)
             .is_ok()
     }
 

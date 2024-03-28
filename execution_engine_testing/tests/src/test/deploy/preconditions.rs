@@ -27,7 +27,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
                 runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
             // .with_address(nonexistent_account_addr)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) })
             .with_authorization_keys(&[nonexistent_account_addr])
             .build();
 
@@ -57,7 +57,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_code("do_nothing.wasm", RuntimeArgs::default())
-        .with_empty_payment_bytes(RuntimeArgs::default())
+        .with_standard_payment(RuntimeArgs::default())
         .with_deploy_hash([1; 32])
         // empty authorization keys to force error
         .with_authorization_keys(&empty_keys)
@@ -97,7 +97,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
                 "transfer_purse_to_account.wasm",
                 runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) })
             // invalid authorization key to force error
             .with_authorization_keys(&[nonexistent_account_addr])
             .build();

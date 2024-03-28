@@ -32,7 +32,7 @@ fn regression_20211110() {
     };
     let deploy_item = DeployItemBuilder::new()
         .with_address(ACCOUNT_1_ADDR)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_session_code(REGRESSION_20211110_CONTRACT, session_args)
         .with_authorization_keys(&[ACCOUNT_1_ADDR])
         .with_deploy_hash([42; 32])
@@ -66,7 +66,7 @@ fn regression_20211110() {
     };
     let deploy_item = DeployItemBuilder::new()
         .with_address(ACCOUNT_1_ADDR)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_stored_session_hash(contract_hash, RECURSE_ENTRYPOINT, session_args)
         .with_authorization_keys(&[ACCOUNT_1_ADDR])
         .with_deploy_hash([43; 32])

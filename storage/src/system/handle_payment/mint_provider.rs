@@ -1,5 +1,5 @@
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, TransferredTo, URef, U512,
+    account::AccountHash, system::handle_payment::Error, HoldsEpoch, TransferredTo, URef, U512,
 };
 
 /// Provides an access to mint.
@@ -30,7 +30,7 @@ pub trait MintProvider {
     fn available_balance(
         &mut self,
         purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error>;
 
     /// Reduce total supply by `amount`.

@@ -16,7 +16,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    CLTyped, CLValue, HoldsEpoch, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use super::Runtime;
@@ -244,7 +244,7 @@ where
                     contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
-                    None,
+                    HoldsEpoch::NOT_APPLICABLE,
                 )
                 .map_err(|_| Error::Transfer)?
                 .map_err(|_| Error::Transfer)?;
@@ -265,7 +265,7 @@ where
         target: URef,
         amount: U512,
         id: Option<u64>,
-        _holds_epoch: Option<u64>,
+        _holds_epoch: HoldsEpoch,
     ) -> Result<Result<(), mint::Error>, Error> {
         if !(self.context.entity().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
@@ -345,7 +345,7 @@ where
     fn available_balance(
         &mut self,
         purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error> {
         Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))

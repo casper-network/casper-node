@@ -46,7 +46,7 @@ fn should_fail_to_overflow_gas_counter() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(session_bytes, RuntimeArgs::default())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -152,7 +152,7 @@ fn should_correctly_measure_gas_for_opcodes() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(session_bytes, RuntimeArgs::default())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
