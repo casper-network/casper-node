@@ -134,8 +134,8 @@ impl<P> NetworkRequest<P> {
     ///
     /// This is a replacement for a `From` conversion that is not possible without specialization.
     pub(crate) fn map_payload<F, P2>(self, wrap_payload: F) -> NetworkRequest<P2>
-        where
-            F: FnOnce(P) -> P2,
+    where
+        F: FnOnce(P) -> P2,
     {
         match self {
             NetworkRequest::SendMessage {
@@ -176,8 +176,8 @@ impl<P> NetworkRequest<P> {
 }
 
 impl<P> Display for NetworkRequest<P>
-    where
-        P: Display,
+where
+    P: Display,
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -242,8 +242,8 @@ impl Display for NetworkInfoRequest {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub(crate) struct BeginGossipRequest<T>
-    where
-        T: GossipItem,
+where
+    T: GossipItem,
 {
     pub(crate) item_id: T::Id,
     pub(crate) source: Source,
@@ -252,8 +252,8 @@ pub(crate) struct BeginGossipRequest<T>
 }
 
 impl<T> Display for BeginGossipRequest<T>
-    where
-        T: GossipItem,
+where
+    T: GossipItem,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "begin gossip of {} from {}", self.item_id, self.source)
@@ -629,7 +629,7 @@ impl Display for StorageRequest {
                 write!(formatter, "put block header: {}", block_header)
             }
             StorageRequest::GetAvailableBlockRange { .. } => {
-                write!(formatter, "get available block range", )
+                write!(formatter, "get available block range",)
             }
             StorageRequest::StoreFinalizedApprovals {
                 transaction_hash, ..
@@ -641,7 +641,7 @@ impl Display for StorageRequest {
                 )
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
-                write!(formatter, "put executed block {}", block.hash(), )
+                write!(formatter, "put executed block {}", block.hash(),)
             }
             StorageRequest::GetKeyBlockHeightForActivationPoint { .. } => {
                 write!(
@@ -990,7 +990,7 @@ pub(crate) struct SyncGlobalStateRequest {
     pub(crate) state_root_hash: Digest,
     #[serde(skip)]
     pub(crate) responder:
-    Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
+        Responder<Result<GlobalStateSynchronizerResponse, GlobalStateSynchronizerError>>,
 }
 
 impl Display for SyncGlobalStateRequest {
