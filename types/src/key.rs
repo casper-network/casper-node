@@ -575,6 +575,16 @@ impl Key {
         }
         false
     }
+
+    /// Returns a reference to the inner [`AccountHash`] if `self` is of type
+    /// [`Key::Withdraw`], otherwise returns `None`.
+    pub fn as_withdraw(&self) -> Option<&AccountHash> {
+        if let Self::Withdraw(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Key {

@@ -270,11 +270,16 @@ impl ContractRuntime {
     fn handle_trie_request<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        TrieRequestIncoming { sender, message }: TrieRequestIncoming,
+        TrieRequestIncoming {
+            sender,
+            message,
+            ticket,
+        }: TrieRequestIncoming,
     ) -> Effects<Event>
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
+        drop(ticket); // TODO: Properly handle ticket.
         let TrieRequest(ref serialized_id) = *message;
         let fetch_response = match self.get_trie(serialized_id) {
             Ok(fetch_response) => fetch_response,

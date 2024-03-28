@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;
@@ -17,6 +19,7 @@ use itertools::Itertools;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -39,11 +42,13 @@ use crate::{
             synchronizer::Synchronizer,
         },
         protocols,
-        traits::{ConsensusValueT, Context},
+        traits::{ConsensusNetworkMessage, ConsensusValueT, Context},
         utils::ValidatorIndex,
         ActionId, TimerId,
     },
+    consensus::ValidationError,
     types::{Chainspec, NodeId},
+    utils::display_error,
     NodeRng,
 };
 
@@ -671,89 +676,27 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::{
-        highway_core::{
-            highway::{Dependency, Vertex},
-            state::IndexPanorama,
-        },
-        traits::{ConsensusNetworkMessage, Context},
-        utils::ValidatorIndex,
-    };
-
-    #[derive(
-        DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants, Hash,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum HighwayMessage<C>
-    where
-        C: Context,
-    {
-        NewVertex(Vertex<C>),
-        // A dependency request. u64 is a random UUID identifying the request.
-        RequestDependency(u64, Dependency<C>),
-        RequestDependencyByHeight {
-            uuid: u64,
-            vid: ValidatorIndex,
-            unit_seq_number: u64,
-        },
-        LatestStateRequest(IndexPanorama),
-    }
-
-    impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
+#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub(crate) enum HighwayMessage<C>
+where
+    C: Context,
+{
+    NewVertex(Vertex<C>),
+    // A dependency request. u64 is a random UUID identifying the request.
+    RequestDependency(u64, Dependency<C>),
+    RequestDependencyByHeight {
+        uuid: u64,
+        vid: ValidatorIndex,
+        unit_seq_number: u64,
+    },
+    LatestStateRequest(IndexPanorama),
 }
-pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
 
-mod specimen_support {
-    use crate::{
-        components::consensus::ClContext,
-        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
-    };
-
-    use super::{HighwayMessage, HighwayMessageDiscriminants};
-
-    impl LargestSpecimen for HighwayMessage<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
-                match variant {
-                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                    HighwayMessageDiscriminants::RequestDependency => {
-                        HighwayMessage::RequestDependency(
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                            LargestSpecimen::largest_specimen(estimator, cache),
-                        )
-                    }
-                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
-                        HighwayMessage::RequestDependencyByHeight {
-                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
-                            vid: LargestSpecimen::largest_specimen(estimator, cache),
-                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
-                        }
-                    }
-                    HighwayMessageDiscriminants::LatestStateRequest => {
-                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
-                            estimator, cache,
-                        ))
-                    }
-                }
-            })
-        }
-    }
-}
+impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
 
 impl<C> ConsensusProtocol<C> for HighwayProtocol<C>
 where
@@ -1020,25 +963,19 @@ where
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        if valid {
-            let mut outcomes = self
-                .pending_values
-                .remove(&proposed_block)
-                .into_iter()
-                .flatten()
-                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
-                .collect_vec();
-            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
-            outcomes.extend(self.detect_finality());
-            outcomes
-        } else {
+        if let Some(error) = validation_error {
             // TODO: Report proposer as faulty?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&proposed_block);
-            warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");
+            warn!(
+                error = display_error(&error),
+                ?proposed_block,
+                ?dropped_vertices,
+                "proposal is invalid"
+            );
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()
@@ -1049,10 +986,21 @@ where
                 .collect();
             // recursively remove vertices depending on the dropped ones
             let _faulty_senders = self.synchronizer.invalid_vertices(dropped_vertex_ids);
-            // We don't disconnect from the faulty senders here: The block validator considers the
-            // value "invalid" even if it just couldn't download the deploys, which could just be
-            // because the original sender went offline.
+            // We don't disconnect from the faulty senders here: The proposed block validator
+            // considers the value "invalid" even if it just couldn't download the deploys, which
+            // could just be because the original sender went offline.
             vec![]
+        } else {
+            let mut outcomes = self
+                .pending_values
+                .remove(&proposed_block)
+                .into_iter()
+                .flatten()
+                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
+                .collect_vec();
+            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
+            outcomes.extend(self.detect_finality());
+            outcomes
         }
     }
 

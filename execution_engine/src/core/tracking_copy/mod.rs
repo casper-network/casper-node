@@ -350,6 +350,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         self.journal.push((normalized_key, Transform::Write(value)));
     }
 
+    /// Prunes a `key`.
+    pub(crate) fn prune(&mut self, key: Key) {
+        let normalized_key = key.normalize();
+        self.journal.push((normalized_key, Transform::Prune));
+    }
+
     /// Ok(None) represents missing key to which we want to "add" some value.
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
@@ -414,8 +420,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         };
 
         match transform.clone().apply(current_value) {
-            Ok(new_value) => {
+            Ok(Some(new_value)) => {
                 self.cache.insert_write(normalized_key, new_value);
+                self.journal.push((normalized_key, transform));
+                Ok(AddResult::Success)
+            }
+            Ok(None) => {
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }

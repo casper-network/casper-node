@@ -4,15 +4,18 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use casper_hashing::Digest;
 use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::components::{block_accumulator, fetcher::Tag};
+use crate::{
+    components::{block_accumulator, fetcher::Tag},
+    consensus::ValidationError,
+    utils::display_error,
+};
 
 /// Reasons why a peer was blocked.
-#[derive(DataSize, Debug, Serialize)]
+#[derive(Clone, DataSize, Debug, Serialize)]
 pub(crate) enum BlocklistJustification {
     /// Peer sent incorrect item.
     SentBadItem { tag: Tag },
@@ -36,24 +39,11 @@ pub(crate) enum BlocklistJustification {
     SentInvalidConsensusValue {
         /// The era for which the invalid value was destined.
         era: EraId,
+        //// Cause of value invalidity.
+        cause: ValidationError,
     },
-    /// Too many unasked or expired pongs were sent by the peer.
-    #[allow(dead_code)] // Disabled as per 1.5.5 for stability reasons.
-    PongLimitExceeded,
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
-    /// Peer is on the wrong network.
-    WrongNetwork {
-        /// The network name reported by the peer.
-        peer_network_name: String,
-    },
-    /// Peer presented the wrong chainspec hash.
-    WrongChainspecHash {
-        /// The chainspec hash reported by the peer.
-        peer_chainspec_hash: Digest,
-    },
-    /// Peer did not present a chainspec hash.
-    MissingChainspecHash,
     /// Peer is considered dishonest.
     DishonestPeer,
     /// Peer sent too many finality signatures.
@@ -74,29 +64,16 @@ impl Display for BlocklistJustification {
                 "sent a finality signature that is invalid or unexpected ({})",
                 error
             ),
-            BlocklistJustification::SentInvalidConsensusValue { era } => {
-                write!(f, "sent an invalid consensus value in {}", era)
-            }
-            BlocklistJustification::PongLimitExceeded => {
-                f.write_str("wrote too many expired or invalid pongs")
+            BlocklistJustification::SentInvalidConsensusValue { era, cause } => {
+                write!(
+                    f,
+                    "sent an invalid consensus value in {}: {}",
+                    era,
+                    display_error(cause)
+                )
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")
-            }
-            BlocklistJustification::WrongNetwork { peer_network_name } => write!(
-                f,
-                "reported to be on the wrong network ({:?})",
-                peer_network_name
-            ),
-            BlocklistJustification::WrongChainspecHash {
-                peer_chainspec_hash,
-            } => write!(
-                f,
-                "reported a mismatched chainspec hash ({})",
-                peer_chainspec_hash
-            ),
-            BlocklistJustification::MissingChainspecHash => {
-                f.write_str("sent handshake without chainspec hash")
             }
             BlocklistJustification::SentBadBlock { error } => {
                 write!(f, "sent a block that is invalid or unexpected ({})", error)

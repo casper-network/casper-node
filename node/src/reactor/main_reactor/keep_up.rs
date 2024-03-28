@@ -483,7 +483,7 @@ impl MainReactor {
         offset: Duration,
     ) -> KeepUpInstruction {
         // we get a random sampling of peers to ask.
-        let peers_to_ask = self.net.fully_connected_peers_random(
+        let peers_to_ask = self.net.connected_peers_random(
             rng,
             self.chainspec.core_config.simultaneous_peer_requests as usize,
         );
@@ -559,7 +559,7 @@ impl MainReactor {
             // it is possible that we may get a random sampling that do not have the data
             // we need, but the synchronizer should (eventually) detect that and ask for
             // more peers via the NeedNext behavior.
-            let peers_to_ask = self.net.fully_connected_peers_random(
+            let peers_to_ask = self.net.connected_peers_random(
                 rng,
                 self.chainspec.core_config.simultaneous_peer_requests as usize,
             );

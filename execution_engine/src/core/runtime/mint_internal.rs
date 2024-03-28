@@ -90,6 +90,14 @@ where
     ) -> Result<Option<StoredValue>, execution::Error> {
         self.context.read_account(&Key::Account(*account_hash))
     }
+
+    fn validate_writeable(&self, key: &Key) -> Result<(), execution::Error> {
+        self.context.validate_writeable(key)
+    }
+
+    fn validate_key(&self, key: &Key) -> Result<(), execution::Error> {
+        self.context.validate_key(key)
+    }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors

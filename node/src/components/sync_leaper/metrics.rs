@@ -1,6 +1,6 @@
 use prometheus::{Histogram, IntCounter, Registry};
 
-use crate::{unregister_metric, utils};
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 const SYNC_LEAP_DURATION_NAME: &str = "sync_leap_duration_seconds";
 const SYNC_LEAP_DURATION_HELP: &str = "duration (in sec) to perform a successful sync leap";
@@ -15,15 +15,13 @@ const LINEAR_BUCKET_COUNT: usize = 4;
 #[derive(Debug)]
 pub(super) struct Metrics {
     /// Time duration to perform a sync leap.
-    pub(super) sync_leap_duration: Histogram,
+    pub(super) sync_leap_duration: RegisteredMetric<Histogram>,
     /// Number of successful sync leap responses that were received from peers.
-    pub(super) sync_leap_fetched_from_peer: IntCounter,
+    pub(super) sync_leap_fetched_from_peer: RegisteredMetric<IntCounter>,
     /// Number of requests that were rejected by peers.
-    pub(super) sync_leap_rejected_by_peer: IntCounter,
+    pub(super) sync_leap_rejected_by_peer: RegisteredMetric<IntCounter>,
     /// Number of requests that couldn't be fetched from peers.
-    pub(super) sync_leap_cant_fetch: IntCounter,
-
-    registry: Registry,
+    pub(super) sync_leap_cant_fetch: RegisteredMetric<IntCounter>,
 }
 
 impl Metrics {
@@ -35,26 +33,21 @@ impl Metrics {
             LINEAR_BUCKET_COUNT,
         )?;
 
-        let sync_leap_fetched_from_peer = IntCounter::new(
+        let sync_leap_fetched_from_peer = registry.new_int_counter(
             "sync_leap_fetched_from_peer_total".to_string(),
             "number of successful sync leap responses that were received from peers".to_string(),
         )?;
-        let sync_leap_rejected_by_peer = IntCounter::new(
+        let sync_leap_rejected_by_peer = registry.new_int_counter(
             "sync_leap_rejected_by_peer_total".to_string(),
             "number of sync leap requests that were rejected by peers".to_string(),
         )?;
-        let sync_leap_cant_fetch = IntCounter::new(
+        let sync_leap_cant_fetch = registry.new_int_counter(
             "sync_leap_cant_fetch_total".to_string(),
             "number of sync leap requests that couldn't be fetched from peers".to_string(),
         )?;
 
-        registry.register(Box::new(sync_leap_fetched_from_peer.clone()))?;
-        registry.register(Box::new(sync_leap_rejected_by_peer.clone()))?;
-        registry.register(Box::new(sync_leap_cant_fetch.clone()))?;
-
         Ok(Metrics {
-            sync_leap_duration: utils::register_histogram_metric(
-                registry,
+            sync_leap_duration: registry.new_histogram(
                 SYNC_LEAP_DURATION_NAME,
                 SYNC_LEAP_DURATION_HELP,
                 buckets,
@@ -62,16 +55,6 @@ impl Metrics {
             sync_leap_fetched_from_peer,
             sync_leap_rejected_by_peer,
             sync_leap_cant_fetch,
-            registry: registry.clone(),
         })
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.sync_leap_duration);
-        unregister_metric!(self.registry, self.sync_leap_cant_fetch);
-        unregister_metric!(self.registry, self.sync_leap_fetched_from_peer);
-        unregister_metric!(self.registry, self.sync_leap_rejected_by_peer);
     }
 }

@@ -694,7 +694,7 @@ where
     }
 
     /// Validates whether keys used in the `value` are not forged.
-    fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
+    pub(crate) fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(account) => {
@@ -768,7 +768,7 @@ where
     }
 
     /// Validates if a [`Key`] refers to a [`URef`] and has a write bit set.
-    fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
+    pub(crate) fn validate_writeable(&self, key: &Key) -> Result<(), Error> {
         if self.is_writeable(key) {
             Ok(())
         } else {
@@ -922,6 +922,17 @@ where
             .borrow_mut()
             .write(key.into(), stored_value);
         Ok(())
+    }
+
+    /// Prune a key from the global state.
+    ///
+    /// Use with caution - there is no validation done as the key is assumed to be validated
+    /// already.
+    pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
+    where
+        K: Into<Key>,
+    {
+        self.tracking_copy.borrow_mut().prune(key.into());
     }
 
     /// Writes data to a global state and charges for bytes stored.

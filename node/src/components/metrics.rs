@@ -14,9 +14,9 @@
 //!    Creation and instantiation of this component happens inside the `reactor::Reactor::new`
 //!    function, which is passed in a `prometheus::Registry` (see 2.).
 //!
-//! 2. Instantiation of an `XYZMetrics` struct should always be combined with registering all of
-//!    the metrics on a registry. For this reason it is advisable to have the `XYZMetrics::new`
-//!    method take a `prometheus::Registry` and register it directly.
+//! 2. Instantiation of an `XYZMetrics` struct should always be combined with registering all of the
+//!    metrics on a registry. For this reason it is advisable to have the `XYZMetrics::new` method
+//!    take a `prometheus::Registry` and register it directly.
 //!
 //! 3. Updating metrics is done inside the `handle_event` function by simply calling methods on the
 //!    fields of `self.metrics` (`: XYZMetrics`). **Important**: Metrics should never be read to

@@ -2,55 +2,51 @@ use prometheus::{Gauge, IntGauge, Registry};
 
 use casper_types::Timestamp;
 
-use crate::{types::FinalizedBlock, unregister_metric};
+use crate::{
+    types::FinalizedBlock,
+    utils::registered_metric::{RegisteredMetric, RegistryExt},
+};
 
 /// Network metrics to track Consensus
 #[derive(Debug)]
 pub(super) struct Metrics {
     /// Gauge to track time between proposal and finalization.
-    finalization_time: Gauge,
+    finalization_time: RegisteredMetric<Gauge>,
     /// Amount of finalized blocks.
-    finalized_block_count: IntGauge,
+    finalized_block_count: RegisteredMetric<IntGauge>,
     /// Timestamp of the most recently accepted block payload.
-    time_of_last_proposed_block: IntGauge,
+    time_of_last_proposed_block: RegisteredMetric<IntGauge>,
     /// Timestamp of the most recently finalized block.
-    time_of_last_finalized_block: IntGauge,
+    time_of_last_finalized_block: RegisteredMetric<IntGauge>,
     /// The current era.
-    pub(super) consensus_current_era: IntGauge,
-    /// Registry component.
-    registry: Registry,
+    pub(super) consensus_current_era: RegisteredMetric<IntGauge>,
 }
 
 impl Metrics {
     pub(super) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
-        let finalization_time = Gauge::new(
+        let finalization_time = registry.new_gauge(
             "finalization_time",
             "the amount of time, in milliseconds, between proposal and finalization of the latest finalized block",
         )?;
         let finalized_block_count =
-            IntGauge::new("amount_of_blocks", "the number of blocks finalized so far")?;
-        let time_of_last_proposed_block = IntGauge::new(
+            registry.new_int_gauge("amount_of_blocks", "the number of blocks finalized so far")?;
+        let time_of_last_proposed_block = registry.new_int_gauge(
             "time_of_last_block_payload",
             "timestamp of the most recently accepted block payload",
         )?;
-        let time_of_last_finalized_block = IntGauge::new(
+        let time_of_last_finalized_block = registry.new_int_gauge(
             "time_of_last_finalized_block",
             "timestamp of the most recently finalized block",
         )?;
         let consensus_current_era =
-            IntGauge::new("consensus_current_era", "the current era in consensus")?;
-        registry.register(Box::new(finalization_time.clone()))?;
-        registry.register(Box::new(finalized_block_count.clone()))?;
-        registry.register(Box::new(consensus_current_era.clone()))?;
-        registry.register(Box::new(time_of_last_proposed_block.clone()))?;
-        registry.register(Box::new(time_of_last_finalized_block.clone()))?;
+            registry.new_int_gauge("consensus_current_era", "the current era in consensus")?;
+
         Ok(Metrics {
             finalization_time,
             finalized_block_count,
             time_of_last_proposed_block,
             time_of_last_finalized_block,
             consensus_current_era,
-            registry: registry.clone(),
         })
     }
 
@@ -68,15 +64,5 @@ impl Metrics {
     pub(super) fn proposed_block(&mut self) {
         self.time_of_last_proposed_block
             .set(Timestamp::now().millis() as i64);
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.finalization_time);
-        unregister_metric!(self.registry, self.finalized_block_count);
-        unregister_metric!(self.registry, self.consensus_current_era);
-        unregister_metric!(self.registry, self.time_of_last_finalized_block);
-        unregister_metric!(self.registry, self.time_of_last_proposed_block);
     }
 }

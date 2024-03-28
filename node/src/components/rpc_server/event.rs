@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
+    net::SocketAddr,
 };
 
 use derive_more::From;
@@ -43,8 +44,8 @@ pub(crate) enum Event {
         main_responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     GetPeersResult {
-        peers: BTreeMap<NodeId, String>,
-        main_responder: Responder<BTreeMap<NodeId, String>>,
+        peers: BTreeMap<NodeId, SocketAddr>,
+        main_responder: Responder<BTreeMap<NodeId, SocketAddr>>,
     },
     GetBalanceResult {
         result: Result<BalanceResult, engine_state::Error>,

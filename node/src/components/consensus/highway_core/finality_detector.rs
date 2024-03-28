@@ -1,4 +1,5 @@
 //! Functions for detecting finality of proposed blocks and calculating rewards.
+#![allow(clippy::arithmetic_side_effects)]
 
 mod horizon;
 mod rewards;

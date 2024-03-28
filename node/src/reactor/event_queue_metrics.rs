@@ -2,22 +2,20 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 use prometheus::{self, IntGauge, Registry};
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     reactor::{EventQueueHandle, QueueKind},
-    unregister_metric,
+    utils::registered_metric::{RegisteredMetric, RegistryExt},
 };
 
 /// Metrics for event queue sizes.
 #[derive(Debug)]
 pub(super) struct EventQueueMetrics {
     /// Per queue kind gauges that measure number of event in the queue.
-    event_queue_gauges: HashMap<QueueKind, IntGauge>,
+    event_queue_gauges: HashMap<QueueKind, RegisteredMetric<IntGauge>>,
     /// Total events count.
-    event_total: IntGauge,
-    /// Instance of registry to unregister from when being dropped.
-    registry: Registry,
+    event_total: RegisteredMetric<IntGauge>,
 }
 
 impl EventQueueMetrics {
@@ -26,31 +24,29 @@ impl EventQueueMetrics {
         registry: Registry,
         event_queue_handle: EventQueueHandle<REv>,
     ) -> Result<Self, prometheus::Error> {
-        let mut event_queue_gauges: HashMap<QueueKind, IntGauge> = HashMap::new();
+        let mut event_queue_gauges = HashMap::new();
         for queue_kind in event_queue_handle.event_queues_counts().keys() {
             let key = format!("scheduler_queue_{}_count", queue_kind.metrics_name());
-            let queue_event_counter = IntGauge::new(
+            let queue_event_counter = registry.new_int_gauge(
                 key,
                 format!(
                     "current number of events in the reactor {} queue",
                     queue_kind.metrics_name()
                 ),
             )?;
-            registry.register(Box::new(queue_event_counter.clone()))?;
+
             let result = event_queue_gauges.insert(*queue_kind, queue_event_counter);
             assert!(result.is_none(), "Map keys should not be overwritten.");
         }
 
-        let event_total = IntGauge::new(
+        let event_total = registry.new_int_gauge(
             "scheduler_queue_total_count",
             "current total number of events in all reactor queues",
         )?;
-        registry.register(Box::new(event_total.clone()))?;
 
         Ok(EventQueueMetrics {
             event_queue_gauges,
             event_total,
-            registry,
         })
     }
 
@@ -79,18 +75,5 @@ impl EventQueueMetrics {
             .join(",");
 
         debug!(%total, %event_counts, "Collected new set of event queue sizes metrics.")
-    }
-}
-
-impl Drop for EventQueueMetrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.event_total);
-        self.event_queue_gauges
-            .iter()
-            .for_each(|(key, queue_gauge)| {
-                self.registry
-                    .unregister(Box::new(queue_gauge.clone()))
-                    .unwrap_or_else(|_| error!("unregistering {} failed: was not registered", key))
-            });
     }
 }

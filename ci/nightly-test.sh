@@ -51,6 +51,9 @@ function start_run_teardown() {
         SETUP_ARGS+=("config_path=$CONFIG_TOML")
     fi
 
+    # Github actions hint for grouping log lines
+    echo "::group::{$RUN_CMD}"
+
     # Setup nctl files for test
     echo "Setting up network: nctl-assets-setup ${SETUP_ARGS[@]}"
     nctl-assets-setup "${SETUP_ARGS[@]}"
@@ -70,6 +73,8 @@ function start_run_teardown() {
     # Cleanup after test completion
     popd
     nctl-assets-teardown
+    # End Github actions hint for grouping tests
+    echo "::endgroup::"
     sleep 1
 }
 

@@ -1,6 +1,6 @@
 use prometheus::{self, Gauge, Histogram, IntGauge, Registry};
 
-use crate::{unregister_metric, utils};
+use crate::utils::registered_metric::{RegisteredMetric, RegistryExt};
 
 /// Value of upper bound of histogram.
 const EXPONENTIAL_BUCKET_START: f64 = 0.01;
@@ -58,20 +58,19 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
-    pub(super) run_execute: Histogram,
-    pub(super) apply_effect: Histogram,
-    pub(super) commit_upgrade: Histogram,
-    pub(super) run_query: Histogram,
-    pub(super) commit_step: Histogram,
-    pub(super) get_balance: Histogram,
-    pub(super) get_era_validators: Histogram,
-    pub(super) get_bids: Histogram,
-    pub(super) put_trie: Histogram,
-    pub(super) get_trie: Histogram,
-    pub(super) exec_block: Histogram,
-    pub(super) latest_commit_step: Gauge,
-    pub(super) exec_queue_size: IntGauge,
-    registry: Registry,
+    pub(super) run_execute: RegisteredMetric<Histogram>,
+    pub(super) apply_effect: RegisteredMetric<Histogram>,
+    pub(super) commit_upgrade: RegisteredMetric<Histogram>,
+    pub(super) run_query: RegisteredMetric<Histogram>,
+    pub(super) commit_step: RegisteredMetric<Histogram>,
+    pub(super) get_balance: RegisteredMetric<Histogram>,
+    pub(super) get_era_validators: RegisteredMetric<Histogram>,
+    pub(super) get_bids: RegisteredMetric<Histogram>,
+    pub(super) put_trie: RegisteredMetric<Histogram>,
+    pub(super) get_trie: RegisteredMetric<Histogram>,
+    pub(super) exec_block: RegisteredMetric<Histogram>,
+    pub(super) latest_commit_step: RegisteredMetric<Gauge>,
+    pub(super) exec_queue_size: RegisteredMetric<IntGauge>,
 }
 
 impl Metrics {
@@ -89,100 +88,57 @@ impl Metrics {
         // Anything above that should be a warning signal.
         let tiny_buckets = prometheus::exponential_buckets(0.001, 2.0, 10)?;
 
-        let latest_commit_step = Gauge::new(LATEST_COMMIT_STEP_NAME, LATEST_COMMIT_STEP_HELP)?;
-        registry.register(Box::new(latest_commit_step.clone()))?;
+        let latest_commit_step =
+            registry.new_gauge(LATEST_COMMIT_STEP_NAME, LATEST_COMMIT_STEP_HELP)?;
 
-        let exec_queue_size = IntGauge::new(EXEC_QUEUE_SIZE_NAME, EXEC_QUEUE_SIZE_HELP)?;
-        registry.register(Box::new(exec_queue_size.clone()))?;
+        let exec_queue_size = registry.new_int_gauge(EXEC_QUEUE_SIZE_NAME, EXEC_QUEUE_SIZE_HELP)?;
 
         Ok(Metrics {
-            run_execute: utils::register_histogram_metric(
-                registry,
+            run_execute: registry.new_histogram(
                 RUN_EXECUTE_NAME,
                 RUN_EXECUTE_HELP,
                 common_buckets.clone(),
             )?,
-            apply_effect: utils::register_histogram_metric(
-                registry,
+            apply_effect: registry.new_histogram(
                 APPLY_EFFECT_NAME,
                 APPLY_EFFECT_HELP,
                 common_buckets.clone(),
             )?,
-            run_query: utils::register_histogram_metric(
-                registry,
+            run_query: registry.new_histogram(
                 RUN_QUERY_NAME,
                 RUN_QUERY_HELP,
                 common_buckets.clone(),
             )?,
-            commit_step: utils::register_histogram_metric(
-                registry,
+            commit_step: registry.new_histogram(
                 COMMIT_STEP_NAME,
                 COMMIT_STEP_HELP,
                 common_buckets.clone(),
             )?,
-            commit_upgrade: utils::register_histogram_metric(
-                registry,
+            commit_upgrade: registry.new_histogram(
                 COMMIT_UPGRADE_NAME,
                 COMMIT_UPGRADE_HELP,
                 common_buckets.clone(),
             )?,
-            get_balance: utils::register_histogram_metric(
-                registry,
+            get_balance: registry.new_histogram(
                 GET_BALANCE_NAME,
                 GET_BALANCE_HELP,
                 common_buckets.clone(),
             )?,
-            get_era_validators: utils::register_histogram_metric(
-                registry,
+            get_era_validators: registry.new_histogram(
                 GET_ERA_VALIDATORS_NAME,
                 GET_ERA_VALIDATORS_HELP,
                 common_buckets.clone(),
             )?,
-            get_bids: utils::register_histogram_metric(
-                registry,
+            get_bids: registry.new_histogram(
                 GET_BIDS_NAME,
                 GET_BIDS_HELP,
                 common_buckets.clone(),
             )?,
-            get_trie: utils::register_histogram_metric(
-                registry,
-                GET_TRIE_NAME,
-                GET_TRIE_HELP,
-                tiny_buckets.clone(),
-            )?,
-            put_trie: utils::register_histogram_metric(
-                registry,
-                PUT_TRIE_NAME,
-                PUT_TRIE_HELP,
-                tiny_buckets,
-            )?,
-            exec_block: utils::register_histogram_metric(
-                registry,
-                EXEC_BLOCK_NAME,
-                EXEC_BLOCK_HELP,
-                common_buckets,
-            )?,
+            get_trie: registry.new_histogram(GET_TRIE_NAME, GET_TRIE_HELP, tiny_buckets.clone())?,
+            put_trie: registry.new_histogram(PUT_TRIE_NAME, PUT_TRIE_HELP, tiny_buckets)?,
+            exec_block: registry.new_histogram(EXEC_BLOCK_NAME, EXEC_BLOCK_HELP, common_buckets)?,
             latest_commit_step,
             exec_queue_size,
-            registry: registry.clone(),
         })
-    }
-}
-
-impl Drop for Metrics {
-    fn drop(&mut self) {
-        unregister_metric!(self.registry, self.run_execute);
-        unregister_metric!(self.registry, self.apply_effect);
-        unregister_metric!(self.registry, self.commit_upgrade);
-        unregister_metric!(self.registry, self.run_query);
-        unregister_metric!(self.registry, self.commit_step);
-        unregister_metric!(self.registry, self.get_balance);
-        unregister_metric!(self.registry, self.get_era_validators);
-        unregister_metric!(self.registry, self.get_bids);
-        unregister_metric!(self.registry, self.put_trie);
-        unregister_metric!(self.registry, self.get_trie);
-        unregister_metric!(self.registry, self.exec_block);
-        unregister_metric!(self.registry, self.latest_commit_step);
-        unregister_metric!(self.registry, self.exec_queue_size);
     }
 }

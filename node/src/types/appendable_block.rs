@@ -6,6 +6,7 @@ use std::{
 use casper_types::{Gas, PublicKey, TimeDiff, Timestamp};
 use datasize::DataSize;
 use num_traits::Zero;
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::types::{
@@ -15,8 +16,8 @@ use crate::types::{
 
 const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
 
-#[derive(Debug, Error)]
-pub(crate) enum AddError {
+#[derive(Copy, Clone, DataSize, Debug, Error, Serialize)]
+pub enum AddError {
     #[error("would exceed maximum transfer count per block")]
     TransferCount,
     #[error("would exceed maximum deploy count per block")]

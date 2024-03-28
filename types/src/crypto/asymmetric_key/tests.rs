@@ -198,6 +198,7 @@ fn hash<T: Hash>(data: &T) -> u64 {
 }
 
 fn check_ord_and_hash<T: Clone + Ord + PartialOrd + Hash>(low: T, high: T) {
+    #[allow(clippy::redundant_clone)]
     let low_copy = low.clone();
 
     assert_eq!(hash(&low), hash(&low_copy));

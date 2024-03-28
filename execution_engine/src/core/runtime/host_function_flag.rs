@@ -76,6 +76,7 @@ mod tests {
             assert!(flag.is_in_host_function_scope());
 
             {
+                #[allow(clippy::redundant_clone)]
                 let cloned_flag = flag.clone();
                 assert_eq!(cloned_flag.counter.get(), 1);
                 assert!(cloned_flag.is_in_host_function_scope());

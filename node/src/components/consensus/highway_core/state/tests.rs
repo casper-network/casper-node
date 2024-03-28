@@ -500,6 +500,8 @@ fn validate_lnc_mixed_citations() -> Result<(), AddUnitError<TestContext>> {
     if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
+
+    #[rustfmt::skip]
     // Eric's vote should not require an endorsement as his unit e0 cites equivocator Carol before
     // the fork.
     //
@@ -545,6 +547,8 @@ fn validate_lnc_transitive_endorsement() -> Result<(), AddUnitError<TestContext>
     if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
+
+    #[rustfmt::skip]
     // Endorsements should be transitive to descendants.
     // c1 doesn't have to be endorsed, it is enough that c0 is.
     //
@@ -582,6 +586,8 @@ fn validate_lnc_cite_descendant_of_equivocation() -> Result<(), AddUnitError<Tes
     if !ENABLE_ENDORSEMENTS {
         return Ok(());
     }
+
+    #[rustfmt::skip]
     // a0 cites a descendant b1 of an equivocation vote (b0 and b0').
     // This is still detected as violation of the LNC.
     //

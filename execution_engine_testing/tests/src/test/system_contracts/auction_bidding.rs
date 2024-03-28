@@ -1,11 +1,12 @@
 use num_traits::Zero;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::{
     engine_state::{
@@ -181,10 +182,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request_5).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
-        .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
     let bids: Bids = builder.get_bids();
     let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
@@ -540,10 +538,189 @@ fn should_run_successful_bond_and_unbond_with_release() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
+
+    let bids: Bids = builder.get_bids();
+    assert!(!bids.is_empty());
+
+    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid_purse = *bid.bonding_purse();
+    assert_eq!(
+        builder.get_purse_balance(bid_purse),
+        U512::from(GENESIS_ACCOUNT_STAKE) - unbond_amount, // remaining funds
+    );
+}
+
+#[ignore]
+#[test]
+fn should_run_successful_bond_and_unbond_with_release_on_lmdb() {
+    let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
+
+    let tempdir = tempfile::tempdir().expect("should create tempdir");
+
+    let mut builder = LmdbWasmTestBuilder::new_with_production_chainspec(tempdir.path());
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
+
+    let unbonding_purse = default_account.main_purse();
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            "target" => *SYSTEM_ADDR,
+            "amount" => U512::from(TRANSFER_AMOUNT*  2)
+        },
+    )
+    .build();
+
+    builder
+        .scratch_exec_and_commit(exec_request)
+        .expect_success();
+    builder.write_scratch_to_db();
+
+    let _system_account = builder
+        .get_account(*SYSTEM_ADDR)
+        .expect("should get account 1");
+
+    let _default_account = builder
+        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should get account 1");
+
+    let exec_request_1 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(GENESIS_ACCOUNT_STAKE),
+            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+            ARG_DELEGATION_RATE => DELEGATION_RATE,
+        },
+    )
+    .build();
+
+    builder
+        .scratch_exec_and_commit(exec_request_1)
+        .expect_success();
+    builder.write_scratch_to_db();
+
+    let bids: Bids = builder.get_bids();
+    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid_purse = *bid.bonding_purse();
+    assert_eq!(
+        builder.get_purse_balance(bid_purse),
+        GENESIS_ACCOUNT_STAKE.into()
+    );
+
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
+    assert_eq!(unbond_purses.len(), 0);
+
+    //
+    // Advance era by calling run_auction
+    //
+    let step_request = StepRequestBuilder::new()
+        .with_parent_state_hash(builder.get_post_state_hash())
+        .with_protocol_version(ProtocolVersion::V1_0_0)
+        .with_next_era_id(builder.get_era().successor())
+        .with_run_auction(true)
+        .build();
+
+    builder.step_with_scratch(step_request);
+
+    builder.write_scratch_to_db();
+
+    //
+    // Partial unbond
+    //
+
+    let unbond_amount = U512::from(GENESIS_ACCOUNT_STAKE) - 1;
+
+    let exec_request_2 = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_WITHDRAW_BID,
+        runtime_args! {
+            ARG_AMOUNT => unbond_amount,
+            ARG_PUBLIC_KEY => default_public_key_arg.clone(),
+        },
+    )
+    .build();
+
+    builder
+        .scratch_exec_and_commit(exec_request_2)
+        .expect_success();
+
+    builder.write_scratch_to_db();
+
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
+    assert_eq!(unbond_purses.len(), 1);
+
+    let unbond_list = unbond_purses
         .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+        .expect("should have unbond");
+    assert_eq!(unbond_list.len(), 1);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+
+    assert_eq!(unbond_list[0].era_of_creation(), INITIAL_ERA_ID + 1);
+
+    let unbond_era_1 = unbond_list[0].era_of_creation();
+
+    let account_balance_before_auction = builder.get_purse_balance(unbonding_purse);
+
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
+    assert_eq!(unbond_purses.len(), 1);
+
+    let unbond_list = unbond_purses
+        .get(&DEFAULT_ACCOUNT_ADDR)
+        .expect("should have unbond");
+    assert_eq!(unbond_list.len(), 1);
+    assert_eq!(
+        unbond_list[0].validator_public_key(),
+        &default_public_key_arg,
+    );
+    assert!(unbond_list[0].is_validator());
+
+    assert_eq!(
+        builder.get_purse_balance(unbonding_purse),
+        account_balance_before_auction, // Not paid yet
+    );
+
+    let unbond_era_2 = unbond_list[0].era_of_creation();
+
+    assert_eq!(unbond_era_2, unbond_era_1); // era of withdrawal didn't change since first run
+
+    let era_id_before = builder.get_era();
+    //
+    // Advance state to hit the unbonding period
+    //
+    for _ in 0..=builder.get_unbonding_delay() {
+        let step_request = StepRequestBuilder::new()
+            .with_parent_state_hash(builder.get_post_state_hash())
+            .with_protocol_version(ProtocolVersion::V1_0_0)
+            .with_next_era_id(builder.get_era().successor())
+            .with_run_auction(true)
+            .build();
+
+        builder.step_with_scratch(step_request);
+
+        builder.write_scratch_to_db();
+    }
+
+    let era_id_after = builder.get_era();
+
+    assert_ne!(era_id_before, era_id_after);
+
+    let unbond_purses: UnbondingPurses = builder.get_unbonds();
+    assert!(
+        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
+        "{:?}",
+        unbond_purses
+    );
 
     let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());
@@ -732,10 +909,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
-        .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
 
     let bids: Bids = builder.get_bids();
     assert!(!bids.is_empty());

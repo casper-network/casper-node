@@ -393,8 +393,8 @@ impl<C: Context + 'static> Synchronizer<C> {
                 // state after `dep` is added, rather than `transitive_dependency`.
                 self.add_missing_dependency(dep.clone(), pv);
                 // If we already have the dependency and it is a proposal that is currently being
-                // handled by the block validator, and this sender is already known as a source,
-                // do nothing.
+                // handled by the proposed block validator, and this sender is already known as a
+                // source, do nothing.
                 if pending_values
                     .values()
                     .flatten()
@@ -403,8 +403,9 @@ impl<C: Context + 'static> Synchronizer<C> {
                     continue;
                 }
                 // If we already have the dependency and it is a proposal that is currently being
-                // handled by the block validator, and this sender is not yet known as a source,
-                // we return the proposal as if this sender had sent it to us, so they get added.
+                // handled by the proposed block validator, and this sender is not yet known as a
+                // source, we return the proposal as if this sender had sent it to us, so they get
+                // added.
                 if let Some((vv, _)) = pending_values
                     .values()
                     .flatten()

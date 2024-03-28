@@ -27,16 +27,16 @@ use super::*;
 #[derive(Debug, From)]
 enum ReactorEvent {
     #[from]
-    BlockValidator(Event),
+    ProposedBlockValidator(Event),
     #[from]
     Fetcher(FetcherRequest<Deploy>),
     #[from]
     Storage(StorageRequest),
 }
 
-impl From<BlockValidationRequest> for ReactorEvent {
-    fn from(req: BlockValidationRequest) -> ReactorEvent {
-        ReactorEvent::BlockValidator(req.into())
+impl From<ProposedBlockValidationRequest> for ReactorEvent {
+    fn from(req: ProposedBlockValidationRequest) -> ReactorEvent {
+        ReactorEvent::ProposedBlockValidator(req.into())
     }
 }
 
@@ -51,9 +51,9 @@ impl MockReactor {
         }
     }
 
-    async fn expect_block_validator_event(&self) -> Event {
+    async fn expect_proposed_block_validator_event(&self) -> Event {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
-        if let ReactorEvent::BlockValidator(event) = reactor_event {
+        if let ReactorEvent::ProposedBlockValidator(event) = reactor_event {
             event
         } else {
             panic!("unexpected event: {:?}", reactor_event);
@@ -107,7 +107,7 @@ pub(super) fn new_proposed_block(
     transfers: Vec<DeployHashWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
-    // These values are not checked by the block validator.
+    // These values are not checked by the proposed block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
     let block_payload = BlockPayload::new(deploys, transfers, vec![], true);
     ProposedBlock::new(Arc::new(block_payload), block_context)
@@ -166,7 +166,7 @@ pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     )
 }
 
-/// Validates a block using a `BlockValidator` component, and returns the result.
+/// Validates a block using a `ProposedBlockValidator` component, and returns the result.
 async fn validate_block(
     rng: &mut TestRng,
     timestamp: Timestamp,
@@ -188,18 +188,19 @@ async fn validate_block(
     let reactor = MockReactor::new();
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let mut block_validator = BlockValidator::new(Arc::new(chainspec), Config::default());
+    let mut proposed_block_validator =
+        ProposedBlockValidator::new(Arc::new(chainspec), Config::default());
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.
     let bob_node_id = NodeId::random(rng);
     let validation_result =
         tokio::spawn(effect_builder.validate_block(bob_node_id, proposed_block.clone()));
-    let event = reactor.expect_block_validator_event().await;
-    let effects = block_validator.handle_event(effect_builder, rng, event);
+    let event = reactor.expect_proposed_block_validator_event().await;
+    let effects = proposed_block_validator.handle_event(effect_builder, rng, event);
 
     // If validity could already be determined, the effect will be the validation response.
-    if block_validator
+    if proposed_block_validator
         .validation_states
         .values()
         .all(BlockValidationState::completed)
@@ -208,7 +209,7 @@ async fn validate_block(
         for effect in effects {
             tokio::spawn(effect).await.unwrap(); // Response.
         }
-        return validation_result.await.unwrap();
+        return validation_result.await.unwrap().is_ok();
     }
 
     // Otherwise the effects must be requests to fetch the block's deploys.
@@ -229,7 +230,7 @@ async fn validate_block(
         let events = fetch_result.await.unwrap();
         assert_eq!(1, events.len());
         effects.extend(events.into_iter().flat_map(|found_deploy| {
-            block_validator.handle_event(effect_builder, rng, found_deploy)
+            proposed_block_validator.handle_event(effect_builder, rng, found_deploy)
         }));
     }
 
@@ -238,7 +239,7 @@ async fn validate_block(
     for effect in effects {
         tokio::spawn(effect).await.unwrap(); // Response.
     }
-    validation_result.await.unwrap()
+    validation_result.await.unwrap().is_ok()
 }
 
 /// Verifies that a block without any deploys or transfers is valid.
@@ -247,7 +248,7 @@ async fn empty_block() {
     assert!(validate_block(&mut TestRng::new(), 1000.into(), vec![], vec![]).await);
 }
 
-/// Verifies that the block validator checks deploy and transfer timestamps and ttl.
+/// Verifies that the proposed block validator checks deploy and transfer timestamps and ttl.
 #[tokio::test]
 async fn ttl() {
     // The ttl is 200 ms, and our deploys and transfers have timestamps 900 and 1000. So the block
@@ -316,7 +317,7 @@ async fn transfer_deploy_mixup_and_replay() {
     assert!(!validate_block(&mut rng, timestamp, deploys, transfers).await);
 }
 
-/// Verifies that the block validator fetches from multiple peers.
+/// Verifies that the proposed block validator fetches from multiple peers.
 #[tokio::test]
 async fn should_fetch_from_multiple_peers() {
     let _ = crate::logging::init();
@@ -348,7 +349,8 @@ async fn should_fetch_from_multiple_peers() {
         let effect_builder =
             EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
         let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let mut block_validator = BlockValidator::new(Arc::new(chainspec), Config::default());
+        let mut proposed_block_validator =
+            ProposedBlockValidator::new(Arc::new(chainspec), Config::default());
 
         // Have a validation request for each one of the peers. These futures will eventually all
         // resolve to the same result, i.e. whether the block is valid or not.
@@ -361,8 +363,8 @@ async fn should_fetch_from_multiple_peers() {
 
         let mut fetch_effects = VecDeque::new();
         for index in 0..peer_count {
-            let event = reactor.expect_block_validator_event().await;
-            let effects = block_validator.handle_event(effect_builder, &mut rng, event);
+            let event = reactor.expect_proposed_block_validator_event().await;
+            let effects = proposed_block_validator.handle_event(effect_builder, &mut rng, event);
             if index == 0 {
                 assert_eq!(effects.len(), 6);
                 fetch_effects.extend(effects);
@@ -397,10 +399,10 @@ async fn should_fetch_from_multiple_peers() {
             let event = events.pop().unwrap();
             // New fetch requests will be made using a different peer for all deploys not already
             // registered as fetched.
-            let effects = block_validator.handle_event(effect_builder, &mut rng, event);
+            let effects = proposed_block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
-                missing = block_validator
+                missing = proposed_block_validator
                     .validation_states
                     .values()
                     .next()
@@ -436,10 +438,10 @@ async fn should_fetch_from_multiple_peers() {
             let event = events.pop().unwrap();
             // New fetch requests will be made using a different peer for all deploys not already
             // registered as fetched.
-            let effects = block_validator.handle_event(effect_builder, &mut rng, event);
+            let effects = proposed_block_validator.handle_event(effect_builder, &mut rng, event);
             if !effects.is_empty() {
                 assert!(missing.is_empty());
-                missing = block_validator
+                missing = proposed_block_validator
                     .validation_states
                     .values()
                     .next()
@@ -471,7 +473,7 @@ async fn should_fetch_from_multiple_peers() {
             let event = events.pop().unwrap();
             // Once the block is deemed valid (i.e. when the final missing deploy is successfully
             // fetched) the effects will be three validation responses.
-            effects.extend(block_validator.handle_event(effect_builder, &mut rng, event));
+            effects.extend(proposed_block_validator.handle_event(effect_builder, &mut rng, event));
             assert!(effects.is_empty() || effects.len() == peer_count as usize);
         }
 
@@ -480,7 +482,7 @@ async fn should_fetch_from_multiple_peers() {
         }
 
         for validation_result in validation_results {
-            assert!(validation_result.await.unwrap());
+            assert!(validation_result.await.unwrap().is_ok());
         }
     })
     .await

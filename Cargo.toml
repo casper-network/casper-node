@@ -15,6 +15,8 @@ members = [
     "utils/highway-rewards-analysis",
     "utils/highway-state-grapher",
 ]
+# Ensures we do not pull in all the features of dev dependencies when building.
+resolver = "2"
 
 default-members = [
     "ci/casper_updater",
@@ -33,13 +35,6 @@ default-members = [
 
 exclude = ["utils/nctl/remotes/casper-client-rs"]
 
-resolver = "2"
-
-# Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
-# perf data.
-[profile.release.package.casper-engine-tests]
-debug = true
-
 [profile.release]
 codegen-units = 1
 lto = true
@@ -47,3 +42,7 @@ lto = true
 [profile.bench]
 codegen-units = 1
 lto = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

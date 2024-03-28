@@ -4,7 +4,7 @@
 //! round-robin manner. This way, events are only competing for time within one queue, non-congested
 //! queues can always assume to be speedily processed.
 
-use std::{fmt::Display, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
@@ -13,19 +13,30 @@ use serde::Serialize;
 ///
 /// Priorities are ordered from lowest to highest.
 #[derive(
-    Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, PartialOrd, Ord, Serialize, Default,
+    Copy,
+    Clone,
+    Debug,
+    strum::Display,
+    Eq,
+    PartialEq,
+    Hash,
+    IntoEnumIterator,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Default,
 )]
 pub enum QueueKind {
     /// Control messages for the runtime itself.
     Control,
-    /// Network events that were initiated outside of this node.
+    /// Incoming message events that were initiated outside of this node.
     ///
-    /// Their load may vary and grouping them together in one queue aides DoS protection.
-    NetworkIncoming,
-    /// Network events that are low priority.
-    NetworkLowPriority,
-    /// Network events demand a resource directly.
-    NetworkDemand,
+    /// Their load may vary and grouping them together in one queue aids DoS protection.
+    MessageIncoming,
+    /// Incoming messages that are low priority.
+    MessageLowPriority,
+    /// Incoming messages from validators.
+    MessageValidator,
     /// Network events that were initiated by the local node, such as outgoing messages.
     Network,
     /// NetworkInfo events.
@@ -60,31 +71,6 @@ pub enum QueueKind {
     Api,
 }
 
-impl Display for QueueKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str_value = match self {
-            QueueKind::Control => "Control",
-            QueueKind::NetworkIncoming => "NetworkIncoming",
-            QueueKind::NetworkLowPriority => "NetworkLowPriority",
-            QueueKind::NetworkDemand => "NetworkDemand",
-            QueueKind::Network => "Network",
-            QueueKind::NetworkInfo => "NetworkInfo",
-            QueueKind::Fetch => "Fetch",
-            QueueKind::Regular => "Regular",
-            QueueKind::Gossip => "Gossip",
-            QueueKind::FromStorage => "FromStorage",
-            QueueKind::ToStorage => "ToStorage",
-            QueueKind::ContractRuntime => "ContractRuntime",
-            QueueKind::SyncGlobalState => "SyncGlobalState",
-            QueueKind::FinalitySignature => "FinalitySignature",
-            QueueKind::Consensus => "Consensus",
-            QueueKind::Validation => "Validation",
-            QueueKind::Api => "Api",
-        };
-        write!(f, "{}", str_value)
-    }
-}
-
 impl QueueKind {
     /// Returns the weight of a specific queue.
     ///
@@ -92,10 +78,10 @@ impl QueueKind {
     /// each event processing round.
     fn weight(self) -> NonZeroUsize {
         NonZeroUsize::new(match self {
-            QueueKind::NetworkLowPriority => 1,
+            QueueKind::MessageLowPriority => 1,
             QueueKind::NetworkInfo => 2,
-            QueueKind::NetworkDemand => 2,
-            QueueKind::NetworkIncoming => 8,
+            QueueKind::MessageIncoming => 4,
+            QueueKind::MessageValidator => 8,
             QueueKind::Network => 4,
             QueueKind::Regular => 4,
             QueueKind::Fetch => 4,
@@ -124,9 +110,9 @@ impl QueueKind {
     pub(crate) fn metrics_name(&self) -> &str {
         match self {
             QueueKind::Control => "control",
-            QueueKind::NetworkIncoming => "network_incoming",
-            QueueKind::NetworkDemand => "network_demands",
-            QueueKind::NetworkLowPriority => "network_low_priority",
+            QueueKind::MessageIncoming => "message_incoming",
+            QueueKind::MessageLowPriority => "message_low_priority",
+            QueueKind::MessageValidator => "message_validator",
             QueueKind::Network => "network",
             QueueKind::NetworkInfo => "network_info",
             QueueKind::SyncGlobalState => "sync_global_state",

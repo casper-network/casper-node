@@ -30,13 +30,8 @@ pub const DEFAULT_MAX_STORED_VALUE_SIZE: u32 = 8 * 1024 * 1024;
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
 /// Default value for strict argument checking.
 pub const DEFAULT_STRICT_ARGUMENT_CHECKING: bool = false;
-/// 91 days / 7 days in a week = 13 weeks
-/// Length of total vesting schedule in days.
-const VESTING_SCHEDULE_LENGTH_DAYS: usize = 91;
-const DAY_MILLIS: usize = 24 * 60 * 60 * 1000;
 /// Default length of total vesting schedule period expressed in days.
-pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
-    VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
+pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 = 0;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.

@@ -1,7 +1,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, net::SocketAddr};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ pub struct PeerEntry {
     /// Node id.
     pub node_id: String,
     /// Node address.
-    pub address: String,
+    pub address: SocketAddr,
 }
 
 /// Map of peer IDs to network addresses.
@@ -30,8 +30,8 @@ impl PeersMap {
     }
 }
 
-impl From<BTreeMap<NodeId, String>> for PeersMap {
-    fn from(input: BTreeMap<NodeId, String>) -> Self {
+impl From<BTreeMap<NodeId, SocketAddr>> for PeersMap {
+    fn from(input: BTreeMap<NodeId, SocketAddr>) -> Self {
         let ret = input
             .into_iter()
             .map(|(node_id, address)| PeerEntry {

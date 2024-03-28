@@ -411,6 +411,10 @@ function setup_asset_node_configs()
         SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
 
         # Set node configuration settings.
+        # Note: To dump TLS keys, add
+        #   "cfg['network']['keylog_path']='$PATH_TO_NET/tlskeys';"
+        # -- but beware, this will break older nodes configurations.
+        # TODO: Write conditional include of this configuration setting.
         SCRIPT=(
             "import toml;"
             "cfg=toml.load('$PATH_TO_CONFIG_FILE');"

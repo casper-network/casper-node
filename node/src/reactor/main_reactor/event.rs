@@ -13,10 +13,11 @@ use crate::{
     components::{
         block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
-        block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
-        diagnostics_port, event_stream_server, fetcher, gossiper,
+        consensus, contract_runtime, deploy_acceptor, deploy_buffer, diagnostics_port,
+        event_stream_server, fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, upgrade_watcher,
+        proposed_block_validator, rest_server, rpc_server, shutdown_trigger, storage, sync_leaper,
+        upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -34,12 +35,12 @@ use crate::{
         },
         requests::{
             AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
-            BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
-            ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
+            BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest,
+            ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest,
-            SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
-            UpgradeWatcherRequest,
+            NetworkInfoRequest, NetworkRequest, ProposedBlockValidationRequest,
+            ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
+            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -129,9 +130,9 @@ pub(crate) enum MainEvent {
     #[from]
     BlockHeaderFetcherRequest(#[serde(skip_serializing)] FetcherRequest<BlockHeader>),
     #[from]
-    BlockValidator(#[serde(skip_serializing)] block_validator::Event),
+    ProposedBlockValidator(#[serde(skip_serializing)] proposed_block_validator::Event),
     #[from]
-    BlockValidatorRequest(#[serde(skip_serializing)] BlockValidationRequest),
+    ProposedBlockValidatorRequest(#[serde(skip_serializing)] ProposedBlockValidationRequest),
     #[from]
     BlockAccumulator(#[serde(skip_serializing)] block_accumulator::Event),
     #[from]
@@ -282,7 +283,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::DeployGossiper(_) => "DeployGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
-            MainEvent::BlockValidator(_) => "BlockValidator",
+            MainEvent::ProposedBlockValidator(_) => "ProposedBlockValidator",
             MainEvent::ContractRuntimeRequest(_) => "ContractRuntimeRequest",
             MainEvent::BlockHeaderFetcher(_) => "BlockHeaderFetcher",
             MainEvent::TrieOrChunkFetcher(_) => "TrieOrChunkFetcher",
@@ -307,7 +308,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
             MainEvent::DeployBufferRequest(_) => "DeployBufferRequest",
-            MainEvent::BlockValidatorRequest(_) => "BlockValidatorRequest",
+            MainEvent::ProposedBlockValidatorRequest(_) => "ProposedBlockValidatorRequest",
             MainEvent::MetricsRequest(_) => "MetricsRequest",
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
@@ -393,7 +394,9 @@ impl Display for MainEvent {
             MainEvent::ContractRuntimeRequest(event) => {
                 write!(f, "contract runtime request: {:?}", event)
             }
-            MainEvent::BlockValidator(event) => write!(f, "block validator: {}", event),
+            MainEvent::ProposedBlockValidator(event) => {
+                write!(f, "proposed block validator: {}", event)
+            }
             MainEvent::BlockHeaderFetcher(event) => {
                 write!(f, "block header fetcher: {}", event)
             }
@@ -477,8 +480,8 @@ impl Display for MainEvent {
             MainEvent::DeployBufferRequest(req) => {
                 write!(f, "deploy buffer request: {}", req)
             }
-            MainEvent::BlockValidatorRequest(req) => {
-                write!(f, "block validator request: {}", req)
+            MainEvent::ProposedBlockValidatorRequest(req) => {
+                write!(f, "proposed block validator request: {}", req)
             }
             MainEvent::MetricsRequest(req) => write!(f, "metrics request: {}", req),
             MainEvent::ControlAnnouncement(ctrl_ann) => write!(f, "control: {}", ctrl_ann),

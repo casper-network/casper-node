@@ -10,26 +10,30 @@ use casper_types::ProtocolVersion;
 use datasize::DataSize;
 
 use super::{
-    counting_format::ConnectionId,
+    connection_id::ConnectionId,
     message::{ConsensusCertificate, NodeKeyPair},
-    Message,
+    Message, PerChannel,
 };
-use crate::types::Chainspec;
+use crate::types::{chainspec::JulietConfig, Chainspec};
 
 /// Data retained from the chainspec by the networking component.
 ///
 /// Typically this information is used for creating handshakes.
-#[derive(DataSize, Debug)]
+#[derive(Clone, DataSize, Debug)]
 pub(crate) struct ChainInfo {
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     pub(super) network_name: String,
-    /// The maximum message size for a network message, as supplied from the chainspec.
-    pub(super) maximum_net_message_size: u32,
+    /// The maximum handshake message size, as supplied from the chainspec.
+    pub(super) maximum_handshake_message_size: u32,
+    /// The maximum frame size for network transport, as supplied from the chainspec.
+    pub maximum_frame_size: u32,
     /// The protocol version.
     pub(super) protocol_version: ProtocolVersion,
     /// The hash of the chainspec.
     pub(super) chainspec_hash: Digest,
+    /// The Juliet low-level data.
+    pub(super) networking_config: PerChannel<JulietConfig>,
 }
 
 impl ChainInfo {
@@ -39,27 +43,27 @@ impl ChainInfo {
         let network_name = "rust-tests-network";
         ChainInfo {
             network_name: network_name.to_string(),
-            maximum_net_message_size: 24 * 1024 * 1024, // Hardcoded at 24M.
+            maximum_handshake_message_size: 1024 * 1024, // Hardcoded at 1MiB.
             protocol_version: ProtocolVersion::V1_0_0,
             chainspec_hash: Digest::hash(format!("{}-chainspec", network_name)),
+            networking_config: Default::default(),
+            maximum_frame_size: 4096,
         }
     }
 
     /// Create a handshake based on chain identification data.
-    pub(super) fn create_handshake<P>(
+    pub(super) fn create_handshake(
         &self,
         public_addr: SocketAddr,
         consensus_keys: Option<&NodeKeyPair>,
         connection_id: ConnectionId,
-        is_syncing: bool,
-    ) -> Message<P> {
-        Message::Handshake {
+    ) -> Message<()> {
+        Message::<()>::Handshake {
             network_name: self.network_name.clone(),
             public_addr,
             protocol_version: self.protocol_version,
             consensus_certificate: consensus_keys
                 .map(|key_pair| ConsensusCertificate::create(connection_id, key_pair)),
-            is_syncing,
             chainspec_hash: Some(self.chainspec_hash),
         }
     }
@@ -69,9 +73,11 @@ impl From<&Chainspec> for ChainInfo {
     fn from(chainspec: &Chainspec) -> Self {
         ChainInfo {
             network_name: chainspec.network_config.name.clone(),
-            maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
+            maximum_handshake_message_size: chainspec.network_config.maximum_handshake_message_size,
             protocol_version: chainspec.protocol_version(),
             chainspec_hash: chainspec.hash(),
+            networking_config: chainspec.network_config.networking_config,
+            maximum_frame_size: chainspec.network_config.maximum_frame_size,
         }
     }
 }

@@ -1,4 +1,5 @@
 //! The implementation of the Highway consensus protocol.
+#![allow(clippy::arithmetic_side_effects)]
 
 mod vertex;
 

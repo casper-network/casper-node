@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use std::{
     fmt::{self, Debug},
     fs::{self, File},

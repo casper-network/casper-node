@@ -6,27 +6,20 @@ use std::{
 
 use datasize::DataSize;
 use futures::future::BoxFuture;
+use juliet::ChannelId;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use strum::EnumDiscriminants;
+use strum::{Display, EnumCount, EnumIter, FromRepr};
 
 use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 
-use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
-use crate::{
-    effect::EffectBuilder,
-    protocol,
-    types::{Chainspec, NodeId},
-    utils::{
-        opt_display::OptDisplay,
-        specimen::{Cache, LargestSpecimen, SizeEstimator},
-    },
-};
+use super::{connection_id::ConnectionId, Ticket};
+use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -34,10 +27,10 @@ fn default_protocol_version() -> ProtocolVersion {
     ProtocolVersion::V1_0_0
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, EnumDiscriminants)]
-#[strum_discriminants(derive(strum::EnumIter))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Message<P> {
+    // TODO: Remove.
     Handshake {
         /// Network we are connected to.
         network_name: String,
@@ -49,22 +42,9 @@ pub(crate) enum Message<P> {
         /// A self-signed certificate indicating validator status.
         #[serde(default)]
         consensus_certificate: Option<ConsensusCertificate>,
-        /// True if the node is syncing.
-        #[serde(default)]
-        is_syncing: bool,
         /// Hash of the chainspec the node is running.
         #[serde(default)]
         chainspec_hash: Option<Digest>,
-    },
-    /// A ping request.
-    Ping {
-        /// The nonce to be returned with the pong.
-        nonce: Nonce,
-    },
-    /// A pong response.
-    Pong {
-        /// Nonce to match pong to ping.
-        nonce: Nonce,
     },
     Payload(P),
 }
@@ -72,11 +52,10 @@ pub(crate) enum Message<P> {
 impl<P: Payload> Message<P> {
     /// Classifies a message based on its payload.
     #[inline]
+    #[allow(dead_code)] // TODO: Re-add, once decision is made whether to keep message classses.
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
-                MessageKind::Protocol
-            }
+            Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.message_kind(),
         }
     }
@@ -85,61 +64,34 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
+            Message::Handshake { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
 
-    /// Returns the incoming resource estimate of the payload.
-    #[inline]
-    pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
+    /// Determine which channel this message should be sent on.
+    pub(super) fn get_channel(&self) -> Channel {
         match self {
-            Message::Handshake { .. } => 0,
-            // Ping and Pong have a hardcoded weights. Since every ping will result in a pong being
-            // sent as a reply, it has a higher weight.
-            Message::Ping { .. } => 2,
-            Message::Pong { .. } => 1,
-            Message::Payload(payload) => payload.incoming_resource_estimate(weights),
-        }
-    }
-
-    /// Returns whether or not the payload is unsafe for syncing node consumption.
-    #[inline]
-    pub(super) fn payload_is_unsafe_for_syncing_nodes(&self) -> bool {
-        match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
-            Message::Payload(payload) => payload.is_unsafe_for_syncing_peers(),
-        }
-    }
-
-    /// Attempts to create a demand-event from this message.
-    ///
-    /// Succeeds if the outer message contains a payload that can be converted into a demand.
-    pub(super) fn try_into_demand<REv>(
-        self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Box<Self>>
-    where
-        REv: FromIncoming<P> + Send,
-    {
-        match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
-                Err(self.into())
-            }
-            Message::Payload(payload) => {
-                // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
-                REv::try_demand_from_incoming(effect_builder, sender, payload)
-                    .map_err(|err| Message::Payload(err).into())
-            }
+            Message::Handshake { .. } => Channel::Network,
+            Message::Payload(payload) => payload.get_channel(),
         }
     }
 }
 
 /// A pair of secret keys used by consensus.
-pub(super) struct NodeKeyPair {
+#[derive(Clone, DataSize)]
+pub(crate) struct NodeKeyPair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,
+}
+
+impl Debug for NodeKeyPair {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeKeyPair")
+            .field("secret_key", &"..")
+            .field("public_key", &self.public_key)
+            .finish()
+    }
 }
 
 impl NodeKeyPair {
@@ -154,6 +106,11 @@ impl NodeKeyPair {
     /// Sign a value using this keypair.
     fn sign<T: AsRef<[u8]>>(&self, value: T) -> Signature {
         crypto::sign(value, &self.secret_key, &self.public_key)
+    }
+
+    /// Returns a reference to the public key of this key pair.
+    pub(super) fn public_key(&self) -> &PublicKey {
+        &self.public_key
     }
 }
 
@@ -291,22 +248,19 @@ impl<P: Display> Display for Message<P> {
                 public_addr,
                 protocol_version,
                 consensus_certificate,
-                is_syncing,
                 chainspec_hash,
             } => {
                 write!(
                     f,
-                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, is_syncing: {}, chainspec_hash: {}",
+                    "handshake: {}, public addr: {}, protocol_version: {}, consensus_certificate: {}, chainspec_hash: {}",
                     network_name,
                     public_addr,
                     protocol_version,
                     OptDisplay::new(consensus_certificate.as_ref(), "none"),
-                    is_syncing,
+
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
-            Message::Ping { nonce } => write!(f, "ping({})", nonce),
-            Message::Pong { nonce } => write!(f, "pong({})", nonce),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
@@ -314,6 +268,7 @@ impl<P: Display> Display for Message<P> {
 
 /// A classification system for networking messages.
 #[derive(Copy, Clone, Debug)]
+#[allow(dead_code)] // TODO: Re-add, once decision is made whether or not to keep message classses.
 pub(crate) enum MessageKind {
     /// Non-payload messages, like handshakes.
     Protocol,
@@ -354,34 +309,71 @@ impl Display for MessageKind {
     }
 }
 
+/// Multiplexed channel identifier used across a single connection.
+///
+/// Channels are separated mainly to avoid deadlocking issues where two nodes requests a large
+/// amount of items from each other simultaneously, with responses being queued behind requests,
+/// whilst the latter are buffered due to backpressure.
+///
+/// Further separation is done to improve quality of service of certain subsystems, e.g. to
+/// guarantee that consensus is not impaired by the transfer of large trie nodes.
+#[derive(
+    Copy, Clone, Debug, Display, Eq, EnumCount, EnumIter, FromRepr, PartialEq, Ord, PartialOrd,
+)]
+#[repr(u8)]
+pub enum Channel {
+    /// Networking layer messages, handshakes and ping/pong.
+    Network = 0,
+    /// Data solely used for syncing being requested.
+    ///
+    /// We separate sync data (e.g. trie nodes) requests from regular ("data") requests since the
+    /// former are not required for a validating node to make progress on consensus, thus
+    /// separating these can improve latency.
+    SyncDataRequests = 1,
+    /// Sync data requests being answered.
+    ///
+    /// Responses are separated from requests to ensure liveness (see [`Channel`] documentation).
+    SyncDataResponses = 2,
+    /// Requests for data used during regular validator operation.
+    DataRequests = 3,
+    /// Responses for data used during regular validator operation.
+    DataResponses = 4,
+    /// Consensus-level messages, like finality signature announcements and consensus messages.
+    Consensus = 5,
+    /// Regular gossip announcements and responses (e.g. for deploys and blocks).
+    BulkGossip = 6,
+}
+
+impl Channel {
+    #[inline(always)]
+    pub(crate) fn into_channel_id(self) -> ChannelId {
+        ChannelId::new(self as u8)
+    }
+}
+
 /// Network message payload.
 ///
 /// Payloads are what is transferred across the network outside of control messages from the
 /// networking component itself.
 pub(crate) trait Payload:
-    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + 'static
+    Serialize + DeserializeOwned + Clone + Debug + Display + Send + Sync + Unpin + 'static
 {
     /// Classifies the payload based on its contents.
     fn message_kind(&self) -> MessageKind;
-
-    /// The penalty for resource usage of a message to be applied when processed as incoming.
-    fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
 
     /// Determines if the payload should be considered low priority.
     fn is_low_priority(&self) -> bool {
         false
     }
 
-    /// Indicates a message is not safe to send to a syncing node.
-    ///
-    /// This functionality should be removed once multiplexed networking lands.
-    fn is_unsafe_for_syncing_peers(&self) -> bool;
+    /// Determine which channel a message is supposed to sent/received on.
+    fn get_channel(&self) -> Channel;
 }
 
 /// Network message conversion support.
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
-    fn from_incoming(sender: NodeId, payload: P) -> Self;
+    fn from_incoming(sender: NodeId, payload: P, ticket: Ticket) -> Self;
 
     /// Tries to convert a payload into a demand.
     ///
@@ -401,222 +393,17 @@ pub(crate) trait FromIncoming<P> {
         Err(payload)
     }
 }
-/// A generic configuration for payload weights.
-///
-/// Implementors of `Payload` are free to interpret this as they see fit.
-///
-/// The default implementation sets all weights to zero.
-#[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
-pub struct EstimatorWeights {
-    pub consensus: u32,
-    pub block_gossip: u32,
-    pub deploy_gossip: u32,
-    pub finality_signature_gossip: u32,
-    pub address_gossip: u32,
-    pub finality_signature_broadcasts: u32,
-    pub deploy_requests: u32,
-    pub deploy_responses: u32,
-    pub legacy_deploy_requests: u32,
-    pub legacy_deploy_responses: u32,
-    pub block_requests: u32,
-    pub block_responses: u32,
-    pub block_header_requests: u32,
-    pub block_header_responses: u32,
-    pub trie_requests: u32,
-    pub trie_responses: u32,
-    pub finality_signature_requests: u32,
-    pub finality_signature_responses: u32,
-    pub sync_leap_requests: u32,
-    pub sync_leap_responses: u32,
-    pub approvals_hashes_requests: u32,
-    pub approvals_hashes_responses: u32,
-    pub execution_results_requests: u32,
-    pub execution_results_responses: u32,
-}
-
-mod specimen_support {
-    use std::iter;
-
-    use serde::Serialize;
-
-    use crate::utils::specimen::{
-        largest_variant, Cache, LargestSpecimen, SizeEstimator, HIGHEST_UNICODE_CODEPOINT,
-    };
-
-    use super::{ConsensusCertificate, Message, MessageDiscriminants};
-
-    impl<P> LargestSpecimen for Message<P>
-    where
-        P: Serialize + LargestSpecimen,
-    {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            let largest_network_name = estimator.parameter("network_name_limit");
-
-            largest_variant::<Self, MessageDiscriminants, _, _>(
-                estimator,
-                |variant| match variant {
-                    MessageDiscriminants::Handshake => Message::Handshake {
-                        network_name: iter::repeat(HIGHEST_UNICODE_CODEPOINT)
-                            .take(largest_network_name)
-                            .collect(),
-                        public_addr: LargestSpecimen::largest_specimen(estimator, cache),
-                        protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
-                        consensus_certificate: LargestSpecimen::largest_specimen(estimator, cache),
-                        is_syncing: LargestSpecimen::largest_specimen(estimator, cache),
-                        chainspec_hash: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Ping => Message::Ping {
-                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Pong => Message::Pong {
-                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Payload => {
-                        Message::Payload(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                },
-            )
-        }
-    }
-
-    impl LargestSpecimen for ConsensusCertificate {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            ConsensusCertificate {
-                public_key: LargestSpecimen::largest_specimen(estimator, cache),
-                signature: LargestSpecimen::largest_specimen(estimator, cache),
-            }
-        }
-    }
-}
-
-/// An estimator that uses the serialized network representation as a measure of size.
-#[derive(Clone, Debug)]
-pub(crate) struct NetworkMessageEstimator<'a> {
-    /// The chainspec to retrieve estimation values from.
-    chainspec: &'a Chainspec,
-}
-
-impl<'a> NetworkMessageEstimator<'a> {
-    /// Creates a new network message estimator.
-    pub(crate) fn new(chainspec: &'a Chainspec) -> Self {
-        Self { chainspec }
-    }
-
-    /// Returns a parameter by name as `i64`.
-    fn get_parameter(&self, name: &'static str) -> Option<i64> {
-        Some(match name {
-            // The name limit will be larger than the actual name, so it is a safe upper bound.
-            "network_name_limit" => self.chainspec.network_config.name.len() as i64,
-            // These limits are making deploys bigger than they actually are, since many items
-            // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-            "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "recent_era_count" => {
-                (self.chainspec.core_config.unbonding_delay
-                    - self.chainspec.core_config.auction_delay) as i64
-            }
-            "validator_count" => self.chainspec.core_config.validator_slots as i64,
-            "minimum_era_height" => self.chainspec.core_config.minimum_era_height as i64,
-            "era_duration_ms" => self.chainspec.core_config.era_duration.millis() as i64,
-            "minimum_round_length_ms" => self
-                .chainspec
-                .core_config
-                .minimum_block_time
-                .millis()
-                .max(1) as i64,
-            "max_deploy_size" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "approvals_hashes" => {
-                (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count) as i64
-            }
-            "max_deploys_per_block" => self.chainspec.deploy_config.block_max_deploy_count as i64,
-            "max_transfers_per_block" => {
-                self.chainspec.deploy_config.block_max_transfer_count as i64
-            }
-            "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count)
-                    as i64;
-
-                // Note: The +1 is to overestimate, as depending on the serialization format chosen,
-                //       spreading out the approvals can increase or decrease the size. For
-                //       example, in a length-prefixed encoding, putting them all in one may result
-                //       in a smaller size if variable size integer encoding it used. In a format
-                //       using separators without trailing separators (e.g. commas in JSON),
-                //       spreading out will reduce the total number of bytes.
-                ((self.chainspec.deploy_config.block_max_approval_count as i64 + max_total_deploys
-                    - 1)
-                    / max_total_deploys)
-                    .max(0)
-                    + 1
-            }
-            "max_accusations_per_block" => self.chainspec.core_config.validator_slots as i64,
-            // `RADIX` from EE.
-            "max_pointer_per_node" => 255,
-            // Endorsements are currently hard-disabled (via code). If ever re-enabled, this
-            // parameter should ideally be removed entirely.
-            "endorsements_enabled" => 0,
-            _ => return None,
-        })
-    }
-}
-
-/// Encoding helper function.
-///
-/// Encodes a message in the same manner the network component would before sending it.
-fn serialize_net_message<T>(data: &T) -> Vec<u8>
-where
-    T: Serialize,
-{
-    BincodeFormat::default()
-        .serialize_arbitrary(data)
-        .expect("did not expect serialization to fail")
-}
-
-/// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
-    let estimator = &NetworkMessageEstimator::new(chainspec);
-    let cache = &mut Cache::default();
-
-    Message::largest_specimen(estimator, cache)
-}
-
-pub(crate) fn generate_largest_serialized_message(chainspec: &Chainspec) -> Vec<u8> {
-    serialize_net_message(&generate_largest_message(chainspec))
-}
-
-impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
-    fn estimate<T: Serialize>(&self, val: &T) -> usize {
-        serialize_net_message(&val).len()
-    }
-
-    fn parameter<T: TryFrom<i64>>(&self, name: &'static str) -> T {
-        let value = self
-            .get_parameter(name)
-            .unwrap_or_else(|| panic!("missing parameter \"{}\" for specimen estimation", name));
-
-        T::try_from(value).unwrap_or_else(|_| {
-            panic!(
-                "Failed to convert the parameter `{name}` of value `{value}` to the type `{}`",
-                core::any::type_name::<T>()
-            )
-        })
-    }
-}
 
 #[cfg(test)]
 // We use a variety of weird names in these tests.
 #[allow(non_camel_case_types)]
 mod tests {
-    use std::{net::SocketAddr, pin::Pin};
+    use std::net::SocketAddr;
 
-    use assert_matches::assert_matches;
-    use bytes::BytesMut;
     use casper_types::ProtocolVersion;
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
-    use tokio_serde::{Deserializer, Serializer};
 
-    use crate::{components::network::message_pack_format::MessagePackFormat, protocol};
+    use crate::{components::network::handshake, protocol};
 
     use super::*;
 
@@ -700,22 +487,12 @@ mod tests {
 
     /// Serialize a message using the standard serialization method for handshakes.
     fn serialize_message<M: Serialize>(msg: &M) -> Vec<u8> {
-        let mut serializer = MessagePackFormat;
-
-        Pin::new(&mut serializer)
-            .serialize(&msg)
-            .expect("handshake serialization failed")
-            .into_iter()
-            .collect()
+        handshake::serialize(msg).expect("handshake serialization failed")
     }
 
     /// Deserialize a message using the standard deserialization method for handshakes.
     fn deserialize_message<M: DeserializeOwned>(serialized: &[u8]) -> M {
-        let mut deserializer = MessagePackFormat;
-
-        Pin::new(&mut deserializer)
-            .deserialize(&BytesMut::from(serialized))
-            .expect("message deserialization failed")
+        handshake::deserialize(serialized).expect("message deserialization failed")
     }
 
     /// Given a message `from` of type `F`, serializes it, then deserializes it as `T`.
@@ -766,7 +543,6 @@ mod tests {
             public_addr: ([12, 34, 56, 78], 12346).into(),
             protocol_version: ProtocolVersion::from_parts(5, 6, 7),
             consensus_certificate: Some(ConsensusCertificate::random(&mut rng)),
-            is_syncing: false,
             chainspec_hash: Some(Digest::hash("example-chainspec")),
         };
 
@@ -800,7 +576,6 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
@@ -808,7 +583,6 @@ mod tests {
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             assert!(consensus_certificate.is_none());
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -824,16 +598,13 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
-            assert!(!is_syncing);
             assert_eq!(network_name, "serialization-test");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::V1_0_0);
             assert!(consensus_certificate.is_none());
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -849,14 +620,12 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
             assert_eq!(network_name, "example-handshake");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 2));
-            assert!(!is_syncing);
             let ConsensusCertificate {
                 public_key,
                 signature,
@@ -877,7 +646,6 @@ mod tests {
                 )
                 .unwrap()
             );
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -893,11 +661,9 @@ mod tests {
             public_addr,
             protocol_version,
             consensus_certificate,
-            is_syncing,
             chainspec_hash,
         } = modern_handshake
         {
-            assert!(!is_syncing);
             assert_eq!(network_name, "example-handshake");
             assert_eq!(public_addr, ([12, 34, 56, 78], 12346).into());
             assert_eq!(protocol_version, ProtocolVersion::from_parts(1, 4, 3));
@@ -921,7 +687,6 @@ mod tests {
                 )
                 .unwrap()
             );
-            assert!(!is_syncing);
             assert!(chainspec_hash.is_none())
         } else {
             panic!("did not expect modern handshake to deserialize to anything but")
@@ -953,22 +718,10 @@ mod tests {
     }
 
     #[test]
-    fn assert_the_largest_specimen_type_and_size() {
-        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
-        let specimen = generate_largest_message(&chainspec);
-
-        assert_matches!(
-            specimen,
-            Message::Payload(protocol::Message::GetResponse { .. }),
-            "the type of the largest possible network message based on the production chainspec has changed"
-        );
-
-        let serialized = serialize_net_message(&specimen);
-
-        assert_eq!(
-            serialized.len(),
-            8_388_736,
-            "the size of the largest possible network message based on the production chainspec has changed"
-        );
+    fn channels_enum_does_not_have_holes() {
+        for idx in 0..Channel::COUNT {
+            let result = Channel::from_repr(idx as u8);
+            result.expect("must not have holes in channel enum");
+        }
     }
 }

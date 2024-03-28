@@ -5,9 +5,9 @@ use tracing::error;
 use crate::{
     logging::LoggingConfig,
     types::{Chainspec, NodeConfig},
-    BlockAccumulatorConfig, BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig,
-    ContractRuntimeConfig, DeployAcceptorConfig, DeployBufferConfig, DiagnosticsPortConfig,
-    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
+    BlockAccumulatorConfig, BlockSynchronizerConfig, ConsensusConfig, ContractRuntimeConfig,
+    DeployAcceptorConfig, DeployBufferConfig, DiagnosticsPortConfig, EventStreamServerConfig,
+    FetcherConfig, GossipConfig, NetworkConfig, ProposedBlockValidatorConfig, RestServerConfig,
     RpcServerConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
 };
 
@@ -50,8 +50,8 @@ pub struct Config {
     pub block_accumulator: BlockAccumulatorConfig,
     /// Config values for the block synchronizer.
     pub block_synchronizer: BlockSynchronizerConfig,
-    /// Config values for the block validator.
-    pub block_validator: BlockValidatorConfig,
+    /// Config values for the proposed block validator.
+    pub proposed_block_validator: ProposedBlockValidatorConfig,
     /// Config values for the upgrade watcher.
     pub upgrade_watcher: UpgradeWatcherConfig,
 }

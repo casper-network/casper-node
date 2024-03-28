@@ -8,6 +8,7 @@ use casper_types::Timestamp;
 use crate::components::consensus::{
     highway_core::{
         endorsement::SignedEndorsement,
+        evidence::Evidence,
         highway::{PingError, VertexError},
         state::Panorama,
     },
@@ -15,81 +16,47 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Validators},
 };
 
-#[allow(clippy::arithmetic_side_effects)]
-mod relaxed {
-    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
-
-    use casper_types::Timestamp;
-    use datasize::DataSize;
-    use serde::{Deserialize, Serialize};
-    use strum::EnumDiscriminants;
-
-    use crate::components::consensus::{
-        highway_core::evidence::Evidence, traits::Context, utils::ValidatorIndex,
-    };
-
-    use super::{Endorsements, Ping, SignedWireUnit};
-
-    /// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
-    #[derive(
-        DataSize,
-        Clone,
-        Debug,
-        Eq,
-        PartialEq,
-        PartialOrd,
-        Ord,
-        Hash,
-        Serialize,
-        Deserialize,
-        EnumDiscriminants,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Dependency<C>
-    where
-        C: Context,
-    {
-        /// The hash of a unit.
-        Unit(C::Hash),
-        /// The index of the validator against which evidence is needed.
-        Evidence(ValidatorIndex),
-        /// The hash of the unit to be endorsed.
-        Endorsement(C::Hash),
-        /// The ping by a particular validator for a particular timestamp.
-        Ping(ValidatorIndex, Timestamp),
-    }
-
-    /// An element of the protocol state, that might depend on other elements.
-    ///
-    /// It is the vertex in a directed acyclic graph, whose edges are dependencies.
-    #[derive(
-        DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
-    )]
-    #[serde(bound(
-        serialize = "C::Hash: Serialize",
-        deserialize = "C::Hash: Deserialize<'de>",
-    ))]
-    #[strum_discriminants(derive(strum::EnumIter))]
-    pub enum Vertex<C>
-    where
-        C: Context,
-    {
-        /// A signed unit of the consensus DAG.
-        Unit(SignedWireUnit<C>),
-        /// Evidence of a validator's transgression.
-        Evidence(Evidence<C>),
-        /// Endorsements for a unit.
-        Endorsements(Endorsements<C>),
-        /// A ping conveying the activity of its creator.
-        Ping(Ping<C>),
-    }
+/// A dependency of a `Vertex` that can be satisfied by one or more other vertices.
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub enum Dependency<C>
+where
+    C: Context,
+{
+    /// The hash of a unit.
+    Unit(C::Hash),
+    /// The index of the validator against which evidence is needed.
+    Evidence(ValidatorIndex),
+    /// The hash of the unit to be endorsed.
+    Endorsement(C::Hash),
+    /// The ping by a particular validator for a particular timestamp.
+    Ping(ValidatorIndex, Timestamp),
 }
-pub use relaxed::{Dependency, DependencyDiscriminants, Vertex, VertexDiscriminants};
+
+/// An element of the protocol state, that might depend on other elements.
+///
+/// It is the vertex in a directed acyclic graph, whose edges are dependencies.
+#[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[serde(bound(
+    serialize = "C::Hash: Serialize",
+    deserialize = "C::Hash: Deserialize<'de>",
+))]
+pub enum Vertex<C>
+where
+    C: Context,
+{
+    /// A signed unit of the consensus DAG.
+    Unit(SignedWireUnit<C>),
+    /// Evidence of a validator's transgression.
+    Evidence(Evidence<C>),
+    /// Endorsements for a unit.
+    Endorsements(Endorsements<C>),
+    /// A ping conveying the activity of its creator.
+    Ping(Ping<C>),
+}
 
 impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.
@@ -172,134 +139,6 @@ impl<C: Context> Vertex<C> {
     /// Returns true whether unit is a proposal.
     pub fn is_proposal(&self) -> bool {
         self.value().is_some()
-    }
-}
-
-mod specimen_support {
-    use super::{
-        Dependency, DependencyDiscriminants, Endorsements, HashedWireUnit, Ping, SignedEndorsement,
-        SignedWireUnit, Vertex, VertexDiscriminants, WireUnit,
-    };
-    use crate::{
-        components::consensus::ClContext,
-        utils::specimen::{
-            btree_set_distinct_from_prop, largest_variant, vec_prop_specimen, Cache,
-            LargestSpecimen, SizeEstimator,
-        },
-    };
-
-    impl LargestSpecimen for Vertex<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, VertexDiscriminants, _, _>(estimator, |variant| match variant {
-                VertexDiscriminants::Unit => {
-                    Vertex::Unit(LargestSpecimen::largest_specimen(estimator, cache))
-                }
-                VertexDiscriminants::Evidence => {
-                    Vertex::Evidence(LargestSpecimen::largest_specimen(estimator, cache))
-                }
-                VertexDiscriminants::Endorsements => {
-                    if estimator.parameter_bool("endorsements_enabled") {
-                        Vertex::Endorsements(LargestSpecimen::largest_specimen(estimator, cache))
-                    } else {
-                        Vertex::Ping(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                }
-                VertexDiscriminants::Ping => {
-                    Vertex::Ping(LargestSpecimen::largest_specimen(estimator, cache))
-                }
-            })
-        }
-    }
-
-    impl LargestSpecimen for Dependency<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            largest_variant::<Self, DependencyDiscriminants, _, _>(estimator, |variant| {
-                match variant {
-                    DependencyDiscriminants::Unit => {
-                        Dependency::Unit(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    DependencyDiscriminants::Evidence => {
-                        Dependency::Evidence(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    DependencyDiscriminants::Endorsement => {
-                        Dependency::Endorsement(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
-                    DependencyDiscriminants::Ping => Dependency::Ping(
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                        LargestSpecimen::largest_specimen(estimator, cache),
-                    ),
-                }
-            })
-        }
-    }
-
-    impl LargestSpecimen for SignedWireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            SignedWireUnit {
-                hashed_wire_unit: LargestSpecimen::largest_specimen(estimator, cache),
-                signature: LargestSpecimen::largest_specimen(estimator, cache),
-            }
-        }
-    }
-
-    impl LargestSpecimen for Endorsements<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            Endorsements {
-                unit: LargestSpecimen::largest_specimen(estimator, cache),
-                endorsers: if estimator.parameter_bool("endorsements_enabled") {
-                    vec_prop_specimen(estimator, "validator_count", cache)
-                } else {
-                    Vec::new()
-                },
-            }
-        }
-    }
-
-    impl LargestSpecimen for SignedEndorsement<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            SignedEndorsement::new(
-                LargestSpecimen::largest_specimen(estimator, cache),
-                LargestSpecimen::largest_specimen(estimator, cache),
-            )
-        }
-    }
-
-    impl LargestSpecimen for Ping<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            Ping {
-                creator: LargestSpecimen::largest_specimen(estimator, cache),
-                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
-                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
-                signature: LargestSpecimen::largest_specimen(estimator, cache),
-            }
-        }
-    }
-
-    impl LargestSpecimen for HashedWireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            if let Some(item) = cache.get::<Self>() {
-                return item.clone();
-            }
-
-            let hash = LargestSpecimen::largest_specimen(estimator, cache);
-            let wire_unit = LargestSpecimen::largest_specimen(estimator, cache);
-            cache.set(HashedWireUnit { hash, wire_unit }).clone()
-        }
-    }
-
-    impl LargestSpecimen for WireUnit<ClContext> {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            WireUnit {
-                panorama: LargestSpecimen::largest_specimen(estimator, cache),
-                creator: LargestSpecimen::largest_specimen(estimator, cache),
-                instance_id: LargestSpecimen::largest_specimen(estimator, cache),
-                value: LargestSpecimen::largest_specimen(estimator, cache),
-                seq_number: LargestSpecimen::largest_specimen(estimator, cache),
-                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
-                round_exp: LargestSpecimen::largest_specimen(estimator, cache),
-                endorsed: btree_set_distinct_from_prop(estimator, "validator_count", cache),
-            }
-        }
     }
 }
 

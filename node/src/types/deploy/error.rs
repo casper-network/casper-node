@@ -156,7 +156,7 @@ pub enum Error {
 
     /// Error while decoding from JSON.
     #[error("decoding from JSON: {0}")]
-    DecodeFromJson(Box<dyn StdError>),
+    DecodeFromJson(Box<dyn StdError + Send>),
 
     /// Failed to get "amount" from `payment()`'s runtime args.
     #[error("invalid payment: missing \"amount\" arg")]

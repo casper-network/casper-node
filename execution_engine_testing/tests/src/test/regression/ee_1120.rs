@@ -4,7 +4,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
@@ -84,7 +84,8 @@ fn should_run_ee_1120_slash_delegators() {
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let tempdir = tempfile::tempdir().unwrap();
+    let mut builder = LmdbWasmTestBuilder::new_with_production_chainspec(tempdir.path());
     builder.run_genesis(&run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
@@ -97,7 +98,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .scratch_exec_and_commit(transfer_request_1)
+        .expect_success();
+    builder.write_scratch_to_db();
 
     let transfer_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -109,7 +113,11 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .scratch_exec_and_commit(transfer_request_2)
+        .expect_success()
+        .commit();
+    builder.write_scratch_to_db();
 
     let auction = builder.get_auction_contract_hash();
 
@@ -149,19 +157,16 @@ fn should_run_ee_1120_slash_delegators() {
     .build();
 
     builder
-        .exec(delegate_exec_request_1)
-        .expect_success()
-        .commit();
+        .scratch_exec_and_commit(delegate_exec_request_1)
+        .expect_success();
 
     builder
-        .exec(delegate_exec_request_2)
-        .expect_success()
-        .commit();
+        .scratch_exec_and_commit(delegate_exec_request_2)
+        .expect_success();
 
     builder
-        .exec(delegate_exec_request_3)
-        .expect_success()
-        .commit();
+        .scratch_exec_and_commit(delegate_exec_request_3)
+        .expect_success();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
     let initial_bids: Bids = builder.get_bids();
@@ -209,10 +214,18 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(undelegate_request_1).commit().expect_success();
-    builder.exec(undelegate_request_2).commit().expect_success();
-    builder.exec(undelegate_request_3).commit().expect_success();
-
+    builder
+        .scratch_exec_and_commit(undelegate_request_1)
+        .expect_success();
+    builder.write_scratch_to_db();
+    builder
+        .scratch_exec_and_commit(undelegate_request_2)
+        .expect_success();
+    builder.write_scratch_to_db();
+    builder
+        .scratch_exec_and_commit(undelegate_request_3)
+        .expect_success();
+    builder.write_scratch_to_db();
     // Check unbonding purses before slashing
 
     let unbond_purses_before: UnbondingPurses = builder.get_unbonds();
@@ -289,7 +302,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_1).expect_success().commit();
+    builder
+        .scratch_exec_and_commit(slash_request_1)
+        .expect_success();
+    builder.write_scratch_to_db();
 
     // Compare bids after slashing validator 2
     let bids_after: Bids = builder.get_bids();
@@ -346,7 +362,8 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_2).expect_success().commit();
+    builder.scratch_exec_and_commit(slash_request_2);
+    builder.write_scratch_to_db();
 
     let bids_after: Bids = builder.get_bids();
     assert_eq!(bids_after.len(), 2);
@@ -355,12 +372,6 @@ fn should_run_ee_1120_slash_delegators() {
     assert!(validator_1_bid.staked_amount().is_zero());
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_1_ADDR)
-        .unwrap()
-        .is_empty());
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_2_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(!unbond_purses_after.contains_key(&VALIDATOR_1_ADDR));
+    assert!(!unbond_purses_after.contains_key(&VALIDATOR_2_ADDR));
 }

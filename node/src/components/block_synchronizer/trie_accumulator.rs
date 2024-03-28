@@ -11,7 +11,7 @@ use derive_more::From;
 use rand::seq::SliceRandom;
 use serde::Serialize;
 use thiserror::Error;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 use casper_execution_engine::storage::trie::TrieRaw;
 use casper_hashing::{ChunkWithProof, Digest};
@@ -168,7 +168,7 @@ impl TrieAccumulator {
         match trie_or_chunk {
             TrieOrChunk::Value(trie) => match self.partial_chunks.remove(&hash) {
                 None => {
-                    error!(%hash, "fetched a trie we didn't request!");
+                    debug!(%hash, "fetched a trie we didn't request!");
                     Effects::new()
                 }
                 Some(partial_chunks) => {
@@ -194,7 +194,7 @@ impl TrieAccumulator {
         let count = chunk.proof().count();
         let mut partial_chunks = match self.partial_chunks.remove(&digest) {
             None => {
-                error!(%digest, %index, "got a chunk that wasn't requested");
+                debug!(%digest, %index, "got a chunk that wasn't requested");
                 return Effects::new();
             }
             Some(partial_chunks) => partial_chunks,
@@ -281,7 +281,7 @@ where
                 let peer = match peers.last() {
                     Some(peer) => *peer,
                     None => {
-                        error!(%hash, "tried to fetch trie with no peers available");
+                        debug!(%hash, "tried to fetch trie with no peers available");
                         return responder.respond(Err(Error::NoPeers(hash))).ignore();
                     }
                 };
@@ -298,24 +298,26 @@ where
                 match fetch_result {
                     Err(error) => match self.partial_chunks.remove(hash) {
                         None => {
-                            error!(%id,
+                            debug!(%id,
                                 "got a fetch result for a chunk we weren't trying to fetch",
                             );
                             Effects::new()
                         }
                         Some(mut partial_chunks) => {
-                            debug!(%error, %id, "error fetching trie chunk");
                             partial_chunks.mark_peer_unreliable(error.peer());
                             // try with the next peer, if possible
                             match partial_chunks.next_peer().cloned() {
-                                Some(next_peer) => self.try_download_chunk(
-                                    effect_builder,
-                                    id,
-                                    next_peer,
-                                    partial_chunks,
-                                ),
+                                Some(next_peer) => {
+                                    debug!(%error, %id, "error fetching trie chunk, trying next");
+                                    self.try_download_chunk(
+                                        effect_builder,
+                                        id,
+                                        next_peer,
+                                        partial_chunks,
+                                    )
+                                }
                                 None => {
-                                    warn!(%id, "couldn't fetch chunk");
+                                    warn!(%id, %error, "couldn't fetch chunk");
                                     let faulty_peers = partial_chunks.unreliable_peers.clone();
                                     partial_chunks.respond(Err(Error::PeersExhausted(
                                         Box::new(error),

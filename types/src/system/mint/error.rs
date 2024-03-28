@@ -154,6 +154,12 @@ pub enum Error {
     /// assert_eq!(22, Error::DisabledUnrestrictedTransfers as u8);
     DisabledUnrestrictedTransfers = 22,
 
+    /// Attempt to access a record using forged permissions.
+    /// ```
+    /// # use casper_types::system::mint::Error;
+    /// assert_eq!(23, Error::ForgedReference as u8);
+    ForgedReference = 23,
+
     #[cfg(test)]
     #[doc(hidden)]
     Sentinel,
@@ -209,6 +215,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::DisabledUnrestrictedTransfers as u8 => {
                 Ok(Error::DisabledUnrestrictedTransfers)
             }
+            d if d == Error::ForgedReference as u8 => Ok(Error::ForgedReference),
             _ => Err(TryFromU8ForError(())),
         }
     }
@@ -269,6 +276,7 @@ impl Display for Error {
             Error::DisabledUnrestrictedTransfers => {
                 formatter.write_str("Disabled unrestricted transfers")
             }
+            Error::ForgedReference => formatter.write_str("Forged reference"),
             #[cfg(test)]
             Error::Sentinel => formatter.write_str("Sentinel error"),
         }
