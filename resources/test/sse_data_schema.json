@@ -3050,7 +3050,7 @@
       "additionalProperties": false
     },
     "Bridge": {
-      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed..",
+      "description": "A bridge record pointing to a new `ValidatorBid` after the public key was changed.",
       "type": "object",
       "required": [
         "era_id",
