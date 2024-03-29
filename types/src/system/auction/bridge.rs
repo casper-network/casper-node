@@ -1,8 +1,12 @@
+use alloc::vec::Vec;
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, EraId, PublicKey,
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
