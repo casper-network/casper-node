@@ -107,6 +107,7 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+pub use global_state::Pointer;
 
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
