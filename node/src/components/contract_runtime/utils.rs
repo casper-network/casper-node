@@ -86,8 +86,6 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    let block_max_install_upgrade_count =
-        chainspec.transaction_config.block_max_install_upgrade_count;
     let is_era_end = executable_block.era_report.is_some();
     if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
@@ -117,6 +115,8 @@ pub(super) async fn exec_or_requeue<REv>(
         let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
         let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
         let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
+        let block_max_install_upgrade_count =
+            chainspec.transaction_config.block_max_install_upgrade_count;
         let go_up = chainspec.vacancy_config.upper_threshold;
         let go_down = chainspec.vacancy_config.lower_threshold;
         let max = chainspec.vacancy_config.max_gas_price;
@@ -125,10 +125,32 @@ pub(super) async fn exec_or_requeue<REv>(
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
-        let switch_block_transaction_hashes = executable_block.transactions.len() as u64;
+        let per_block_capacity = {
+            block_max_install_upgrade_count
+                + block_max_standard_count
+                + block_max_mint_count
+                + block_max_auction_count
+        } as u64;
+
+        let switch_block_utilization_score = {
+            let has_hit_slot_limt = {
+                (executable_block.mint.len() as u32 >= block_max_mint_count)
+                    || (executable_block.auction.len() as u32 >= block_max_auction_count)
+                    || (executable_block.standard.len() as u32 >= block_max_standard_count)
+                    || (executable_block.install_upgrade.len() as u32
+                        >= block_max_install_upgrade_count)
+            };
+
+            if has_hit_slot_limt {
+                100u64
+            } else {
+                let num = executable_block.transactions.len() as u64;
+                Ratio::new(num * 100, per_block_capacity).to_integer()
+            }
+        };
 
         let maybe_utilization = effect_builder
-            .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
+            .get_block_utilization(era_id, block_height, switch_block_utilization_score)
             .await;
 
         match maybe_utilization {
@@ -137,18 +159,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 return fatal!(effect_builder, "{}", error).await;
             }
             Some((utilization, block_count)) => {
-                let per_block_capacity = {
-                    block_max_install_upgrade_count
-                        + block_max_standard_count
-                        + block_max_mint_count
-                        + block_max_auction_count
-                } as u64;
-
-                let era_score = {
-                    let numerator = utilization * 100;
-                    let denominator = per_block_capacity * block_count;
-                    Ratio::new(numerator, denominator).to_integer()
-                };
+                let era_score = { Ratio::new(utilization, block_count).to_integer() };
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;

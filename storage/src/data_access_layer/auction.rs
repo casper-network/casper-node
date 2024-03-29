@@ -9,8 +9,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     execution::Effects,
     system::{auction, auction::DelegationRate},
-    CLTyped, CLValue, CLValueError, Chainspec, Digest, InitiatorAddr, ProtocolVersion, PublicKey,
-    RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
+    CLTyped, CLValue, CLValueError, Chainspec, Digest, HoldsEpoch, InitiatorAddr, ProtocolVersion,
+    PublicKey, RuntimeArgs, TransactionEntryPoint, TransactionHash, U512,
 };
 
 use crate::{
@@ -45,7 +45,7 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     },
     WithdrawBid {
         public_key: PublicKey,
@@ -57,7 +57,7 @@ pub enum AuctionMethod {
         amount: U512,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     },
     Undelegate {
         delegator: PublicKey,
@@ -77,7 +77,7 @@ impl AuctionMethod {
     pub fn from_parts(
         entry_point: TransactionEntryPoint,
         runtime_args: &RuntimeArgs,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
         chainspec: &Chainspec,
     ) -> Result<Self, AuctionMethodError> {
         match entry_point {
@@ -108,7 +108,7 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
@@ -131,7 +131,7 @@ impl AuctionMethod {
         runtime_args: &RuntimeArgs,
         max_delegators_per_validator: u32,
         minimum_delegation_amount: u64,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Self, AuctionMethodError> {
         let delegator = Self::get_named_argument(runtime_args, auction::ARG_DELEGATOR)?;
         let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;

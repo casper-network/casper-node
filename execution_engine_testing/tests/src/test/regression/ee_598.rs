@@ -62,7 +62,7 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
     .build();
     let deploy = DeployItemBuilder::new()
         .with_address(*ACCOUNT_1_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
         .with_session_code(
             "ee_598_regression.wasm",
             runtime_args! {

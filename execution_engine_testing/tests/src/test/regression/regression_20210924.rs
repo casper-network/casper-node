@@ -22,7 +22,7 @@ fn should_charge_minimum_for_do_nothing_session() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => minimum_deploy_payment,
         })
         .with_authorization_keys(&[account_hash])
@@ -78,7 +78,7 @@ fn should_execute_do_minimum_session() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => minimum_deploy_payment,
         })
         .with_authorization_keys(&[account_hash])

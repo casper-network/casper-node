@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, HoldsEpoch, InitiatorAddr, Key, Phase,
+    PublicKey, StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -172,7 +172,7 @@ where
     fn available_balance(
         &mut self,
         uref: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error> {
         match self
             .tracking_copy()

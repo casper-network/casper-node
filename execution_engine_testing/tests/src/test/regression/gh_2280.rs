@@ -92,7 +92,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         .with_address(account_hash)
         .with_session_code(session_file, faucet_args_2)
         // + default_create_purse_cost
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value()
         })
         .with_authorization_keys(&[account_hash])
@@ -151,7 +151,7 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_code(session_file, faucet_args_3)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
         })
         .with_authorization_keys(&[account_hash])
@@ -205,7 +205,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         .with_address(account_hash)
         .with_session_code(session_file, create_purse_args_2)
         // + default_create_purse_cost
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value()
         })
         .with_authorization_keys(&[account_hash])
@@ -265,7 +265,7 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_code(session_file, create_purse_args_3)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
         })
         .with_authorization_keys(&[account_hash])
@@ -321,7 +321,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         .with_address(account_hash)
         .with_session_code(TRANSFER_PURSE_TO_ACCOUNT_CONTRACT, faucet_args_2)
         // + default_create_purse_cost
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value()
         })
         .with_authorization_keys(&[account_hash])
@@ -384,7 +384,7 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_code(session_file, faucet_args_3)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
         })
         .with_authorization_keys(&[account_hash])
@@ -443,7 +443,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         .with_address(account_hash)
         .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_2)
         // + default_create_purse_cost
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value()
         })
         .with_authorization_keys(&[account_hash])
@@ -505,7 +505,7 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_stored_session_hash(gh_2280_regression, entry_point, faucet_args_3)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
         })
         .with_authorization_keys(&[account_hash])
@@ -561,7 +561,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         .with_address(account_hash)
         .with_session_code(session_file, faucet_args_2)
         // + default_create_purse_cost
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value()
         })
         .with_authorization_keys(&[account_hash])
@@ -624,7 +624,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_code(session_file, faucet_args_3)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => payment_amount.value() + HOST_FUNCTION_COST_CHANGE
         })
         .with_authorization_keys(&[account_hash])

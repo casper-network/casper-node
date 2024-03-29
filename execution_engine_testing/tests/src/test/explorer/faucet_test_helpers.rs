@@ -337,7 +337,7 @@ impl FaucetFundRequestBuilder {
                     },
                 },
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => self.payment_amount})
+            .with_standard_payment(runtime_args! {ARG_AMOUNT => self.payment_amount})
             .with_deploy_hash(rng.gen())
             .build();
 

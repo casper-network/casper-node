@@ -147,7 +147,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
             RESTRICTED_SESSION,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[ACCOUNT_1_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -208,7 +208,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
             RESTRICTED_SESSION_CALLER,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[ACCOUNT_1_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -266,7 +266,7 @@ fn should_call_group_restricted_contract() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, RESTRICTED_CONTRACT, args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -323,7 +323,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
             RESTRICTED_CONTRACT,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[ACCOUNT_1_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -368,7 +368,7 @@ fn should_call_group_unrestricted_contract_caller() {
             UNRESTRICTED_CONTRACT_CALLER,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -551,7 +551,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, UNCALLABLE_SESSION, args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -576,7 +576,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             CALL_RESTRICTED_ENTRY_POINTS,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([6; 32])
         .build();
@@ -615,7 +615,7 @@ fn should_not_call_uncallable_session_from_deploy() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, UNCALLABLE_CONTRACT, args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([3; 32])
         .build();
@@ -640,7 +640,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             CALL_RESTRICTED_ENTRY_POINTS,
             args,
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([6; 32])
         .build();

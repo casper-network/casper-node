@@ -159,8 +159,6 @@ block_max_approval_count = 2600
 max_block_size = 10_485_760
 # The upper limit of total gas of all transactions in a block.
 block_gas_limit = 4_000_000_000_000
-# Chainspec configured cost for native transfers.
-native_transfer_cost = 2_500_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
@@ -299,8 +297,8 @@ max_topics_per_contract = 128
 max_message_size = 1_024
 
 [system_costs]
-install_upgrade_gas_limit = 0
-standard_transaction_gas_limit = 0
+install_upgrade_gas_limit = 3_500_000_000_000
+standard_transaction_gas_limit = 500_000_000_000
 
 [system_costs.auction_costs]
 get_era_validators = 10_000

@@ -8,8 +8,8 @@ use casper_types::{
         mint::BalanceHoldAddrTag,
         HANDLE_PAYMENT,
     },
-    AccessRights, BlockTime, Digest, EntityAddr, InitiatorAddr, Key, ProtocolVersion, PublicKey,
-    StoredValue, URef, URefAddr, U512,
+    AccessRights, BlockTime, Digest, EntityAddr, HoldsEpoch, InitiatorAddr, Key, ProtocolVersion,
+    PublicKey, StoredValue, URef, URefAddr, U512,
 };
 use std::collections::BTreeMap;
 use tracing::error;
@@ -27,7 +27,7 @@ pub enum BalanceHandling {
     #[default]
     Total,
     /// Adjust for balance holds (if any).
-    Available { block_time: u64, hold_interval: u64 },
+    Available { holds_epoch: HoldsEpoch },
 }
 
 /// Represents a way to make a balance inquiry.
@@ -275,15 +275,14 @@ impl BalanceRequest {
 }
 
 impl From<BalanceHoldRequest> for BalanceRequest {
-    fn from(value: BalanceHoldRequest) -> Self {
+    fn from(request: BalanceHoldRequest) -> Self {
         let balance_handling = BalanceHandling::Available {
-            block_time: value.block_time().value(),
-            hold_interval: value.hold_interval().millis(),
+            holds_epoch: request.holds_epoch(),
         };
         BalanceRequest::new(
-            value.state_hash(),
-            value.protocol_version(),
-            value.identifier().clone(),
+            request.state_hash(),
+            request.protocol_version(),
+            request.identifier().clone(),
             balance_handling,
         )
     }

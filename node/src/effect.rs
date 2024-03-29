@@ -1160,7 +1160,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::GetBlockUtilizationScore {
                 era_id,
                 block_height,
-                transaction_count,
+                switch_block_utilization: transaction_count,
                 responder,
             },
             QueueKind::FromStorage,

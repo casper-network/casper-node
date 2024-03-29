@@ -51,8 +51,7 @@ use crate::{
         METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     testing::TestRng,
-    AddressableEntityHash, RuntimeArgs, TransactionConfig, DEFAULT_MAX_PAYMENT_MOTES,
-    DEFAULT_MIN_TRANSFER_MOTES,
+    AddressableEntityHash, RuntimeArgs, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES,
 };
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -60,8 +59,11 @@ use crate::{
     transaction::{Approval, ApprovalsHash, Categorized},
     Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory,
 };
+
 #[cfg(any(feature = "std", test))]
-use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, SystemConfig, U512};
+use crate::{chainspec::PricingHandling, Chainspec};
+#[cfg(any(feature = "std", test))]
+use crate::{system::auction::ARG_AMOUNT, transaction::GasLimited, Gas, Motes, U512};
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_category::DeployCategory;
@@ -261,7 +263,7 @@ impl Deploy {
         self.header.expired(current_instant)
     }
 
-    /// Returns the price per gas unit for the `Deploy`.
+    /// Returns the sender's gas price tolerance for block inclusion.
     pub fn gas_price(&self) -> u64 {
         self.header.gas_price()
     }
@@ -396,16 +398,15 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn is_config_compliant(
         &self,
-        chain_name: &str,
-        cost_table: &SystemConfig,
-        config: &TransactionConfig,
-        max_associated_keys: u32,
+        chainspec: &Chainspec,
         timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), InvalidDeploy> {
+        let config = &chainspec.transaction_config;
         self.is_valid_size(config.max_transaction_size)?;
 
         let header = self.header();
+        let chain_name = &chainspec.network_config.name;
         if header.chain_name() != chain_name {
             debug!(
                 deploy_hash = %self.hash(),
@@ -421,6 +422,7 @@ impl Deploy {
 
         header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
+        let max_associated_keys = chainspec.core_config.max_associated_keys;
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
                 deploy_hash = %self.hash(),
@@ -434,8 +436,8 @@ impl Deploy {
             });
         }
 
-        let gas_limit = self.gas_limit(cost_table, None)?;
-        let block_gas_limit = Gas::new(U512::from(config.block_gas_limit));
+        let gas_limit = self.gas_limit(chainspec)?;
+        let block_gas_limit = Gas::new(config.block_gas_limit);
         if gas_limit > block_gas_limit {
             debug!(
                 payment_amount = %gas_limit,
@@ -1159,37 +1161,46 @@ impl Categorized for Deploy {
 impl GasLimited for Deploy {
     type Error = InvalidDeploy;
 
-    fn gas_limit(
-        &self,
-        system_costs: &SystemConfig,
-        gas_price: Option<u8>,
-    ) -> Result<Gas, Self::Error> {
-        let user_specified_price =
-            u8::try_from(self.gas_price()).map_err(|_| Self::Error::UnableToCalculateGasLimit)?;
-        let actual_price = match gas_price {
-            Some(price) => price.max(user_specified_price),
-            None => user_specified_price,
-        };
-        let motes = {
-            if self.is_transfer() {
-                Motes::new(U512::from(system_costs.mint_costs().transfer))
-            } else {
-                let value = self
-                    .payment()
-                    .args()
-                    .get(ARG_AMOUNT)
-                    .ok_or(InvalidDeploy::MissingPaymentAmount)?;
-                let payment_amount = value
-                    .clone()
-                    .into_t::<U512>()
-                    .map_err(|_| InvalidDeploy::FailedToParsePaymentAmount)?;
-                Motes::new(payment_amount)
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
+        let gas_limit = self.gas_limit(chainspec)?;
+        let motes =
+            Motes::from_gas(gas_limit, gas_price).ok_or(InvalidDeploy::UnableToCalculateGasCost)?;
+        Ok(motes)
+    }
+
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
+        let pricing_handling = chainspec.core_config.pricing_handling;
+        let costs = &chainspec.system_costs_config;
+        let gas_limit = match pricing_handling {
+            PricingHandling::Classic => {
+                // in the original implementation, for standard deploys the payment amount
+                // specified by the sender is the gas limit (up to the max block limit).
+                if self.is_transfer() {
+                    Gas::new(costs.mint_costs().transfer)
+                } else {
+                    let value = self
+                        .payment()
+                        .args()
+                        .get(ARG_AMOUNT)
+                        .ok_or(InvalidDeploy::MissingPaymentAmount)?;
+                    let payment_amount = value
+                        .clone()
+                        .into_t::<U512>()
+                        .map_err(|_| InvalidDeploy::FailedToParsePaymentAmount)?;
+                    Gas::new(payment_amount)
+                }
             }
+            PricingHandling::Fixed => {
+                // in fixed, the computation limit is fixed per the chainspec settings
+                let computation_limit = if self.is_transfer() {
+                    costs.mint_costs().transfer as u64
+                } else {
+                    costs.standard_transaction_limit()
+                };
+                Gas::new(computation_limit)
+            } // legacy deploys do not support reservations
         };
-        match Gas::from_motes(motes, actual_price) {
-            Some(gas) => Ok(gas),
-            None => Err(InvalidDeploy::MissingPaymentAmount),
-        }
+        Ok(gas_limit)
     }
 
     fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
@@ -1389,9 +1400,7 @@ mod tests {
     use std::{iter, time::Duration};
 
     use super::*;
-    use crate::CLValue;
-
-    const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
+    use crate::{CLValue, TransactionConfig};
 
     #[test]
     fn json_roundtrip() {
@@ -1457,6 +1466,7 @@ mod tests {
     #[test]
     fn is_valid() {
         let mut rng = TestRng::new();
+
         let deploy = create_deploy(&mut rng, TransactionConfig::default().max_ttl, 0, "net-1");
         assert_eq!(
             deploy.is_valid.get(),
@@ -1568,26 +1578,20 @@ mod tests {
     #[test]
     fn is_acceptable() {
         let mut rng = TestRng::new();
-        let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+        let chain_name = "net-1".to_string();
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
 
         let deploy = create_deploy(
             &mut rng,
             config.max_ttl,
             config.deploy_config.max_dependencies.into(),
-            chain_name,
+            &chain_name,
         );
         let current_timestamp = deploy.header().timestamp();
         deploy
-            .is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp,
-            )
+            .is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
             .expect("should be acceptable");
     }
 
@@ -1596,8 +1600,10 @@ mod tests {
         let mut rng = TestRng::new();
         let expected_chain_name = "net-1";
         let wrong_chain_name = "net-2".to_string();
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(expected_chain_name.to_string());
+        let config = chainspec.transaction_config;
 
         let deploy = create_deploy(
             &mut rng,
@@ -1613,14 +1619,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                expected_chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1633,8 +1632,10 @@ mod tests {
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
 
         let dependency_count = usize::from(config.deploy_config.max_dependencies + 1);
 
@@ -1644,14 +1645,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1664,8 +1658,10 @@ mod tests {
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
 
         let ttl = config.max_ttl + TimeDiff::from(Duration::from_secs(1));
 
@@ -1683,14 +1679,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1703,8 +1692,10 @@ mod tests {
     fn not_acceptable_due_to_timestamp_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1722,14 +1713,7 @@ mod tests {
         };
 
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                leeway,
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, leeway, current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1742,8 +1726,10 @@ mod tests {
     fn acceptable_if_timestamp_slightly_in_future() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
         let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
@@ -1754,14 +1740,7 @@ mod tests {
         );
         let current_timestamp = deploy.header.timestamp() - (leeway / 2);
         deploy
-            .is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                leeway,
-                current_timestamp,
-            )
+            .is_config_compliant(&chainspec, leeway, current_timestamp)
             .expect("should be acceptable");
     }
 
@@ -1769,8 +1748,11 @@ mod tests {
     fn not_acceptable_due_to_missing_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        chainspec.with_pricing_handling(PricingHandling::Classic);
+        let config = chainspec.transaction_config;
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1797,14 +1779,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(InvalidDeploy::MissingPaymentAmount)
         );
         assert!(
@@ -1817,8 +1792,11 @@ mod tests {
     fn not_acceptable_due_to_mangled_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        chainspec.with_pricing_handling(PricingHandling::Classic);
+        let config = chainspec.transaction_config;
 
         let payment = ExecutableDeployItem::ModuleBytes {
             module_bytes: Bytes::new(),
@@ -1847,14 +1825,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(InvalidDeploy::FailedToParsePaymentAmount)
         );
         assert!(
@@ -1867,8 +1838,11 @@ mod tests {
     fn not_acceptable_due_to_excessive_payment_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        chainspec.with_pricing_handling(PricingHandling::Classic);
+        let config = chainspec.transaction_config;
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1903,14 +1877,7 @@ mod tests {
 
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            ),
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp),
             Err(expected_error)
         );
         assert!(
@@ -1924,8 +1891,10 @@ mod tests {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random(&mut rng);
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
         let amount = U512::from(config.block_gas_limit + 1);
 
         let payment = ExecutableDeployItem::ModuleBytes {
@@ -1960,14 +1929,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Ok(()),
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -1975,8 +1937,10 @@ mod tests {
     fn not_acceptable_due_to_excessive_approvals() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+        let config = chainspec.transaction_config;
         let deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -1986,20 +1950,14 @@ mod tests {
         // This test is to ensure a given limit is being checked.
         // Therefore, set the limit to one less than the approvals in the deploy.
         let max_associated_keys = (deploy.approvals.len() - 1) as u32;
+        chainspec.with_max_associated_keys(max_associated_keys);
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::ExcessiveApprovals {
                 got: deploy.approvals.len() as u32,
-                max_associated_keys: (deploy.approvals.len() - 1) as u32
+                max_associated_keys
             }),
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                max_associated_keys,
-                TimeDiff::default(),
-                current_timestamp
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2007,8 +1965,10 @@ mod tests {
     fn not_acceptable_due_to_missing_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+
+        let config = chainspec.transaction_config;
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2025,14 +1985,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::MissingTransferAmount),
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2040,8 +1993,10 @@ mod tests {
     fn not_acceptable_due_to_mangled_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+
+        let config = chainspec.transaction_config;
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2062,14 +2017,7 @@ mod tests {
         let current_timestamp = deploy.header().timestamp();
         assert_eq!(
             Err(InvalidDeploy::FailedToParseTransferAmount),
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
     }
 
@@ -2077,8 +2025,10 @@ mod tests {
     fn not_acceptable_due_to_insufficient_transfer_amount() {
         let mut rng = TestRng::new();
         let chain_name = "net-1";
-        let cost_table = SystemConfig::default();
-        let config = TransactionConfig::default();
+        let mut chainspec = Chainspec::default();
+        chainspec.with_chain_name(chain_name.to_string());
+
+        let config = chainspec.transaction_config;
         let mut deploy = create_deploy(
             &mut rng,
             config.max_ttl,
@@ -2105,14 +2055,123 @@ mod tests {
                 minimum: Box::new(U512::from(config.native_transfer_minimum_motes)),
                 attempted: Box::new(insufficient_amount),
             }),
-            deploy.is_config_compliant(
-                chain_name,
-                &cost_table,
-                &config,
-                DEFAULT_MAX_ASSOCIATED_KEYS,
-                TimeDiff::default(),
-                current_timestamp
-            )
+            deploy.is_config_compliant(&chainspec, TimeDiff::default(), current_timestamp)
         )
+    }
+
+    #[test]
+    fn should_use_payment_amount_for_classic_payment() {
+        let payment_amount = 500u64;
+        let mut rng = TestRng::new();
+        let chain_name = "net-1";
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Classic);
+
+        let config = chainspec.transaction_config;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => U512::from(payment_amount)
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            config.deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let mut gas_price = 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount),
+            "in classic pricing, the user selected amount should be the cost if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount) * gas_price,
+            "in classic pricing, the cost should == user selected amount * gas_price"
+        );
+    }
+
+    #[test]
+    fn should_use_cost_table_for_fixed_payment() {
+        let payment_amount = 500u64;
+        let mut rng = TestRng::new();
+        let chain_name = "net-1";
+        let mut chainspec = Chainspec::default();
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Classic);
+
+        let config = chainspec.transaction_config;
+
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                "amount" => U512::from(payment_amount)
+            },
+        };
+
+        // Create an empty session object that is not transfer to ensure
+        // that the payment amount is checked.
+        let session = ExecutableDeployItem::StoredContractByName {
+            name: "".to_string(),
+            entry_point: "".to_string(),
+            args: Default::default(),
+        };
+
+        let mut deploy = create_deploy(
+            &mut rng,
+            config.max_ttl,
+            config.deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        deploy.payment = payment;
+        deploy.session = session;
+
+        let mut gas_price = 1;
+        let limit = deploy.gas_limit(&chainspec).expect("should limit").value();
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost, limit,
+            "in fixed pricing, the cost & limit should == if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = deploy
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            limit * gas_price,
+            "in fixed pricing, the cost should == limit * gas_price"
+        );
     }
 }

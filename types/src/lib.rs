@@ -105,7 +105,7 @@ pub use block::{
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
-pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 
 #[cfg(any(feature = "std", test))]
@@ -116,10 +116,10 @@ pub use chainspec::{
     GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
-    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig,
-    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
-    TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig, DEFAULT_BALANCE_HOLD_INTERVAL,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
+    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling, ProtocolConfig,
+    ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig,
+    TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

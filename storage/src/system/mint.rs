@@ -12,7 +12,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         Caller,
     },
-    Key, PublicKey, SystemEntityRegistry, URef, U512,
+    HoldsEpoch, Key, PublicKey, SystemEntityRegistry, URef, U512,
 };
 
 use crate::system::mint::{
@@ -86,7 +86,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     }
 
     /// Read balance of given `purse`.
-    fn balance(&mut self, purse: URef, hold_epoch: Option<u64>) -> Result<Option<U512>, Error> {
+    fn balance(&mut self, purse: URef, hold_epoch: HoldsEpoch) -> Result<Option<U512>, Error> {
         match self.available_balance(purse, hold_epoch)? {
             some @ Some(_) => Ok(some),
             None => Err(Error::PurseNotFound),
@@ -101,7 +101,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         target: URef,
         amount: U512,
         id: Option<u64>,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<(), Error> {
         if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_entity_registry() {
@@ -218,7 +218,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
-        if self.available_balance(target, None)?.is_none() {
+        if self
+            .available_balance(target, HoldsEpoch::NOT_APPLICABLE)?
+            .is_none()
+        {
             return Err(Error::DestNotFound);
         }
         if self.get_caller() != PublicKey::System.to_account_hash()
@@ -276,7 +279,10 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // treat as noop
             return Ok(());
         }
-        if self.available_balance(existing_purse, None)?.is_none() {
+        if self
+            .available_balance(existing_purse, HoldsEpoch::NOT_APPLICABLE)?
+            .is_none()
+        {
             return Err(Error::PurseNotFound);
         }
         self.add_balance(existing_purse, amount)?;

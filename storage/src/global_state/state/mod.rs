@@ -524,7 +524,7 @@ pub trait CommitProvider: StateProvider {
             let holds_epoch = request.holds_epoch();
             let system_account_key = PublicKey::System;
             let id = {
-                let mut bytes = match holds_epoch.into_bytes() {
+                let mut bytes = match holds_epoch.value().into_bytes() {
                     Ok(bytes) => bytes,
                     Err(bre) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
@@ -680,13 +680,12 @@ pub trait StateProvider {
 
         let balance_holds = match request.balance_handling() {
             BalanceHandling::Total => BTreeMap::new(),
-            BalanceHandling::Available {
-                block_time,
-                hold_interval,
-            } => match tc.get_balance_holds_with_proof(purse_addr, block_time, hold_interval) {
-                Err(tce) => return BalanceResult::Failure(tce),
-                Ok(holds) => holds,
-            },
+            BalanceHandling::Available { holds_epoch } => {
+                match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
+                    Err(tce) => return BalanceResult::Failure(tce),
+                    Ok(holds) => holds,
+                }
+            }
         };
 
         let available_balance = if balance_holds.is_empty() {
@@ -1091,6 +1090,24 @@ pub trait StateProvider {
                     Err(tce) => return HandlePaymentResult::Failure(tce),
                 };
                 runtime.burn(source_purse, amount)
+            }
+            HandlePaymentMode::ClearHolds {
+                source,
+                holds_epoch,
+            } => {
+                let tag = BalanceHoldAddrTag::Gas;
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandlePaymentResult::Failure(tce),
+                };
+                if let Err(tce) = tc.borrow_mut().clear_expired_balance_holds(
+                    source_purse.addr(),
+                    tag,
+                    holds_epoch,
+                ) {
+                    return HandlePaymentResult::Failure(tce);
+                }
+                Ok(())
             }
         };
 

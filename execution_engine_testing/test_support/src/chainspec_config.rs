@@ -12,8 +12,8 @@ use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, GenesisConfigBuilder, MintCosts, ProtocolVersion, RefundHandling, SystemConfig,
-    TimeDiff, WasmConfig,
+    GenesisConfig, GenesisConfigBuilder, MintCosts, PricingHandling, ProtocolVersion,
+    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -24,8 +24,8 @@ use crate::{
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
-/// Path to the production chainspec used in the Casper mainnet.
-pub static PRODUCTION_PATH: Lazy<PathBuf> = Lazy::new(|| {
+/// Symlink to chainspec.
+pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources/")
         .join(CHAINSPEC_NAME)
@@ -81,7 +81,8 @@ impl ChainspecConfig {
         ChainspecConfig::from_bytes(&bytes)
     }
 
-    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
+    /// Load from path.
+    pub fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
         Self::from_path(filename)
     }
 
@@ -148,7 +149,7 @@ impl ChainspecConfig {
         protocol_version: ProtocolVersion,
     ) -> Result<GenesisRequest, Error> {
         Self::create_genesis_request_from_chainspec(
-            &*PRODUCTION_PATH,
+            &*CHAINSPEC_SYMLINK,
             genesis_accounts,
             protocol_version,
         )
@@ -205,6 +206,12 @@ impl ChainspecConfig {
     /// Sets refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         self.core_config.refund_handling = refund_handling;
+        self
+    }
+
+    /// Sets pricing handling config option.
+    pub fn with_pricing_handling(mut self, pricing_handling: PricingHandling) -> Self {
+        self.core_config.pricing_handling = pricing_handling;
         self
     }
 

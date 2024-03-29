@@ -44,7 +44,7 @@ fn should_verify_key_management_permission_with_sufficient_weight() {
     .build();
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         // This test verifies that all key management operations succeed
         .with_session_code(
             "key_management_thresholds.wasm",

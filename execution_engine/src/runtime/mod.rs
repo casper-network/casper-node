@@ -50,7 +50,7 @@ use casper_types::{
     },
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
     CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
+    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction,
     HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
     PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
     TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
@@ -555,11 +555,11 @@ where
     }
 
     /// Returns holds epoch.
-    fn holds_epoch(&self) -> u64 {
-        self.context
-            .get_blocktime()
-            .value()
-            .saturating_sub(self.context.engine_config().balance_hold_interval.millis())
+    fn holds_epoch(&self) -> HoldsEpoch {
+        HoldsEpoch::from_block_time(
+            self.context.get_blocktime(),
+            self.context.engine_config().balance_hold_interval,
+        )
     }
 
     /// Calls host mint contract.
@@ -628,7 +628,7 @@ where
                 mint_runtime.charge_system_contract_call(mint_costs.balance)?;
 
                 let uref: URef = Self::get_named_argument(runtime_args, mint::ARG_PURSE)?;
-                let holds_epoch = Some(self.holds_epoch());
+                let holds_epoch = self.holds_epoch();
 
                 let maybe_balance: Option<U512> = mint_runtime
                     .balance(uref, holds_epoch)
@@ -646,7 +646,7 @@ where
                 let target: URef = Self::get_named_argument(runtime_args, mint::ARG_TARGET)?;
                 let amount: U512 = Self::get_named_argument(runtime_args, mint::ARG_AMOUNT)?;
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
-                let holds_epoch = Some(self.holds_epoch());
+                let holds_epoch = self.holds_epoch();
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id, holds_epoch);
 
@@ -832,7 +832,7 @@ where
                 let delegation_rate =
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
-                let holds_epoch = Some(self.holds_epoch());
+                let holds_epoch = self.holds_epoch();
 
                 let result = runtime
                     .add_bid(account_hash, delegation_rate, amount, holds_epoch)
@@ -864,7 +864,7 @@ where
                     self.context.engine_config().max_delegators_per_validator();
                 let minimum_delegation_amount =
                     self.context.engine_config().minimum_delegation_amount();
-                let holds_epoch = Some(self.holds_epoch());
+                let holds_epoch = self.holds_epoch();
                 let result = runtime
                     .delegate(
                         delegator,
@@ -2435,7 +2435,7 @@ where
             return Err(ExecError::DisabledUnrestrictedTransfers);
         }
 
-        let holds_epoch = Some(self.holds_epoch());
+        let holds_epoch = self.holds_epoch();
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount
@@ -2694,7 +2694,7 @@ where
     fn available_balance(
         &mut self,
         purse: URef,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, ExecError> {
         match self.context.available_balance(&purse, holds_epoch) {
             Ok(motes) => Ok(Some(motes.value())),
@@ -2721,7 +2721,7 @@ where
             }
         };
 
-        let balance = match self.available_balance(purse, Some(self.holds_epoch()))? {
+        let balance = match self.available_balance(purse, self.holds_epoch())? {
             Some(balance) => balance,
             None => return Ok(Err(ApiError::InvalidPurse)),
         };

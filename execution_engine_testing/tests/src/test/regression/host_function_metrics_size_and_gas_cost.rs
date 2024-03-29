@@ -96,9 +96,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
                 ARG_AMOUNT => TRANSFER_FROM_MAIN_PURSE_AMOUNT,
             },
         )
-        .with_empty_payment_bytes(
-            runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT },
-        )
+        .with_standard_payment(runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT })
         .with_authorization_keys(&[ACCOUNT0_ADDR])
         .build();
     let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();

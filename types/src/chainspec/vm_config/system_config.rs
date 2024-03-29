@@ -1,3 +1,5 @@
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
@@ -13,10 +15,10 @@ use crate::{
 };
 
 /// Default gas limit of install / upgrade contracts
-pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u32 = 3_500_000_000;
+pub const DEFAULT_INSTALL_UPGRADE_GAS_LIMIT: u64 = 3_500_000_000_000;
 
 /// Default gas limit of standard transactions
-pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u32 = 350_000_000;
+pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u64 = 500_000_000_000;
 
 /// Definition of costs in the system.
 ///
@@ -27,10 +29,10 @@ pub const DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT: u32 = 350_000_000;
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     /// Standard transaction gas limit expressed in gas.
-    standard_transaction_gas_limit: u32,
+    standard_transaction_gas_limit: u64,
 
     /// Install or upgrade transaction gas limit expressed in gas.
-    install_upgrade_gas_limit: u32,
+    install_upgrade_gas_limit: u64,
 
     /// Configuration of auction entrypoint costs.
     auction_costs: AuctionCosts,
@@ -48,8 +50,8 @@ pub struct SystemConfig {
 impl SystemConfig {
     /// Creates new system config instance.
     pub fn new(
-        install_upgrade_gas_limit: u32,
-        standard_transaction_gas_limit: u32,
+        install_upgrade_gas_limit: u64,
+        standard_transaction_gas_limit: u64,
         auction_costs: AuctionCosts,
         mint_costs: MintCosts,
         handle_payment_costs: HandlePaymentCosts,
@@ -66,12 +68,12 @@ impl SystemConfig {
     }
 
     /// Returns install / upgrade cost.
-    pub fn install_upgrade_limit(&self) -> u32 {
+    pub fn install_upgrade_limit(&self) -> u64 {
         self.install_upgrade_gas_limit
     }
 
     /// Returns standard / flat cost.
-    pub fn standard_transaction_limit(&self) -> u32 {
+    pub fn standard_transaction_limit(&self) -> u64 {
         self.standard_transaction_gas_limit
     }
 
@@ -99,6 +101,30 @@ impl SystemConfig {
     /// Returns the costs of executing `standard_payment` entry points.
     pub fn standard_payment_costs(&self) -> &StandardPaymentCosts {
         &self.standard_payment_costs
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl SystemConfig {
+    /// Generates a random instance using a `TestRng`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
+        // this causes flaky test failures if the random result exceeds i64::MAX
+        let install_upgrade_gas_limit = rng.gen::<u32>() as u64;
+        let standard_transaction_gas_limit = rng.gen::<u32>() as u64;
+        let auction_costs = rng.gen();
+        let mint_costs = rng.gen();
+        let handle_payment_costs = rng.gen();
+        let standard_payment_costs = rng.gen();
+
+        SystemConfig {
+            install_upgrade_gas_limit,
+            standard_transaction_gas_limit,
+            auction_costs,
+            mint_costs,
+            handle_payment_costs,
+            standard_payment_costs,
+        }
     }
 }
 
@@ -198,6 +224,8 @@ pub mod gens {
             handle_payment_costs in handle_payment_costs_arb(),
             standard_payment_costs in standard_payment_costs_arb(),
         ) -> SystemConfig {
+            let install_upgrade_gas_limit = install_upgrade_gas_limit as u64;
+            let standard_transaction_gas_limit =standard_transaction_gas_limit as u64;
             SystemConfig {
                 install_upgrade_gas_limit,
                 standard_transaction_gas_limit,

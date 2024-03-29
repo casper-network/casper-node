@@ -36,10 +36,11 @@ use crate::{
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
     TransactionSessionKind,
 };
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{chainspec::PricingHandling, testing::TestRng, Chainspec};
 #[cfg(any(feature = "std", test))]
-use crate::{Gas, Motes, SystemConfig, TransactionConfig, U512};
+use crate::{chainspec::Chainspec, chainspec::PricingHandling};
+
+#[cfg(any(feature = "std", test))]
+use crate::{Gas, Motes, TransactionConfig, U512};
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError,
@@ -51,6 +52,9 @@ pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError
 pub use transaction_v1_category::TransactionCategory;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -360,7 +364,7 @@ impl TransactionV1 {
         let chain_name = chainspec.network_config.name.clone();
 
         let header = self.header();
-        if header.chain_name() != &chain_name {
+        if header.chain_name() != chain_name {
             debug!(
                 transaction_hash = %self.hash(),
                 transaction_header = %header,
@@ -368,7 +372,7 @@ impl TransactionV1 {
                 "invalid chain identifier"
             );
             return Err(InvalidTransactionV1::InvalidChainName {
-                expected: chain_name.to_string(),
+                expected: chain_name,
                 got: header.chain_name().to_string(),
             });
         }
@@ -421,7 +425,7 @@ impl TransactionV1 {
             });
         }
 
-        let gas_limit = self.gas_limit(&chainspec.system_costs_config, None)?;
+        let gas_limit = self.gas_limit(chainspec)?;
         let block_gas_limit = Gas::new(U512::from(transaction_config.block_gas_limit));
         if gas_limit > block_gas_limit {
             debug!(
@@ -614,32 +618,26 @@ impl Categorized for TransactionV1 {
 impl GasLimited for TransactionV1 {
     type Error = InvalidTransactionV1;
 
-    fn gas_limit(&self, costs: &SystemConfig, gas_price: Option<u8>) -> Result<Gas, Self::Error> {
-        let gas = match self.header().pricing_mode() {
-            PricingMode::Classic {
-                payment_amount,
-                gas_price: user_specified_price,
-                ..
-            } => {
-                let actual_price = match gas_price {
-                    Some(system_specified_price) => {
-                        // take the higher of the two possible prices
-                        (*user_specified_price).max(system_specified_price)
-                    }
-                    None => *user_specified_price,
-                };
-                let motes = Motes::new(U512::from(*payment_amount));
-                Gas::from_motes(motes, actual_price).ok_or(
-                    InvalidTransactionV1::GasPriceConversion {
-                        amount: *payment_amount,
-                        gas_price: actual_price,
-                    },
-                )?
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
+        let gas_limit = self.gas_limit(chainspec)?;
+        let motes = match self.header().pricing_mode() {
+            PricingMode::Classic { .. } | PricingMode::Fixed { .. } => {
+                Motes::from_gas(gas_limit, gas_price)
+                    .ok_or(InvalidTransactionV1::UnableToCalculateGasCost)?
             }
+            PricingMode::Reserved { .. } => {
+                Motes::zero() // prepaid
+            }
+        };
+        Ok(motes)
+    }
+
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
+        let costs = chainspec.system_costs_config;
+        let gas = match self.header().pricing_mode() {
+            PricingMode::Classic { payment_amount, .. } => Gas::new(*payment_amount),
             PricingMode::Fixed { .. } => {
-                // if gas price is not provided, assume price == 1
-                let gas_price = gas_price.unwrap_or(1);
-                let cost = {
+                let computation_limit = {
                     if self.is_native_mint() {
                         // Because we currently only support one native mint interaction,
                         // native transfer, we can short circuit to return that value.
@@ -647,10 +645,10 @@ impl GasLimited for TransactionV1 {
                         // in the future (such as the upcoming burn feature),
                         // this logic will need to be expanded to self.mint_costs().field?
                         // for the value for each verb...see how auction is set up below.
-                        costs.mint_costs().transfer
+                        costs.mint_costs().transfer as u64
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
-                        match entry_point {
+                        let amount = match entry_point {
                             TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
@@ -665,30 +663,25 @@ impl GasLimited for TransactionV1 {
                             TransactionEntryPoint::Delegate => costs.auction_costs().delegate,
                             TransactionEntryPoint::Undelegate => costs.auction_costs().undelegate,
                             TransactionEntryPoint::Redelegate => costs.auction_costs().redelegate,
-                        }
+                        };
+                        amount as u64
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
                     } else {
                         costs.standard_transaction_limit()
                     }
                 };
-                let fixed_cost = U512::from(cost);
-                Gas::from_motes(Motes::new(fixed_cost), gas_price).ok_or(
-                    InvalidTransactionV1::GasPriceConversion {
-                        amount: fixed_cost.as_u64(),
-                        gas_price,
-                    },
-                )?
+                Gas::new(U512::from(computation_limit))
             }
             PricingMode::Reserved {
                 paid_amount,
                 strike_price,
                 ..
             } => {
-                // prepaid, if receipt is legit (future use, not currently implemented)
-                Gas::from_motes(Motes::new(*paid_amount), *strike_price).ok_or(
+                // prepaid, if receipt is legit (future use)
+                Gas::from_price(U512::from(*paid_amount), *strike_price).ok_or(
                     InvalidTransactionV1::GasPriceConversion {
-                        amount: paid_amount.as_u64(),
+                        amount: *paid_amount,
                         gas_price: *strike_price,
                     },
                 )?
@@ -1231,5 +1224,145 @@ mod tests {
                 current_timestamp
             )
             .is_ok());
+    }
+
+    #[test]
+    fn should_use_payment_amount_for_classic_payment() {
+        let payment_amount = 500u64;
+        let mut chainspec = Chainspec::default();
+        let chain_name = "net-1";
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Classic);
+
+        let rng = &mut TestRng::new();
+        let builder = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Classic {
+                payment_amount,
+                gas_price: 1,
+                standard_payment: true,
+            });
+        let transaction = builder.build().expect("should build");
+        let mut gas_price = 1;
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount),
+            "in classic pricing, the user selected amount should be the cost if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::from(payment_amount) * gas_price,
+            "in classic pricing, the cost should == user selected amount * gas_price"
+        );
+    }
+
+    #[test]
+    fn should_use_cost_table_for_fixed_payment() {
+        let mut chainspec = Chainspec::default();
+        let chain_name = "net-1";
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Fixed);
+
+        let rng = &mut TestRng::new();
+        let builder = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: 5,
+            });
+        let transaction = builder.build().expect("should build");
+        let mut gas_price = 1;
+        let limit = transaction
+            .gas_limit(&chainspec)
+            .expect("should limit")
+            .value();
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost, limit,
+            "in fixed pricing, the cost & limit should == if gas price is 1"
+        );
+        gas_price += 1;
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            limit * gas_price,
+            "in fixed pricing, the cost should == limit * gas_price"
+        );
+    }
+
+    #[test]
+    fn should_have_limit_but_no_cost_for_reserved() {
+        reserved_pricing(500u64, 1u8);
+    }
+
+    #[test]
+    fn should_respect_strike_price_for_reserved() {
+        reserved_pricing(500u64, 2u8);
+    }
+
+    #[cfg(test)]
+    fn reserved_pricing(paid_amount: u64, strike_price: u8) {
+        let mut chainspec = Chainspec::default();
+        let chain_name = "net-1";
+        chainspec
+            .with_chain_name(chain_name.to_string())
+            .with_pricing_handling(PricingHandling::Fixed)
+            .with_allow_reservations(true);
+
+        let rng = &mut TestRng::new();
+        let builder = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Reserved {
+                paid_amount,
+                strike_price,
+                receipt: Digest::default(),
+            });
+        let transaction = builder.build().expect("should build");
+        let mut gas_price = 1;
+        let limit = transaction
+            .gas_limit(&chainspec)
+            .expect("should limit")
+            .value()
+            .as_u64();
+        assert_eq!(
+            limit,
+            paid_amount / strike_price as u64,
+            "in reserved pricing, limit should == paid_amount / strike price"
+        );
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::zero(),
+            "in reserved pricing, cost should == 0 as it was prepaid"
+        );
+        gas_price += 1;
+        let cost = transaction
+            .gas_cost(&chainspec, gas_price)
+            .expect("should cost")
+            .value();
+        assert_eq!(
+            cost,
+            U512::zero(),
+            "in reserved pricing, gas price does not matter as it was prepaid"
+        );
     }
 }

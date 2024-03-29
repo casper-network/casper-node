@@ -11,7 +11,7 @@ use casper_types::{
         ValidatorBids, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+    ApiError, CLTyped, EraId, HoldsEpoch, Key, KeyTag, PublicKey, URef, U512,
 };
 use tracing::{error, warn};
 
@@ -277,7 +277,7 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
     new_validator: Option<PublicKey>,
 ) -> Result<(), Error> {
     if provider
-        .available_balance(bonding_purse, None)?
+        .available_balance(bonding_purse, HoldsEpoch::NOT_APPLICABLE)?
         .unwrap_or_default()
         < amount
     {
@@ -463,7 +463,7 @@ where
         *unbonding_purse.amount(),
         max_delegators_per_validator,
         minimum_delegation_amount,
-        None,
+        HoldsEpoch::NOT_APPLICABLE,
     );
     match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
@@ -495,7 +495,7 @@ pub fn handle_delegation<P>(
     amount: U512,
     max_delegators_per_validator: u32,
     minimum_delegation_amount: u64,
-    holds_epoch: Option<u64>,
+    holds_epoch: HoldsEpoch,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,

@@ -10,8 +10,8 @@ use crate::{
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof,
     system::mint::BalanceHoldAddrTag, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue,
-    ChecksumRegistry, EntityAddr, Key, KeyTag, Motes, Package, PackageHash, StoredValue,
-    StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    ChecksumRegistry, EntityAddr, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash,
+    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -32,7 +32,7 @@ pub trait TrackingCopyExt<R> {
     fn get_available_balance(
         &self,
         balance_key: Key,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Motes, Self::Error>;
 
     /// Gets the purse balance key for a given purse and provides a Merkle proof.
@@ -47,12 +47,19 @@ pub trait TrackingCopyExt<R> {
         balance_key: Key,
     ) -> Result<(U512, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
+    /// Clear expired balance holds.
+    fn clear_expired_balance_holds(
+        &mut self,
+        purse_addr: URefAddr,
+        tag: BalanceHoldAddrTag,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<(), Self::Error>;
+
     /// Gets the balance holds for a given balance, with Merkle proofs.
     fn get_balance_holds_with_proof(
         &self,
         purse_addr: URefAddr,
-        block_time: u64,
-        hold_interval: u64,
+        holds_epoch: HoldsEpoch,
     ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error>;
 
     /// Returns the collection of named keys for a given AddressableEntity.
@@ -98,7 +105,7 @@ where
     fn get_available_balance(
         &self,
         key: Key,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Result<Motes, Self::Error> {
         let key = {
             if let Key::URef(uref) = key {
@@ -116,7 +123,7 @@ where
                 .try_into()
                 .map_err(TrackingCopyError::TypeMismatch)?;
             let total_balance = cl_value.into_t::<U512>()?;
-            match holds_epoch {
+            match holds_epoch.value() {
                 None => Ok(Motes::new(total_balance)),
                 Some(epoch) => {
                     let mut total_holds = U512::zero();
@@ -191,14 +198,36 @@ where
         }
     }
 
+    fn clear_expired_balance_holds(
+        &mut self,
+        purse_addr: URefAddr,
+        tag: BalanceHoldAddrTag,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<(), Self::Error> {
+        let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+        let immut: &_ = self;
+        let gas_hold_keys = immut.keys_with_prefix(&prefix)?;
+        for gas_hold_key in gas_hold_keys {
+            if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
+                let block_time = balance_hold_addr.block_time();
+                if let Some(timestamp) = holds_epoch.value() {
+                    if block_time.value() >= timestamp {
+                        // skip still current holds
+                        continue;
+                    }
+                }
+                // prune outdated holds
+                self.prune(gas_hold_key)
+            }
+        }
+        Ok(())
+    }
+
     fn get_balance_holds_with_proof(
         &self,
         purse_addr: URefAddr,
-        block_time: u64,
-        hold_interval: u64,
+        holds_epoch: HoldsEpoch,
     ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error> {
-        let hold_epoch = block_time.saturating_sub(hold_interval);
-
         let mut ret: BTreeMap<BlockTime, BalanceHoldsWithProof> = BTreeMap::new();
         let tag = BalanceHoldAddrTag::Gas;
         let prefix = tag.purse_prefix_by_tag(purse_addr)?;
@@ -207,9 +236,11 @@ where
         for gas_hold_key in gas_hold_keys {
             if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
                 let block_time = balance_hold_addr.block_time();
-                if block_time.value() < hold_epoch {
-                    // ignore holds older than the interval
-                    continue;
+                if let Some(timestamp) = holds_epoch.value() {
+                    if block_time.value() < timestamp {
+                        // ignore holds older than the interval
+                        continue;
+                    }
                 }
                 let proof: TrieMerkleProof<Key, StoredValue> = self
                     .read_with_proof(&gas_hold_key.normalize())?

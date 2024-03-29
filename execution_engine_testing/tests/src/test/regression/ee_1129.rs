@@ -80,7 +80,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_DELEGATE, args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT, // underfunded deploy
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -141,7 +141,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*VALIDATOR_1_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_ADD_BID, args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT,
         })
         .with_authorization_keys(&[*VALIDATOR_1_ADDR])
@@ -184,7 +184,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -228,7 +228,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -319,7 +319,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
             ENTRY_POINT_NAME,
             RuntimeArgs::default(),
         )
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
@@ -419,7 +419,7 @@ fn should_not_panic_when_calling_module_without_memory() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT,
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])

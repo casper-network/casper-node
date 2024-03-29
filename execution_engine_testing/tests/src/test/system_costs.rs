@@ -761,7 +761,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])

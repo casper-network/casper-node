@@ -50,7 +50,7 @@ fn should_raise_auth_failure_with_invalid_key() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
             runtime_args! {
@@ -101,7 +101,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
             runtime_args! {
@@ -199,7 +199,7 @@ fn should_raise_deploy_authorization_failure() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         // Next deploy will see deploy threshold == 4, keymgmnt == 5
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
@@ -228,7 +228,7 @@ fn should_raise_deploy_authorization_failure() {
     }
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         // change deployment threshold to 4
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
@@ -250,7 +250,7 @@ fn should_raise_deploy_authorization_failure() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         // change deployment threshold to 4
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
@@ -281,7 +281,7 @@ fn should_raise_deploy_authorization_failure() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         // change deployment threshold to 4
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
@@ -340,7 +340,7 @@ fn should_authorize_deploy_with_multiple_keys() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_session_code(
             CONTRACT_SET_ACTION_THRESHOLDS,
             runtime_args! {
@@ -406,7 +406,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
 
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT,
         })
         .with_session_code(

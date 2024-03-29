@@ -27,9 +27,6 @@ pub enum Error {
     /// Type mismatch error.
     #[error("{}", _0)]
     TypeMismatch(StoredValueTypeMismatch),
-    /// Execution exceeded the gas limit.
-    #[error("Out of gas error")]
-    GasLimit,
     /// ApiError.
     #[error("{}", _0)]
     Api(ApiError),

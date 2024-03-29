@@ -96,7 +96,7 @@ compute_rewards = true
 # This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.
-refund_handling = { type = 'refund', refund_ratio = [99, 100] }
+refund_handling = { type = 'no_refund' }
 # Defines how fees are handled.
 #
 # Valid options are:
@@ -150,8 +150,6 @@ block_max_approval_count = 2600
 max_block_size = 10_485_760
 # The upper limit of total gas of all transactions in a block.
 block_gas_limit = 10_000_000_000_000
-# Chainspec configured cost for native transfers.
-native_transfer_cost = 2_500_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
@@ -290,8 +288,8 @@ max_topics_per_contract = 128
 max_message_size = 1_024
 
 [system_costs]
-install_upgrade_gas_limit = 3_500_000_000
-standard_transaction_gas_limit = 350_000_000
+install_upgrade_gas_limit = 3_500_000_000_000
+standard_transaction_gas_limit = 500_000_000_000
 
 [system_costs.auction_costs]
 get_era_validators = 10_000

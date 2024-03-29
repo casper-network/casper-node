@@ -28,8 +28,7 @@ use casper_types::{
     SystemConfig, WasmConfig, U512,
 };
 
-pub use chainspec_config::ChainspecConfig;
-use chainspec_config::PRODUCTION_PATH;
+pub use chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::{ExecuteRequest, ExecuteRequestBuilder};
 pub use step_request_builder::StepRequestBuilder;
@@ -172,7 +171,7 @@ pub static LOCAL_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
 });
 /// Round seigniorage rate from the production chainspec.
 pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
-    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+    let chainspec = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must create chainspec_config");
     chainspec.core_config.round_seigniorage_rate
 });
@@ -185,7 +184,7 @@ mod tests {
 
     #[test]
     fn defaults_should_match_production_chainspec_values() {
-        let production = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH).unwrap();
+        let production = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
         // No need to test `CoreConfig::validator_slots`.
         assert_eq!(production.core_config.auction_delay, DEFAULT_AUCTION_DELAY);
         assert_eq!(

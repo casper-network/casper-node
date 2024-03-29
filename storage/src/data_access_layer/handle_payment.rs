@@ -2,38 +2,44 @@ use crate::{
     data_access_layer::BalanceIdentifier, system::runtime_native::Config as NativeRuntimeConfig,
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{execution::Effects, Digest, Gas, ProtocolVersion, TransactionHash, U512};
+use casper_types::{
+    execution::Effects, Digest, HoldsEpoch, ProtocolVersion, TransactionHash, U512,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HandlePaymentMode {
     Finalize {
-        limit: Gas,
-        gas_price: Option<u8>,
+        limit: U512,
+        gas_price: u8,
         cost: U512,
-        consumed: Gas,
+        consumed: U512,
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     },
     Distribute {
         source: BalanceIdentifier,
-        amount: Option<Gas>,
+        amount: Option<U512>,
     },
     Burn {
         source: BalanceIdentifier,
         amount: Option<U512>,
     },
+    ClearHolds {
+        source: BalanceIdentifier,
+        holds_epoch: HoldsEpoch,
+    },
 }
 
 impl HandlePaymentMode {
     pub fn finalize(
-        limit: Gas,
-        gas_price: Option<u8>,
+        limit: U512,
+        gas_price: u8,
         cost: U512,
-        consumed: Gas,
+        consumed: U512,
         source: BalanceIdentifier,
         target: BalanceIdentifier,
-        holds_epoch: Option<u64>,
+        holds_epoch: HoldsEpoch,
     ) -> Self {
         HandlePaymentMode::Finalize {
             limit,
@@ -50,7 +56,7 @@ impl HandlePaymentMode {
     /// much? If amount is None or greater than the available balance, the full available
     /// balance will be distributed. If amount is less than available balance, only that much
     /// will be distributed leaving a remaining balance.
-    pub fn distribute_accumulated(source: BalanceIdentifier, amount: Option<Gas>) -> Self {
+    pub fn distribute_accumulated(source: BalanceIdentifier, amount: Option<U512>) -> Self {
         HandlePaymentMode::Distribute { source, amount }
     }
 
@@ -60,6 +66,14 @@ impl HandlePaymentMode {
     /// burned leaving a remaining balance.
     pub fn burn(source: BalanceIdentifier, amount: Option<U512>) -> Self {
         HandlePaymentMode::Burn { source, amount }
+    }
+
+    /// Clear expired holds against source's balance per epoch.
+    pub fn clear_holds(source: BalanceIdentifier, holds_epoch: HoldsEpoch) -> Self {
+        HandlePaymentMode::ClearHolds {
+            source,
+            holds_epoch,
+        }
     }
 }
 

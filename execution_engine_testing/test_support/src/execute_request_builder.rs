@@ -149,7 +149,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_code(session_file, session_args)
-            .with_empty_payment_bytes(runtime_args! {
+            .with_standard_payment(runtime_args! {
                 ARG_AMOUNT => *DEFAULT_PAYMENT
             })
             .with_authorization_keys(&[account_hash])
@@ -166,7 +166,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_bytes(module_bytes, session_args)
-            .with_empty_payment_bytes(runtime_args! {
+            .with_standard_payment(runtime_args! {
                 ARG_AMOUNT => *DEFAULT_PAYMENT
             })
             .with_authorization_keys(&[account_hash])
@@ -185,7 +185,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
         Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
@@ -202,7 +202,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_named_key(contract_name, entry_point, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
         Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
@@ -225,7 +225,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
                 entry_point_name,
                 args,
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
         Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
@@ -243,7 +243,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
         let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_versioned_contract_by_name(contract_name, version, entry_point_name, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
         Self::from_deploy_item(Box::leak(Box::new(deploy_item)))

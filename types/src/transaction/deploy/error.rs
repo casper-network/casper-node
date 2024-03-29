@@ -118,8 +118,12 @@ pub enum InvalidDeploy {
         /// The chainspec limit for max_associated_keys.
         max_associated_keys: u32,
     },
+
     /// Unable to calculate gas limit.
     UnableToCalculateGasLimit,
+
+    /// Unable to calculate gas cost.
+    UnableToCalculateGasCost,
 }
 
 impl Display for InvalidDeploy {
@@ -234,6 +238,9 @@ impl Display for InvalidDeploy {
             InvalidDeploy::UnableToCalculateGasLimit => {
                 write!(formatter, "unable to calculate gas limit",)
             }
+            InvalidDeploy::UnableToCalculateGasCost => {
+                write!(formatter, "unable to calculate gas cost",)
+            }
         }
     }
 }
@@ -266,7 +273,8 @@ impl StdError for InvalidDeploy {
             | InvalidDeploy::FailedToParseTransferAmount
             | InvalidDeploy::InsufficientTransferAmount { .. }
             | InvalidDeploy::ExcessiveApprovals { .. }
-            | InvalidDeploy::UnableToCalculateGasLimit => None,
+            | InvalidDeploy::UnableToCalculateGasLimit
+            | InvalidDeploy::UnableToCalculateGasCost => None,
         }
     }
 }

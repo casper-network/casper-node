@@ -61,13 +61,13 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
-    InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
-    TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
-    chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
+    chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK},
     ExecuteRequest, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE,
     DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
@@ -240,7 +240,7 @@ pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>
 
 impl Default for LmdbWasmTestBuilder {
     fn default() -> Self {
-        Self::new_temporary_with_chainspec(&*PRODUCTION_PATH)
+        Self::new_temporary_with_chainspec(&*CHAINSPEC_SYMLINK)
     }
 }
 
@@ -424,7 +424,7 @@ impl LmdbWasmTestBuilder {
     /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
     /// the production chainspec.
     pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
-        Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
+        Self::new_with_chainspec(data_dir, &*CHAINSPEC_SYMLINK)
     }
 
     /// Returns a new [`LmdbWasmTestBuilder`].
@@ -950,9 +950,11 @@ where
         block_time: u64,
     ) -> FeeResult {
         let native_runtime_config = self.native_runtime_config();
-        let holds_epoch = Some(
-            block_time.saturating_sub(self.chainspec.core_config.balance_hold_interval.millis()),
+        let holds_epoch = HoldsEpoch::from_millis(
+            block_time,
+            self.chainspec.core_config.balance_hold_interval.millis(),
         );
+
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let fee_req = FeeRequest::new(
             native_runtime_config,
@@ -1211,10 +1213,8 @@ where
         block_time: u64,
     ) -> BalanceResult {
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let balance_handling = BalanceHandling::Available {
-            block_time,
-            hold_interval,
-        };
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let balance_handling = BalanceHandling::Available { holds_epoch };
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request =
@@ -1231,10 +1231,8 @@ where
     ) -> BalanceResult {
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let balance_handling = BalanceHandling::Available {
-            block_time,
-            hold_interval,
-        };
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let balance_handling = BalanceHandling::Available { holds_epoch };
         let request = BalanceRequest::from_public_key(
             state_root_hash,
             protocol_version,

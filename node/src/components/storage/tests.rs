@@ -27,7 +27,8 @@ use casper_types::{
     BlockSignaturesV2, BlockV2, ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployHash,
     Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr,
     ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder,
-    TimeDiff, Transaction, TransactionHash, TransactionV1Hash, Transfer, TransferV2, U512,
+    TimeDiff, Transaction, TransactionConfig, TransactionHash, TransactionV1Hash, Transfer,
+    TransferV2, U512,
 };
 use tempfile::tempdir;
 
@@ -193,6 +194,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         RECENT_ERA_COUNT,
         None,
         false,
+        TransactionConfig::default(),
     )
     .expect("could not create storage component fixture")
 }
@@ -223,6 +225,7 @@ fn storage_fixture_from_parts(
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
         None,
         false,
+        TransactionConfig::default(),
     )
     .expect("could not create storage component fixture from parts")
 }
@@ -245,6 +248,7 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
         RECENT_ERA_COUNT,
         None,
         true,
+        TransactionConfig::default(),
     )
     .expect("could not create storage component fixture")
 }
@@ -1782,6 +1786,7 @@ fn should_create_subdir_named_after_network() {
         RECENT_ERA_COUNT,
         None,
         false,
+        TransactionConfig::default(),
     )
     .unwrap();
 

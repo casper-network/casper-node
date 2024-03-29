@@ -219,7 +219,7 @@ impl Chainspec {
         let highway_config = HighwayConfig::random(rng);
         let transaction_config = TransactionConfig::random(rng);
         let wasm_config = rng.gen();
-        let system_costs_config = rng.gen();
+        let system_costs_config = SystemConfig::random(rng);
         let vacancy_config = VacancyConfig::random(rng);
 
         Chainspec {
@@ -232,6 +232,30 @@ impl Chainspec {
             system_costs_config,
             vacancy_config,
         }
+    }
+
+    /// Set the chain name;
+    pub fn with_chain_name(&mut self, chain_name: String) -> &mut Self {
+        self.network_config.name = chain_name;
+        self
+    }
+
+    /// Set max associated keys.
+    pub fn with_max_associated_keys(&mut self, max_associated_keys: u32) -> &mut Self {
+        self.core_config.max_associated_keys = max_associated_keys;
+        self
+    }
+
+    /// Set pricing handling.
+    pub fn with_pricing_handling(&mut self, pricing_handling: PricingHandling) -> &mut Self {
+        self.core_config.pricing_handling = pricing_handling;
+        self
+    }
+
+    /// Set allow reservations.
+    pub fn with_allow_reservations(&mut self, allow_reservations: bool) -> &mut Self {
+        self.core_config.allow_reservations = allow_reservations;
+        self
     }
 }
 

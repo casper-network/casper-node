@@ -237,7 +237,7 @@ fn genesis_accounts_should_not_remove_associated_keys() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(account_hash)
         .with_session_code(ADD_ASSOCIATED_KEY_CONTRACT, session_args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT
         })
         .with_authorization_keys(&[*ADMIN_1_ACCOUNT_ADDR])
@@ -310,7 +310,7 @@ fn administrator_account_should_disable_any_account() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -354,7 +354,7 @@ fn administrator_account_should_disable_any_account() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
         .build();
@@ -373,7 +373,7 @@ fn administrator_account_should_disable_any_account() {
     let deploy_item = DeployItemBuilder::new()
         .with_address(sender)
         .with_session_code(SET_ACTION_THRESHOLDS_CONTRACT, session_args)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ADMIN_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
         .build();

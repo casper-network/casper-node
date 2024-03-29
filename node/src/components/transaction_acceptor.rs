@@ -16,9 +16,9 @@ use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
-    PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget,
-    TransactionTarget, U512,
+    ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr,
+    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{
@@ -115,10 +115,7 @@ impl TransactionAcceptor {
         let is_config_compliant = match &event_metadata.transaction {
             Transaction::Deploy(deploy) => deploy
                 .is_config_compliant(
-                    &self.chainspec.network_config.name,
-                    &self.chainspec.system_costs_config,
-                    &self.chainspec.transaction_config,
-                    self.chainspec.core_config.max_associated_keys,
+                    &self.chainspec,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
@@ -222,10 +219,8 @@ impl TransactionAcceptor {
                 let protocol_version = block_header.protocol_version();
                 let hold_interval = self.balance_hold_interval;
                 let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
-                let balance_handling = BalanceHandling::Available {
-                    hold_interval,
-                    block_time,
-                };
+                let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+                let balance_handling = BalanceHandling::Available { holds_epoch };
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     protocol_version,

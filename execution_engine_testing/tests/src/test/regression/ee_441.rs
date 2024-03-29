@@ -18,7 +18,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
     // more data
     let deploy = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_session_code(
             EE_441_RNG_STATE,
             runtime_args! {

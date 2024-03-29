@@ -25,8 +25,8 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, Key, ProtocolVersion, PublicKey,
-    Transaction, TransactionCategory, U512,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
+    PublicKey, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -84,11 +84,9 @@ pub fn execute_finalized_block(
     let mut state_root_hash = pre_state_root_hash;
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
     let block_time = BlockTime::new(executable_block.timestamp.millis());
-    let balance_handling = BalanceHandling::Available {
-        block_time: executable_block.timestamp.millis(),
-        hold_interval: chainspec.core_config.balance_hold_interval.millis(),
-    };
-    let holds_epoch = Some(chainspec.balance_holds_epoch(executable_block.timestamp));
+    let holds_epoch =
+        HoldsEpoch::from_block_time(block_time, chainspec.core_config.balance_hold_interval);
+    let balance_handling = BalanceHandling::Available { holds_epoch };
     let proposer = executable_block.proposer.clone();
 
     let start = Instant::now();
@@ -100,9 +98,7 @@ pub fn execute_finalized_block(
         .iter()
         .map(Transaction::fetch_id)
         .collect_vec();
-    let system_costs = chainspec.system_costs_config;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
-    let gas_price = Some(current_gas_price);
 
     for transaction in executable_block.transactions {
         let mut artifact_builder = ExecutionArtifactBuilder::new(&transaction);
@@ -133,10 +129,10 @@ pub fn execute_finalized_block(
         // post processing
 
         // NOTE: this is the allowed computation limit   (gas limit)
-        let gas_limit = match transaction.gas_limit(&system_costs, None) {
+        let gas_limit = match transaction.gas_limit(chainspec) {
             Ok(gas) => gas,
             Err(ite) => {
-                debug!(%ite, "invalid transaction (gas limit)");
+                debug!(%transaction_hash, %ite, "invalid transaction (gas limit)");
                 artifact_builder.with_invalid_transaction(&ite);
                 artifacts.push(artifact_builder.build());
                 continue;
@@ -145,10 +141,10 @@ pub fn execute_finalized_block(
         artifact_builder.with_gas_limit(gas_limit);
 
         // NOTE: this is the actual adjusted cost that we charge for (gas limit * gas price)
-        let cost = match transaction.gas_limit(&system_costs, gas_price) {
-            Ok(gas) => gas.value(),
+        let cost = match transaction.gas_cost(chainspec, current_gas_price) {
+            Ok(motes) => motes.value(),
             Err(ite) => {
-                debug!(%ite, "invalid transaction (cost)");
+                debug!(%transaction_hash, "invalid transaction (motes conversion)");
                 artifact_builder.with_invalid_transaction(&ite);
                 artifacts.push(artifact_builder.build());
                 continue;
@@ -325,6 +321,17 @@ pub fn execute_finalized_block(
         match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a hold for full cost is placed on the payer's purse.
+                let handle_payment_request = HandlePaymentRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandlePaymentMode::clear_holds(balance_identifier.clone(), holds_epoch),
+                );
+                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                artifact_builder
+                    .with_handle_payment_result(&handle_payment_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                 let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
                     state_root_hash,
                     protocol_version,
@@ -332,7 +339,7 @@ pub fn execute_finalized_block(
                     BalanceHoldAddrTag::Gas,
                     cost,
                     block_time,
-                    chainspec.core_config.balance_hold_interval,
+                    holds_epoch,
                     insufficient_balance_handling,
                 ));
                 artifact_builder
@@ -348,10 +355,10 @@ pub fn execute_finalized_block(
                     protocol_version,
                     transaction_hash,
                     HandlePaymentMode::finalize(
-                        gas_limit,
-                        gas_price,
+                        gas_limit.value(),
+                        current_gas_price,
                         cost,
-                        consumed,
+                        consumed.value(),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
                         holds_epoch,
@@ -365,7 +372,7 @@ pub fn execute_finalized_block(
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse for later
                 // distribution
-                let consumed = Gas::new(artifact_builder.consumed());
+                let consumed = Some(artifact_builder.consumed());
                 let handle_payment_request = HandlePaymentRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
@@ -373,7 +380,7 @@ pub fn execute_finalized_block(
                     transaction_hash,
                     HandlePaymentMode::distribute_accumulated(
                         BalanceIdentifier::Accumulate,
-                        Some(consumed),
+                        consumed,
                     ),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
@@ -446,7 +453,7 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_fees(fee_req) {
             FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
             FeeResult::Success {
@@ -479,10 +486,10 @@ pub fn execute_finalized_block(
         );
         match scratch_state.distribute_block_rewards(rewards_req) {
             BlockRewardsResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             BlockRewardsResult::Failure(bre) => {
-                return Err(BlockExecutionError::DistributeBlockRewards(bre))
+                return Err(BlockExecutionError::DistributeBlockRewards(bre));
             }
             BlockRewardsResult::Success {
                 post_state_hash, ..
@@ -506,7 +513,7 @@ pub fn execute_finalized_block(
             executable_block.era_id.successor(),
         ) {
             StepResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+                return Err(BlockExecutionError::RootNotFound(state_root_hash));
             }
             StepResult::Failure(err) => return Err(BlockExecutionError::Step(err)),
             StepResult::Success {
@@ -736,7 +743,7 @@ where
     let block_time = block_header
         .timestamp()
         .saturating_add(chainspec.core_config.minimum_block_time);
-    let gas_limit = match transaction.gas_limit(&chainspec.system_costs_config, None) {
+    let gas_limit = match transaction.gas_limit(chainspec) {
         Ok(gas_limit) => gas_limit,
         Err(_) => {
             return SpeculativeExecutionResult::invalid_gas_limit(transaction);

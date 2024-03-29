@@ -154,7 +154,7 @@ fn test_multisig_auth(
     let deploy_item = DeployItemBuilder::new()
         .with_address(caller)
         .with_stored_session_named_key(CONTRACT_KEY, entry_point, session_args)
-        .with_empty_payment_bytes(payment_args)
+        .with_standard_payment(payment_args)
         .with_authorization_keys(authorization_keys)
         .with_deploy_hash(deploy_hash)
         .build();

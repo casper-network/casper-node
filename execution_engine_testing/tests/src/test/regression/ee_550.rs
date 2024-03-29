@@ -30,7 +30,7 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
             CONTRACT_EE_550_REGRESSION,
             runtime_args! { ARG_PASS => String::from(PASS_TEST_REMOVE) },
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
         .with_deploy_hash(DEPLOY_HASH)
         .build();
@@ -65,7 +65,7 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
             CONTRACT_EE_550_REGRESSION,
             runtime_args! { ARG_PASS => String::from(PASS_TEST_UPDATE) },
         )
-        .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR, AccountHash::new(KEY_2_ADDR)])
         .with_deploy_hash(DEPLOY_HASH)
         .build();
