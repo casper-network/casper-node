@@ -39,7 +39,7 @@ pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 /// Default cost of the `activate_bid` auction entry point.
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 /// Default cost of the `change_bid_public_key` auction entry point.
-pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u32 = 2_500_000_000;
+pub const DEFAULT_CHANGE_BID_PUBLIC_KEY_COST: u64 = 5_000_000_000;
 
 /// Description of the costs of calling auction entrypoints.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -75,7 +75,7 @@ pub struct AuctionCosts {
     /// Cost of calling the `redelegate` entry point.
     pub redelegate: u32,
     /// Cost of calling the `change_bid_public_key` entry point.
-    pub change_bid_public_key: u32,
+    pub change_bid_public_key: u64,
 }
 
 impl Default for AuctionCosts {
@@ -264,7 +264,7 @@ pub mod gens {
             read_era_id in num::u32::ANY,
             activate_bid in num::u32::ANY,
             redelegate in num::u32::ANY,
-            change_bid_public_key in num::u32::ANY,
+            change_bid_public_key in num::u64::ANY,
         ) -> AuctionCosts {
             AuctionCosts {
                 get_era_validators,
