@@ -3,7 +3,6 @@ pub mod deploy_item;
 pub mod engine_config;
 mod error;
 pub(crate) mod execution_kind;
-pub mod execution_result;
 mod wasm_v1;
 
 use std::{cell::RefCell, rc::Rc};
@@ -24,7 +23,6 @@ pub use engine_config::{
 };
 pub use error::Error;
 use execution_kind::ExecutionKind;
-pub use execution_result::{ExecutionResult, ForcedTransferResult};
 pub use wasm_v1::{ExecutableItem, InvalidRequest, WasmV1Request, WasmV1Result};
 
 /// The maximum amount of motes that payment code execution can cost.
@@ -126,7 +124,7 @@ impl ExecutionEngineV1 {
             Err(ese) => return WasmV1Result::precondition_failure(gas_limit, ese),
         };
         let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
-        let execution_result = Executor::new(self.config().clone()).exec(
+        Executor::new(self.config().clone()).exec(
             execution_kind,
             args,
             entity_hash,
@@ -145,7 +143,6 @@ impl ExecutionEngineV1 {
                 account_hash,
                 self.config.max_runtime_call_stack_height() as usize,
             ),
-        );
-        WasmV1Result::from_execution_result(gas_limit, execution_result)
+        )
     }
 }

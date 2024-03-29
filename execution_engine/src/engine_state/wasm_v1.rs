@@ -12,7 +12,7 @@ use casper_types::{
     TransactionV1, Transfer, U512,
 };
 
-use crate::engine_state::{DeployItem, Error as EngineError, ExecutionResult};
+use crate::engine_state::{DeployItem, Error as EngineError};
 
 const DEFAULT_ENTRY_POINT: &str = "call";
 
@@ -230,6 +230,25 @@ pub struct WasmV1Result {
 }
 
 impl WasmV1Result {
+    /// Creates a new instance.
+    pub fn new(
+        limit: Gas,
+        consumed: Gas,
+        effects: Effects,
+        transfers: Vec<Transfer>,
+        messages: Messages,
+        error: Option<EngineError>,
+    ) -> Self {
+        WasmV1Result {
+            limit,
+            consumed,
+            effects,
+            transfers,
+            messages,
+            error,
+        }
+    }
+
     /// Error, if any.
     pub fn error(&self) -> Option<&EngineError> {
         self.error.as_ref()
@@ -302,39 +321,6 @@ impl WasmV1Result {
     /// effects, and has a gas cost of 0.
     pub fn has_precondition_failure(&self) -> bool {
         self.error.is_some() && self.consumed == Gas::zero() && self.effects.is_empty()
-    }
-
-    /// From an execution result.
-    pub fn from_execution_result(gas_limit: Gas, execution_result: ExecutionResult) -> Self {
-        match execution_result {
-            ExecutionResult::Failure {
-                error,
-                transfers,
-                gas,
-                effects,
-                messages,
-            } => WasmV1Result {
-                error: Some(error),
-                transfers,
-                effects,
-                messages,
-                limit: gas_limit,
-                consumed: gas,
-            },
-            ExecutionResult::Success {
-                transfers,
-                gas,
-                effects,
-                messages,
-            } => WasmV1Result {
-                transfers,
-                effects,
-                messages,
-                limit: gas_limit,
-                consumed: gas,
-                error: None,
-            },
-        }
     }
 
     /// Converts a transfer result to an execution result.
