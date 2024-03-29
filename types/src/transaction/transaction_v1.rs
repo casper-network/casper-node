@@ -90,7 +90,7 @@ pub struct TransactionV1 {
 }
 
 impl TransactionV1 {
-    /// Called by the `TransactionBuilder` to construct a new `TransactionV1`.
+    /// Called by the `TransactionV1Builder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
     pub(super) fn build(
         chain_name: String,
