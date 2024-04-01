@@ -372,15 +372,20 @@ pub fn execute_finalized_block(
             FeeHandling::Accumulate => {
                 // in this mode, consumed gas is accumulated into a single purse for later
                 // distribution
-                let consumed = Some(artifact_builder.consumed());
+                let consumed = Gas::new(artifact_builder.consumed());
                 let handle_payment_request = HandlePaymentRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::distribute_accumulated(
+                    HandlePaymentMode::finalize(
+                        gas_limit.value(),
+                        current_gas_price,
+                        cost,
+                        consumed.value(),
+                        balance_identifier,
                         BalanceIdentifier::Accumulate,
-                        consumed,
+                        holds_epoch,
                     ),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
@@ -449,6 +454,7 @@ pub fn execute_finalized_block(
             native_runtime_config.clone(),
             state_root_hash,
             protocol_version,
+            block_time,
             holds_epoch,
         );
         match scratch_state.distribute_fees(fee_req) {

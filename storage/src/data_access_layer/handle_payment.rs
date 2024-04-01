@@ -17,10 +17,6 @@ pub enum HandlePaymentMode {
         target: Box<BalanceIdentifier>,
         holds_epoch: HoldsEpoch,
     },
-    Distribute {
-        source: BalanceIdentifier,
-        amount: Option<U512>,
-    },
     Burn {
         source: BalanceIdentifier,
         amount: Option<U512>,
@@ -50,14 +46,6 @@ impl HandlePaymentMode {
             target: Box::new(target),
             holds_epoch,
         }
-    }
-
-    /// What source should be used to distribute from (typically the Accumulate purse), and how
-    /// much? If amount is None or greater than the available balance, the full available
-    /// balance will be distributed. If amount is less than available balance, only that much
-    /// will be distributed leaving a remaining balance.
-    pub fn distribute_accumulated(source: BalanceIdentifier, amount: Option<U512>) -> Self {
-        HandlePaymentMode::Distribute { source, amount }
     }
 
     /// What source should be used to burn from, and how much?

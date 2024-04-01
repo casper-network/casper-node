@@ -6,8 +6,8 @@ use crate::system::{
     transfer::TransferError,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, FeeHandling, HoldsEpoch, ProtocolVersion,
-    Transfer,
+    account::AccountHash, execution::Effects, BlockTime, Digest, FeeHandling, HoldsEpoch,
+    ProtocolVersion, Transfer,
 };
 
 use crate::tracking_copy::TrackingCopyError;
@@ -17,6 +17,7 @@ pub struct FeeRequest {
     config: NativeRuntimeConfig,
     state_hash: Digest,
     protocol_version: ProtocolVersion,
+    block_time: BlockTime,
     holds_epoch: HoldsEpoch,
 }
 
@@ -25,12 +26,14 @@ impl FeeRequest {
         config: NativeRuntimeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
+        block_time: BlockTime,
         holds_epoch: HoldsEpoch,
     ) -> Self {
         FeeRequest {
             config,
             state_hash,
             protocol_version,
+            block_time,
             holds_epoch,
         }
     }
@@ -53,6 +56,11 @@ impl FeeRequest {
     /// Returns fee handling setting.
     pub fn fee_handling(&self) -> &FeeHandling {
         self.config.fee_handling()
+    }
+
+    /// Returns block time.
+    pub fn block_time(&self) -> BlockTime {
+        self.block_time
     }
 
     /// Returns holds epoch.

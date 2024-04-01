@@ -973,6 +973,7 @@ where
             native_runtime_config,
             pre_state_hash,
             protocol_version,
+            block_time.into(),
             holds_epoch,
         );
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
