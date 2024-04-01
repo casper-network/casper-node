@@ -158,3 +158,13 @@ pub enum TransferResult {
     /// Transfer failed
     Failure(TransferError),
 }
+
+impl TransferResult {
+    /// Returns the effects, if any.
+    pub fn effects(&self) -> Effects {
+        match self {
+            TransferResult::RootNotFound | TransferResult::Failure(_) => Effects::new(),
+            TransferResult::Success { effects, .. } => effects.clone(),
+        }
+    }
+}

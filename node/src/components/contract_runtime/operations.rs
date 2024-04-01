@@ -194,6 +194,8 @@ pub fn execute_finalized_block(
                             BalanceIdentifier::Payment
                         }
                     };
+                    state_root_hash =
+                        scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -250,6 +252,8 @@ pub fn execute_finalized_block(
                             runtime_args,
                         ));
                     let consumed = gas_limit;
+                    state_root_hash =
+                        scratch_state.commit(state_root_hash, transfer_result.effects().clone())?;
                     artifact_builder
                         .with_added_consumed(consumed)
                         .with_transfer_result(transfer_result)
@@ -273,6 +277,8 @@ pub fn execute_finalized_block(
                                 auction_method,
                             ));
                             let consumed = gas_limit;
+                            state_root_hash = scratch_state
+                                .commit(state_root_hash, bidding_result.effects().clone())?;
                             artifact_builder
                                 .with_added_consumed(consumed)
                                 .with_bidding_result(bidding_result)
@@ -300,6 +306,8 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            state_root_hash = scratch_state
+                                .commit(state_root_hash, wasm_v1_result.effects().clone())?;
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
@@ -329,6 +337,8 @@ pub fn execute_finalized_block(
                     HandlePaymentMode::clear_holds(balance_identifier.clone(), holds_epoch),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_payment_result.effects().clone())?;
                 artifact_builder
                     .with_handle_payment_result(&handle_payment_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -342,6 +352,8 @@ pub fn execute_finalized_block(
                     holds_epoch,
                     insufficient_balance_handling,
                 ));
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, hold_result.effects().clone())?;
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -365,6 +377,8 @@ pub fn execute_finalized_block(
                     ),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_payment_result.effects().clone())?;
                 artifact_builder
                     .with_handle_payment_result(&handle_payment_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -389,6 +403,8 @@ pub fn execute_finalized_block(
                     ),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_payment_result.effects().clone())?;
                 artifact_builder
                     .with_handle_payment_result(&handle_payment_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -403,13 +419,14 @@ pub fn execute_finalized_block(
                     HandlePaymentMode::burn(balance_identifier, Some(consumed)),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_payment_result.effects().clone())?;
                 artifact_builder
                     .with_handle_payment_result(&handle_payment_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
         }
 
-        scratch_state.commit(state_root_hash, artifact_builder.effects())?;
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .commit_effects
