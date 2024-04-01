@@ -57,7 +57,7 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
     casper_wasm::serialize(module).expect("should serialize")
 }
 
-fn make_request_with_session_bytes<'a>(session_code: Vec<u8>) -> ExecuteRequest<'a> {
+fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {
     let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(session_code, RuntimeArgs::new())
@@ -68,7 +68,7 @@ fn make_request_with_session_bytes<'a>(session_code: Vec<u8>) -> ExecuteRequest<
         .with_deploy_hash([42; 32])
         .build();
 
-    ExecuteRequestBuilder::from_deploy_item(Box::leak(Box::new(deploy_item))).build()
+    ExecuteRequestBuilder::from_deploy_item(&deploy_item).build()
 }
 
 #[ignore]

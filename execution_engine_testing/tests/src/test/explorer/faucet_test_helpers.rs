@@ -97,7 +97,7 @@ impl FaucetInstallSessionRequestBuilder {
         self
     }
 
-    pub fn build(&self) -> ExecuteRequest<'static> {
+    pub fn build(&self) -> ExecuteRequest {
         ExecuteRequestBuilder::standard(
             self.installer_account,
             &self.faucet_installer_session,
@@ -159,7 +159,7 @@ impl FaucetConfigRequestBuilder {
         self
     }
 
-    pub fn build(&self) -> ExecuteRequest<'static> {
+    pub fn build(&self) -> ExecuteRequest {
         ExecuteRequestBuilder::contract_call_by_hash(
             self.installer_account,
             self.faucet_contract_hash
@@ -219,7 +219,7 @@ impl FaucetAuthorizeAccountRequestBuilder {
         self
     }
 
-    pub fn build<'a>(self) -> ExecuteRequest<'a> {
+    pub fn build(self) -> ExecuteRequest {
         ExecuteRequestBuilder::contract_call_by_hash(
             self.installer_account,
             self.faucet_contract_hash
@@ -315,7 +315,7 @@ impl FaucetFundRequestBuilder {
         self
     }
 
-    pub fn build(self) -> ExecuteRequest<'static> {
+    pub fn build(self) -> ExecuteRequest {
         let mut rng = rand::thread_rng();
 
         let deploy_item = DeployItemBuilder::new()
@@ -342,14 +342,10 @@ impl FaucetFundRequestBuilder {
             .build();
 
         match self.block_time {
-            Some(block_time) => {
-                ExecuteRequestBuilder::from_deploy_item(Box::leak(Box::new(deploy_item)))
-                    .with_block_time(block_time)
-                    .build()
-            }
-            None => {
-                ExecuteRequestBuilder::from_deploy_item(Box::leak(Box::new(deploy_item))).build()
-            }
+            Some(block_time) => ExecuteRequestBuilder::from_deploy_item(&deploy_item)
+                .with_block_time(block_time)
+                .build(),
+            None => ExecuteRequestBuilder::from_deploy_item(&deploy_item).build(),
         }
     }
 }
@@ -559,7 +555,7 @@ impl FaucetDeployHelper {
             .build()
     }
 
-    pub fn faucet_install_request(&self) -> ExecuteRequest<'static> {
+    pub fn faucet_install_request(&self) -> ExecuteRequest {
         self.faucet_install_session_request_builder
             .clone()
             .with_installer_account(self.installer_account)
@@ -569,7 +565,7 @@ impl FaucetDeployHelper {
             .build()
     }
 
-    pub fn faucet_config_request(&self) -> ExecuteRequest<'static> {
+    pub fn faucet_config_request(&self) -> ExecuteRequest {
         self.faucet_config_request_builder
             .with_installer_account(self.installer_account())
             .with_faucet_contract_hash(

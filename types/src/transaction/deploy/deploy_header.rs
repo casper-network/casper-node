@@ -87,7 +87,7 @@ impl DeployHeader {
     pub fn gas_price(&self) -> u64 {
         // in the original implementation, we did not have dynamic gas pricing
         // but the sender of the deploy could specify a higher gas price,
-        // and the the payment amount would be multiplied by that number
+        // and the payment amount would be multiplied by that number
         // for settlement purposes. This did not increase their computation limit,
         // only how much they were charged. The intent was, the total cost
         // would be a consideration for block proposal but in the end we shipped

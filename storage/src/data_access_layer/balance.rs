@@ -345,4 +345,12 @@ impl BalanceResult {
             } => available_balance >= &cost,
         }
     }
+
+    /// Was the balance request successful?
+    pub fn is_success(&self) -> bool {
+        match self {
+            BalanceResult::RootNotFound | BalanceResult::Failure(_) => false,
+            BalanceResult::Success { .. } => true,
+        }
+    }
 }

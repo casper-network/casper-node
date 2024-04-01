@@ -69,6 +69,7 @@ impl ExecutionEngineV1 {
             entry_point,
             args,
             authorization_keys,
+            phase,
         }: WasmV1Request,
     ) -> WasmV1Result {
         // NOTE to core engineers: it is intended for the EE to ONLY execute wasm targeting the
@@ -112,7 +113,6 @@ impl ExecutionEngineV1 {
                 return WasmV1Result::precondition_failure(gas_limit, Error::TrackingCopy(tce))
             }
         };
-        let phase = executable_item.phase();
         let execution_kind = match ExecutionKind::new(
             &mut *tc.borrow_mut(),
             &named_keys,

@@ -37,8 +37,10 @@ pub enum PricingMode {
     Classic {
         /// User-specified payment amount.
         payment_amount: u64,
-        /// User-specified gas_price (minimum 1).
-        gas_price: u8,
+        /// User-specified gas_price tolerance (minimum 1).
+        /// This is interpreted to mean "do not include this transaction in a block
+        /// if the current gas price is greater than this number"
+        gas_price_tolerance: u8,
         /// Standard payment.
         standard_payment: bool,
     },
@@ -69,7 +71,7 @@ impl PricingMode {
         match rng.gen_range(0..3) {
             0 => PricingMode::Classic {
                 payment_amount: rng.gen(),
-                gas_price: 1,
+                gas_price_tolerance: 1,
                 standard_payment: true,
             },
             1 => PricingMode::Fixed {
@@ -90,7 +92,7 @@ impl Display for PricingMode {
         match self {
             PricingMode::Classic {
                 payment_amount,
-                gas_price,
+                gas_price_tolerance: gas_price,
                 standard_payment,
             } => {
                 write!(
@@ -120,7 +122,7 @@ impl ToBytes for PricingMode {
         match self {
             PricingMode::Classic {
                 payment_amount,
-                gas_price,
+                gas_price_tolerance: gas_price,
                 standard_payment,
             } => {
                 CLASSIC_TAG.write_bytes(writer)?;
@@ -158,7 +160,7 @@ impl ToBytes for PricingMode {
             + match self {
                 PricingMode::Classic {
                     payment_amount,
-                    gas_price,
+                    gas_price_tolerance: gas_price,
                     standard_payment,
                 } => {
                     payment_amount.serialized_length()
@@ -193,7 +195,7 @@ impl FromBytes for PricingMode {
                 Ok((
                     PricingMode::Classic {
                         payment_amount,
-                        gas_price,
+                        gas_price_tolerance: gas_price,
                         standard_payment,
                     },
                     remainder,

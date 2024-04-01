@@ -42,7 +42,7 @@ static BOB_KEY: Lazy<PublicKey> = Lazy::new(|| {
 });
 static BOB_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*BOB_KEY));
 
-fn setup_regression_contract<'a>() -> ExecuteRequest<'a> {
+fn setup_regression_contract() -> ExecuteRequest {
     ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         REGRESSION_20210707,

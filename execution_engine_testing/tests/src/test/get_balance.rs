@@ -3,7 +3,10 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     LmdbWasmTestBuilder, TransferRequestBuilder, LOCAL_GENESIS_REQUEST,
 };
-use casper_storage::tracking_copy::{self, ValidationError};
+use casper_storage::{
+    data_access_layer::BalanceIdentifier,
+    tracking_copy::{self, ValidationError},
+};
 use casper_types::{
     account::AccountHash, AccessRights, Digest, Key, ProtocolVersion, PublicKey, SecretKey, URef,
     U512,
@@ -39,8 +42,11 @@ fn get_balance_should_work() {
 
     let alice_main_purse = alice_account.main_purse();
 
-    let alice_balance_result =
-        builder.get_purse_balance_result(protocol_version, alice_main_purse, block_time);
+    let alice_balance_result = builder.get_purse_balance_result(
+        protocol_version,
+        BalanceIdentifier::Purse(alice_main_purse),
+        block_time,
+    );
 
     let alice_balance = alice_balance_result
         .motes()

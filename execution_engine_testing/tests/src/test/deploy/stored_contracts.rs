@@ -285,7 +285,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
 
 #[ignore]
 #[allow(unused)]
-// #[test]
+#[test]
 fn should_empty_account_using_stored_payment_code_by_hash() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
