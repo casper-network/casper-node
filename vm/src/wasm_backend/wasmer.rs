@@ -16,6 +16,7 @@ use wasmer_middlewares::metering;
 
 use crate::{
     host, storage::GlobalStateReader, u32_from_host_result, Config, Executor, TrapCode, VMResult,
+    WasmEngine,
 };
 
 use self::metering_middleware::make_wasmer_metering_middleware;
@@ -65,7 +66,7 @@ impl From<wasmer_types::TrapCode> for TrapCode {
     }
 }
 
-pub(crate) struct WasmerEngine {}
+pub(crate) struct WasmerEngine(());
 
 struct WasmerEnv<S: GlobalStateReader, E: Executor> {
     config: Config,

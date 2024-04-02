@@ -308,116 +308,89 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static, E: Executor
         .storage
         .write(key, StoredValue::ContractV2(contract));
 
-    let initial_state = if let Some(constructor_selector) = constructor_selector {
-        // Find all entrypoints with a flag set to CONSTRUCTOR
-        let constructors: Vec<_> = entrypoints
-            .iter()
-            .filter_map(|entrypoint| {
-                if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                    Some(entrypoint)
-                } else {
-                    None
-                }
-            })
-            .filter(|entry_point| entry_point.selector == constructor_selector.get())
-            .collect();
-
-        // TODO: Should we validate amount of constructors or just rely on the fact that the proc
-        // macro will statically check it, and the document the behavior that only first
-        // constructor will be called
-
-        match constructors.first() {
-            Some(first_constructor) => {
-                let mut vm = WasmEngine::new();
-
-                let storage = caller.context().storage.fork2();
-
-                let current_config = caller.config().clone();
-                let gas_limit = caller
-                    .gas_consumed()
-                    .try_into_remaining()
-                    .expect("should be remaining");
-
-                let new_context = Context {
-                    address: contract_hash,
-                    storage,
-                    executor: caller.context().executor.clone(),
-                };
-
-                let new_config = ConfigBuilder::new()
-                    .with_gas_limit(gas_limit)
-                    .with_memory_limit(current_config.memory_limit)
-                    .with_input(input_data.unwrap_or(Bytes::new()))
-                    .build();
-
-                let mut new_instance = vm
-                    .prepare(code.clone(), new_context, new_config)
-                    .expect("should prepare instance");
-
-                let (call_result, gas_usage) =
-                    new_instance.call_function(first_constructor.function_index);
-
-                let (return_data, host_result) = match call_result {
-                    Ok(()) => {
-                        // Contract did not call `casper_return` - implies that it did not revert,
-                        // and did not pass any data.
-                        (None, Ok(()))
+    let initial_state = match constructor_selector {
+        Some(constructor_selector) => {
+            // Find all entrypoints with a flag set to CONSTRUCTOR
+            let constructors: Vec<_> = entrypoints
+                .iter()
+                .filter_map(|entrypoint| {
+                    if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                        Some(entrypoint)
+                    } else {
+                        None
                     }
-                    Err(VMError::Return { flags, data }) => {
-                        // If the contract called `casper_return` function with revert bit set, we
-                        // have to pass the reverted code to the caller.
-                        let host_result = if flags.contains(ReturnFlags::REVERT) {
-                            Err(HostError::CalleeReverted)
-                        } else {
-                            Ok(())
-                        };
-                        (data, host_result)
-                    }
-                    Err(VMError::OutOfGas) => {
-                        todo!()
-                    }
-                    Err(VMError::Trap(trap_code)) => todo!(), // (None, Err(HostError::CalleeTrapped(trap_code))),
-                    Err(other_error) => todo!("{other_error:?}"),
-                };
+                })
+                .filter(|entry_point| entry_point.selector == constructor_selector.get())
+                .collect();
 
-                // Calculate how much gas was spent during execution of the called contract.
-                let gas_spent = gas_usage
-                    .gas_limit
-                    .checked_sub(gas_usage.remaining_points)
-                    .expect("remaining points always below or equal to the limit");
+            // TODO: Should we validate amount of constructors or just rely on the fact that the proc
+            // macro will statically check it, and the document the behavior that only first
+            // constructor will be called
 
-                match caller.consume_gas(gas_spent) {
-                    MeteringPoints::Remaining(_) => {}
-                    MeteringPoints::Exhausted => {
-                        todo!("exhausted")
+            match constructors.first() {
+                Some(first_constructor) => {
+                    // Take the gas spent so far and use it as a limit for the new VM.
+                    let gas_limit = caller
+                        .gas_consumed()
+                        .try_into_remaining()
+                        .expect("should be remaining");
+
+                    let execute_request = ExecuteRequestBuilder::default()
+                        .with_address(contract_hash)
+                        .with_gas_limit(gas_limit)
+                        .with_target(ExecuteTarget::Contract {
+                            address: contract_hash,
+                            selector: Selector::new(selector),
+                        })
+                        .with_input(input_data.unwrap_or_default())
+                        .build()
+                        .expect("should build");
+
+                    let tracking_copy_for_ctor = caller.context().storage.fork2();
+
+                    match caller
+                        .context()
+                        .executor
+                        .execute(tracking_copy_for_ctor, execute_request)
+                    {
+                        Ok(ExecuteResult {
+                            host_error,
+                            output,
+                            gas_usage,
+                            tracking_copy_parts,
+                        }) => {
+                            // output
+
+                            caller.consume_gas(gas_usage.gas_spent());
+
+                            if let Some(host_error) = host_error {
+                                return Ok(Err(host_error));
+                            }
+
+                            caller
+                                .context_mut()
+                                .storage
+                                .merge_raw_parts(tracking_copy_parts);
+
+                            output
+                        }
+                        Err(ExecuteError::Preparation(preparation_error)) => {
+                            // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
+                            todo!()
+                        }
                     }
                 }
-
-                let return_data = match host_result {
-                    Ok(()) => return_data,
-                    error @ Err(_) => {
-                        // If the constructor failed, we have to return the error to the caller.
-                        return Ok(error);
-                    }
-                };
-
-                let new_context = new_instance.teardown();
-
-                // Constructor was successful, merge all effects into the caller.
-                caller.context_mut().storage.merge(new_context.storage);
-
-                return_data
-            }
-            None => {
-                todo!(
-                    "Constructor with selector {:?} not found; available constructors {:?}",
-                    constructor_selector,
-                    constructors
-                )
+                None => {
+                    // No constructor found
+                    todo!("No constructor found")
+                }
             }
         }
-    } else {
-        None
+        None => {
+            // No constructor selector provided, assuming no initial state
+            // There may be an "implicit" state that will be created as part of a write operation to a `Keyspace::State`.
+            None
+        }
     };
 
     if let Some(state) = initial_state {

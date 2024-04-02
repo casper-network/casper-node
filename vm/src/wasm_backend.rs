@@ -16,7 +16,7 @@ pub struct GasUsage {
 }
 
 impl GasUsage {
-    pub fn calculate_gas_cost(&self) -> u64 {
+    pub fn gas_spent(&self) -> u64 {
         debug_assert!(self.remaining_points <= self.gas_limit);
         self.gas_limit - self.remaining_points
     }
@@ -86,7 +86,7 @@ pub enum PreparationError {
     Instantiation(String),
 }
 
-pub trait WasmInstance<S: GlobalStateReader, E: Executor> {
+pub(crate) trait WasmInstance<S: GlobalStateReader, E: Executor> {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
     fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage);
     fn teardown(self) -> Context<S, E>;

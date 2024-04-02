@@ -1,7 +1,7 @@
 pub mod chain;
 pub(crate) mod host;
 pub mod storage;
-pub mod wasm_backend;
+pub(crate) mod wasm_backend;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -388,6 +388,13 @@ pub struct ExecuteResult {
     tracking_copy_parts: TrackingCopyParts,
 }
 
+impl ExecuteResult {
+    pub fn effects(&self) -> &Effects {
+        let (_cache, effects, _) = &self.tracking_copy_parts;
+        effects
+    }
+}
+
 impl ExecutorV2 {
     pub fn new(config: ExecutorConfig) -> Self {
         let vm = WasmEngine::new();
@@ -510,6 +517,7 @@ impl Executor for ExecutorV2 {
                     Some(HostError::CalleeReverted)
                 } else {
                     initial_tracking_copy.merge(final_tracking_copy);
+
                     None
                 };
 

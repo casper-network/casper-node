@@ -4,12 +4,15 @@ use casper_storage::global_state::{
     self,
     state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::{execution::Effects, Digest, EntityAddr, Key};
+use casper_types::{
+    execution::{Effects, TransformKind},
+    Digest, EntityAddr, Key,
+};
 use digest::consts::U32;
 use vm::{
     storage::Address,
     wasm_backend::{Context, WasmInstance},
-    ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteTarget, Executor,
+    ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecuteTarget, Executor,
     ExecutorConfigBuilder, ExecutorV2, WasmEngine,
 };
 
@@ -22,71 +25,89 @@ const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2-trait.wasm")
 
 #[test]
 fn test_contract() {
-    // let (mut global_state, state_root_hash, _tempdir) =
-    //     global_state::state::lmdb::make_temporary_global_state([]);
+    let mut executor = make_executor();
 
-    // let _effects = run_wasm(
-    //     &mut global_state,
-    //     state_root_hash,
-    //     VM2_TEST_CONTRACT,
-    //     ("Hello, world!".to_string(), 123456789u32),
-    // );
+    let (mut global_state, state_root_hash, _tempdir) =
+        global_state::state::lmdb::make_temporary_global_state([]);
+
+    let _effects = run_wasm(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        VM2_TEST_CONTRACT,
+        ("Hello, world!".to_string(), 123456789u32),
+    );
 }
 
 #[test]
 fn harness() {
-    // let (mut global_state, state_root_hash, _tempdir) =
-    //     global_state::state::lmdb::make_temporary_global_state([]);
-    // run_wasm(&mut global_state, state_root_hash, VM2_HARNESS, ());
+    let mut executor = make_executor();
+
+    let (mut global_state, state_root_hash, _tempdir) =
+        global_state::state::lmdb::make_temporary_global_state([]);
+    run_wasm(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        VM2_HARNESS,
+        (),
+    );
 }
 
-// #[test]
-// fn cep18() {
-//     let executor_config = ExecutorConfigBuilder::default()
-//     .with_memory_limit(17)
-//     .build()
-//     .expect("Should build");
-//     let mut executor = ExecutorV2::new(executor_config);
-
-//     let (mut global_state, mut state_root_hash, _tempdir) =
-//         global_state::state::lmdb::make_temporary_global_state([]);
-
-//     let effects_1 = run_wasm(&mut global_state, state_root_hash, VM2_CEP18, ());
-
-//     let contract_hash = {
-//         let mut values: Vec<_> = effects_1
-//             .transforms()
-//             .iter()
-//             .filter(|t| t.key().is_smart_contract_key())
-//             .collect();
-//         assert_eq!(values.len(), 1, "{effects_1:?}");
-//         let transform = values.remove(0);
-//         let Key::AddressableEntity(EntityAddr::SmartContract(contract_hash)) = transform.key()
-//         else {
-//             panic!("Expected a smart contract key")
-//         };
-//         *contract_hash
-//     };
-
-//     state_root_hash = global_state
-//         .commit(state_root_hash, effects_1)
-//         .expect("Should commit");
-//     let _effects_2 = run_wasm(
-//         &mut executor,
-//         &mut global_state,
-//         state_root_hash,
-//         VM2_CEP18_CALLER,
-//         (contract_hash,),
-//     );
-// }
-
-#[test]
-fn traits() {
+fn make_executor() -> ExecutorV2 {
     let executor_config = ExecutorConfigBuilder::default()
         .with_memory_limit(17)
         .build()
         .expect("Should build");
-    let mut executor = ExecutorV2::new(executor_config);
+    ExecutorV2::new(executor_config)
+}
+
+#[test]
+fn cep18() {
+    let mut executor = make_executor();
+
+    let (mut global_state, mut state_root_hash, _tempdir) =
+        global_state::state::lmdb::make_temporary_global_state([]);
+
+    let effects_1 = run_wasm(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        VM2_CEP18,
+        (),
+    );
+
+    let contract_hash = {
+        let mut values: Vec<_> = effects_1
+            .transforms()
+            .iter()
+            .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKind::Identity)
+            .collect();
+        assert_eq!(values.len(), 1, "{values:#?}");
+        let transform = values.remove(0);
+        let Key::AddressableEntity(EntityAddr::SmartContract(contract_hash)) = transform.key()
+        else {
+            panic!("Expected a smart contract key")
+        };
+        *contract_hash
+    };
+
+    state_root_hash = global_state
+        .commit(state_root_hash, effects_1)
+        .expect("Should commit");
+
+    let _effects_2 = run_wasm(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        VM2_CEP18_CALLER,
+        (contract_hash,),
+    );
+}
+
+#[test]
+fn traits() {
+    let mut executor = make_executor();
     let (mut global_state, root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
     run_wasm(&mut executor, &mut global_state, root_hash, VM2_TRAITS, ());
@@ -102,7 +123,7 @@ fn run_wasm<T: BorshSerialize>(
     pre_state_hash: Digest,
     module_bytes: Bytes,
     input_data: T,
-) {
+) -> Effects {
     {
         // "Genesis"
         // storage.update_balance(&ALICE, 10 * CSPR).unwrap();
@@ -126,7 +147,9 @@ fn run_wasm<T: BorshSerialize>(
         .build()
         .expect("should build");
 
-    let _result = executor
+    let result = executor
         .execute(tracking_copy, execute_request)
         .expect("Succeed");
+
+    result.effects().clone()
 }
