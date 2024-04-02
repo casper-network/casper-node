@@ -11,9 +11,9 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_binary_port::{
     BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    DictionaryItemIdentifier, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-    GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
-    ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    NodeStatus, PayloadType, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{

@@ -23,7 +23,7 @@ use crate::{
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName, TransactionWithExecutionInfo, Uptime,
+        ReactorStateName,
     },
     DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
