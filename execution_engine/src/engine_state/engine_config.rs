@@ -36,6 +36,8 @@ pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
     VESTING_SCHEDULE_LENGTH_DAYS as u64 * DAY_MILLIS as u64;
 /// Default maximum number of delegators per validator.
 pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
+/// Default delay (in number of eras) before delegators are undelegated from an inactive validator.
+pub const DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY: u64 = 36;
 /// Default value for allowing auction bids.
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
@@ -61,6 +63,7 @@ pub struct EngineConfig {
     /// Vesting schedule period in milliseconds.
     vesting_schedule_period_millis: u64,
     max_delegators_per_validator: u32,
+    inactive_validator_undelegation_delay: u64,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
     protocol_version: ProtocolVersion,
@@ -94,6 +97,7 @@ impl Default for EngineConfig {
             strict_argument_checking: DEFAULT_STRICT_ARGUMENT_CHECKING,
             vesting_schedule_period_millis: DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             max_delegators_per_validator: DEFAULT_MAX_DELEGATORS_PER_VALIDATOR,
+            inactive_validator_undelegation_delay: DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
             wasm_config: WasmConfig::default(),
             system_config: SystemConfig::default(),
             administrative_accounts: Default::default(),
@@ -197,6 +201,11 @@ impl EngineConfig {
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
         self.protocol_version = protocol_version;
     }
+
+    /// Returns the inactive validator undelegation delay.
+    pub fn inactive_validator_undelegation_delay(&self) -> u64 {
+        self.inactive_validator_undelegation_delay
+    }
 }
 
 /// A builder for an [`EngineConfig`].
@@ -212,6 +221,7 @@ pub struct EngineConfigBuilder {
     strict_argument_checking: Option<bool>,
     vesting_schedule_period_millis: Option<u64>,
     max_delegators_per_validator: Option<u32>,
+    inactive_validator_undelegation_delay: Option<u64>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
     protocol_version: Option<ProtocolVersion>,
@@ -266,6 +276,12 @@ impl EngineConfigBuilder {
     /// Sets the max delegators per validator config option.
     pub fn with_max_delegators_per_validator(mut self, value: u32) -> Self {
         self.max_delegators_per_validator = Some(value);
+        self
+    }
+
+    /// Sets the max delegators per validator config option.
+    pub fn with_inactive_validator_undelegation_delay(mut self, value: u64) -> Self {
+        self.inactive_validator_undelegation_delay = Some(value);
         self
     }
 
@@ -400,6 +416,9 @@ impl EngineConfigBuilder {
         let balance_hold_interval = self
             .balance_hold_interval
             .unwrap_or(DEFAULT_BALANCE_HOLD_INTERVAL);
+        let inactive_validator_undelegation_delay = self
+            .inactive_validator_undelegation_delay
+            .unwrap_or(DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY);
 
         EngineConfig {
             max_associated_keys,
@@ -418,6 +437,7 @@ impl EngineConfigBuilder {
             max_delegators_per_validator,
             compute_rewards,
             balance_hold_interval,
+            inactive_validator_undelegation_delay,
         }
     }
 }

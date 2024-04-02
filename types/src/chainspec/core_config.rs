@@ -90,7 +90,8 @@ pub struct CoreConfig {
     /// The delay in number of eras for paying out the unbonding amount.
     pub unbonding_delay: u64,
 
-    /// The delay in number of eras for automatically undelegating all delegators from an inactive validator
+    /// The delay in number of eras for automatically undelegating all delegators from an inactive
+    /// validator
     pub inactive_validator_undelegation_delay: u64,
 
     /// Round seigniorage rate represented as a fractional number.

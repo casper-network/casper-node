@@ -14,7 +14,7 @@ use clap::ArgMatches;
 use itertools::Itertools;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
+use casper_execution_engine::engine_state::engine_config::{DEFAULT_PROTOCOL_VERSION, DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY};
 use casper_types::{
     system::auction::{
         Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
@@ -308,9 +308,13 @@ pub fn add_and_remove_bids<T: StateReader>(
                     public_key.clone(),
                     *bid.bonding_purse(),
                 ))),
-                BidKind::Validator(validator_bid) => BidKind::Validator(Box::new(
-                    ValidatorBid::empty(public_key.clone(), *validator_bid.bonding_purse()),
-                )),
+                BidKind::Validator(validator_bid) => {
+                    BidKind::Validator(Box::new(ValidatorBid::empty(
+                        public_key.clone(),
+                        *validator_bid.bonding_purse(),
+                        DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
+                    )))
+                }
                 BidKind::Delegator(delegator_bid) => {
                     BidKind::Delegator(Box::new(Delegator::empty(
                         public_key.clone(),
@@ -511,6 +515,7 @@ fn create_or_update_bid<T: StateReader>(
             *bonding_purse,
             *updated_recipient.stake(),
             *updated_recipient.delegation_rate(),
+            DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
         );
 
         state.set_bid(
@@ -547,6 +552,7 @@ fn create_or_update_bid<T: StateReader>(
         bonding_purse,
         stake,
         *updated_recipient.delegation_rate(),
+        DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),

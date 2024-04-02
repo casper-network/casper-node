@@ -371,6 +371,7 @@ where
                         staked_amount,
                         delegation_rate,
                         release_timestamp_millis,
+                        self.config.inactive_validator_undelegation_delay(),
                     );
 
                     // Set up delegator entries attached to genesis validators

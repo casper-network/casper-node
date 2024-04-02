@@ -833,9 +833,20 @@ where
                     Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
                 let holds_epoch = self.holds_epoch();
+                let inactive_validator_undelegation_delay: Option<u64> = Self::get_named_argument(
+                    runtime_args,
+                    auction::ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
+                )?;
+
+                let inactive_validator_undelegation_delay = inactive_validator_undelegation_delay
+                    .unwrap_or(
+                        self.context
+                            .engine_config()
+                            .inactive_validator_undelegation_delay(),
+                    );
 
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount, holds_epoch)
+                    .add_bid(account_hash, delegation_rate, amount, holds_epoch, inactive_validator_undelegation_delay)
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

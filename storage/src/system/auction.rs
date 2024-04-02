@@ -70,6 +70,7 @@ pub trait Auction:
         delegation_rate: DelegationRate,
         amount: U512,
         holds_epoch: HoldsEpoch,
+        inactive_validator_undelegation_delay: u64,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,
@@ -103,8 +104,13 @@ pub trait Auction:
             (*validator_bid.bonding_purse(), validator_bid)
         } else {
             let bonding_purse = self.create_purse()?;
-            let validator_bid =
-                ValidatorBid::unlocked(public_key, bonding_purse, amount, delegation_rate);
+            let validator_bid = ValidatorBid::unlocked(
+                public_key,
+                bonding_purse,
+                amount,
+                delegation_rate,
+                inactive_validator_undelegation_delay,
+            );
             (bonding_purse, Box::new(validator_bid))
         };
 
@@ -686,6 +692,53 @@ pub trait Auction:
 
         // record allocations for this era for reporting purposes.
         self.record_era_info(era_info)?;
+
+        Ok(())
+    }
+
+    fn undelegate_from_inactive_validators(&mut self) -> Result<(), Error> {
+        if self.get_caller() != PublicKey::System.to_account_hash() {
+            error!("invalid caller to auction undelegate_from_inactive_validators");
+            return Err(Error::InvalidCaller);
+        }
+
+        let current_era_id = self.read_era_id()?;
+        let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
+
+        // fetch all validator bids
+        let validator_bids = detail::get_validator_bids(self)?;
+        // process inactive validator bids
+        for (validator_public_key, validator_bid) in validator_bids
+            .iter()
+            .filter(|(_pubkey, validator_bid)| validator_bid.inactive())
+        {
+            if current_era_id
+                >= validator_bid.eviction_era().unwrap()
+                    + validator_bid.inactive_validator_undelegation_delay()
+            {
+                let mut delegators = read_delegator_bids(self, validator_public_key)?;
+                for delegator in delegators.iter_mut() {
+                    let delegator_public_key = delegator.delegator_public_key().clone();
+                    detail::create_unbonding_purse(
+                        self,
+                        validator_public_key.clone(),
+                        delegator_public_key.clone(),
+                        *delegator.bonding_purse(),
+                        delegator.staked_amount(),
+                        None,
+                    )?;
+                    delegator
+                        .decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)?;
+                    let delegator_bid_addr = BidAddr::new_from_public_keys(
+                        validator_public_key,
+                        Some(&delegator_public_key),
+                    );
+
+                    debug!("pruning delegator bid {}", delegator_bid_addr);
+                    self.prune_bid(delegator_bid_addr)
+                }
+            }
+        }
 
         Ok(())
     }

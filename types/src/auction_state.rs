@@ -49,6 +49,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
         URef::new([250; 32], AccessRights::READ_ADD_WRITE),
         U512::from(20),
         DelegationRate::zero(),
+        u64::MAX,
     );
     bids.push(BidKind::Validator(Box::new(validator_bid)));
 
@@ -65,7 +66,14 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
 
     let height: u64 = 10;
     let era_validators = ERA_VALIDATORS.clone();
-    AuctionState::new(state_root_hash, height, era_validators, bids)
+    let inactive_validator_undelegation_delay: u64 = 36;
+    AuctionState::new(
+        state_root_hash,
+        height,
+        era_validators,
+        bids,
+        inactive_validator_undelegation_delay,
+    )
 });
 
 /// A validator's weight.
@@ -109,6 +117,7 @@ impl AuctionState {
         block_height: u64,
         era_validators: EraValidators,
         bids: Vec<BidKind>,
+        inactive_validator_undelegation_delay: u64,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
         for (era_id, validator_weights) in era_validators.iter() {
@@ -135,6 +144,7 @@ impl AuctionState {
                         *bid.bonding_purse(),
                         *bid.staked_amount(),
                         *bid.delegation_rate(),
+                        inactive_validator_undelegation_delay,
                     );
                     staking.insert(public_key, (validator_bid, bid.delegators().clone()));
                 }

@@ -18,6 +18,10 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Default number of eras that need to pass after a validator becomes inactive
+/// for all delegators to be automatically undelegated.
+pub const DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY: u64 = 36;
+
 /// An entry in the validator map.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -36,8 +40,11 @@ pub struct ValidatorBid {
     vesting_schedule: Option<VestingSchedule>,
     /// `true` if validator has been "evicted"
     inactive: bool,
-    /// era when validator has been "evicted"
+    /// Era when validator has been "evicted"
     eviction_era: Option<EraId>,
+    /// Delay after validator has been "evicted"
+    /// before all delegators are undelegated
+    inactive_validator_undelegation_delay: u64,
 }
 
 impl ValidatorBid {
@@ -48,6 +55,7 @@ impl ValidatorBid {
         staked_amount: U512,
         delegation_rate: DelegationRate,
         release_timestamp_millis: u64,
+        inactive_validator_undelegation_delay: u64,
     ) -> Self {
         let vesting_schedule = Some(VestingSchedule::new(release_timestamp_millis));
         let inactive = false;
@@ -60,6 +68,7 @@ impl ValidatorBid {
             vesting_schedule,
             inactive,
             eviction_era,
+            inactive_validator_undelegation_delay,
         }
     }
 
@@ -69,6 +78,7 @@ impl ValidatorBid {
         bonding_purse: URef,
         staked_amount: U512,
         delegation_rate: DelegationRate,
+        inactive_validator_undelegation_delay: u64,
     ) -> Self {
         let vesting_schedule = None;
         let inactive = false;
@@ -81,11 +91,16 @@ impl ValidatorBid {
             vesting_schedule,
             inactive,
             eviction_era,
+            inactive_validator_undelegation_delay,
         }
     }
 
     /// Creates a new inactive instance of a bid with 0 staked amount.
-    pub fn empty(validator_public_key: PublicKey, bonding_purse: URef) -> Self {
+    pub fn empty(
+        validator_public_key: PublicKey,
+        bonding_purse: URef,
+        inactive_validator_undelegation_delay: u64,
+    ) -> Self {
         let vesting_schedule = None;
         let inactive = true;
         let eviction_era = Some(EraId::default());
@@ -99,6 +114,7 @@ impl ValidatorBid {
             vesting_schedule,
             inactive,
             eviction_era,
+            inactive_validator_undelegation_delay,
         }
     }
 
@@ -167,6 +183,16 @@ impl ValidatorBid {
     /// Returns `true` if validator is inactive
     pub fn inactive(&self) -> bool {
         self.inactive
+    }
+
+    /// Gets the delegation rate of the provided bid
+    pub fn eviction_era(&self) -> Option<EraId> {
+        self.eviction_era
+    }
+
+    /// Gets the delegation rate of the provided bid
+    pub fn inactive_validator_undelegation_delay(&self) -> u64 {
+        self.inactive_validator_undelegation_delay
     }
 
     /// Decreases the stake of the provided bid
@@ -288,6 +314,7 @@ impl FromBytes for ValidatorBid {
         let (vesting_schedule, bytes) = FromBytes::from_bytes(bytes)?;
         let (inactive, bytes) = FromBytes::from_bytes(bytes)?;
         let (eviction_era, bytes) = FromBytes::from_bytes(bytes)?;
+        let (inactive_validator_undelegation_delay, bytes) = FromBytes::from_bytes(bytes)?;
         Ok((
             ValidatorBid {
                 validator_public_key,
@@ -297,6 +324,7 @@ impl FromBytes for ValidatorBid {
                 vesting_schedule,
                 inactive,
                 eviction_era,
+                inactive_validator_undelegation_delay,
             },
             bytes,
         ))
@@ -313,6 +341,7 @@ impl From<Bid> for ValidatorBid {
             vesting_schedule: bid.vesting_schedule().cloned(),
             inactive: bid.inactive(),
             eviction_era: None,
+            inactive_validator_undelegation_delay: DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
         }
     }
 }
@@ -321,7 +350,10 @@ impl From<Bid> for ValidatorBid {
 mod tests {
     use crate::{
         bytesrepr,
-        system::auction::{bid::VestingSchedule, DelegationRate, ValidatorBid},
+        system::auction::{
+            bid::VestingSchedule, validator_bid::DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
+            DelegationRate, ValidatorBid,
+        },
         AccessRights, EraId, PublicKey, SecretKey, URef, U512,
     };
 
@@ -337,6 +369,7 @@ mod tests {
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
             eviction_era: None,
+            inactive_validator_undelegation_delay: DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }
@@ -353,6 +386,7 @@ mod tests {
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: true,
             eviction_era: Some(EraId::default()),
+            inactive_validator_undelegation_delay: DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
         };
         bytesrepr::test_serialization_roundtrip(&founding_validator);
     }

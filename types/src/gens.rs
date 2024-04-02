@@ -12,7 +12,7 @@ use alloc::{
 use proptest::{
     array, bits, bool,
     collection::{self, vec, SizeRange},
-    option,
+    num, option,
     prelude::*,
     result,
 };
@@ -617,9 +617,17 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
         u512_arb(),
         delegation_rate_arb(),
         bool::ANY,
+        num::u64::ANY,
     )
         .prop_map(
-            |(validator_public_key, bonding_purse, staked_amount, delegation_rate, is_locked)| {
+            |(
+                validator_public_key,
+                bonding_purse,
+                staked_amount,
+                delegation_rate,
+                is_locked,
+                inactive_validator_undelegation_delay,
+            )| {
                 let validator_bid = if is_locked {
                     ValidatorBid::locked(
                         validator_public_key,
@@ -627,6 +635,7 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                         staked_amount,
                         delegation_rate,
                         1u64,
+                        inactive_validator_undelegation_delay,
                     )
                 } else {
                     ValidatorBid::unlocked(
@@ -634,6 +643,7 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
                         bonding_purse,
                         staked_amount,
                         delegation_rate,
+                        inactive_validator_undelegation_delay,
                     )
                 };
                 BidKind::Validator(Box::new(validator_bid))

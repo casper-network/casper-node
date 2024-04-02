@@ -23,6 +23,9 @@ pub const DEFAULT_AUCTION_DELAY: u64 = 1;
 pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
+/// Default number of eras that need to pass after a validator becomes inactive
+/// for all delegators to be automatically undelegated.
+pub const DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY: u64 = 36;
 /// Default round seigniorage rate represented as a fractional number.
 ///
 /// Annual issuance: 2%
@@ -45,6 +48,7 @@ pub struct GenesisConfig {
     locked_funds_period_millis: u64,
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
+    inactive_validator_undelegation_delay: u64,
     genesis_timestamp_millis: u64,
 }
 
@@ -67,6 +71,7 @@ impl GenesisConfig {
         locked_funds_period_millis: u64,
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
+        inactive_validator_undelegation_delay: u64,
         genesis_timestamp_millis: u64,
     ) -> GenesisConfig {
         GenesisConfig {
@@ -78,6 +83,7 @@ impl GenesisConfig {
             locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
+            inactive_validator_undelegation_delay,
             genesis_timestamp_millis,
         }
     }
@@ -154,6 +160,11 @@ impl GenesisConfig {
         self.unbonding_delay
     }
 
+    /// Returns inactive validator undelegation delay in eras.
+    pub fn inactive_validator_undelegation_delay(&self) -> u64 {
+        self.inactive_validator_undelegation_delay
+    }
+
     /// Returns genesis timestamp expressed in milliseconds.
     pub fn genesis_timestamp_millis(&self) -> u64 {
         self.genesis_timestamp_millis
@@ -184,6 +195,8 @@ impl Distribution<GenesisConfig> for Standard {
 
         let unbonding_delay = rng.gen();
 
+        let inactive_validator_undelegation_delay = rng.gen();
+
         let genesis_timestamp_millis = rng.gen();
 
         GenesisConfig {
@@ -195,6 +208,7 @@ impl Distribution<GenesisConfig> for Standard {
             locked_funds_period_millis,
             round_seigniorage_rate,
             unbonding_delay,
+            inactive_validator_undelegation_delay,
             genesis_timestamp_millis,
         }
     }
@@ -214,6 +228,7 @@ pub struct GenesisConfigBuilder {
     locked_funds_period_millis: Option<u64>,
     round_seigniorage_rate: Option<Ratio<u64>>,
     unbonding_delay: Option<u64>,
+    inactive_validator_undelegation_delay: Option<u64>,
     genesis_timestamp_millis: Option<u64>,
 }
 
@@ -271,6 +286,15 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the inactive validator undelegation delay config option.
+    pub fn with_inactive_validator_undelegation_delay(
+        mut self,
+        inactive_validator_undelegation_delay: u64,
+    ) -> Self {
+        self.inactive_validator_undelegation_delay = Some(inactive_validator_undelegation_delay);
+        self
+    }
+
     /// Sets the genesis timestamp config option.
     pub fn with_genesis_timestamp_millis(mut self, genesis_timestamp_millis: u64) -> Self {
         self.genesis_timestamp_millis = Some(genesis_timestamp_millis);
@@ -292,6 +316,9 @@ impl GenesisConfigBuilder {
                 .round_seigniorage_rate
                 .unwrap_or(DEFAULT_ROUND_SEIGNIORAGE_RATE),
             unbonding_delay: self.unbonding_delay.unwrap_or(DEFAULT_UNBONDING_DELAY),
+            inactive_validator_undelegation_delay: self
+                .inactive_validator_undelegation_delay
+                .unwrap_or(DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY),
             genesis_timestamp_millis: self
                 .genesis_timestamp_millis
                 .unwrap_or(DEFAULT_GENESIS_TIMESTAMP_MILLIS),
@@ -316,6 +343,9 @@ impl From<&Chainspec> for GenesisConfig {
             .with_locked_funds_period_millis(chainspec.core_config.locked_funds_period.millis())
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
+            .with_inactive_validator_undelegation_delay(
+                chainspec.core_config.inactive_validator_undelegation_delay,
+            )
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
             .build()
     }
