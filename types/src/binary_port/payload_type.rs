@@ -31,7 +31,7 @@ use super::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName, SpeculativeExecutionResult,
     },
-    TransactionWithExecutionInfo, Uptime,
+    DictionaryQueryResult, TransactionWithExecutionInfo, Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -107,6 +107,8 @@ pub enum PayloadType {
     GetTrieFullResult,
     /// Node status.
     NodeStatus,
+    /// Result of querying for a dictionary item.
+    DictionaryQueryResult,
 }
 
 impl PayloadType {
@@ -192,6 +194,9 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::StoredValues as u8 => Ok(PayloadType::StoredValues),
             x if x == PayloadType::GetTrieFullResult as u8 => Ok(PayloadType::GetTrieFullResult),
             x if x == PayloadType::NodeStatus as u8 => Ok(PayloadType::NodeStatus),
+            x if x == PayloadType::DictionaryQueryResult as u8 => {
+                Ok(PayloadType::DictionaryQueryResult)
+            }
             _ => Err(()),
         }
     }
@@ -242,6 +247,7 @@ impl fmt::Display for PayloadType {
             PayloadType::StoredValues => write!(f, "StoredValues"),
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
             PayloadType::NodeStatus => write!(f, "NodeStatus"),
+            PayloadType::DictionaryQueryResult => write!(f, "DictionaryQueryResult"),
         }
     }
 }
@@ -280,6 +286,7 @@ const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
 const STORED_VALUES_TAG: u8 = 31;
 const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
 const NODE_STATUS_TAG: u8 = 33;
+const DICTIONARY_QUERY_RESULT_TAG: u8 = 34;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -324,6 +331,7 @@ impl ToBytes for PayloadType {
             PayloadType::StoredValues => STORED_VALUES_TAG,
             PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
             PayloadType::NodeStatus => NODE_STATUS_TAG,
+            PayloadType::DictionaryQueryResult => DICTIONARY_QUERY_RESULT_TAG,
         }
         .write_bytes(writer)
     }
@@ -371,6 +379,7 @@ impl FromBytes for PayloadType {
             STORED_VALUES_TAG => PayloadType::StoredValues,
             GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
             NODE_STATUS_TAG => PayloadType::NodeStatus,
+            DICTIONARY_QUERY_RESULT_TAG => PayloadType::DictionaryQueryResult,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((record_id, remainder))
@@ -454,6 +463,10 @@ impl PayloadEntity for ConsensusValidatorChanges {
 
 impl PayloadEntity for GlobalStateQueryResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
+}
+
+impl PayloadEntity for DictionaryQueryResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::DictionaryQueryResult;
 }
 
 impl PayloadEntity for Vec<StoredValue> {
