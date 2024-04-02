@@ -142,7 +142,7 @@ fn get_total_supply(fixture: &mut TestFixture, block_height: Option<u64>) -> U51
         .total_supply(total_supply_req);
 
     if let TotalSupplyResult::Success { total_supply } = result {
-        return total_supply;
+        total_supply
     } else {
         panic!("Can't get total supply")
     }
