@@ -146,6 +146,21 @@ impl ConfigsOverride {
         self.balance_hold_interval_override = Some(balance_hold_interval);
         self
     }
+
+    fn with_min_gas_price(mut self, min_gas_price: u8) -> Self {
+        self.min_gas_price = min_gas_price;
+        self
+    }
+
+    fn with_max_gas_price(mut self, max_gas_price: u8) -> Self {
+        self.max_gas_price = max_gas_price;
+        self
+    }
+
+    fn with_minimum_era_height(mut self, minimum_era_height: u64) -> Self {
+        self.minimum_era_height = minimum_era_height;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
