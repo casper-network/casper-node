@@ -46,6 +46,10 @@ use crate::{
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
+        inactive_validators::{
+            InactiveValidatorsUndelegationError, InactiveValidatorsUndelegationRequest,
+            InactiveValidatorsUndelegationResult,
+        },
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
@@ -503,6 +507,94 @@ pub trait CommitProvider: StateProvider {
             Err(hpe) => FeeResult::Failure(FeeError::TrackingCopy(
                 TrackingCopyError::SystemContract(system::Error::HandlePayment(hpe)),
             )),
+        }
+    }
+
+    /// Undelegate delegators from inactive validators.
+    ///
+    /// Delegators are forcibly removed if a validator has been inactive
+    /// for `inactive_validator_undelegation_delay` eras.
+    fn undelegate_from_inactive_validators(
+        &self,
+        request: InactiveValidatorsUndelegationRequest,
+    ) -> InactiveValidatorsUndelegationResult {
+        let state_hash = request.state_hash();
+
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return InactiveValidatorsUndelegationResult::RootNotFound,
+            Err(err) => {
+                return InactiveValidatorsUndelegationResult::Failure(
+                    InactiveValidatorsUndelegationError::TrackingCopy(TrackingCopyError::Storage(
+                        err,
+                    )),
+                )
+            }
+        };
+
+        let config = request.config();
+        let protocol_version = request.protocol_version();
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
+                Err(bre) => {
+                    return InactiveValidatorsUndelegationResult::Failure(
+                        InactiveValidatorsUndelegationError::TrackingCopy(
+                            TrackingCopyError::BytesRepr(bre),
+                        ),
+                    )
+                }
+            };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return InactiveValidatorsUndelegationResult::Failure(
+                        InactiveValidatorsUndelegationError::TrackingCopy(
+                            TrackingCopyError::BytesRepr(*bre),
+                        ),
+                    )
+                }
+            };
+
+            crate::system::runtime_native::Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::Session,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return InactiveValidatorsUndelegationResult::Failure(
+                    InactiveValidatorsUndelegationError::TrackingCopy(tce),
+                );
+            }
+        };
+
+        if let Err(auction_error) = runtime.undelegate_from_inactive_validators() {
+            error!(
+                "undelegating from inactive validators failed due to auction error {:?}",
+                auction_error
+            );
+            return InactiveValidatorsUndelegationResult::Failure(
+                InactiveValidatorsUndelegationError::Auction(auction_error),
+            );
+        }
+
+        let effects = tc.borrow().effects();
+
+        match self.commit(state_hash, effects.clone()) {
+            Ok(post_state_hash) => InactiveValidatorsUndelegationResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(gse) => InactiveValidatorsUndelegationResult::Failure(
+                InactiveValidatorsUndelegationError::TrackingCopy(TrackingCopyError::Storage(gse)),
+            ),
         }
     }
 }

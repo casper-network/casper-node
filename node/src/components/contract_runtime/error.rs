@@ -7,7 +7,10 @@ use thiserror::Error;
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_storage::{
-    data_access_layer::{BlockRewardsError, FeeError, StepError},
+    data_access_layer::{
+        inactive_validators::InactiveValidatorsUndelegationError, BlockRewardsError, FeeError,
+        StepError,
+    },
     global_state::error::Error as GlobalStateError,
     tracking_copy::TrackingCopyError,
 };
@@ -88,6 +91,12 @@ pub enum BlockExecutionError {
         #[from]
         #[serde(skip_serializing)]
         BlockRewardsError,
+    ),
+    #[error(transparent)]
+    InactiveValidatorsUndelegation(
+        #[from]
+        #[serde(skip_serializing)]
+        InactiveValidatorsUndelegationError,
     ),
     /// Failed to compute the approvals checksum.
     #[error("failed to compute approvals checksum: {0}")]

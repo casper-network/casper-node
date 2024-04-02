@@ -20,6 +20,7 @@ mod genesis;
 pub mod handle_fee;
 mod handle_refund;
 pub mod mint;
+pub mod inactive_validators;
 mod protocol_upgrade;
 pub mod prune;
 pub mod query;
