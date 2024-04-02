@@ -3254,6 +3254,7 @@
         "bonding_purse",
         "delegation_rate",
         "inactive",
+        "inactive_validator_undelegation_delay",
         "staked_amount",
         "validator_public_key"
       ],
@@ -3304,7 +3305,7 @@
           "type": "boolean"
         },
         "eviction_era": {
-          "description": "era when validator has been \"evicted\"",
+          "description": "Era when validator has been \"evicted\"",
           "anyOf": [
             {
               "$ref": "#/definitions/EraId"
@@ -3313,6 +3314,12 @@
               "type": "null"
             }
           ]
+        },
+        "inactive_validator_undelegation_delay": {
+          "description": "Delay after validator has been \"evicted\" before all delegators are undelegated",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         }
       },
       "additionalProperties": false
