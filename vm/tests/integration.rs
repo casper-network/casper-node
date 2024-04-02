@@ -10,10 +10,8 @@ use casper_types::{
 };
 use digest::consts::U32;
 use vm::{
-    storage::Address,
-    wasm_backend::{Context, WasmInstance},
-    ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult, ExecuteTarget, Executor,
-    ExecutorConfigBuilder, ExecutorV2, WasmEngine,
+    storage::Address, ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
+    ExecuteTarget, Executor, ExecutorConfigBuilder, ExecutorKind, ExecutorV2, WasmEngine,
 };
 
 // use super::*;
@@ -57,6 +55,7 @@ fn harness() {
 fn make_executor() -> ExecutorV2 {
     let executor_config = ExecutorConfigBuilder::default()
         .with_memory_limit(17)
+        .with_executor_kind(ExecutorKind::Compiled)
         .build()
         .expect("Should build");
     ExecutorV2::new(executor_config)

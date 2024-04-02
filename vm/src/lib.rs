@@ -242,8 +242,17 @@ impl Default for WasmEngine {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub enum ExecutorKind {
+    /// Ahead of time compiled Wasm.
+    ///
+    /// This is the default executor kind.
+    Compiled,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct ExecutorConfig {
     memory_limit: u32,
+    executor_kind: ExecutorKind,
 }
 
 impl ExecutorConfig {
@@ -252,26 +261,34 @@ impl ExecutorConfig {
     }
 }
 
+#[derive(Default)]
 pub struct ExecutorConfigBuilder {
     memory_limit: Option<u32>,
-}
-
-impl Default for ExecutorConfigBuilder {
-    fn default() -> Self {
-        Self { memory_limit: None }
-    }
+    executor_kind: Option<ExecutorKind>,
 }
 
 impl ExecutorConfigBuilder {
+    /// Set the memory limit.
     pub fn with_memory_limit(mut self, memory_limit: u32) -> Self {
         self.memory_limit = Some(memory_limit);
         self
     }
 
+    /// Set the executor kind.
+    pub fn with_executor_kind(mut self, executor_kind: ExecutorKind) -> Self {
+        self.executor_kind = Some(executor_kind);
+        self
+    }
+
+    /// Build the `ExecutorConfig`.
     pub fn build(self) -> Result<ExecutorConfig, &'static str> {
         let memory_limit = self.memory_limit.ok_or("Memory limit is not set")?;
+        let executor_kind = self.executor_kind.ok_or("Executor kind is not set")?;
 
-        Ok(ExecutorConfig { memory_limit })
+        Ok(ExecutorConfig {
+            memory_limit,
+            executor_kind,
+        })
     }
 }
 
