@@ -133,7 +133,7 @@ impl PayloadType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..36)).unwrap()
+        Self::try_from(rng.gen_range(0..37)).unwrap()
     }
 }
 
