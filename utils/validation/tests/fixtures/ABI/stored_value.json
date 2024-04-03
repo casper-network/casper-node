@@ -362,13 +362,14 @@
                 "locked_amounts": null
               },
               "inactive": false,
-              "eviction_era": null
+              "eviction_era": null,
+              "inactive_validator_undelegation_delay": 36
             }
           }
         }
       }
     ],
-    "output": "0b0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070500743ba40b6401ffffffffffffffff0000"
+    "output": "0b0101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070500743ba40b6401ffffffffffffffff0000002400000000000000"
   },
   "Withdraw": {
     "input": [
