@@ -38,16 +38,21 @@ impl Display for Event {
                     GetRequest::Information { info_type_tag, key } => {
                         write!(f, "get info with tag {} ({})", info_type_tag, key.len())
                     }
-                    GetRequest::State(GlobalStateRequest::Item { base_key, .. }) => {
-                        write!(f, "get item from global state ({})", base_key)
-                    }
-                    GetRequest::State(GlobalStateRequest::AllItems { key_tag, .. }) => {
-                        write!(f, "get all items ({})", key_tag)
-                    }
-                    GetRequest::State(GlobalStateRequest::Trie { .. }) => write!(f, "get trie"),
-                    GetRequest::State(GlobalStateRequest::DictionaryItem { .. }) => {
-                        write!(f, "get dictionary item")
-                    }
+                    GetRequest::State(state_request) => match &**state_request {
+                        GlobalStateRequest::Item { base_key, .. } => {
+                            write!(f, "get item from global state ({})", base_key)
+                        }
+                        GlobalStateRequest::AllItems { key_tag, .. } => {
+                            write!(f, "get all items ({})", key_tag)
+                        }
+                        GlobalStateRequest::Trie { trie_key } => {
+                            write!(f, "get trie ({})", trie_key)
+                        }
+                        GlobalStateRequest::DictionaryItem { .. } => {
+                            write!(f, "get dictionary item")
+                        }
+                        GlobalStateRequest::Balance { .. } => write!(f, "get balance",),
+                    },
                 },
                 BinaryRequest::TryAcceptTransaction { transaction, .. } => {
                     write!(f, "try accept transaction ({})", transaction.hash())

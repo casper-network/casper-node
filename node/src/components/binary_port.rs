@@ -10,23 +10,25 @@ use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
 use casper_binary_port::{
-    BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
-    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
-    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-    NodeStatus, PayloadType, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
+    BinaryResponseAndRequest, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
+    TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
+        balance::BalanceHandling,
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
-        QueryRequest, QueryResult, TrieRequest,
+        BalanceIdentifier, BalanceRequest, BalanceResult, QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers, ProtocolVersion,
-    SignedBlock, StoredValue, TimeDiff, Transaction,
+    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch, Key, Peers,
+    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
 };
 
 use datasize::DataSize;
@@ -226,7 +228,7 @@ where
         }
         GetRequest::State(req) => {
             metrics.binary_port_get_state_count.inc();
-            handle_state_request(effect_builder, req, protocol_version, config).await
+            handle_state_request(effect_builder, *req, protocol_version, config).await
         }
     }
 }
@@ -264,7 +266,10 @@ async fn handle_state_request<REv>(
     config: &Config,
 ) -> BinaryResponse
 where
-    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+    REv: From<Event>
+        + From<ContractRuntimeRequest>
+        + From<StorageRequest>
+        + From<ReactorInfoRequest>,
 {
     match request {
         GlobalStateRequest::Item {
@@ -379,6 +384,61 @@ where
                 Ok(Some(result)) => BinaryResponse::from_value(result, protocol_version),
                 Ok(None) => BinaryResponse::new_empty(protocol_version),
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
+            }
+        }
+        GlobalStateRequest::Balance {
+            state_identifier,
+            purse_identifier,
+            holds_timestamp,
+        } => {
+            let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let balance_id = match purse_identifier {
+                PurseIdentifier::Payment => BalanceIdentifier::Payment,
+                PurseIdentifier::Accumulate => BalanceIdentifier::Accumulate,
+                PurseIdentifier::URef(uref) => BalanceIdentifier::Purse(uref),
+                PurseIdentifier::PublicKey(pub_key) => BalanceIdentifier::Public(pub_key),
+                PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
+                PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
+            };
+            let balance_handling = match holds_timestamp {
+                Some(timestamp) => {
+                    let holds_interval = effect_builder.get_balance_holds_interval().await;
+                    BalanceHandling::Available {
+                        holds_epoch: HoldsEpoch::from_timestamp(timestamp, holds_interval),
+                    }
+                }
+                None => BalanceHandling::Total,
+            };
+            let balance_req = BalanceRequest::new(
+                state_root_hash,
+                protocol_version,
+                balance_id,
+                balance_handling,
+            );
+            match effect_builder.get_balance(balance_req).await {
+                BalanceResult::RootNotFound => {
+                    BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+                }
+                BalanceResult::Success {
+                    total_balance,
+                    available_balance,
+                    total_balance_proof,
+                    balance_holds,
+                    ..
+                } => {
+                    let response = BalanceResponse {
+                        total_balance,
+                        available_balance,
+                        total_balance_proof,
+                        balance_holds,
+                    };
+                    BinaryResponse::from_value(response, protocol_version)
+                }
+                BalanceResult::Failure(_) => {
+                    BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+                }
             }
         }
     }

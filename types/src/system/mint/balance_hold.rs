@@ -75,6 +75,34 @@ impl Display for BalanceHoldAddrTag {
     }
 }
 
+impl ToBytes for BalanceHoldAddrTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
+
+    fn serialized_length(&self) -> usize {
+        Self::BALANCE_HOLD_ADDR_TAG_LENGTH
+    }
+}
+
+impl FromBytes for BalanceHoldAddrTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        if let Some((byte, rem)) = bytes.split_first() {
+            let tag = BalanceHoldAddrTag::try_from_u8(*byte).ok_or(bytesrepr::Error::Formatting)?;
+            Ok((tag, rem))
+        } else {
+            Err(bytesrepr::Error::Formatting)
+        }
+    }
+}
+
 /// Balance hold address.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
