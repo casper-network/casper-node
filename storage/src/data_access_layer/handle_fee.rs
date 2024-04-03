@@ -3,18 +3,16 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::Effects, Digest, HoldsEpoch, ProtocolVersion, TransactionHash, U512,
+    execution::Effects, Digest, HoldsEpoch, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HandlePaymentMode {
-    Finalize {
-        limit: U512,
-        gas_price: u8,
-        cost: U512,
-        consumed: U512,
+pub enum HandleFeeMode {
+    Pay {
+        initiator_addr: Box<InitiatorAddr>,
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
+        amount: U512,
         holds_epoch: HoldsEpoch,
     },
     Burn {
@@ -27,23 +25,19 @@ pub enum HandlePaymentMode {
     },
 }
 
-impl HandlePaymentMode {
-    pub fn finalize(
-        limit: U512,
-        gas_price: u8,
-        cost: U512,
-        consumed: U512,
+impl HandleFeeMode {
+    pub fn pay(
+        initiator_addr: Box<InitiatorAddr>,
         source: BalanceIdentifier,
         target: BalanceIdentifier,
+        amount: U512,
         holds_epoch: HoldsEpoch,
     ) -> Self {
-        HandlePaymentMode::Finalize {
-            limit,
-            gas_price,
-            cost,
-            consumed,
+        HandleFeeMode::Pay {
+            initiator_addr,
             source: Box::new(source),
             target: Box::new(target),
+            amount,
             holds_epoch,
         }
     }
@@ -53,12 +47,12 @@ impl HandlePaymentMode {
     /// will be burned. If amount is less than available balance, only that much will be
     /// burned leaving a remaining balance.
     pub fn burn(source: BalanceIdentifier, amount: Option<U512>) -> Self {
-        HandlePaymentMode::Burn { source, amount }
+        HandleFeeMode::Burn { source, amount }
     }
 
     /// Clear expired holds against source's balance per epoch.
     pub fn clear_holds(source: BalanceIdentifier, holds_epoch: HoldsEpoch) -> Self {
-        HandlePaymentMode::ClearHolds {
+        HandleFeeMode::ClearHolds {
             source,
             holds_epoch,
         }
@@ -66,7 +60,7 @@ impl HandlePaymentMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HandlePaymentRequest {
+pub struct HandleFeeRequest {
     /// The runtime config.
     pub(crate) config: NativeRuntimeConfig,
     /// State root hash.
@@ -75,11 +69,11 @@ pub struct HandlePaymentRequest {
     pub(crate) protocol_version: ProtocolVersion,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
-    /// Handle payment mode.
-    pub(crate) handle_payment_mode: HandlePaymentMode,
+    /// Handle fee mode.
+    pub(crate) handle_fee_mode: HandleFeeMode,
 }
 
-impl HandlePaymentRequest {
+impl HandleFeeRequest {
     /// Creates new request instance with runtime args.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -87,14 +81,14 @@ impl HandlePaymentRequest {
         state_hash: Digest,
         protocol_version: ProtocolVersion,
         transaction_hash: TransactionHash,
-        handle_payment_mode: HandlePaymentMode,
+        handle_fee_mode: HandleFeeMode,
     ) -> Self {
         Self {
             config,
             state_hash,
             protocol_version,
             transaction_hash,
-            handle_payment_mode,
+            handle_fee_mode,
         }
     }
 
@@ -114,28 +108,28 @@ impl HandlePaymentRequest {
         self.transaction_hash
     }
 
-    pub fn handle_payment_mode(&self) -> &HandlePaymentMode {
-        &self.handle_payment_mode
+    pub fn handle_fee_mode(&self) -> &HandleFeeMode {
+        &self.handle_fee_mode
     }
 }
 
-/// Result enum that represents all possible outcomes of a handle payment request.
+/// Result enum that represents all possible outcomes of a handle  request.
 #[derive(Debug)]
-pub enum HandlePaymentResult {
+pub enum HandleFeeResult {
     /// Invalid state root hash.
     RootNotFound,
-    /// Handle payment request succeeded.
+    /// Handle  request succeeded.
     Success { effects: Effects },
-    /// Handle payment request failed.
+    /// Handle  request failed.
     Failure(TrackingCopyError),
 }
 
-impl HandlePaymentResult {
+impl HandleFeeResult {
     /// The effects, if any.
     pub fn effects(&self) -> Effects {
         match self {
-            HandlePaymentResult::RootNotFound | HandlePaymentResult::Failure(_) => Effects::new(),
-            HandlePaymentResult::Success { effects, .. } => effects.clone(),
+            HandleFeeResult::RootNotFound | HandleFeeResult::Failure(_) => Effects::new(),
+            HandleFeeResult::Success { effects, .. } => effects.clone(),
         }
     }
 }

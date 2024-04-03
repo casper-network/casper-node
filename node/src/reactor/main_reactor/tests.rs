@@ -2616,7 +2616,7 @@ async fn run_reward_network_highway_no_finality() {
             consensus_protocol: CONSENSUS_HIGHWAY,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
-            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME - 500),
             round_seigniorage_rate: SEIGNIORAGE.into(),
             finders_fee: FINDERS_FEE_ZERO.into(),
             finality_signature_proportion: FINALITY_SIG_PROP_ZERO.into(),

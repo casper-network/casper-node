@@ -649,7 +649,8 @@ async fn transfer_fee_is_burnt_no_refund() {
             .motes()
             .expect("Expected Alice to have a balance")
             .clone(),
-        alice_expected_available_balance
+        alice_expected_available_balance,
+        "alice available balance should match"
     );
 
     assert_eq!(

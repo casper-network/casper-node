@@ -1,7 +1,7 @@
 use crate::{data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError};
 use casper_types::{
-    account::AccountHash, execution::Effects, system::mint::BalanceHoldAddrTag, BlockTime, Digest,
-    EntityAddr, HoldsEpoch, ProtocolVersion, PublicKey, URef, URefAddr, U512,
+    execution::Effects, system::mint::BalanceHoldAddrTag, BlockTime, Digest, HoldsEpoch,
+    ProtocolVersion, U512,
 };
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -45,126 +45,6 @@ impl BalanceHoldRequest {
             state_hash,
             protocol_version,
             identifier,
-            hold_kind,
-            hold_amount,
-            block_time,
-            holds_epoch,
-            insufficient_handling,
-        }
-    }
-
-    /// Creates a new [`BalanceHoldRequest`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_purse(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        purse_uref: URef,
-        hold_kind: BalanceHoldAddrTag,
-        hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
-        insufficient_handling: InsufficientBalanceHandling,
-    ) -> Self {
-        BalanceHoldRequest {
-            state_hash,
-            protocol_version,
-            identifier: BalanceIdentifier::Purse(purse_uref),
-            hold_kind,
-            hold_amount,
-            block_time,
-            holds_epoch,
-            insufficient_handling,
-        }
-    }
-
-    /// Creates a new [`BalanceHoldRequest`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_public_key(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        public_key: PublicKey,
-        hold_kind: BalanceHoldAddrTag,
-        hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
-        insufficient_handling: InsufficientBalanceHandling,
-    ) -> Self {
-        BalanceHoldRequest {
-            state_hash,
-            protocol_version,
-            identifier: BalanceIdentifier::Public(public_key),
-            hold_kind,
-            hold_amount,
-            block_time,
-            holds_epoch,
-            insufficient_handling,
-        }
-    }
-
-    /// Creates a new [`BalanceHoldRequest`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_account_hash(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        account_hash: AccountHash,
-        hold_kind: BalanceHoldAddrTag,
-        hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
-        insufficient_handling: InsufficientBalanceHandling,
-    ) -> Self {
-        BalanceHoldRequest {
-            state_hash,
-            protocol_version,
-            identifier: BalanceIdentifier::Account(account_hash),
-            hold_kind,
-            hold_amount,
-            block_time,
-            holds_epoch,
-            insufficient_handling,
-        }
-    }
-
-    /// Creates a new [`BalanceHoldRequest`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_entity_addr(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        entity_addr: EntityAddr,
-        hold_kind: BalanceHoldAddrTag,
-        hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
-        insufficient_handling: InsufficientBalanceHandling,
-    ) -> Self {
-        BalanceHoldRequest {
-            state_hash,
-            protocol_version,
-            identifier: BalanceIdentifier::Entity(entity_addr),
-            hold_kind,
-            hold_amount,
-            block_time,
-            holds_epoch,
-            insufficient_handling,
-        }
-    }
-
-    /// Creates a new [`BalanceHoldRequest`].
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_internal(
-        state_hash: Digest,
-        protocol_version: ProtocolVersion,
-        balance_addr: URefAddr,
-        hold_kind: BalanceHoldAddrTag,
-        hold_amount: U512,
-        block_time: BlockTime,
-        holds_epoch: HoldsEpoch,
-        insufficient_handling: InsufficientBalanceHandling,
-    ) -> Self {
-        BalanceHoldRequest {
-            state_hash,
-            protocol_version,
-            identifier: BalanceIdentifier::Internal(balance_addr),
             hold_kind,
             hold_amount,
             block_time,
