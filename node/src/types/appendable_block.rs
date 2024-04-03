@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 
 use casper_types::{
     Approval, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionCategory,

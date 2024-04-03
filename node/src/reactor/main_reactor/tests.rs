@@ -43,7 +43,7 @@ use casper_types::{
     ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
     PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
     StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionV1Builder, ValidatorConfig, U512,
+    TransactionV1, TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -113,6 +113,8 @@ struct ConfigsOverride {
     min_gas_price: u8,
     upper_threshold: u64,
     lower_threshold: u64,
+    max_block_size: u32,
+    block_gas_limit: u64,
     refund_handling_override: Option<RefundHandling>,
     fee_handling_override: Option<FeeHandling>,
     pricing_handling_override: Option<PricingHandling>,
@@ -146,6 +148,41 @@ impl ConfigsOverride {
         self.balance_hold_interval_override = Some(balance_hold_interval);
         self
     }
+
+    fn with_max_gas_price(mut self, max_gas_price: u8) -> Self {
+        self.max_gas_price = max_gas_price;
+        self
+    }
+
+    fn with_lower_threshold(mut self, lower_threshold: u64) -> Self {
+        self.lower_threshold = lower_threshold;
+        self
+    }
+
+    fn with_upper_threshold(mut self, upper_threshold: u64) -> Self {
+        self.upper_threshold = upper_threshold;
+        self
+    }
+
+    fn with_block_size(mut self, max_block_size: u32) -> Self {
+        self.max_block_size = max_block_size;
+        self
+    }
+
+    fn with_block_gas_limit(mut self, block_gas_limit: u64) -> Self {
+        self.block_gas_limit = block_gas_limit;
+        self
+    }
+
+    fn with_minimum_era_height(mut self, minimum_era_height: u64) -> Self {
+        self.minimum_era_height = minimum_era_height;
+        self
+    }
+
+    fn with_max_transfer_count(mut self, max_transfer_count: u32) -> Self {
+        self.max_transfer_count = max_transfer_count;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -169,6 +206,8 @@ impl Default for ConfigsOverride {
             min_gas_price: 1,
             upper_threshold: 90,
             lower_threshold: 50,
+            max_block_size: 10_485_760u32,
+            block_gas_limit: 10_000_000_000_000u64,
             refund_handling_override: None,
             fee_handling_override: None,
             pricing_handling_override: None,
@@ -283,10 +322,12 @@ impl TestFixture {
             max_standard_count,
             max_staking_count,
             max_install_count,
-            max_gas_price: max,
-            min_gas_price: min,
-            upper_threshold: go_up,
-            lower_threshold: go_down,
+            max_gas_price,
+            min_gas_price,
+            upper_threshold,
+            lower_threshold,
+            max_block_size,
+            block_gas_limit,
             refund_handling_override,
             fee_handling_override,
             pricing_handling_override,
@@ -296,6 +337,7 @@ impl TestFixture {
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
         }
+        info!("Foooo {block_gas_limit}");
         chainspec.core_config.minimum_block_time = minimum_block_time;
         chainspec.core_config.minimum_era_height = minimum_era_height;
         chainspec.core_config.unbonding_delay = unbonding_delay;
@@ -305,14 +347,16 @@ impl TestFixture {
         chainspec.core_config.finality_signature_proportion = finality_signature_proportion;
         chainspec.core_config.minimum_block_time = minimum_block_time;
         chainspec.core_config.minimum_era_height = minimum_era_height;
-        chainspec.vacancy_config.min_gas_price = min;
-        chainspec.vacancy_config.max_gas_price = max;
-        chainspec.vacancy_config.upper_threshold = go_up;
-        chainspec.vacancy_config.lower_threshold = go_down;
+        chainspec.vacancy_config.min_gas_price = min_gas_price;
+        chainspec.vacancy_config.max_gas_price = max_gas_price;
+        chainspec.vacancy_config.upper_threshold = upper_threshold;
+        chainspec.vacancy_config.lower_threshold = lower_threshold;
         chainspec.transaction_config.block_max_standard_count = max_standard_count;
         chainspec.transaction_config.block_max_auction_count = max_staking_count;
         chainspec.transaction_config.block_max_mint_count = max_transfer_count;
         chainspec.transaction_config.block_max_install_upgrade_count = max_install_count;
+        chainspec.transaction_config.block_gas_limit = block_gas_limit;
+        chainspec.transaction_config.max_block_size = max_block_size;
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
@@ -332,6 +376,10 @@ impl TestFixture {
         if let Some(balance_hold_interval) = balance_hold_interval_override {
             chainspec.core_config.balance_hold_interval = balance_hold_interval;
         }
+
+        let limit = chainspec.transaction_config.block_gas_limit;
+
+        info!("THE LIMIT {limit}");
 
         let mut fixture = TestFixture {
             rng,
@@ -500,8 +548,8 @@ impl TestFixture {
     ///
     /// Returns an error if the condition isn't met in time.
     async fn try_run_until<F>(&mut self, condition: F, within: Duration) -> Result<(), Elapsed>
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .try_settle_on(&mut self.rng, condition, within)
@@ -512,8 +560,8 @@ impl TestFixture {
     ///
     /// Panics if the condition isn't met in time.
     async fn run_until<F>(&mut self, condition: F, within: Duration)
-    where
-        F: Fn(&Nodes) -> bool,
+        where
+            F: Fn(&Nodes) -> bool,
     {
         self.network
             .settle_on(&mut self.rng, condition, within)
@@ -542,7 +590,7 @@ impl TestFixture {
             },
             within,
         )
-        .await
+            .await
     }
 
     /// Runs the network until all nodes reach the given completed block height.
@@ -572,14 +620,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should reach {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should reach {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes' storage components have stored the switch block header for
@@ -601,14 +649,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored switch block header for {} within {} seconds",
-                era_id,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored switch block header for {} within {} seconds",
+                    era_id,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     /// Runs the network until all nodes have executed the given transaction and stored the
@@ -651,14 +699,14 @@ impl TestFixture {
             },
             within,
         )
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "should have stored execution result for {} within {} seconds",
-                txn_hash,
-                within.as_secs_f64(),
-            )
-        })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "should have stored execution result for {} within {} seconds",
+                    txn_hash,
+                    within.as_secs_f64(),
+                )
+            })
     }
 
     async fn schedule_upgrade_for_era_two(&mut self) {
@@ -875,11 +923,11 @@ impl TestFixture {
         {
             ExecutionResult::V1(_) => unreachable!(),
             ExecutionResult::V2(ExecutionResultV2 {
-                effects,
-                consumed: gas,
-                error_message,
-                ..
-            }) => {
+                                    effects,
+                                    consumed: gas,
+                                    error_message,
+                                    ..
+                                }) => {
                 if error_message.is_none() {
                     effects.transforms().to_vec()
                 } else {
@@ -900,7 +948,7 @@ impl TestFixture {
     pub fn run_until_stopped(
         self,
         rng: TestRng,
-    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+    ) -> impl futures::Future<Output=(TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
     }
 }
@@ -1571,10 +1619,10 @@ async fn empty_block_validation_regression() {
         .inner_mut()
         .set_filter(move |event| match event {
             MainEvent::Consensus(consensus::Event::NewBlockPayload(NewBlockPayload {
-                era_id,
-                block_payload: _,
-                block_context,
-            })) => {
+                                                                       era_id,
+                                                                       block_payload: _,
+                                                                       block_context,
+                                                                   })) => {
                 info!("Accusing everyone else!");
                 // We hook into the NewBlockPayload event to replace the block being proposed with
                 // an empty one that accuses all the validators, except the malicious validator.
@@ -2146,16 +2194,16 @@ async fn run_rewards_network_scenario(
             let rewarded_blocks = &blocks[rewarded_range];
             let block_reward = (Ratio::<U512>::one()
                 - fixture
-                    .chainspec
-                    .core_config
-                    .finality_signature_proportion
-                    .into_u512())
+                .chainspec
+                .core_config
+                .finality_signature_proportion
+                .into_u512())
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let signatures_reward = fixture
                 .chainspec
                 .core_config
@@ -2163,10 +2211,10 @@ async fn run_rewards_network_scenario(
                 .into_u512()
                 * recomputed_total_supply[&(i - 1)]
                 * fixture
-                    .chainspec
-                    .core_config
-                    .round_seigniorage_rate
-                    .into_u512();
+                .chainspec
+                .core_config
+                .round_seigniorage_rate
+                .into_u512();
             let previous_signatures_reward = if switch_blocks.headers[i - 1].is_genesis() {
                 None
             } else {
@@ -2178,10 +2226,10 @@ async fn run_rewards_network_scenario(
                         .into_u512()
                         * recomputed_total_supply[&(i - 2)]
                         * fixture
-                            .chainspec
-                            .core_config
-                            .round_seigniorage_rate
-                            .into_u512(),
+                        .chainspec
+                        .core_config
+                        .round_seigniorage_rate
+                        .into_u512(),
                 )
             };
 
@@ -2329,8 +2377,8 @@ async fn run_rewards_network_scenario(
                     .get(era)
                     .expect("expected recalculated supply")
                     - recomputed_total_supply
-                        .get(&(era - 1))
-                        .expect("expected recalculated supply"),
+                    .get(&(era - 1))
+                    .expect("expected recalculated supply"),
                 "supply growth does not match rewards at era {}",
                 era
             )
@@ -2359,7 +2407,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2383,7 +2431,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2407,7 +2455,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2431,7 +2479,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2455,7 +2503,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2479,7 +2527,7 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2505,7 +2553,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2531,7 +2579,7 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2557,7 +2605,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2583,7 +2631,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
 #[tokio::test]
@@ -2609,11 +2657,16 @@ async fn run_reward_network_highway_no_finality() {
             ..Default::default()
         },
     )
-    .await;
+        .await;
 }
 
-#[tokio::test]
-async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
+enum GasPriceScenario {
+    SlotUtilization,
+    SizeUtilization(u32),
+    GasConsumptionUtilization(u64),
+}
+
+async fn run_gas_price_scenario(gas_price_scenario: GasPriceScenario) {
     let alice_stake = 200_000_000_000_u64;
     let bob_stake = 300_000_000_000_u64;
     let charlie_stake = 300_000_000_000_u64;
@@ -2625,14 +2678,20 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
 
     let max_gas_price: u8 = 3;
 
-    let spec_override = ConfigsOverride {
-        minimum_era_height: 5,
-        lower_threshold: 0,
-        upper_threshold: 1,
-        max_transfer_count: 1,
-        max_gas_price,
-        ..Default::default()
-    };
+    let spec_override = match gas_price_scenario {
+        GasPriceScenario::SlotUtilization => {
+            ConfigsOverride::default()
+                .with_max_transfer_count(1)
+        }
+        GasPriceScenario::SizeUtilization(block_size) => ConfigsOverride::default()
+            .with_block_size(block_size),
+        GasPriceScenario::GasConsumptionUtilization(gas_limit) => ConfigsOverride::default()
+            .with_block_gas_limit(gas_limit),
+    }
+        .with_lower_threshold(5u64)
+        .with_upper_threshold(10u64)
+        .with_minimum_era_height(5)
+        .with_max_gas_price(max_gas_price);
 
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
@@ -2655,6 +2714,7 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
                 .expect("must get builder")
                 .with_chain_name(chain_name.clone())
                 .with_secret_key(&alice_secret_key)
+                .with_ttl(TimeDiff::from_seconds(60 * 10))
                 .with_pricing_mode(PricingMode::Fixed {
                     gas_price_tolerance: max_gas_price,
                 })
@@ -2719,4 +2779,28 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let expected_gas_price = fixture.chainspec.vacancy_config.min_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+}
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_slot_utilization() {
+    let scenario = GasPriceScenario::SlotUtilization;
+    run_gas_price_scenario(scenario).await
+}
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_gas_consumption() {
+    let gas_limit = Chainspec::default()
+        .system_costs_config
+        .mint_costs()
+        .transfer as u64;
+    let scenario = GasPriceScenario::GasConsumptionUtilization(gas_limit);
+    run_gas_price_scenario(scenario).await
+}
+
+#[tokio::test]
+async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor_based_on_size_consumption() {
+    // The size of a native transfer is roughly 300 ~ 400 bytes
+    let size_limit = 600u32;
+    let scenario = GasPriceScenario::SizeUtilization(size_limit);
+    run_gas_price_scenario(scenario).await
 }

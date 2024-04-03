@@ -55,6 +55,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
         payment: vec![PaymentInfo {
             source: URef::new([1; crate::UREF_ADDR_LENGTH], crate::AccessRights::READ),
         }],
+        size_estimate: Transfer::example().serialized_length() as u64,
         transfers,
         effects,
     }
@@ -113,6 +114,8 @@ pub struct ExecutionResultV2 {
     pub payment: Vec<PaymentInfo>,
     /// A record of transfers performed while executing this transaction.
     pub transfers: Vec<Transfer>,
+    /// The size estimate of the transaction
+    pub size_estimate: u64,
     /// The effects of executing this transaction.
     pub effects: Effects,
 }
@@ -144,6 +147,7 @@ impl ExecutionResultV2 {
 
         // can range from 0 to limit
         let consumed = limit - Gas::new(rng.gen_range(0..=range));
+        let size_estimate = rng.gen();
 
         let payment = vec![PaymentInfo { source: rng.gen() }];
         ExecutionResultV2 {
@@ -154,6 +158,7 @@ impl ExecutionResultV2 {
             payment,
             limit,
             consumed,
+            size_estimate,
             error_message: if rng.gen() {
                 Some(format!("Error message {}", rng.gen::<u64>()))
             } else {
@@ -172,6 +177,7 @@ impl ToBytes for ExecutionResultV2 {
         self.cost.write_bytes(writer)?;
         self.payment.write_bytes(writer)?;
         self.transfers.write_bytes(writer)?;
+        self.size_estimate.write_bytes(writer)?;
         self.effects.write_bytes(writer)
     }
 
@@ -189,6 +195,7 @@ impl ToBytes for ExecutionResultV2 {
             + self.cost.serialized_length()
             + self.payment.serialized_length()
             + self.transfers.serialized_length()
+            + self.size_estimate.serialized_length()
             + self.effects.serialized_length()
     }
 }
@@ -202,6 +209,7 @@ impl FromBytes for ExecutionResultV2 {
         let (cost, remainder) = U512::from_bytes(remainder)?;
         let (payment, remainder) = Vec::<PaymentInfo>::from_bytes(remainder)?;
         let (transfers, remainder) = Vec::<Transfer>::from_bytes(remainder)?;
+        let (size_estimate, remainder) = FromBytes::from_bytes(remainder)?;
         let (effects, remainder) = Effects::from_bytes(remainder)?;
         let execution_result = ExecutionResultV2 {
             initiator,
@@ -211,6 +219,7 @@ impl FromBytes for ExecutionResultV2 {
             cost,
             payment,
             transfers,
+            size_estimate,
             effects,
         };
         Ok((execution_result, remainder))

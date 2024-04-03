@@ -151,7 +151,7 @@ impl Transaction {
     pub fn size_estimate(&self) -> usize {
         match self {
             Transaction::Deploy(deploy) => deploy.serialized_length(),
-            Transaction::V1(v1) => v1.header().serialized_length(),
+            Transaction::V1(v1) => v1.serialized_length(),
         }
     }
 
