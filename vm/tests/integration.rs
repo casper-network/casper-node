@@ -14,7 +14,11 @@ use vm::{
     ExecutionKind, Executor, ExecutorConfigBuilder, ExecutorKind, ExecutorV2, WasmEngine,
 };
 
-// use super::*;
+const DEFAULT_ACCOUNT: Address = [42; 32];
+const ALICE: [u8; 32] = [100; 32];
+const BOB: [u8; 32] = [101; 32];
+const CSPR: u64 = 10u64.pow(9);
+
 const VM2_TEST_CONTRACT: Bytes = Bytes::from_static(include_bytes!("../vm2-test-contract.wasm"));
 const VM2_HARNESS: Bytes = Bytes::from_static(include_bytes!("../vm2-harness.wasm"));
 const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18.wasm"));
@@ -28,12 +32,21 @@ fn test_contract() {
     let (mut global_state, state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
 
+    let input = ("Hello, world!".to_string(), 123456789u32);
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT)
+        .with_address(DEFAULT_ACCOUNT)
+        .with_gas_limit(1_000_000)
+        .with_target(ExecutionKind::WasmBytes(VM2_TEST_CONTRACT))
+        .with_serialized_input(input)
+        .build()
+        .expect("should build");
+
     let _effects = run_wasm(
         &mut executor,
         &mut global_state,
         state_root_hash,
-        VM2_TEST_CONTRACT,
-        ("Hello, world!".to_string(), 123456789u32),
+        execute_request,
     );
 }
 
@@ -43,12 +56,21 @@ fn harness() {
 
     let (mut global_state, state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
+
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT)
+        .with_address(DEFAULT_ACCOUNT)
+        .with_gas_limit(1_000_000)
+        .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
+        .with_serialized_input(())
+        .build()
+        .expect("should build");
+
     run_wasm(
         &mut executor,
         &mut global_state,
         state_root_hash,
-        VM2_HARNESS,
-        (),
+        execute_request,
     );
 }
 
@@ -68,12 +90,20 @@ fn cep18() {
     let (mut global_state, mut state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
 
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT)
+        .with_address(DEFAULT_ACCOUNT)
+        .with_gas_limit(1_000_000)
+        .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
+        .with_serialized_input(())
+        .build()
+        .expect("should build");
+
     let effects_1 = run_wasm(
         &mut executor,
         &mut global_state,
         state_root_hash,
-        VM2_CEP18,
-        (),
+        execute_request,
     );
 
     let contract_hash = {
@@ -95,12 +125,20 @@ fn cep18() {
         .commit(state_root_hash, effects_1)
         .expect("Should commit");
 
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT)
+        .with_address(contract_hash)
+        .with_gas_limit(1_000_000)
+        .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
+        .with_serialized_input((contract_hash,))
+        .build()
+        .expect("should build");
+
     let _effects_2 = run_wasm(
         &mut executor,
         &mut global_state,
         state_root_hash,
-        VM2_CEP18_CALLER,
-        (contract_hash,),
+        execute_request,
     );
 }
 
@@ -109,42 +147,29 @@ fn traits() {
     let mut executor = make_executor();
     let (mut global_state, root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
-    run_wasm(&mut executor, &mut global_state, root_hash, VM2_TRAITS, ());
+
+    let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT)
+        .with_address(DEFAULT_ACCOUNT)
+        .with_gas_limit(1_000_000)
+        .with_target(ExecutionKind::WasmBytes(VM2_TRAITS))
+        .with_serialized_input(())
+        .build()
+        .expect("should build");
+
+    run_wasm(&mut executor, &mut global_state, root_hash, execute_request);
 }
 
-const ALICE: [u8; 32] = [100; 32];
-const BOB: [u8; 32] = [101; 32];
-const CSPR: u64 = 10u64.pow(9);
-
-fn run_wasm<T: BorshSerialize>(
+fn run_wasm(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,
     pre_state_hash: Digest,
-    module_bytes: Bytes,
-    input_data: T,
+    execute_request: ExecuteRequest,
 ) -> Effects {
-    {
-        // "Genesis"
-        // storage.update_balance(&ALICE, 10 * CSPR).unwrap();
-        // storage.update_balance(&BOB, 10 * CSPR).unwrap();
-    }
-
-    // let mut vm = WasmEngine::new();
-
     let tracking_copy = global_state
         .tracking_copy(pre_state_hash)
         .expect("Obtaining root hash succeed")
         .expect("Root hash exists");
-
-    let input = borsh::to_vec(&input_data).map(Bytes::from).unwrap();
-
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_address([42; 32])
-        .with_gas_limit(1_000_000)
-        .with_target(ExecutionKind::WasmBytes(module_bytes))
-        .with_input(input)
-        .build()
-        .expect("should build");
 
     let result = executor
         .execute(tracking_copy, execute_request)

@@ -654,6 +654,7 @@ where
         let data = env_mut.data_mut();
 
         Context {
+            caller: data.context.caller,
             storage: data.context.storage.fork2(),
             address: data.context.address,
             executor: data.context.executor.clone(),

@@ -336,6 +336,7 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static, E: Executor
                         .expect("should be remaining");
 
                     let execute_request = ExecuteRequestBuilder::default()
+                        .with_caller(caller.context().caller)
                         .with_address(contract_hash)
                         .with_gas_limit(gas_limit)
                         .with_target(ExecutionKind::Contract {
@@ -460,6 +461,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .expect("should be remaining");
 
     let execute_request = ExecuteRequestBuilder::default()
+        .with_caller(caller.context().address)
         .with_address(address)
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Contract {

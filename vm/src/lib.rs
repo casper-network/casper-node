@@ -4,6 +4,7 @@ pub mod storage;
 pub(crate) mod wasm_backend;
 use std::sync::Arc;
 
+use borsh::BorshSerialize;
 use bytes::Bytes;
 
 use casper_storage::{
@@ -384,6 +385,14 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Pass input data that can be serialized.
+    pub fn with_serialized_input<T: BorshSerialize>(self, input: T) -> Self {
+        let input = borsh::to_vec(&input)
+            .map(Bytes::from)
+            .expect("should serialize input");
+        self.with_input(input)
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let caller = self.caller.ok_or("Caller is not set")?;
@@ -516,6 +525,7 @@ impl Executor for ExecutorV2 {
         let mut initial_tracking_copy = tracking_copy.fork2();
 
         let context = Context {
+            caller,
             address,
             storage: tracking_copy,
             executor: ExecutorV2::new(self.config),

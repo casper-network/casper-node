@@ -23,10 +23,11 @@ impl GasUsage {
 }
 
 /// Container that holds all relevant modules necessary to process an execution request.
-pub struct Context<S: GlobalStateReader, E: Executor> {
-    pub address: Address,
-    pub storage: TrackingCopy<S>,
-    pub executor: E,
+pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
+    pub(crate) caller: Address,
+    pub(crate) address: Address,
+    pub(crate) storage: TrackingCopy<S>,
+    pub(crate) executor: E,
 }
 
 #[derive(Debug, Copy, Clone)]
