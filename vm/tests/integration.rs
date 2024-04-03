@@ -11,7 +11,7 @@ use casper_types::{
 use digest::consts::U32;
 use vm::{
     storage::Address, ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-    ExecuteTarget, Executor, ExecutorConfigBuilder, ExecutorKind, ExecutorV2, WasmEngine,
+    ExecutionKind, Executor, ExecutorConfigBuilder, ExecutorKind, ExecutorV2, WasmEngine,
 };
 
 // use super::*;
@@ -141,7 +141,7 @@ fn run_wasm<T: BorshSerialize>(
     let execute_request = ExecuteRequestBuilder::default()
         .with_address([42; 32])
         .with_gas_limit(1_000_000)
-        .with_target(ExecuteTarget::WasmBytes(module_bytes))
+        .with_target(ExecutionKind::WasmBytes(module_bytes))
         .with_input(input)
         .build()
         .expect("should build");

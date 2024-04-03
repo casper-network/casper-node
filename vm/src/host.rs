@@ -23,7 +23,7 @@ use crate::{
     host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{self, Address, GlobalStateReader},
     wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
-    ConfigBuilder, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecuteTarget, Executor,
+    ConfigBuilder, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
     ExecutorV2, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
 };
 
@@ -338,7 +338,7 @@ pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static, E: Executor
                     let execute_request = ExecuteRequestBuilder::default()
                         .with_address(contract_hash)
                         .with_gas_limit(gas_limit)
-                        .with_target(ExecuteTarget::Contract {
+                        .with_target(ExecutionKind::Contract {
                             address: contract_hash,
                             selector: Selector::new(selector),
                         })
@@ -462,7 +462,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
     let execute_request = ExecuteRequestBuilder::default()
         .with_address(address)
         .with_gas_limit(gas_limit)
-        .with_target(ExecuteTarget::Contract {
+        .with_target(ExecutionKind::Contract {
             address,
             selector: Selector::new(selector),
         })

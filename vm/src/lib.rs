@@ -320,7 +320,8 @@ pub enum ExecuteError {
     Preparation(#[from] PreparationError),
 }
 
-pub enum ExecuteTarget {
+/// Target for Wasm execution.
+pub enum ExecutionKind {
     /// Execute Wasm bytes directly.
     WasmBytes(Bytes),
     /// Execute a stored contract by its address.
@@ -332,61 +333,70 @@ pub enum ExecuteTarget {
 
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
+    /// Caller's address.
+    caller: Address,
+    /// Address of the contract to execute.
     address: Address,
+    /// Gas limit.
     gas_limit: u64,
-    target: ExecuteTarget,
+    execution_kind: ExecutionKind,
     input: Bytes,
 }
 
+/// Builder for `ExecuteRequest`.
+#[derive(Default)]
 pub struct ExecuteRequestBuilder {
+    caller: Option<Address>,
     address: Option<Address>,
     gas_limit: Option<u64>,
-    target: Option<ExecuteTarget>,
+    target: Option<ExecutionKind>,
     input: Option<Bytes>,
 }
 
-impl Default for ExecuteRequestBuilder {
-    fn default() -> Self {
-        Self {
-            address: None,
-            gas_limit: None,
-            target: None,
-            input: None,
-        }
-    }
-}
-
 impl ExecuteRequestBuilder {
+    /// Set the caller's address.
+    pub fn with_caller(mut self, caller: Address) -> Self {
+        self.caller = Some(caller);
+        self
+    }
+
+    /// Set the address of the contract to execute.
     pub fn with_address(mut self, address: Address) -> Self {
         self.address = Some(address);
         self
     }
 
+    /// Set the gas limit.
     pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
     }
 
-    pub fn with_target(mut self, target: ExecuteTarget) -> Self {
+    /// Set the target for execution.
+    pub fn with_target(mut self, target: ExecutionKind) -> Self {
         self.target = Some(target);
         self
     }
 
+    /// Pass input data.
     pub fn with_input(mut self, input: Bytes) -> Self {
         self.input = Some(input);
         self
     }
 
+    /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
+        let caller = self.caller.ok_or("Caller is not set")?;
         let address = self.address.ok_or("Address is not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
-        let target = self.target.ok_or("Target is not set")?;
+        let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
 
         Ok(ExecuteRequest {
+            caller,
             address,
             gas_limit,
-            target,
+            execution_kind,
             input,
         })
     }
@@ -406,6 +416,7 @@ pub struct ExecuteResult {
 }
 
 impl ExecuteResult {
+    /// Returns the host error.
     pub fn effects(&self) -> &Effects {
         let (_cache, effects, _) = &self.tracking_copy_parts;
         effects
@@ -413,6 +424,7 @@ impl ExecuteResult {
 }
 
 impl ExecutorV2 {
+    /// Create a new `ExecutorV2` instance.
     pub fn new(config: ExecutorConfig) -> Self {
         let vm = WasmEngine::new();
         ExecutorV2 {
@@ -423,6 +435,11 @@ impl ExecutorV2 {
 }
 
 impl Executor for ExecutorV2 {
+    /// Execute a Wasm contract.
+    ///
+    /// # Errors
+    /// Returns an error if the execution fails. This can happen if the Wasm instance cannot be prepared.
+    /// Otherwise, returns the result of the execution with a gas usage attached which means a successful execution (that may or may not have produced an error such as a trap, return, or out of gas).
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
@@ -431,16 +448,17 @@ impl Executor for ExecutorV2 {
         let ExecuteRequest {
             address,
             gas_limit,
-            target,
+            execution_kind: target,
             input,
+            caller,
         } = execute_request;
 
         let (wasm_bytes, export_or_selector) = match target {
-            ExecuteTarget::WasmBytes(wasm_bytes) => {
+            ExecutionKind::WasmBytes(wasm_bytes) => {
                 // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
                 (wasm_bytes, Either::Left(DEFAULT_WASM_ENTRY_POINT))
             }
-            ExecuteTarget::Contract { address, selector } => {
+            ExecutionKind::Contract { address, selector } => {
                 let key = Key::AddressableEntity(EntityAddr::SmartContract(address)); // TODO: Error handling
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
@@ -492,6 +510,7 @@ impl Executor for ExecutorV2 {
                 }
             }
         };
+
         let mut vm = WasmEngine::new();
 
         let mut initial_tracking_copy = tracking_copy.fork2();
@@ -531,8 +550,10 @@ impl Executor for ExecutorV2 {
             }),
             Err(VMError::Return { flags, data }) => {
                 let host_error = if flags.contains(ReturnFlags::REVERT) {
+                    // The contract has reverted.
                     Some(HostError::CalleeReverted)
                 } else {
+                    // Merge the tracking copy parts since the execution has succeeded.
                     initial_tracking_copy.merge(final_tracking_copy);
 
                     None
