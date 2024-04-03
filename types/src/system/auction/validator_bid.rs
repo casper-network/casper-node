@@ -280,6 +280,8 @@ impl ToBytes for ValidatorBid {
         self.vesting_schedule.write_bytes(&mut result)?;
         self.inactive.write_bytes(&mut result)?;
         self.eviction_era.write_bytes(&mut result)?;
+        self.inactive_validator_undelegation_delay
+            .write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -291,6 +293,9 @@ impl ToBytes for ValidatorBid {
             + self.vesting_schedule.serialized_length()
             + self.inactive.serialized_length()
             + self.eviction_era.serialized_length()
+            + self
+                .inactive_validator_undelegation_delay
+                .serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -301,6 +306,8 @@ impl ToBytes for ValidatorBid {
         self.vesting_schedule.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
         self.eviction_era.write_bytes(writer)?;
+        self.inactive_validator_undelegation_delay
+            .write_bytes(writer)?;
         Ok(())
     }
 }
@@ -402,6 +409,7 @@ mod tests {
         let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);
         let validator_staked_amount = U512::from(1000);
         let validator_delegation_rate = 0;
+        let inactive_validator_undelegation_delay = 36;
 
         let bid = ValidatorBid::locked(
             validator_pk,
@@ -409,6 +417,7 @@ mod tests {
             validator_staked_amount,
             validator_delegation_rate,
             validator_release_timestamp,
+            inactive_validator_undelegation_delay,
         );
 
         assert!(!bid.is_locked_with_vesting_schedule(
