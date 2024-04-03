@@ -11,6 +11,10 @@
         "casper-sidecar": {
             "github_repo_url": "https://github.com/casper-network/casper-sidecar",
             "branch": "feat-2.0"
+        },
+        "casper-nctl": {
+            "github_repo_url": "https://github.com/casper-network/casper-nctl",
+            "branch": "dev"
         }
     },
     "nctl_upgrade_tests": {

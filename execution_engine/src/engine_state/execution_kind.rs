@@ -49,36 +49,31 @@ impl<'a> ExecutionKind<'a> {
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         match executable_item {
-            ExecutableItem::Stored(target) => Self::new_stored(
+            ExecutableItem::Invocation(target) => Self::new_stored(
                 tracking_copy,
                 named_keys,
                 target,
                 entry_point,
                 protocol_version,
             ),
-            ExecutableItem::CustomPayment(module_bytes)
-            | ExecutableItem::SessionModuleBytes {
+            ExecutableItem::PaymentBytes(module_bytes)
+            | ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Standard,
                 module_bytes,
             } => Ok(ExecutionKind::Standard(module_bytes)),
-            ExecutableItem::SessionModuleBytes {
+            ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Installer,
                 module_bytes,
             } => Ok(ExecutionKind::Installer(module_bytes)),
-            ExecutableItem::SessionModuleBytes {
+            ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Upgrader,
                 module_bytes,
             } => Ok(ExecutionKind::Upgrader(module_bytes)),
-            ExecutableItem::SessionModuleBytes {
+            ExecutableItem::SessionBytes {
                 kind: TransactionSessionKind::Isolated,
                 module_bytes,
             } => Ok(ExecutionKind::Isolated(module_bytes)),
-            ExecutableItem::DeploySessionModuleBytes(module_bytes) => {
-                Ok(ExecutionKind::Deploy(module_bytes))
-            }
-            ExecutableItem::StandardPayment => Err(Error::Deprecated(
-                "standard payment is no longer handled by the execution engine".to_string(),
-            )),
+            ExecutableItem::LegacyDeploy(module_bytes) => Ok(ExecutionKind::Deploy(module_bytes)),
         }
     }
 

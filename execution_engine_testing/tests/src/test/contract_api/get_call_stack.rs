@@ -3573,7 +3573,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3599,7 +3598,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3629,7 +3627,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3650,7 +3647,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3679,7 +3675,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3705,7 +3700,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3738,7 +3732,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3759,7 +3752,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3785,7 +3777,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3811,7 +3802,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3842,7 +3832,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3863,7 +3852,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3892,7 +3880,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3917,7 +3904,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3950,7 +3936,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3971,7 +3956,7 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
+    #[test]
     fn stored_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3999,7 +3984,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for call_depth in DEPTHS {
@@ -4031,7 +4015,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4068,7 +4051,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4101,7 +4083,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_versioned_payment_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4136,7 +4117,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4168,7 +4148,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4204,7 +4183,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4236,7 +4214,6 @@ mod payment {
 
     #[ignore]
     #[allow(unused)]
-    // #[test]
     fn stored_payment_by_name_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();

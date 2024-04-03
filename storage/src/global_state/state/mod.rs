@@ -18,21 +18,20 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, ToBytes},
     execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     system::{
         self,
         auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        handle_payment::ACCUMULATION_PURSE_KEY,
         mint::{
             BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
             TOTAL_SUPPLY_KEY,
         },
-        AUCTION, HANDLE_PAYMENT, MINT,
+        AUCTION, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, InitiatorAddr, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, Key, KeyTag, Phase, PublicKey,
+    RuntimeArgs, StoredValue, U512,
 };
 
 #[cfg(test)]
@@ -46,8 +45,8 @@ use crate::{
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
-        BalanceHoldRequest, BalanceHoldResult, BalanceRequest, BalanceResult, BidsRequest,
-        BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
+        BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier, BalanceRequest, BalanceResult,
+        BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
         EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
         FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
         InsufficientBalanceHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
@@ -75,9 +74,7 @@ use crate::{
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
         runtime_native::{Id, RuntimeNative},
-        transfer::{
-            NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
-        },
+        transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
@@ -427,13 +424,6 @@ pub trait CommitProvider: StateProvider {
             };
         }
 
-        let administrative_accounts = match request.administrative_accounts() {
-            Some(administrative_accounts) => administrative_accounts,
-            None => {
-                return FeeResult::Failure(FeeError::AdministrativeAccountsNotFound);
-            }
-        };
-
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return FeeResult::RootNotFound,
@@ -442,182 +432,73 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        // need the accumulation purse
-        let entity_hash = match tc.borrow_mut().get_system_entity_registry() {
-            Ok(scr) => match scr.get(HANDLE_PAYMENT).copied() {
-                Some(entity_hash) => entity_hash,
-                None => {
-                    return FeeResult::Failure(FeeError::RegistryEntryNotFound(
-                        HANDLE_PAYMENT.to_string(),
-                    ))
-                }
-            },
-            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-        };
-        let named_keys = match tc
-            .borrow_mut()
-            .get_named_keys(EntityAddr::System(entity_hash.value()))
-        {
-            Ok(named_keys) => named_keys,
-            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-        };
-
-        let accumulation_purse = match named_keys.get(ACCUMULATION_PURSE_KEY) {
-            Some(key) => {
-                if let Key::URef(uref) = key {
-                    *uref
-                } else {
-                    return FeeResult::Failure(FeeError::TrackingCopy(
-                        TrackingCopyError::UnexpectedKeyVariant(*key),
-                    ));
-                }
-            }
-            None => {
-                return FeeResult::Failure(FeeError::TrackingCopy(
-                    TrackingCopyError::NamedKeyNotFound(ACCUMULATION_PURSE_KEY.to_string()),
-                ))
-            }
-        };
-
+        let config = request.config();
         let protocol_version = request.protocol_version();
-
-        let accumulated_balance = {
-            let balance_req = BalanceRequest::from_purse(
-                state_hash,
-                protocol_version,
-                accumulation_purse,
-                BalanceHandling::Total,
-            );
-            let balance_result = self.balance(balance_req);
-            match balance_result {
-                BalanceResult::RootNotFound => {
-                    return FeeResult::RootNotFound;
-                }
-                BalanceResult::Failure(tce) => {
-                    return FeeResult::Failure(FeeError::TrackingCopy(tce));
-                }
-                BalanceResult::Success {
-                    available_balance: motes,
-                    ..
-                } => motes,
-            }
-        };
-
-        let mut current_state_hash = state_hash;
-        let mut effects = Effects::new();
-        let mut transfers = vec![];
-        let recipient_count = U512::from(administrative_accounts.len());
-
-        // distribute fees to administrators
-        // this is basically just a series of transfers from the accumulated purse to
-        // configured accounts. this is a behavior used by some (but not all) private chains.
-        if let Some(fee_portion) = accumulated_balance.checked_div(recipient_count) {
-            if fee_portion.is_zero() {
-                // If there are no fees to be paid out, it is effectively noop
-                return FeeResult::Success {
-                    effects: Effects::default(),
-                    post_state_hash: state_hash,
-                    transfers: vec![],
-                };
-            }
-
-            let holds_epoch = request.holds_epoch();
-            let system_account_key = PublicKey::System;
-            let id = {
-                let mut bytes = match holds_epoch.value().into_bytes() {
-                    Ok(bytes) => bytes,
-                    Err(bre) => {
-                        return FeeResult::Failure(FeeError::TrackingCopy(
-                            TrackingCopyError::BytesRepr(bre),
-                        ))
-                    }
-                };
-                match &mut state_hash.into_bytes() {
-                    Ok(more_bytes) => bytes.append(more_bytes),
-                    Err(bre) => {
-                        return FeeResult::Failure(FeeError::TrackingCopy(
-                            TrackingCopyError::BytesRepr(*bre),
-                        ))
-                    }
-                };
-
-                Id::Seed(bytes)
-            };
-
-            let config = request.config();
-            let authorization_keys = {
-                let mut auth_keys = BTreeSet::new();
-                auth_keys.insert(system_account_key.to_account_hash());
-                auth_keys
-            };
-
-            // TODO: the transfer logic needs to be tweaked once Fraser's logic w/ version handling
-            // merges
-            let tmp_hash = match TransactionV1Hash::from_bytes(&id.seed()) {
-                Ok((hash, _rem)) => TransactionHash::V1(hash),
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
                     ))
                 }
             };
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return FeeResult::Failure(FeeError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
 
-            for target in administrative_accounts {
-                let target_purse = match tc
-                    .borrow_mut()
-                    .get_addressable_entity_by_account_hash(protocol_version, *target)
-                {
-                    Ok(entity) => entity.main_purse(),
-                    Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-                };
-                let args = TransferArgs::new(
-                    Some(*target),
-                    accumulation_purse,
-                    target_purse,
-                    fee_portion,
-                    None,
-                );
+            Id::Seed(bytes)
+        };
 
-                let transfer_req = TransferRequest::new(
-                    config.clone(),
-                    current_state_hash,
-                    holds_epoch,
-                    protocol_version,
-                    tmp_hash,
-                    InitiatorAddr::from(system_account_key.clone()),
-                    authorization_keys.clone(),
-                    args,
-                );
-                match self.transfer(transfer_req) {
-                    TransferResult::RootNotFound => return FeeResult::RootNotFound,
-                    TransferResult::Failure(transfer_error) => {
-                        return FeeResult::Failure(FeeError::Transfer(transfer_error))
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::System,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return FeeResult::Failure(FeeError::TrackingCopy(tce));
+            }
+        };
+
+        let source = BalanceIdentifier::Accumulate;
+        let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+            Ok(value) => value,
+            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
+        };
+        // amount = None will distribute the full current balance of the accumulation purse
+        let result = runtime.distribute_accumulated_fees(source_purse, None);
+
+        match result {
+            Ok(_) => {
+                let effects = tc.borrow_mut().effects();
+                let transfers = runtime.into_transfers();
+                let post_state_hash = match self.commit(state_hash, effects.clone()) {
+                    Ok(post_state_hash) => post_state_hash,
+                    Err(gse) => {
+                        return FeeResult::Failure(FeeError::TrackingCopy(
+                            TrackingCopyError::Storage(gse),
+                        ))
                     }
-                    TransferResult::Success {
-                        effects: transfer_effects,
-                        transfers: more_transfers,
-                    } => match self.commit(current_state_hash, transfer_effects.clone()) {
-                        Ok(post_state_hash) => {
-                            current_state_hash = post_state_hash;
-                            effects.append(transfer_effects);
-                            transfers.extend(more_transfers);
-                        }
-                        Err(gse) => {
-                            return FeeResult::Failure(FeeError::TrackingCopy(
-                                TrackingCopyError::Storage(gse),
-                            ))
-                        }
-                    },
+                };
+                FeeResult::Success {
+                    effects,
+                    transfers,
+                    post_state_hash,
                 }
             }
-
-            return FeeResult::Success {
-                post_state_hash: current_state_hash,
-                effects,
-                transfers,
-            };
+            Err(hpe) => FeeResult::Failure(FeeError::TrackingCopy(
+                TrackingCopyError::SystemContract(system::Error::HandlePayment(hpe)),
+            )),
         }
-        FeeResult::Failure(FeeError::NoFeesDistributed)
     }
 }
 
@@ -1076,13 +957,6 @@ pub trait StateProvider {
                     target_purse,
                     holds_epoch,
                 )
-            }
-            HandlePaymentMode::Distribute { source, amount } => {
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandlePaymentResult::Failure(tce),
-                };
-                runtime.distribute_accumulated_fees(source_purse, amount)
             }
             HandlePaymentMode::Burn { source, amount } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
@@ -1556,20 +1430,6 @@ pub trait StateProvider {
         }
 
         let transfers = runtime.into_transfers();
-
-        // TODO: i really don't want us to write this data into global state.
-        // perhaps we can put it into normal storage instead?
-        // let txn_info = TransactionInfo::new(
-        //     request.transaction_hash(),
-        //     transfers.clone(),
-        //     request.initiator().clone(),
-        //     entity.main_purse(),
-        //     request.gas(),
-        // );
-        // tc.borrow_mut().write(
-        //     Key::TransactionInfo(txn_info.transaction_hash),
-        //     StoredValue::TransactionInfo(txn_info),
-        // );
 
         let effects = tc.borrow_mut().effects();
 

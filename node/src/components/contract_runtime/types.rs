@@ -94,10 +94,6 @@ impl ExecutionArtifactBuilder {
         }
     }
 
-    pub fn effects(&self) -> Effects {
-        self.effects.clone()
-    }
-
     pub fn consumed(&self) -> U512 {
         self.consumed.value()
     }

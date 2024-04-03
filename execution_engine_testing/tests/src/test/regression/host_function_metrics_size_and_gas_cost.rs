@@ -59,7 +59,7 @@ fn host_function_metrics_has_acceptable_size() {
     )
 }
 
-fn create_account_exec_request<'a>(address: AccountHash) -> ExecuteRequest<'a> {
+fn create_account_exec_request(address: AccountHash) -> ExecuteRequest {
     ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT_U512,

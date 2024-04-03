@@ -33,6 +33,6 @@ pub use record_id::{RecordId, UnknownRecordId};
 pub use speculative_execution_result::SpeculativeExecutionResult;
 pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-    ReactorStateName, TransactionWithExecutionInfo, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, DictionaryQueryResult, GetTrieFullResult,
+    LastProgress, NetworkName, ReactorStateName, TransactionWithExecutionInfo, Uptime,
 };

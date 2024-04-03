@@ -4,40 +4,42 @@ use casper_execution_engine::engine_state::{
     deploy_item::DeployItem, ExecutableItem, WasmV1Request,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, AddressableEntityHash, BlockTime, Digest, EntityVersion,
-    Gas, InitiatorAddr, PackageHash, Phase, RuntimeArgs, Transaction, TransactionHash,
-    TransactionV1Hash,
+    account::AccountHash, addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args,
+    AddressableEntityHash, BlockTime, Digest, EntityVersion, Gas, InitiatorAddr, PackageHash,
+    Phase, RuntimeArgs, Transaction, TransactionHash, TransactionV1Hash,
 };
 
 use crate::{DeployItemBuilder, ARG_AMOUNT, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT};
 
 /// A request comprising a [`WasmV1Request`] for use as session code, and an optional custom
 /// payment `WasmV1Request`.
-pub struct ExecuteRequest<'a> {
+#[derive(Debug)]
+pub struct ExecuteRequest {
     /// The session request.
-    pub session: WasmV1Request<'a>,
+    pub session: WasmV1Request,
     /// The optional custom payment request.
-    pub custom_payment: Option<WasmV1Request<'a>>,
+    pub custom_payment: Option<WasmV1Request>,
 }
 
 /// Builds an [`ExecuteRequest`].
 #[derive(Debug)]
-pub struct ExecuteRequestBuilder<'a> {
+pub struct ExecuteRequestBuilder {
     state_hash: Digest,
     block_time: BlockTime,
     transaction_hash: TransactionHash,
     initiator_addr: InitiatorAddr,
-    payment: Option<ExecutableItem<'a>>,
+    payment: Option<ExecutableItem>,
     payment_gas_limit: Gas,
+    payment_entry_point: String,
     payment_args: RuntimeArgs,
-    session: ExecutableItem<'a>,
+    session: ExecutableItem,
     session_gas_limit: Gas,
     session_entry_point: String,
     session_args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
 }
 
-impl<'a> ExecuteRequestBuilder<'a> {
+impl ExecuteRequestBuilder {
     /// The default value used for `WasmV1Request::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
     /// The default value used for `WasmV1Request::transaction_hash`.
@@ -47,7 +49,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
     pub const DEFAULT_ENTRY_POINT: &'static str = "call";
 
     /// Converts a `Transaction` into an `ExecuteRequestBuilder`.
-    pub fn from_transaction(txn: &'a Transaction) -> Self {
+    pub fn from_transaction(txn: &Transaction) -> Self {
         let authorization_keys = txn.authorization_keys();
         let session = WasmV1Request::new_session(
             Self::DEFAULT_STATE_HASH,
@@ -59,10 +61,12 @@ impl<'a> ExecuteRequestBuilder<'a> {
 
         let payment: Option<ExecutableItem>;
         let payment_gas_limit: Gas;
+        let payment_entry_point: String;
         let payment_args: RuntimeArgs;
         if txn.is_standard_payment() {
             payment = None;
             payment_gas_limit = Gas::zero();
+            payment_entry_point = DEFAULT_ENTRY_POINT_NAME.to_string();
             payment_args = RuntimeArgs::new();
         } else {
             let request = WasmV1Request::new_custom_payment(
@@ -74,6 +78,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .unwrap();
             payment = Some(request.executable_item);
             payment_gas_limit = request.gas_limit;
+            payment_entry_point = request.entry_point;
             payment_args = request.args;
         }
 
@@ -84,6 +89,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             initiator_addr: session.initiator_addr,
             payment,
             payment_gas_limit,
+            payment_entry_point,
             payment_args,
             session: session.executable_item,
             session_gas_limit: session.gas_limit,
@@ -94,7 +100,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
     }
 
     /// Converts a `DeployItem` into an `ExecuteRequestBuilder`.
-    pub fn from_deploy_item(deploy_item: &'a DeployItem) -> Self {
+    pub fn from_deploy_item(deploy_item: &DeployItem) -> Self {
         let authorization_keys = deploy_item.authorization_keys.clone();
         let session = WasmV1Request::new_session_from_deploy_item(
             Self::DEFAULT_STATE_HASH,
@@ -106,10 +112,12 @@ impl<'a> ExecuteRequestBuilder<'a> {
 
         let payment: Option<ExecutableItem>;
         let payment_gas_limit: Gas;
+        let payment_entry_point: String;
         let payment_args: RuntimeArgs;
         if deploy_item.payment.is_standard_payment(Phase::Payment) {
             payment = None;
             payment_gas_limit = Gas::zero();
+            payment_entry_point = DEFAULT_ENTRY_POINT_NAME.to_string();
             payment_args = RuntimeArgs::new();
         } else {
             let request = WasmV1Request::new_custom_payment_from_deploy_item(
@@ -121,6 +129,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .unwrap();
             payment = Some(request.executable_item);
             payment_gas_limit = request.gas_limit;
+            payment_entry_point = request.entry_point;
             payment_args = request.args;
         }
 
@@ -131,6 +140,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             initiator_addr: session.initiator_addr,
             payment,
             payment_gas_limit,
+            payment_entry_point,
             payment_args,
             session: session.executable_item,
             session_gas_limit: session.gas_limit,
@@ -154,7 +164,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             })
             .with_authorization_keys(&[account_hash])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with session module bytes.
@@ -171,7 +181,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             })
             .with_authorization_keys(&[account_hash])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
@@ -188,7 +198,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
@@ -205,7 +215,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
@@ -228,7 +238,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Returns an [`ExecuteRequest`] derived from a deploy with a session item that will call a
@@ -246,7 +256,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
             .with_authorization_keys(&[sender])
             .build();
-        Self::from_deploy_item(Box::leak(Box::new(deploy_item)))
+        Self::from_deploy_item(&deploy_item)
     }
 
     /// Sets the block time of the [`WasmV1Request`]s.
@@ -262,7 +272,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
     }
 
     /// Consumes self and returns an `ExecuteRequest`.
-    pub fn build(self) -> ExecuteRequest<'a> {
+    pub fn build(self) -> ExecuteRequest {
         let ExecuteRequestBuilder {
             state_hash,
             block_time,
@@ -270,6 +280,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             initiator_addr,
             payment,
             payment_gas_limit,
+            payment_entry_point,
             payment_args,
             session,
             session_gas_limit,
@@ -285,9 +296,10 @@ impl<'a> ExecuteRequestBuilder<'a> {
             gas_limit: payment_gas_limit,
             initiator_addr: initiator_addr.clone(),
             executable_item,
-            entry_point: Self::DEFAULT_ENTRY_POINT.to_string(),
+            entry_point: payment_entry_point,
             args: payment_args,
             authorization_keys: authorization_keys.clone(),
+            phase: Phase::Payment,
         });
 
         let session = WasmV1Request {
@@ -300,6 +312,7 @@ impl<'a> ExecuteRequestBuilder<'a> {
             entry_point: session_entry_point,
             args: session_args,
             authorization_keys,
+            phase: Phase::Session,
         };
 
         ExecuteRequest {

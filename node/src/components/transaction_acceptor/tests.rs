@@ -559,7 +559,7 @@ impl TestScenario {
                 let classic_mode_transaction = TransactionV1Builder::new_random(rng)
                     .with_pricing_mode(PricingMode::Classic {
                         payment_amount: 10000u64,
-                        gas_price: 1u8,
+                        gas_price_tolerance: 1u8,
                         standard_payment: true,
                     })
                     .with_chain_name("casper-example")

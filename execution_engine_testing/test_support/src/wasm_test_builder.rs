@@ -21,15 +21,15 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceRequest, BalanceResult, BiddingRequest,
-        BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
-        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
-        ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest, StepResult,
-        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
-        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TransferRequest,
-        TrieRequest,
+        balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
+        BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
+        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
+        TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -833,6 +833,7 @@ where
         }
         execute_request.session.state_hash =
             self.post_state_hash.expect("expected post_state_hash");
+
         let session_result = self
             .execution_engine
             .execute(self.data_access_layer.as_ref(), execute_request.session);
@@ -840,6 +841,18 @@ where
         effects.append(session_result.effects().clone());
         self.effects.push(effects);
         self.exec_results.push(session_result);
+        self
+    }
+
+    /// Execute a `WasmV1Request`.
+    pub fn exec_wasm_v1(&mut self, mut request: WasmV1Request) -> &mut Self {
+        request.state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let result = self
+            .execution_engine
+            .execute(self.data_access_layer.as_ref(), request);
+        let effects = result.effects().clone();
+        self.exec_results.push(result);
+        self.effects.push(effects);
         self
     }
 
@@ -960,6 +973,7 @@ where
             native_runtime_config,
             pre_state_hash,
             protocol_version,
+            block_time.into(),
             holds_epoch,
         );
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
@@ -1209,7 +1223,7 @@ where
     pub fn get_purse_balance_result(
         &self,
         protocol_version: ProtocolVersion,
-        purse: URef,
+        balance_identifier: BalanceIdentifier,
         block_time: u64,
     ) -> BalanceResult {
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
@@ -1217,8 +1231,12 @@ where
         let balance_handling = BalanceHandling::Available { holds_epoch };
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let request =
-            BalanceRequest::from_purse(state_root_hash, protocol_version, purse, balance_handling);
+        let request = BalanceRequest::new(
+            state_root_hash,
+            protocol_version,
+            balance_identifier,
+            balance_handling,
+        );
         self.data_access_layer.balance(request)
     }
 

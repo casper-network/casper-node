@@ -154,7 +154,10 @@ impl TransactionV1Header {
     /// Returns the gas price tolerance for the given transaction.
     pub fn gas_price_tolerance(&self) -> u8 {
         match self.pricing_mode {
-            PricingMode::Classic { gas_price, .. } => gas_price,
+            PricingMode::Classic {
+                gas_price_tolerance,
+                ..
+            } => gas_price_tolerance,
             PricingMode::Fixed {
                 gas_price_tolerance,
                 ..

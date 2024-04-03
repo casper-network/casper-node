@@ -6,13 +6,13 @@ use casper_storage::{
     AddressGenerator,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, AddressableEntity, AddressableEntityHash,
-    BlockTime, ContextAccessRights, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs,
-    StoredValue, Tagged, TransactionHash, U512,
+    account::AccountHash, addressable_entity::NamedKeys, execution::Effects, AddressableEntity,
+    AddressableEntityHash, BlockTime, ContextAccessRights, EntryPointType, Gas, Key, Phase,
+    ProtocolVersion, RuntimeArgs, StoredValue, Tagged, TransactionHash, U512,
 };
 
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
+    engine_state::{execution_kind::ExecutionKind, EngineConfig, WasmV1Result},
     execution::ExecError,
     runtime::{Runtime, RuntimeStack},
     runtime_context::{CallingAddContractVersion, RuntimeContext},
@@ -59,14 +59,21 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
-    ) -> ExecutionResult
+    ) -> WasmV1Result
     where
         R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
             Err(error) => {
-                return ExecutionResult::precondition_failure(error.into());
+                return WasmV1Result::new(
+                    gas_limit,
+                    Gas::zero(),
+                    Effects::default(),
+                    Vec::default(),
+                    Vec::default(),
+                    Some(error.into()),
+                );
             }
         };
 
@@ -128,21 +135,19 @@ impl Executor {
             }
         };
 
-        match result {
-            Ok(_) => ExecutionResult::Success {
-                effects: runtime.context().effects(),
-                transfers: runtime.context().transfers().to_owned(),
-                gas: runtime.context().gas_counter(),
-                messages: runtime.context().messages(),
-            },
-            Err(error) => ExecutionResult::Failure {
-                error: error.into(),
-                effects: runtime.context().effects(),
-                transfers: runtime.context().transfers().to_owned(),
-                gas: runtime.context().gas_counter(),
-                messages: runtime.context().messages(),
-            },
-        }
+        let err = match result {
+            Ok(_) => None,
+            Err(error) => Some(error.into()),
+        };
+
+        return WasmV1Result::new(
+            gas_limit,
+            runtime.context().gas_counter(),
+            runtime.context().effects(),
+            runtime.context().transfers().to_owned(),
+            runtime.context().messages(),
+            err,
+        );
     }
 
     /// Creates new runtime context.

@@ -1193,7 +1193,7 @@ mod tests {
             .with_chain_name(chain_name)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount: 100000,
-                gas_price: 1,
+                gas_price_tolerance: 1,
                 standard_payment: true,
             })
             .build()
@@ -1240,7 +1240,7 @@ mod tests {
             .with_chain_name(chain_name)
             .with_pricing_mode(PricingMode::Classic {
                 payment_amount,
-                gas_price: 1,
+                gas_price_tolerance: 1,
                 standard_payment: true,
             });
         let transaction = builder.build().expect("should build");

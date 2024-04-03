@@ -106,14 +106,22 @@ impl ChainspecConfig {
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<GenesisRequest, Error> {
-        let chainspec_config = ChainspecConfig::from_path(filename)?;
+        ChainspecConfig::from_path(filename)?
+            .create_genesis_request(genesis_accounts, protocol_version)
+    }
 
+    /// Create genesis request from self.
+    pub fn create_genesis_request(
+        &self,
+        genesis_accounts: Vec<GenesisAccount>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<GenesisRequest, Error> {
         // if you get a compilation error here, make sure to update the builder below accordingly
         let ChainspecConfig {
             core_config,
             wasm_config,
             system_costs_config,
-        } = chainspec_config;
+        } = self;
         let CoreConfig {
             validator_slots,
             auction_delay,
@@ -125,13 +133,13 @@ impl ChainspecConfig {
 
         let genesis_config = GenesisConfigBuilder::new()
             .with_accounts(genesis_accounts)
-            .with_wasm_config(wasm_config)
-            .with_system_config(system_costs_config)
-            .with_validator_slots(validator_slots)
-            .with_auction_delay(auction_delay)
+            .with_wasm_config(*wasm_config)
+            .with_system_config(*system_costs_config)
+            .with_validator_slots(*validator_slots)
+            .with_auction_delay(*auction_delay)
             .with_locked_funds_period_millis(locked_funds_period.millis())
-            .with_round_seigniorage_rate(round_seigniorage_rate)
-            .with_unbonding_delay(unbonding_delay)
+            .with_round_seigniorage_rate(*round_seigniorage_rate)
+            .with_unbonding_delay(*unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .build();
 
