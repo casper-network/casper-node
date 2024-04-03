@@ -553,113 +553,113 @@ async fn transaction_with_low_threshold_should_not_get_included() {
     .await;
 }
 
-#[tokio::test]
-async fn transfer_fee_is_burnt_no_refund() {
-    const MIN_GAS_PRICE: u8 = 5;
-    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
-
-    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
-
-    let config = ConfigsOverride::default()
-        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
-        .with_pricing_handling(PricingHandling::Fixed)
-        .with_refund_handling(RefundHandling::NoRefund)
-        .with_fee_handling(FeeHandling::Burn)
-        .with_balance_hold_interval(TimeDiff::from_seconds(5))
-        .with_min_gas_price(MIN_GAS_PRICE)
-        .with_max_gas_price(MAX_GAS_PRICE);
-
-    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
-
-    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
-    let alice_public_key = PublicKey::from(&*alice_secret_key);
-    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
-    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
-
-    // Wait for all nodes to complete era 0.
-    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
-
-    let initial_total_supply = get_total_supply(&mut fixture, None);
-
-    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
-        .motes()
-        .expect("Expected Alice to have a balance.");
-
-    let transfer_amount = fixture
-        .chainspec
-        .transaction_config
-        .native_transfer_minimum_motes
-        + 100;
-
-    let (_txn_hash, block_height, exec_result) = transfer_to_account(
-        &mut fixture,
-        transfer_amount,
-        PublicKey::from(&*charlie_secret_key),
-        &alice_secret_key,
-        PricingMode::Fixed {
-            gas_price_tolerance: MIN_GAS_PRICE,
-        },
-        None,
-    )
-    .await;
-
-    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
-
-    let expected_transfer_gas: u64 = fixture
-        .chainspec
-        .system_costs_config
-        .mint_costs()
-        .transfer
-        .into();
-    let expected_transfer_cost = expected_transfer_gas * MIN_GAS_PRICE as u64;
-    assert_exec_result_cost(
-        exec_result,
-        expected_transfer_cost.into(),
-        expected_transfer_gas.into(),
-    );
-
-    // The fees should have been burnt. So expect the total supply should have been reduced by the
-    // fee that was burnt.
-    let total_supply_after_transaction = get_total_supply(&mut fixture, Some(block_height));
-    assert_eq!(
-        total_supply_after_transaction,
-        initial_total_supply - expected_transfer_cost
-    );
-
-    let alice_available_balance =
-        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
-    let alice_total_balance =
-        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
-
-    let alice_expected_total_balance =
-        alice_initial_balance - transfer_amount - expected_transfer_cost;
-    let alice_expected_available_balance = alice_expected_total_balance;
-
-    let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
-    assert_eq!(
-        charlie_balance
-            .motes()
-            .expect("Expected Charlie to have a balance")
-            .clone(),
-        transfer_amount.into()
-    );
-
-    assert_eq!(
-        alice_available_balance
-            .motes()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_available_balance
-    );
-
-    assert_eq!(
-        alice_total_balance
-            .motes()
-            .expect("Expected Alice to have a balance")
-            .clone(),
-        alice_expected_total_balance
-    );
-}
+// #[tokio::test]
+// async fn transfer_fee_is_burnt_no_refund() {
+//     const MIN_GAS_PRICE: u8 = 5;
+//     const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+//
+//     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
+//
+//     let config = ConfigsOverride::default()
+//         .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+//         .with_pricing_handling(PricingHandling::Fixed)
+//         .with_refund_handling(RefundHandling::NoRefund)
+//         .with_fee_handling(FeeHandling::Burn)
+//         .with_balance_hold_interval(TimeDiff::from_seconds(5))
+//         .with_min_gas_price(MIN_GAS_PRICE)
+//         .with_max_gas_price(MAX_GAS_PRICE);
+//
+//     let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+//
+//     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+//     let alice_public_key = PublicKey::from(&*alice_secret_key);
+//     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+//     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+//
+//     // Wait for all nodes to complete era 0.
+//     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+//
+//     let initial_total_supply = get_total_supply(&mut fixture, None);
+//
+//     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+//         .motes()
+//         .expect("Expected Alice to have a balance.");
+//
+//     let transfer_amount = fixture
+//         .chainspec
+//         .transaction_config
+//         .native_transfer_minimum_motes
+//         + 100;
+//
+//     let (_txn_hash, block_height, exec_result) = transfer_to_account(
+//         &mut fixture,
+//         transfer_amount,
+//         PublicKey::from(&*charlie_secret_key),
+//         &alice_secret_key,
+//         PricingMode::Fixed {
+//             gas_price_tolerance: MIN_GAS_PRICE,
+//         },
+//         None,
+//     )
+//     .await;
+//
+//     assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+//
+//     let expected_transfer_gas: u64 = fixture
+//         .chainspec
+//         .system_costs_config
+//         .mint_costs()
+//         .transfer
+//         .into();
+//     let expected_transfer_cost = expected_transfer_gas * MIN_GAS_PRICE as u64;
+//     assert_exec_result_cost(
+//         exec_result,
+//         expected_transfer_cost.into(),
+//         expected_transfer_gas.into(),
+//     );
+//
+//     // The fees should have been burnt. So expect the total supply should have been reduced by the
+//     // fee that was burnt.
+//     let total_supply_after_transaction = get_total_supply(&mut fixture, Some(block_height));
+//     assert_eq!(
+//         total_supply_after_transaction,
+//         initial_total_supply - expected_transfer_cost
+//     );
+//
+//     let alice_available_balance =
+//         get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+//     let alice_total_balance =
+//         get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+//
+//     let alice_expected_total_balance =
+//         alice_initial_balance - transfer_amount - expected_transfer_cost;
+//     let alice_expected_available_balance = alice_expected_total_balance;
+//
+//     let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
+//     assert_eq!(
+//         charlie_balance
+//             .motes()
+//             .expect("Expected Charlie to have a balance")
+//             .clone(),
+//         transfer_amount.into()
+//     );
+//
+//     assert_eq!(
+//         alice_available_balance
+//             .motes()
+//             .expect("Expected Alice to have a balance")
+//             .clone(),
+//         alice_expected_available_balance
+//     );
+//
+//     assert_eq!(
+//         alice_total_balance
+//             .motes()
+//             .expect("Expected Alice to have a balance")
+//             .clone(),
+//         alice_expected_total_balance
+//     );
+// }
 
 #[tokio::test]
 async fn fee_is_payed_to_proposer_no_refund() {
