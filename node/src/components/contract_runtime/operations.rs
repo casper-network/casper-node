@@ -10,8 +10,9 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldRequest, BalanceIdentifier,
         BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
         EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
-        HandlePaymentMode, HandlePaymentRequest, InsufficientBalanceHandling, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest,
+        HandlePaymentMode, HandlePaymentRequest, HandleRefundMode, HandleRefundRequest,
+        InsufficientBalanceHandling, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -26,7 +27,7 @@ use casper_types::{
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
     Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
-    PublicKey, Transaction, TransactionCategory, U512,
+    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -98,6 +99,8 @@ pub fn execute_finalized_block(
         .iter()
         .map(Transaction::fetch_id)
         .collect_vec();
+
+    let refund_handling = chainspec.core_config.refund_handling;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
 
     for transaction in executable_block.transactions {
@@ -108,6 +111,33 @@ pub fn execute_finalized_block(
         let runtime_args = transaction.session_args().clone();
         let entry_point = transaction.entry_point();
         let authorization_keys = transaction.authorization_keys();
+
+        // set up the refund purse for this transaction, if refunds are on
+        if !refund_handling.skip_refund() {
+            // if refunds are turned on we initialize the refund purse to the initiator's main
+            // purse. NOTE: when executed, custom payment logic has the option to call
+            // set_refund_purse on the handle payment contract to set up a different
+            // refund purse, if desired.
+            let handle_refund_request = HandleRefundRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                protocol_version,
+                transaction_hash,
+                HandleRefundMode::SetRefundPurse {
+                    target: Box::new(initiator_addr.clone().into()),
+                },
+            );
+            let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+            if let Err(rnf) = artifact_builder.with_set_refund_purse_result(&handle_refund_result) {
+                if rnf {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                artifacts.push(artifact_builder.build());
+                continue; // no reason to commit the effects, move on
+            }
+            state_root_hash =
+                scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
+        }
 
         // there are three separate mote / gas / token values and it is important to not mix them up
         // we solve for halting state using a `gas limit` which is the maximum amount of
@@ -247,7 +277,7 @@ pub fn execute_finalized_block(
                             holds_epoch,
                             protocol_version,
                             transaction_hash,
-                            initiator_addr,
+                            initiator_addr.clone(),
                             authorization_keys,
                             runtime_args,
                         ));
@@ -272,7 +302,7 @@ pub fn execute_finalized_block(
                                 state_root_hash,
                                 protocol_version,
                                 transaction_hash,
-                                initiator_addr,
+                                initiator_addr.clone(),
                                 authorization_keys,
                                 auction_method,
                             ));
@@ -324,8 +354,69 @@ pub fn execute_finalized_block(
             debug!(%transaction_hash, "not eligible for execution");
         }
 
+        // handle refunds per the chainspec determined setting.
+        match refund_handling {
+            RefundHandling::NoRefund => {
+                // noop
+            }
+            RefundHandling::Refund { refund_ratio } => {
+                // if it is standard payment we will instead just reduce the amount taken,
+                // rather than take all and then refund some back later
+                // however, we take custom payment up front and thus need to refund
+                if !transaction.is_standard_payment() {
+                    let consumed = Gas::new(artifact_builder.consumed());
+                    let handle_refund_request = HandleRefundRequest::new(
+                        native_runtime_config.clone(),
+                        state_root_hash,
+                        protocol_version,
+                        transaction_hash,
+                        HandleRefundMode::Refund {
+                            limit: gas_limit.value(),
+                            gas_price: current_gas_price,
+                            consumed: consumed.value(),
+                            // as this is behind a custom payment check,
+                            // the source is always BalanceIdentifier::Payment
+                            source: Box::new(balance_identifier.clone()),
+                            target: Box::new(BalanceIdentifier::Refund),
+                            ratio: refund_ratio,
+                            initiator_addr: Box::new(initiator_addr.clone()),
+                        },
+                    );
+                    let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+                    state_root_hash = scratch_state
+                        .commit(state_root_hash, handle_refund_result.effects().clone())?;
+                    artifact_builder
+                        .with_handle_refund_result(&handle_refund_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                }
+            }
+            RefundHandling::Burn { refund_ratio } => {
+                // regardless of custom or standard payment, burn the appropriate amount from source
+                let consumed = Gas::new(artifact_builder.consumed());
+                let handle_refund_request = HandleRefundRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandleRefundMode::Burn {
+                        limit: gas_limit.value(),
+                        gas_price: current_gas_price,
+                        consumed: consumed.value(),
+                        source: Box::new(balance_identifier.clone()),
+                        ratio: refund_ratio,
+                    },
+                );
+                let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_refund_result.effects().clone())?;
+                artifact_builder
+                    .with_handle_refund_result(&handle_refund_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+            }
+        }
+
+        // handle fees per the chainspec determined setting.
         let fee_handling = chainspec.core_config.fee_handling;
-        // handle payment per the chainspec determined fee setting
         match fee_handling {
             FeeHandling::NoFee => {
                 // in this mode, a hold for full cost is placed on the payer's purse.
@@ -465,28 +556,6 @@ pub fn execute_finalized_block(
             .collect()
     };
 
-    // Pay out block fees, if relevant. This auto-commits
-    {
-        let fee_req = FeeRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            holds_epoch,
-        );
-        match scratch_state.distribute_fees(fee_req) {
-            FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-            }
-            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
-            FeeResult::Success {
-                post_state_hash, ..
-            } => {
-                state_root_hash = post_state_hash;
-            }
-        }
-    }
-
     // Update exec_block metric BEFORE determining per era things such as era rewards and step.
     // the commit_step function handles the metrics for step
     if let Some(metrics) = metrics.as_ref() {
@@ -500,6 +569,28 @@ pub fn execute_finalized_block(
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
+        // Pay out block fees, if relevant. This auto-commits
+        {
+            let fee_req = FeeRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                protocol_version,
+                block_time,
+                holds_epoch,
+            );
+            match scratch_state.distribute_fees(fee_req) {
+                FeeResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
+                FeeResult::Success {
+                    post_state_hash, ..
+                } => {
+                    state_root_hash = post_state_hash;
+                }
+            }
+        }
+
         let rewards_req = BlockRewardsRequest::new(
             native_runtime_config.clone(),
             state_root_hash,

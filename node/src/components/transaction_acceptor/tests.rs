@@ -761,6 +761,14 @@ impl reactor::Reactor for Reactor {
                             Key::AddressableEntity(*entity_addr)
                         }
                         BalanceIdentifier::Internal(addr) => Key::Balance(*addr),
+                        BalanceIdentifier::Refund => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("refund".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
                         BalanceIdentifier::Payment => {
                             responder
                                 .respond(BalanceResult::Failure(

@@ -7,6 +7,8 @@ pub mod lmdb;
 pub mod scratch;
 
 use itertools::Itertools;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -30,8 +32,8 @@ use casper_types::{
         },
         AUCTION, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, Key, KeyTag, Phase, PublicKey,
-    RuntimeArgs, StoredValue, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Motes, Phase,
+    PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 #[cfg(test)]
@@ -49,12 +51,13 @@ use crate::{
         BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
         EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
         FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        InsufficientBalanceHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
-        PruneResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepError, StepRequest,
-        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
-        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        HandleRefundMode, HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
+        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
+        SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
+        SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
+        TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -899,7 +902,124 @@ pub trait StateProvider {
         }
     }
 
-    /// Direct auction interaction for all variations of bid management.
+    /// Handle refund.
+    fn handle_refund(
+        &self,
+        HandleRefundRequest {
+            config,
+            state_hash,
+            protocol_version,
+            transaction_hash,
+            refund_mode,
+        }: HandleRefundRequest,
+    ) -> HandleRefundResult {
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return HandleRefundResult::RootNotFound,
+            Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            Phase::FinalizePayment,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return HandleRefundResult::Failure(tce);
+            }
+        };
+
+        fn calculate_refund(
+            limit: U512,
+            consumed: U512,
+            price: u8,
+            ratio: Ratio<u64>,
+        ) -> Option<U512> {
+            let unconsumed = limit.saturating_sub(consumed);
+            if let Some(motes) = Motes::from_price(unconsumed, price) {
+                let (numer, denom) = ratio.into();
+                let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+                if let Some(mul) = Ratio::from(motes.value()).checked_mul(&ratio) {
+                    return Some(mul.to_integer());
+                }
+            }
+            None
+        }
+
+        let result = match refund_mode {
+            HandleRefundMode::Refund {
+                initiator_addr,
+                limit,
+                gas_price,
+                consumed,
+                source,
+                target,
+                ratio,
+            } => {
+                let maybe_amount = calculate_refund(limit, consumed, gas_price, ratio);
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                match maybe_amount {
+                    Some(amount) => {
+                        // pay amount from source to target
+                        runtime
+                            .transfer(
+                                Some(initiator_addr.account_hash()),
+                                source_purse,
+                                target_purse,
+                                amount,
+                                None,
+                                HoldsEpoch::NOT_APPLICABLE,
+                            )
+                            .map_err(|_| casper_types::system::handle_payment::Error::Transfer)
+                    }
+                    None => Ok(()),
+                }
+            }
+            HandleRefundMode::Burn {
+                limit,
+                gas_price,
+                consumed,
+                source,
+                ratio,
+            } => {
+                let amount = calculate_refund(limit, consumed, gas_price, ratio);
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                runtime.burn(source_purse, amount)
+            }
+            HandleRefundMode::SetRefundPurse { target } => {
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                runtime.set_refund_purse(target_purse)
+            }
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(_) => HandleRefundResult::Success { effects },
+            Err(hpe) => HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                system::Error::HandlePayment(hpe),
+            )),
+        }
+    }
+
+    /// Handle payment.
     fn handle_payment(
         &self,
         HandlePaymentRequest {
@@ -922,7 +1042,7 @@ pub trait StateProvider {
             protocol_version,
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
-            Phase::Session,
+            Phase::FinalizePayment,
         ) {
             Ok(rt) => rt,
             Err(tce) => {

@@ -11,7 +11,7 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         auction::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
-        HandlePaymentResult, TransferResult,
+        HandlePaymentResult, HandleRefundResult, TransferResult,
     },
 };
 use casper_types::{
@@ -124,6 +124,43 @@ impl ExecutionArtifactBuilder {
             .with_appended_messages(&mut wasm_v1_result.messages().clone())
             .with_appended_transfers(&mut wasm_v1_result.transfers().clone())
             .with_appended_effects(wasm_v1_result.effects().clone());
+        Ok(self)
+    }
+
+    pub fn with_set_refund_purse_result(
+        &mut self,
+        handle_refund_result: &HandleRefundResult,
+    ) -> Result<&mut Self, bool> {
+        if let HandleRefundResult::RootNotFound = handle_refund_result {
+            return Err(true);
+        }
+        self.with_appended_effects(handle_refund_result.effects());
+        if let (None, HandleRefundResult::Failure(err)) =
+            (&self.error_message, handle_refund_result)
+        {
+            self.error_message = Some(format!("{}", err));
+            return Err(false);
+        }
+        Ok(self)
+    }
+
+    pub fn with_handle_refund_result(
+        &mut self,
+        handle_refund_result: &HandleRefundResult,
+    ) -> Result<&mut Self, ()> {
+        if let HandleRefundResult::RootNotFound = handle_refund_result {
+            return Err(());
+        }
+        if let (None, HandleRefundResult::Failure(err)) =
+            (&self.error_message, handle_refund_result)
+        {
+            self.error_message = Some(format!("{}", err));
+            // NOTE: if handle refund fails, we revert any prior effects.
+            // and only commit effects produced by refund payment (if any).
+            self.effects = handle_refund_result.effects();
+            return Ok(self);
+        }
+        self.with_appended_effects(handle_refund_result.effects());
         Ok(self)
     }
 
