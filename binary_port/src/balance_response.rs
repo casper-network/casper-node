@@ -7,6 +7,7 @@ use casper_types::{
     BlockTime, Key, StoredValue, U512,
 };
 
+/// Response to a balance query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceResponse {
     /// The purses total balance, not considering holds.
