@@ -25,7 +25,7 @@ use casper_types::{
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
-    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
+    Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, Motes, ProtocolVersion,
     PublicKey, Transaction, TransactionCategory, U512,
 };
 
@@ -387,6 +387,9 @@ pub fn execute_finalized_block(
                 // in this mode, consumed gas is accumulated into a single purse for later
                 // distribution
                 let consumed = Gas::new(artifact_builder.consumed());
+                let amount = Motes::from_gas(consumed, current_gas_price)
+                    .map(|x| x.value())
+                    .unwrap_or_else(U512::zero);
                 let handle_payment_request = HandlePaymentRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
@@ -396,7 +399,7 @@ pub fn execute_finalized_block(
                         gas_limit.value(),
                         current_gas_price,
                         cost,
-                        consumed.value(),
+                        amount,
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
                         holds_epoch,
@@ -410,13 +413,14 @@ pub fn execute_finalized_block(
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::Burn => {
-                let consumed = artifact_builder.consumed();
+                let consumed = Gas::new(artifact_builder.consumed());
+                let amount = Motes::from_gas(consumed, current_gas_price).map(|x| x.value());
                 let handle_payment_request = HandlePaymentRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::burn(balance_identifier, Some(consumed)),
+                    HandlePaymentMode::burn(balance_identifier, amount),
                 );
                 let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
                 state_root_hash = scratch_state
