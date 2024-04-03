@@ -1,6 +1,6 @@
 use super::*;
 
-use casper_types::execution::ExecutionResultV1;
+use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
 
 async fn transfer_to_account<A: Into<U512>>(
     fixture: &mut TestFixture,
@@ -20,6 +20,50 @@ async fn transfer_to_account<A: Into<U512>>(
             .with_chain_name(chain_name)
             .build()
             .unwrap(),
+    );
+
+    txn.sign(from);
+    let txn_hash = txn.hash();
+
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    (
+        txn_hash,
+        exec_info.block_height,
+        exec_info
+            .execution_result
+            .expect("Exec result should have been stored."),
+    )
+}
+
+async fn send_wasm_transaction(
+    fixture: &mut TestFixture,
+    from: &SecretKey,
+    pricing: PricingMode,
+) -> (TransactionHash, u64, ExecutionResult) {
+    let chain_name = fixture.chainspec.network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(pricing)
+        .with_initiator_addr(PublicKey::from(from))
+        .build()
+        .unwrap(),
     );
 
     txn.sign(from);
@@ -770,6 +814,371 @@ async fn fee_is_payed_to_proposer_no_refund() {
             .clone(),
         transfer_amount.into()
     );
+
+    assert_eq!(
+        bob_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(
+        bob_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_total_balance
+    );
+
+    assert_eq!(
+        alice_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(
+        alice_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn native_operations_fees_are_not_refunded() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(1, 2),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .motes()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .motes()
+        .expect("Expected Alice to have a balance.");
+
+    let transfer_amount = fixture
+        .chainspec
+        .transaction_config
+        .native_transfer_minimum_motes
+        + 100;
+
+    let (_txn_hash, block_height, exec_result) = transfer_to_account(
+        &mut fixture,
+        transfer_amount,
+        &bob_secret_key,
+        PublicKey::from(&*charlie_secret_key),
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        None,
+    )
+    .await;
+
+    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+
+    let expected_transfer_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .mint_costs()
+        .transfer
+        .into();
+    let expected_transfer_cost = expected_transfer_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transfer_cost.into(),
+        expected_transfer_gas.into(),
+    );
+
+    let bob_available_balance =
+        get_balance(&mut fixture, &bob_public_key, Some(block_height), false);
+    let bob_total_balance = get_balance(&mut fixture, &bob_public_key, Some(block_height), true);
+
+    let alice_available_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+    let alice_total_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+
+    // Bob shouldn't get a refund since there is no refund for native transfers.
+    let bob_expected_total_balance = bob_initial_balance - transfer_amount - expected_transfer_cost;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    // Alice should get the full fee since there is no refund for native transfers.
+    let alice_expected_total_balance = alice_initial_balance + expected_transfer_cost;
+    let alice_expected_available_balance = alice_expected_total_balance;
+
+    let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
+    assert_eq!(
+        charlie_balance
+            .motes()
+            .expect("Expected Charlie to have a balance")
+            .clone(),
+        transfer_amount.into()
+    );
+
+    assert_eq!(
+        bob_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(
+        bob_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_total_balance
+    );
+
+    assert_eq!(
+        alice_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(
+        alice_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn wasm_transaction_fees_are_refunded() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .motes()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .motes()
+        .expect("Expected Alice to have a balance.");
+
+    let (_txn_hash, block_height, exec_result) = send_wasm_transaction(
+        &mut fixture,
+        &bob_secret_key,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+    )
+    .await;
+
+    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+
+    let expected_transaction_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transaction_cost.into(),
+        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                      * invalid wasm. */
+    );
+
+    let bob_available_balance =
+        get_balance(&mut fixture, &bob_public_key, Some(block_height), false);
+    let bob_total_balance = get_balance(&mut fixture, &bob_public_key, Some(block_height), true);
+
+    let alice_available_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+    let alice_total_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
+    // gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    let bob_expected_total_balance =
+        bob_initial_balance - expected_transaction_cost + refund_amount;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    // Alice should get the non-refunded part of the fee since it's set to pay to proposer
+    let alice_expected_total_balance =
+        alice_initial_balance + expected_transaction_cost - refund_amount;
+    let alice_expected_available_balance = alice_expected_total_balance;
+
+    assert_eq!(
+        bob_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(
+        bob_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_total_balance
+    );
+
+    assert_eq!(
+        alice_available_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(
+        alice_total_balance
+            .motes()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn wasm_transaction_refunds_are_burnt() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Burn { refund_ratio })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .motes()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .motes()
+        .expect("Expected Alice to have a balance.");
+    let initial_total_supply = get_total_supply(&mut fixture, None);
+
+    let (_txn_hash, block_height, exec_result) = send_wasm_transaction(
+        &mut fixture,
+        &bob_secret_key,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+    )
+    .await;
+
+    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+    let expected_transaction_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transaction_cost.into(),
+        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                      * invalid wasm. */
+    );
+
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
+    // gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    // The refund should have been burnt. So expect the total supply should have been reduced by the
+    // refund amount that was burnt.
+    let total_supply_after_transaction = get_total_supply(&mut fixture, Some(block_height));
+    assert_eq!(
+        total_supply_after_transaction,
+        initial_total_supply - refund_amount
+    );
+
+    let bob_available_balance =
+        get_balance(&mut fixture, &bob_public_key, Some(block_height), false);
+    let bob_total_balance = get_balance(&mut fixture, &bob_public_key, Some(block_height), true);
+
+    let alice_available_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+    let alice_total_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+
+    // Bob doesn't get a refund. The refund is burnt.
+    let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    // Alice should get the non-refunded part of the fee since it's set to pay to proposer
+    let alice_expected_total_balance =
+        alice_initial_balance + expected_transaction_cost - refund_amount;
+    let alice_expected_available_balance = alice_expected_total_balance;
 
     assert_eq!(
         bob_available_balance
