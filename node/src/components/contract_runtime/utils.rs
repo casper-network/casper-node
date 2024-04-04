@@ -21,7 +21,7 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
 use casper_storage::{
     data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
 };
-use casper_types::{Chainspec, EraId, Key};
+use casper_types::{BlockHash, Chainspec, EraId, Key};
 use once_cell::sync::Lazy;
 use std::{
     cmp,
@@ -387,6 +387,7 @@ pub(super) fn calculate_prune_eras(
 
 pub(crate) fn spec_exec_from_wasm_v1_result(
     wasm_v1_result: WasmV1Result,
+    block_hash: BlockHash,
 ) -> SpeculativeExecutionResult {
     let transfers = wasm_v1_result.transfers().to_owned();
     let limit = wasm_v1_result.limit().to_owned();
@@ -398,7 +399,9 @@ pub(crate) fn spec_exec_from_wasm_v1_result(
         .to_owned()
         .map(|err| format!("{:?}", err));
 
-    SpeculativeExecutionResult::new(transfers, limit, consumed, effects, messages, error_msg)
+    SpeculativeExecutionResult::new(
+        block_hash, transfers, limit, consumed, effects, messages, error_msg,
+    )
 }
 
 #[cfg(test)]

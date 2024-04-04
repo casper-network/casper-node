@@ -18,8 +18,8 @@ pub enum ErrorCode {
     /// Root not found.
     #[error("root not found")]
     RootNotFound = 3,
-    /// Invalid deploy item variant.
-    #[error("invalid deploy item variant")]
+    /// Invalid item variant.
+    #[error("invalid item variant")]
     InvalidItemVariant = 4,
     /// Wasm preprocessing.
     #[error("wasm preprocessing")]
@@ -33,8 +33,8 @@ pub enum ErrorCode {
     /// Internal error.
     #[error("internal error")]
     InternalError = 8,
-    /// The query to global state failed.
-    #[error("the query to global state failed")]
+    /// The query failed.
+    #[error("the query failed")]
     FailedQuery = 9,
     /// Bad request.
     #[error("bad request")]
