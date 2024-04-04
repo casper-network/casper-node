@@ -5,8 +5,8 @@ use casper_types::execution::ExecutionResultV1;
 async fn transfer_to_account<A: Into<U512>>(
     fixture: &mut TestFixture,
     amount: A,
-    to: PublicKey,
     from: &SecretKey,
+    to: PublicKey,
     pricing: PricingMode,
     transfer_id: Option<u64>,
 ) -> (TransactionHash, u64, ExecutionResult) {
@@ -202,8 +202,8 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
         &mut fixture,
         TRANSFER_AMOUNT,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: 1,
         },
@@ -305,8 +305,8 @@ async fn should_accept_transfer_without_id() {
     let (_, _, result) = transfer_to_account(
         &mut fixture,
         transfer_amount,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: 1,
         },
@@ -346,8 +346,8 @@ async fn failed_transfer_cost_fixed_price_no_fee_no_refund() {
     let (_txn_hash, _block, exec_result) = transfer_to_account(
         &mut fixture,
         transfer_amount,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: 1,
         },
@@ -361,8 +361,8 @@ async fn failed_transfer_cost_fixed_price_no_fee_no_refund() {
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
         &mut fixture,
         transfer_amount + 100,
-        PublicKey::from(&*bob_secret_key),
         &charlie_secret_key,
+        PublicKey::from(&*bob_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: 1,
         },
@@ -433,8 +433,8 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
         &mut fixture,
         TRANSFER_AMOUNT,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Classic {
             payment_amount: TRANSFER_GAS,
             gas_price_tolerance: MIN_GAS_PRICE + 1,
@@ -541,8 +541,8 @@ async fn transaction_with_low_threshold_should_not_get_included() {
     let (_, _, _) = transfer_to_account(
         &mut fixture,
         TRANSFER_AMOUNT,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Classic {
             payment_amount: 1000,
             gas_price_tolerance: MIN_GAS_PRICE - 1,
@@ -560,12 +560,17 @@ async fn transfer_fee_is_burnt_no_refund() {
 
     let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]);
 
+    // make the era longer so that the transaction doesn't land in the switch block.
+    let minimum_era_height = 5;
+    // make the hold interval very short so we can see the behavior.
+    let balance_hold_interval = TimeDiff::from_seconds(5);
+
     let config = ConfigsOverride::default()
-        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_minimum_era_height(minimum_era_height)
         .with_pricing_handling(PricingHandling::Fixed)
         .with_refund_handling(RefundHandling::NoRefund)
         .with_fee_handling(FeeHandling::Burn)
-        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_balance_hold_interval(balance_hold_interval)
         .with_min_gas_price(MIN_GAS_PRICE)
         .with_max_gas_price(MAX_GAS_PRICE);
 
@@ -576,14 +581,14 @@ async fn transfer_fee_is_burnt_no_refund() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    // Wait for all nodes to complete era 0.
+    info!("waiting for all nodes to complete era 0");
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let initial_total_supply = get_total_supply(&mut fixture, None);
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
         .motes()
-        .expect("Expected Alice to have a balance.");
+        .expect("expected alice to have a balance");
 
     let transfer_amount = fixture
         .chainspec
@@ -591,19 +596,20 @@ async fn transfer_fee_is_burnt_no_refund() {
         .native_transfer_minimum_motes
         + 100;
 
+    info!("transferring from alice to charlie");
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
         &mut fixture,
         transfer_amount,
-        PublicKey::from(&*charlie_secret_key),
         &alice_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: MIN_GAS_PRICE,
         },
         None,
     )
     .await;
-
-    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result);
+    info!("transfer was successful");
 
     let expected_transfer_gas: u64 = fixture
         .chainspec
@@ -612,29 +618,37 @@ async fn transfer_fee_is_burnt_no_refund() {
         .transfer
         .into();
     let expected_transfer_cost = expected_transfer_gas * MIN_GAS_PRICE as u64;
+    info!("checking expected cost");
     assert_exec_result_cost(
         exec_result,
         expected_transfer_cost.into(),
         expected_transfer_gas.into(),
     );
 
-    // The fees should have been burnt. So expect the total supply should have been reduced by the
-    // fee that was burnt.
+    // The fees should have been burnt so expect the total supply to have been
+    // reduced by the fee that was burnt.
+    info!("checking total supply");
     let total_supply_after_transaction = get_total_supply(&mut fixture, Some(block_height));
+    assert_ne!(
+        total_supply_after_transaction, initial_total_supply,
+        "total supply should be lowered"
+    );
+    let diff = initial_total_supply - total_supply_after_transaction;
     assert_eq!(
-        total_supply_after_transaction,
-        initial_total_supply - expected_transfer_cost
+        diff,
+        U512::from(expected_transfer_cost),
+        "total supply should be lowered by expected transfer cost"
     );
 
     let alice_available_balance =
         get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
     let alice_total_balance =
         get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
-
     let alice_expected_total_balance =
         alice_initial_balance - transfer_amount - expected_transfer_cost;
     let alice_expected_available_balance = alice_expected_total_balance;
 
+    info!("checking charlie balance");
     let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
     assert_eq!(
         charlie_balance
@@ -644,6 +658,7 @@ async fn transfer_fee_is_burnt_no_refund() {
         transfer_amount.into()
     );
 
+    info!("checking alice available balance");
     assert_eq!(
         alice_available_balance
             .motes()
@@ -653,6 +668,7 @@ async fn transfer_fee_is_burnt_no_refund() {
         "alice available balance should match"
     );
 
+    info!("checking alice total balance");
     assert_eq!(
         alice_total_balance
             .motes()
@@ -706,8 +722,8 @@ async fn fee_is_payed_to_proposer_no_refund() {
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
         &mut fixture,
         transfer_amount,
-        PublicKey::from(&*charlie_secret_key),
         &bob_secret_key,
+        PublicKey::from(&*charlie_secret_key),
         PricingMode::Fixed {
             gas_price_tolerance: MIN_GAS_PRICE,
         },
