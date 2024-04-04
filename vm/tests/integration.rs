@@ -8,10 +8,7 @@ use casper_types::{
     execution::{Effects, TransformKindV2},
     Digest, EntityAddr, Key,
 };
-use vm::{
-    storage::Address, ExecuteRequest, ExecuteRequestBuilder, ExecutionKind, Executor,
-    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
-};
+use vm::{storage::Address, ExecuteRequestBuilder, ExecutionKind, ExecutorKind, ExecutorV2};
 
 const DEFAULT_ACCOUNT: Address = [42; 32];
 const ALICE: [u8; 32] = [100; 32];

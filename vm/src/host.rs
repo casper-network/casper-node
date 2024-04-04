@@ -19,11 +19,11 @@ use vm_common::{
 };
 
 use crate::{
+    executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind},
     host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{self, Address, GlobalStateReader},
     wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
-    ConfigBuilder, ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind, Executor,
-    ExecutorV2, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
+    ConfigBuilder, Executor, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
 };
 
 use self::abi::ReadInfo;
