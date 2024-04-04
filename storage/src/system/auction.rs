@@ -611,6 +611,20 @@ pub trait Auction:
             .into_iter()
             .filter(|(key, _amount)| key != &PublicKey::System)
         {
+            // fetch most recent validator public key if public key was changed
+            // or the validator withdrew their bid completely
+            let validator_public_key =
+                match detail::get_most_recent_validator_public_key(self, proposer) {
+                    Ok(pubkey) => pubkey,
+                    Err(Error::BridgeRecordChainTooLong) => {
+                        // Validator bid's public key has been changed too many times,
+                        // and we were unable to find the current public key.
+                        // In this case we are unable to distribute rewards for this validator.
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
+
             let total_reward = Ratio::from(reward_amount);
             let recipient = seigniorage_recipients
                 .get(&proposer)
@@ -620,6 +634,7 @@ pub trait Auction:
                     let validator_bid = detail::read_validator_bid(self, &bid_key).ok()?;
                     detail::seigniorage_recipient(self, &validator_bid).ok()
                 })
+                .get(&validator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
@@ -657,7 +672,7 @@ pub trait Auction:
             let delegator_payouts = detail::distribute_delegator_rewards(
                 self,
                 seigniorage_allocations,
-                proposer.clone(),
+                validator_public_key.clone(),
                 delegator_rewards,
             )?;
 
@@ -670,7 +685,7 @@ pub trait Auction:
             let validator_bonding_purse = detail::distribute_validator_rewards(
                 self,
                 seigniorage_allocations,
-                proposer.clone(),
+                validator_public_key.clone(),
                 validator_reward,
             )?;
 

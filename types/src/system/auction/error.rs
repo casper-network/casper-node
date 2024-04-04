@@ -345,6 +345,14 @@ pub enum Error {
     /// assert_eq!(52, Error::ValidatorBidExistsAlready as u8);
     /// ```
     ValidatorBidExistsAlready = 52,
+    /// Failed to look up current validator bid
+    /// because it's public key has been changed
+    /// and bridge record chain is too long to follow.
+    /// ```
+    /// # use casper_types::system::auction::Error;
+    /// assert_eq!(53, Error::BridgeRecordChainTooLong as u8);
+    /// ```
+    BridgeRecordChainTooLong = 53,
 }
 
 impl Display for Error {
@@ -403,6 +411,7 @@ impl Display for Error {
             Error::ForgedReference => formatter.write_str("Forged reference"),
             Error::MissingPurse => formatter.write_str("Missing purse"),
             Error::ValidatorBidExistsAlready => formatter.write_str("Validator bid with given public key already exists"),
+            Error::BridgeRecordChainTooLong => formatter.write_str("Bridge record chain is too long to find current validator bid"),
         }
     }
 }
@@ -489,6 +498,7 @@ impl TryFrom<u8> for Error {
             d if d == Error::ValidatorBidExistsAlready as u8 => {
                 Ok(Error::ValidatorBidExistsAlready)
             }
+            d if d == Error::BridgeRecordChainTooLong as u8 => Ok(Error::BridgeRecordChainTooLong),
             _ => Err(TryFromU8ForError(())),
         }
     }
