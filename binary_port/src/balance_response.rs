@@ -1,11 +1,19 @@
 use std::collections::BTreeMap;
+#[cfg(test)]
+use std::{collections::VecDeque, iter::FromIterator};
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     global_state::TrieMerkleProof,
     system::mint::BalanceHoldAddrTag,
     BlockTime, Key, StoredValue, U512,
 };
+#[cfg(test)]
+use casper_types::{global_state::TrieMerkleProofStep, CLValue};
+#[cfg(test)]
+use rand::Rng;
 
 /// Response to a balance query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +26,22 @@ pub struct BalanceResponse {
     pub total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
     /// Any time-relevant active holds on the balance.
     pub balance_holds: BTreeMap<BlockTime, BalanceHoldsWithProof>,
+}
+
+impl BalanceResponse {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        BalanceResponse {
+            total_balance: rng.gen(),
+            available_balance: rng.gen(),
+            total_balance_proof: Box::new(TrieMerkleProof::new(
+                Key::URef(rng.gen()),
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                VecDeque::from_iter([TrieMerkleProofStep::random(rng)]),
+            )),
+            balance_holds: BTreeMap::new(),
+        }
+    }
 }
 
 impl ToBytes for BalanceResponse {
@@ -65,3 +89,17 @@ impl FromBytes for BalanceResponse {
 /// Balance holds with Merkle proofs.
 pub type BalanceHoldsWithProof =
     BTreeMap<BalanceHoldAddrTag, (U512, TrieMerkleProof<Key, StoredValue>)>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use casper_types::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BalanceResponse::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
+    }
+}
