@@ -1985,7 +1985,7 @@ const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 20000;
 //milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000;
+const BLOCK_TIME: u64 = 1750;
 //milliseconds
 const TIME_OUT: u64 = 600;
 //seconds
@@ -2616,7 +2616,7 @@ async fn run_reward_network_highway_no_finality() {
             consensus_protocol: CONSENSUS_HIGHWAY,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
-            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME - 500),
+            minimum_block_time: TimeDiff::from_millis(BLOCK_TIME),
             round_seigniorage_rate: SEIGNIORAGE.into(),
             finders_fee: FINDERS_FEE_ZERO.into(),
             finality_signature_proportion: FINALITY_SIG_PROP_ZERO.into(),

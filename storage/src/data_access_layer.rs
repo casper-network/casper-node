@@ -48,7 +48,6 @@ pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
 pub use handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult};
 pub use handle_refund::{HandleRefundMode, HandleRefundRequest, HandleRefundResult};
-pub use handle_refund::{HandleRefundMode, HandleRefundRequest, HandleRefundResult};
 pub use mint::{TransferRequest, TransferResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};

@@ -32,7 +32,7 @@ use casper_types::{
         },
         AUCTION, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Motes, Phase,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
     PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
