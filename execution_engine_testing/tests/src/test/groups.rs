@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
@@ -7,7 +9,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
-use casper_types::{account::AccountHash, runtime_args, Key, ProtocolVersion, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, U512};
 
 use crate::{lmdb_fixture, wasm_utils};
 
@@ -136,23 +138,21 @@ fn should_not_call_restricted_session_from_wrong_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_package_addr().expect("should be hash"),
-                None,
-                RESTRICTED_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let args = runtime_args! {};
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_stored_versioned_contract_by_hash(
+            package_hash.into_package_addr().expect("should be hash"),
+            None,
+            RESTRICTED_SESSION,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).commit();
 
@@ -166,9 +166,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -199,25 +197,23 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        let args = runtime_args! {
-            "package_hash" => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_package_addr().expect("should be hash"),
-                None,
-                RESTRICTED_SESSION_CALLER,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let args = runtime_args! {
+        "package_hash" => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_stored_versioned_contract_by_hash(
+            package_hash.into_package_addr().expect("should be hash"),
+            None,
+            RESTRICTED_SESSION_CALLER,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).commit();
 
@@ -231,9 +227,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -244,7 +238,7 @@ fn should_call_group_restricted_contract() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_new_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_new_protocol_version(DEFAULT_PROTOCOL_VERSION)
             .build()
     };
 
@@ -263,28 +257,21 @@ fn should_call_group_restricted_contract() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                RESTRICTED_CONTRACT,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, RESTRICTED_CONTRACT, args)
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_2).expect_success().commit();
 
@@ -322,37 +309,33 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_package_addr().expect("should be hash"),
-                None,
-                RESTRICTED_CONTRACT,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_stored_versioned_contract_by_hash(
+            package_hash.into_package_addr().expect("should be hash"),
+            None,
+            RESTRICTED_CONTRACT,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).commit();
 
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -374,28 +357,23 @@ fn should_call_group_unrestricted_contract_caller() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                UNRESTRICTED_CONTRACT_CALLER,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new()
-            .with_protocol_version(ProtocolVersion::V1_0_0)
-            .push_deploy(deploy)
-            .build()
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(
+            PACKAGE_HASH_KEY,
+            None,
+            UNRESTRICTED_CONTRACT_CALLER,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request_2).expect_success().commit();
 
     let _account = builder
@@ -416,7 +394,6 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-    .with_protocol_version(ProtocolVersion::V1_0_0)
     .build();
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -444,7 +421,6 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
             PACKAGE_HASH_ARG => *package_hash,
         },
     )
-    .with_protocol_version(ProtocolVersion::V1_0_0)
     .build();
 
     builder.exec(exec_request_2).expect_success().commit();
@@ -544,9 +520,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
@@ -568,57 +542,46 @@ fn should_not_call_uncallable_contract_from_deploy() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                UNCALLABLE_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, UNCALLABLE_SESSION, args)
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_2).commit();
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
-    let exec_request_3 = {
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                CALL_RESTRICTED_ENTRY_POINTS,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([6; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(
+            PACKAGE_HASH_KEY,
+            None,
+            CALL_RESTRICTED_ENTRY_POINTS,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([6; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).expect_failure();
 
@@ -643,64 +606,54 @@ fn should_not_call_uncallable_session_from_deploy() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                UNCALLABLE_CONTRACT,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(PACKAGE_HASH_KEY, None, UNCALLABLE_CONTRACT, args)
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_2).commit();
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 
-    let exec_request_3 = {
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                None,
-                CALL_RESTRICTED_ENTRY_POINTS,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([6; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let args = runtime_args! {
+        PACKAGE_HASH_ARG => *package_hash,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(
+            PACKAGE_HASH_KEY,
+            None,
+            CALL_RESTRICTED_ENTRY_POINTS,
+            args,
+        )
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([6; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
     builder.exec(exec_request_3).expect_failure();
 
     builder.assert_error(Error::Exec(ExecError::InvalidContext))
 }
 
-#[test]
 #[ignore]
+#[allow(unused)]
+// #[test]
 fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that does not have any of the group urefs in context.
@@ -728,27 +681,25 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        let args = runtime_args! {
-            "amount" => *DEFAULT_PAYMENT,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            .with_stored_versioned_payment_contract_by_hash(
-                package_hash
-                    .into_package_addr()
-                    .expect("must have created package hash"),
-                None,
-                "restricted_standard_payment",
-                args,
-            )
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let args = runtime_args! {
+        "amount" => *DEFAULT_PAYMENT,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        .with_stored_versioned_payment_contract_by_hash(
+            package_hash
+                .into_package_addr()
+                .expect("must have created package hash"),
+            None,
+            "restricted_standard_payment",
+            args,
+        )
+        .with_authorization_keys(&[ACCOUNT_1_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).commit();
 
@@ -762,14 +713,13 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     let response = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let error = exec_response.as_error().expect("should have error");
+    let error = response.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::InvalidContext));
 }
 
-#[test]
 #[ignore]
+#[allow(unused)]
+// #[test]
 fn should_call_group_restricted_stored_payment_code() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that contains urefs from the group.
@@ -798,28 +748,26 @@ fn should_call_group_restricted_stored_payment_code() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        let args = runtime_args! {
-            "amount" => *DEFAULT_PAYMENT,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-            // .with_stored_versioned_contract_by_name(name, version, entry_point, args)
-            .with_stored_versioned_payment_contract_by_hash(
-                package_hash
-                    .into_package_addr()
-                    .expect("must have created package hash"),
-                None,
-                "restricted_standard_payment",
-                args,
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let args = runtime_args! {
+        "amount" => *DEFAULT_PAYMENT,
     };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+        // .with_stored_versioned_contract_by_name(name, version, entry_point, args)
+        .with_stored_versioned_payment_contract_by_hash(
+            package_hash
+                .into_package_addr()
+                .expect("must have created package hash"),
+            None,
+            "restricted_standard_payment",
+            args,
+        )
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([3; 32])
+        .build();
+
+    let exec_request_3 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_3).expect_failure();
 

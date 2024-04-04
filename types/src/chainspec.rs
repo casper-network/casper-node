@@ -11,12 +11,15 @@ mod global_state_update;
 mod highway_config;
 mod network_config;
 mod next_upgrade;
+mod pricing_handling;
 mod protocol_config;
 mod refund_handling;
 mod transaction_config;
 mod upgrade_config;
+mod vacancy_config;
 mod vm_config;
 
+#[cfg(any(feature = "std", test))]
 use std::{fmt::Debug, sync::Arc};
 
 #[cfg(feature = "datasize")]
@@ -30,7 +33,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -38,22 +41,30 @@ pub use accounts_config::{
 };
 pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
-pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
+#[cfg(any(feature = "testing", test))]
+pub use core_config::DEFAULT_FEE_HANDLING;
+#[cfg(any(feature = "std", test))]
+pub use core_config::DEFAULT_REFUND_HANDLING;
+pub use core_config::{
+    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_BALANCE_HOLD_INTERVAL,
+};
 pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::DEFAULT_AUCTION_DELAY;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
-#[cfg(any(feature = "testing", test))]
-pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
+pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
 pub use upgrade_config::ProtocolUpgradeConfig;
+pub use vacancy_config::VacancyConfig;
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
@@ -71,15 +82,16 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
-    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
-    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INSTALL_UPGRADE_GAS_LIMIT,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(PartialEq, Eq, Serialize, Debug)]
+#[derive(PartialEq, Eq, Serialize, Debug, Default)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct Chainspec {
@@ -110,6 +122,10 @@ pub struct Chainspec {
     /// System costs config.
     #[serde(rename = "system_costs")]
     pub system_costs_config: SystemConfig,
+
+    /// Vacancy behavior config
+    #[serde(rename = "vacancy")]
+    pub vacancy_config: VacancyConfig,
 }
 
 impl Chainspec {
@@ -183,6 +199,14 @@ impl Chainspec {
             fee_handling,
         ))
     }
+
+    /// Returns balance hold epoch based upon configured hold interval, calculated from the imputed
+    /// timestamp.
+    pub fn balance_holds_epoch(&self, timestamp: Timestamp) -> u64 {
+        timestamp
+            .millis()
+            .saturating_sub(self.core_config.balance_hold_interval.millis())
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -195,7 +219,8 @@ impl Chainspec {
         let highway_config = HighwayConfig::random(rng);
         let transaction_config = TransactionConfig::random(rng);
         let wasm_config = rng.gen();
-        let system_costs_config = rng.gen();
+        let system_costs_config = SystemConfig::random(rng);
+        let vacancy_config = VacancyConfig::random(rng);
 
         Chainspec {
             protocol_config,
@@ -205,7 +230,32 @@ impl Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
+            vacancy_config,
         }
+    }
+
+    /// Set the chain name;
+    pub fn with_chain_name(&mut self, chain_name: String) -> &mut Self {
+        self.network_config.name = chain_name;
+        self
+    }
+
+    /// Set max associated keys.
+    pub fn with_max_associated_keys(&mut self, max_associated_keys: u32) -> &mut Self {
+        self.core_config.max_associated_keys = max_associated_keys;
+        self
+    }
+
+    /// Set pricing handling.
+    pub fn with_pricing_handling(&mut self, pricing_handling: PricingHandling) -> &mut Self {
+        self.core_config.pricing_handling = pricing_handling;
+        self
+    }
+
+    /// Set allow reservations.
+    pub fn with_allow_reservations(&mut self, allow_reservations: bool) -> &mut Self {
+        self.core_config.allow_reservations = allow_reservations;
+        self
     }
 }
 
@@ -217,7 +267,8 @@ impl ToBytes for Chainspec {
         self.highway_config.write_bytes(writer)?;
         self.transaction_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
-        self.system_costs_config.write_bytes(writer)
+        self.system_costs_config.write_bytes(writer)?;
+        self.vacancy_config.write_bytes(writer)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -234,6 +285,7 @@ impl ToBytes for Chainspec {
             + self.transaction_config.serialized_length()
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
+            + self.vacancy_config.serialized_length()
     }
 }
 
@@ -246,6 +298,7 @@ impl FromBytes for Chainspec {
         let (transaction_config, remainder) = TransactionConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
+        let (vacancy_config, remainder) = VacancyConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
             protocol_config,
             network_config,
@@ -254,6 +307,7 @@ impl FromBytes for Chainspec {
             transaction_config,
             wasm_config,
             system_costs_config,
+            vacancy_config,
         };
         Ok((chainspec, remainder))
     }

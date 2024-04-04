@@ -32,11 +32,6 @@ use crate::{
     EntryPoints, Groups, HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
-/// Maximum number of distinct user groups.
-pub const MAX_GROUPS: u8 = 10;
-/// Maximum number of URefs which can be assigned across all user groups.
-pub const MAX_TOTAL_UREFS: usize = 100;
-
 const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
@@ -1207,7 +1202,7 @@ mod tests {
                 vec![],
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::Session,
+                EntryPointType::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             let entrypoint = EntryPoint::new(
@@ -1215,7 +1210,7 @@ mod tests {
                 vec![Parameter::new("Foo", CLType::U32)],
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 1"]),
-                EntryPointType::Session,
+                EntryPointType::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             ret

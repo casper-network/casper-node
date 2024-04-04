@@ -21,17 +21,20 @@ use thiserror::Error;
 use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
-use casper_storage::data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult};
+use casper_storage::{
+    data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
-    EraId, HashAddr, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff,
-    Timestamp, Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    TransactionV1ConfigFailure, URef, U512,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
+    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
+    TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
 };
 
 use super::*;
@@ -204,6 +207,7 @@ enum TestScenario {
     DeployWithoutTransferTarget,
     DeployWithoutTransferAmount,
     BalanceCheckForDeploySentByPeer,
+    InvalidPricingModeForTransactionV1,
 }
 
 impl TestScenario {
@@ -243,7 +247,8 @@ impl TestScenario {
             | TestScenario::FromClientSessionContractPackage(..)
             | TestScenario::FromClientSignedByAdmin(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::DeployWithNativeTransferInPayment => Source::Client,
+            | TestScenario::DeployWithNativeTransferInPayment
+            | TestScenario::InvalidPricingModeForTransactionV1 => Source::Client,
         }
     }
 
@@ -405,7 +410,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingContractAtHash => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::SmartContract(HashAddr::default()),
+                            AddressableEntityHash::new(HashAddr::default()),
                             "call",
                         )
                         .with_chain_name("casper-example")
@@ -417,7 +422,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingEntryPoint => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::SmartContract(HashAddr::default()),
+                            AddressableEntityHash::new(HashAddr::default()),
                             "non-existent-entry-point",
                         )
                         .with_chain_name("casper-example")
@@ -467,7 +472,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingPackageAtHash => {
                     let txn = TransactionV1Builder::new_targeting_package(
-                        PackageAddr::default(),
+                        PackageHash::new(PackageAddr::default()),
                         None,
                         "call",
                     )
@@ -480,7 +485,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingContractVersion => {
                     let txn = TransactionV1Builder::new_targeting_package(
-                        PackageAddr::default(),
+                        PackageHash::new(PackageAddr::default()),
                         Some(6),
                         "call",
                     )
@@ -550,6 +555,18 @@ impl TestScenario {
                     }
                 }
             }
+            TestScenario::InvalidPricingModeForTransactionV1 => {
+                let classic_mode_transaction = TransactionV1Builder::new_random(rng)
+                    .with_pricing_mode(PricingMode::Classic {
+                        payment_amount: 10000u64,
+                        gas_price_tolerance: 1u8,
+                        standard_payment: true,
+                    })
+                    .with_chain_name("casper-example")
+                    .build()
+                    .expect("must create classic mode transaction");
+                Transaction::from(classic_mode_transaction)
+            }
         }
     }
 
@@ -603,6 +620,7 @@ impl TestScenario {
                     | ContractPackageScenario::MissingContractVersion => false,
                 }
             }
+            TestScenario::InvalidPricingModeForTransactionV1 => false,
         }
     }
 
@@ -649,46 +667,6 @@ impl reactor::Reactor for Reactor {
     type Event = Event;
     type Config = TestScenario;
     type Error = Error;
-
-    fn new(
-        config: Self::Config,
-        chainspec: Arc<Chainspec>,
-        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
-        _network_identity: NetworkIdentity,
-        registry: &Registry,
-        _event_queue: EventQueueHandle<Self::Event>,
-        _rng: &mut NodeRng,
-    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
-        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
-
-        let transaction_acceptor =
-            TransactionAcceptor::new(Config::default(), chainspec.as_ref(), registry).unwrap();
-
-        let storage = Storage::new(
-            &storage_withdir,
-            None,
-            ProtocolVersion::from_parts(1, 0, 0),
-            EraId::default(),
-            "test",
-            chainspec.transaction_config.max_ttl.into(),
-            chainspec.core_config.recent_era_count(),
-            Some(registry),
-            false,
-        )
-        .unwrap();
-
-        let reactor = Reactor {
-            storage,
-            transaction_acceptor,
-            _storage_tempdir: storage_tempdir,
-            test_scenario: config,
-        };
-
-        let effects = Effects::new();
-
-        Ok((reactor, effects))
-    }
 
     fn dispatch_event(
         &mut self,
@@ -770,7 +748,55 @@ impl reactor::Reactor for Reactor {
                     request: balance_request,
                     responder,
                 } => {
-                    let key = balance_request.identifier().as_key();
+                    let key = match balance_request.identifier() {
+                        BalanceIdentifier::Purse(uref) => Key::URef(*uref),
+                        BalanceIdentifier::Public(public_key) => {
+                            Key::Account(public_key.to_account_hash())
+                        }
+                        BalanceIdentifier::Account(account_hash)
+                        | BalanceIdentifier::PenalizedAccount(account_hash) => {
+                            Key::Account(*account_hash)
+                        }
+                        BalanceIdentifier::Entity(entity_addr) => {
+                            Key::AddressableEntity(*entity_addr)
+                        }
+                        BalanceIdentifier::Internal(addr) => Key::Balance(*addr),
+                        BalanceIdentifier::Refund => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("refund".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                        BalanceIdentifier::Payment => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("payment".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                        BalanceIdentifier::Accumulate => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::NamedKeyNotFound("accumulate".to_string()),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                    };
+                    let purse_addr = match balance_request.identifier().as_purse_addr() {
+                        Some(purse_addr) => purse_addr,
+                        None => {
+                            responder
+                                .respond(BalanceResult::Failure(
+                                    TrackingCopyError::UnexpectedKeyVariant(key),
+                                ))
+                                .ignore::<Self::Event>();
+                            return Effects::new();
+                        }
+                    };
 
                     let proof = TrieMerkleProof::new(
                         key,
@@ -790,8 +816,11 @@ impl reactor::Reactor for Reactor {
                             BalanceResult::RootNotFound
                         } else {
                             BalanceResult::Success {
-                                motes: U512::from(motes),
-                                proof: Box::new(proof),
+                                purse_addr,
+                                total_balance: Default::default(),
+                                available_balance: U512::from(motes),
+                                total_balance_proof: Box::new(proof),
+                                balance_holds: Default::default(),
                             }
                         };
                     responder.respond(balance_result).ignore()
@@ -862,6 +891,47 @@ impl reactor::Reactor for Reactor {
             },
             Event::NetworkRequest(_) => panic!("test does not handle network requests"),
         }
+    }
+
+    fn new(
+        config: Self::Config,
+        chainspec: Arc<Chainspec>,
+        _chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+        _network_identity: NetworkIdentity,
+        registry: &Registry,
+        _event_queue: EventQueueHandle<Self::Event>,
+        _rng: &mut NodeRng,
+    ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
+        let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
+
+        let transaction_acceptor =
+            TransactionAcceptor::new(Config::default(), Arc::clone(&chainspec), registry).unwrap();
+
+        let storage = Storage::new(
+            &storage_withdir,
+            None,
+            ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
+            "test",
+            chainspec.transaction_config.max_ttl.into(),
+            chainspec.core_config.recent_era_count(),
+            Some(registry),
+            false,
+            TransactionConfig::default(),
+        )
+        .unwrap();
+
+        let reactor = Reactor {
+            storage,
+            transaction_acceptor,
+            _storage_tempdir: storage_tempdir,
+            test_scenario: config,
+        };
+
+        let effects = Effects::new();
+
+        Ok((reactor, effects))
     }
 }
 
@@ -1047,6 +1117,7 @@ async fn run_transaction_acceptor_without_timeout(
             | TestScenario::DeployWithMangledTransferAmount
             | TestScenario::DeployWithoutTransferTarget
             | TestScenario::DeployWithoutTransferAmount
+            | TestScenario::InvalidPricingModeForTransactionV1
             | TestScenario::FromClientExpired(_) => {
                 matches!(
                     event,
@@ -1243,7 +1314,9 @@ async fn should_reject_invalid_deploy_from_peer() {
         run_transaction_acceptor(TestScenario::FromPeerInvalidTransaction(TxnType::Deploy)).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidDeployConfiguration(_))
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(_)
+        ))
     ))
 }
 
@@ -1253,7 +1326,7 @@ async fn should_reject_invalid_transaction_v1_from_peer() {
         run_transaction_acceptor(TestScenario::FromPeerInvalidTransaction(TxnType::V1)).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidV1Configuration(_))
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(_)))
     ))
 }
 
@@ -1326,7 +1399,9 @@ async fn should_reject_invalid_deploy_from_client() {
         run_transaction_acceptor(TestScenario::FromClientInvalidTransaction(TxnType::Deploy)).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidDeployConfiguration(_))
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(_)
+        ))
     ))
 }
 
@@ -1336,7 +1411,7 @@ async fn should_reject_invalid_transaction_v1_from_client() {
         run_transaction_acceptor(TestScenario::FromClientInvalidTransaction(TxnType::V1)).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidV1Configuration(_))
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(_)))
     ))
 }
 
@@ -1366,8 +1441,8 @@ async fn should_reject_future_dated_deploy_from_client() {
     .await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigFailure::TimestampInFuture { .. }
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(InvalidDeploy::TimestampInFuture { .. })
         ))
     ))
 }
@@ -1378,9 +1453,9 @@ async fn should_reject_future_dated_transaction_v1_from_client() {
         run_transaction_acceptor(TestScenario::FromClientFutureDatedTransaction(TxnType::V1)).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidV1Configuration(
-            TransactionV1ConfigFailure::TimestampInFuture { .. }
-        ))
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::TimestampInFuture { .. }
+        )))
     ))
 }
 
@@ -2175,8 +2250,8 @@ async fn should_reject_deploy_without_transfer_amount() {
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigFailure::MissingTransferAmount
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(InvalidDeploy::MissingTransferAmount)
         ))
     ))
 }
@@ -2200,8 +2275,8 @@ async fn should_reject_deploy_with_mangled_transfer_amount() {
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(matches!(
         result,
-        Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigFailure::FailedToParseTransferAmount
+        Err(super::Error::InvalidTransaction(
+            InvalidTransaction::Deploy(InvalidDeploy::FailedToParseTransferAmount)
         ))
     ))
 }
@@ -2254,4 +2329,16 @@ async fn should_accept_transaction_v1_signed_by_admin_from_client() {
     let test_scenario = TestScenario::FromClientSignedByAdmin(TxnType::V1);
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_transaction_v1_with_invalid_pricing_mode() {
+    let test_scenario = TestScenario::InvalidPricingModeForTransactionV1;
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidTransaction(InvalidTransaction::V1(
+            InvalidTransactionV1::InvalidPricingMode { .. }
+        )))
+    ))
 }

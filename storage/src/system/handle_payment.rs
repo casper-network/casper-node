@@ -1,9 +1,11 @@
+mod handle_payment_native;
 mod internal;
 pub mod mint_provider;
 pub mod runtime_provider;
 pub mod storage_provider;
 
-use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
+use casper_types::{system::handle_payment::Error, AccessRights, HoldsEpoch, URef, U512};
+use num_rational::Ratio;
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
@@ -33,18 +35,43 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         Ok(maybe_purse.map(|p| p.remove_access_rights()))
     }
 
-    /// Finalize payment with `amount_spent` and a given `account`.
-    fn finalize_payment(
+    /// Calculate overpayment and fees (if any) for payment finalization.
+    #[allow(clippy::too_many_arguments)]
+    fn calculate_overpayment_and_fee(
         &mut self,
-        amount_spent: U512,
-        account: AccountHash,
-        target: URef,
-    ) -> Result<(), Error> {
-        internal::finalize_payment(self, amount_spent, account, target)
+        limit: U512,
+        gas_price: u8,
+        cost: U512,
+        consumed: U512,
+        source_purse: URef,
+        holds_epoch: HoldsEpoch,
+        refund_ratio: Ratio<U512>,
+    ) -> Result<(U512, U512), Error> {
+        let available_balance = match self.available_balance(source_purse, holds_epoch)? {
+            Some(balance) => balance,
+            None => return Err(Error::PaymentPurseBalanceNotFound),
+        };
+        internal::calculate_overpayment_and_fee(
+            limit,
+            gas_price,
+            cost,
+            consumed,
+            available_balance,
+            refund_ratio,
+        )
     }
 
     /// Distribute fees from an accumulation purse.
-    fn distribute_accumulated_fees(&mut self) -> Result<(), Error> {
-        internal::distribute_accumulated_fees(self)
+    fn distribute_accumulated_fees(
+        &mut self,
+        source_uref: URef,
+        amount: Option<U512>,
+    ) -> Result<(), Error> {
+        internal::distribute_accumulated_fees(self, source_uref, amount)
+    }
+
+    /// Burns the imputed amount from the imputed purse.
+    fn burn(&mut self, source_uref: URef, amount: Option<U512>) -> Result<(), Error> {
+        internal::burn(self, source_uref, amount)
     }
 }

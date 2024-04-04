@@ -53,7 +53,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(standard_payment::ARG_AMOUNT, CLType::U512)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

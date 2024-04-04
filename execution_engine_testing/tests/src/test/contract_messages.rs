@@ -3,14 +3,15 @@ use std::cell::RefCell;
 
 use casper_engine_test_support::{
     ChainspecConfig, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_BLOCK_TIME, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_BLOCK_TIME, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CoreConfig, Digest,
-    HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
-    StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, CLValue, CoreConfig,
+    Digest, EntityAddr, HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts,
+    RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -198,7 +199,10 @@ impl<'a> ContractQueryView<'a> {
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(self.contract_hash, topic_name_hash),
+                Key::message_topic(
+                    EntityAddr::new_smart_contract(self.contract_hash.value()),
+                    topic_name_hash,
+                ),
                 &[],
             )
             .expect("should query");
@@ -222,7 +226,11 @@ impl<'a> ContractQueryView<'a> {
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(self.contract_hash, topic_name_hash, message_index),
+            Key::message(
+                EntityAddr::new_smart_contract(self.contract_hash.value()),
+                topic_name_hash,
+                message_index,
+            ),
             &[],
         )?;
 
@@ -239,7 +247,7 @@ fn should_emit_messages() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -263,7 +271,13 @@ fn should_emit_messages() {
     // Now call the entry point to emit some messages.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
-    let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            0u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
     let queried_message_summary = query_view
         .message_summary(*message_topic_hash, 0, None)
         .expect("should have value")
@@ -278,6 +292,13 @@ fn should_emit_messages() {
 
     // call again to emit a new message and check that the index in the topic incremented.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            1u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
     let queried_message_summary = query_view
         .message_summary(*message_topic_hash, 1, None)
         .expect("should have value")
@@ -301,7 +322,13 @@ fn should_emit_messages() {
     );
     let expected_message =
         MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
-    let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            0u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
     let queried_message_summary = query_view
         .message_summary(*message_topic_hash, 0, None)
         .expect("should have value")
@@ -331,7 +358,7 @@ fn should_emit_message_on_empty_topic_in_new_block() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -370,7 +397,7 @@ fn should_add_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
@@ -434,7 +461,7 @@ fn should_not_add_duplicate_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -488,7 +515,7 @@ fn should_not_exceed_configured_limits() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
 
@@ -572,7 +599,7 @@ fn should_carry_message_topics_on_upgraded_contract(use_initializer: bool) {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, true);
     let contract_hash = upgrade_messages_emitter_contract(&builder, use_initializer, false);
@@ -611,7 +638,7 @@ fn should_not_emit_messages_from_account() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Request to run a deploy that tries to register a message topic without a stored contract.
     let install_request = ExecuteRequestBuilder::standard(
@@ -650,7 +677,7 @@ fn should_charge_expected_gas_for_storage() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -687,7 +714,9 @@ fn should_charge_expected_gas_for_storage() {
 
     // check that the storage cost charged is invariable with message size that is emitted.
     let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
-        + StoredValue::MessageTopic(default_topic_summary).serialized_length();
+        + StoredValue::MessageTopic(default_topic_summary).serialized_length()
+        + StoredValue::CLValue(CLValue::from_t((BlockTime::new(0), 0u64)).unwrap())
+            .serialized_length();
 
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
@@ -753,7 +782,7 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, true);
 
@@ -823,7 +852,7 @@ fn should_register_topic_on_contract_creation() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder, false);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -870,7 +899,7 @@ fn should_not_exceed_configured_topic_name_limits_on_contract_upgrade_no_init() 
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, false);
     let _ = upgrade_messages_emitter_contract(&builder, false, true);
@@ -902,8 +931,181 @@ fn should_not_exceed_configured_max_topics_per_contract_upgrade_no_init() {
     let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(chainspec));
     builder
         .borrow_mut()
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder, false);
     let _ = upgrade_messages_emitter_contract(&builder, false, true);
+}
+
+#[ignore]
+#[test]
+fn should_produce_per_block_message_ordering() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    let emitter_contract_hash = install_messages_emitter_contract(&builder, true);
+    let query_view = ContractQueryView::new(&builder, emitter_contract_hash);
+    let entity = query_view.entity();
+
+    let (_, message_topic_hash) = entity
+        .message_topics()
+        .iter()
+        .next()
+        .expect("should have at least one topic");
+
+    let assert_last_message_block_index = |expected_index: u64| {
+        assert_eq!(
+            builder
+                .borrow()
+                .get_last_exec_result()
+                .unwrap()
+                .messages()
+                .get(0)
+                .unwrap()
+                .block_index(),
+            expected_index
+        )
+    };
+
+    let query_message_count = || -> Option<(BlockTime, u64)> {
+        let query_result = builder
+            .borrow_mut()
+            .query(None, Key::BlockMessageCount, &[]);
+
+        match query_result {
+            Ok(StoredValue::CLValue(cl_value)) => Some(cl_value.into_t().unwrap()),
+            Err(_) => None,
+            _ => panic!("Stored value is not a CLvalue: {:?}", query_result),
+        }
+    };
+
+    // Emit the first message in the block. It should have block index 0.
+    emit_message_with_suffix(
+        &builder,
+        "test 0",
+        &emitter_contract_hash,
+        DEFAULT_BLOCK_TIME,
+    );
+    assert_last_message_block_index(0);
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 1))
+    );
+
+    let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 0"));
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            0u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let queried_message_summary = query_view
+        .message_summary(*message_topic_hash, 0, None)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
+
+    // Emit the second message in the same block. It should have block index 1.
+    emit_message_with_suffix(
+        &builder,
+        "test 1",
+        &emitter_contract_hash,
+        DEFAULT_BLOCK_TIME,
+    );
+    assert_last_message_block_index(1);
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 2))
+    );
+
+    let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 1"));
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            1u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let queried_message_summary = query_view
+        .message_summary(*message_topic_hash, 1, None)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
+
+    // Upgrade the message emitter contract end emit a message from this contract in the same block
+    // as before. The block index of the message should be 2 since the block hasn't changed.
+    let upgraded_contract_hash = upgrade_messages_emitter_contract(&builder, true, false);
+    let upgraded_contract_query_view = ContractQueryView::new(&builder, upgraded_contract_hash);
+    let entity = upgraded_contract_query_view.entity();
+
+    let upgraded_message_topic_hash = entity
+        .message_topics()
+        .get(MESSAGE_EMITTER_UPGRADED_TOPIC)
+        .expect("should have upgraded topic");
+
+    let emit_message_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        upgraded_contract_hash,
+        "upgraded_emit_message",
+        runtime_args! {
+            ARG_MESSAGE_SUFFIX_NAME => "test 2",
+        },
+    )
+    .with_block_time(DEFAULT_BLOCK_TIME)
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(emit_message_request)
+        .expect_success()
+        .commit();
+    assert_last_message_block_index(2);
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME), 3))
+    );
+
+    let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 2"));
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            2u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let queried_message_summary = upgraded_contract_query_view
+        .message_summary(*upgraded_message_topic_hash, 0, None)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
+
+    // Now emit a message in a different block. The block index should be 0 since it's the first
+    // message in the new block.
+    emit_message_with_suffix(
+        &builder,
+        "test 3",
+        &emitter_contract_hash,
+        DEFAULT_BLOCK_TIME + 1,
+    );
+    assert_last_message_block_index(0);
+    assert_eq!(
+        query_message_count(),
+        Some((BlockTime::new(DEFAULT_BLOCK_TIME + 1), 1))
+    );
+    let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test 3"));
+    let expected_message_hash = crypto::blake2b(
+        vec![
+            0u64.to_bytes().unwrap(),
+            expected_message.to_bytes().unwrap(),
+        ]
+        .concat(),
+    );
+    let queried_message_summary = query_view
+        .message_summary(*message_topic_hash, 0, None)
+        .expect("should have value")
+        .value();
+    assert_eq!(expected_message_hash, queried_message_summary);
 }

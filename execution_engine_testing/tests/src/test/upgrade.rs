@@ -1,16 +1,14 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 
 use casper_execution_engine::{engine_state, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args,
-    system::mint,
-    AddressableEntityHash, CLValue, EraId, PackageHash, ProtocolVersion, RuntimeArgs, StoredValue,
+    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash,
+    ProtocolVersion, RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -50,7 +48,7 @@ const ARG_IS_LOCKED: &str = "is_locked";
 fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create contract package and store contract ver: 1.0.0 with "delegate" entry function
     {
@@ -164,7 +162,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
 fn should_upgrade_do_nothing_to_do_something_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create contract package and store contract ver: 1.0.0
     {
@@ -298,7 +296,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
 fn should_be_able_to_observe_state_transition_across_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store do-nothing-stored
     {
@@ -397,7 +395,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 fn should_support_extending_functionality() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store do-nothing-stored
     {
@@ -540,7 +538,7 @@ fn should_support_extending_functionality() {
 fn should_maintain_named_keys_across_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store contract
     {
@@ -644,7 +642,7 @@ fn should_maintain_named_keys_across_upgrade() {
 fn should_fail_upgrade_for_locked_contract() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // store contract
     {
@@ -715,7 +713,7 @@ fn should_only_upgrade_if_threshold_is_met() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -825,14 +823,14 @@ fn should_only_upgrade_if_threshold_is_met() {
         entity_account_hashes
     };
 
-    let valid_upgrade_request = ExecuteRequestBuilder::with_authorization_keys(
+    let valid_upgrade_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         UPGRADE_THRESHOLD_UPGRADER,
         runtime_args! {
             ARG_CONTRACT_PACKAGE => upgrade_threshold_package_hash
         },
-        &authorization_keys,
     )
+    .with_authorization_keys(authorization_keys.into_iter().collect())
     .build();
 
     builder
@@ -841,7 +839,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .commit();
 }
 
-fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, AccountHash) {
+fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
     const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
     const UPGRADE_THRESHOLDS_FIXTURE: &str = "upgrade_thresholds";
 
@@ -865,26 +863,19 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, Acc
         .upgrade_using_scratch(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
-            mint::ARG_ID => Some(42u64),
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
+    let transfer = TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR)
+        .with_transfer_id(42)
+        .build();
 
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 
-    (builder, new_protocol_version, ACCOUNT_1_ADDR)
+    (builder, ACCOUNT_1_ADDR)
 }
 
 #[ignore]
 #[test]
 fn should_migrate_with_correct_upgrade_thresholds() {
-    let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
+    let (mut builder, _) = setup_upgrade_threshold_state();
 
     let default_addressable_entity = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -905,7 +896,6 @@ fn should_migrate_with_correct_upgrade_thresholds() {
             HASH_KEY_NAME => contract_hash
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
     builder.exec(exec_request).expect_success().commit();
     let purse_holder_as_entity = builder
@@ -922,7 +912,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
 #[ignore]
 #[test]
 fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
-    let (mut builder, new_protocol_version, entity_1) = setup_upgrade_threshold_state();
+    let (mut builder, entity_1) = setup_upgrade_threshold_state();
 
     let default_addressable_entity = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -952,7 +942,6 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
             HASH_KEY_NAME => entity_hash
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -972,7 +961,6 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
             ARG_CONTRACT_PACKAGE => stored_package_hash
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(upgrade_request).expect_success().commit();
@@ -1007,7 +995,7 @@ enum InvocationType {
 }
 
 fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
-    let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
+    let (mut builder, _) = setup_upgrade_threshold_state();
 
     let runtime_args = runtime_args! {
         PURSE_NAME_ARG_NAME => PURSE_1
@@ -1041,7 +1029,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .with_protocol_version(new_protocol_version)
             .build()
         }
         InvocationType::ByPackageHash(maybe_contract_version) => {
@@ -1052,7 +1039,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .with_protocol_version(new_protocol_version)
             .build()
         }
         InvocationType::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
@@ -1061,7 +1047,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             ENTRY_POINT_ADD,
             runtime_args,
         )
-        .with_protocol_version(new_protocol_version)
         .build(),
         InvocationType::ByContractName => ExecuteRequestBuilder::contract_call_by_name(
             *DEFAULT_ACCOUNT_ADDR,
@@ -1069,7 +1054,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             ENTRY_POINT_ADD,
             runtime_args,
         )
-        .with_protocol_version(new_protocol_version)
         .build(),
         InvocationType::ByUpgrader => ExecuteRequestBuilder::standard(
             *DEFAULT_ACCOUNT_ADDR,
@@ -1078,7 +1062,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ARG_CONTRACT_PACKAGE => package_hash
             },
         )
-        .with_protocol_version(new_protocol_version)
         .build(),
     };
 

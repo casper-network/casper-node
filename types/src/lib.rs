@@ -20,14 +20,13 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
-extern crate core;
 
+extern crate core;
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
 pub mod api_error;
 mod auction_state;
-pub mod binary_port;
 mod block;
 mod block_time;
 mod byte_code;
@@ -55,7 +54,7 @@ pub mod global_state;
 mod json_pretty_printer;
 mod key;
 mod motes;
-pub mod package;
+mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
@@ -106,8 +105,9 @@ pub use block::{
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
-pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use block_time::{BlockTime, HoldsEpoch, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -116,9 +116,10 @@ pub use chainspec::{
     GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
-    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig,
-    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
-    TransactionV1Config, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts, PricingHandling, ProtocolConfig,
+    ProtocolUpgradeConfig, RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig,
+    TransactionConfig, TransactionV1Config, VacancyConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -132,14 +133,13 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_FEE_HANDLING, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
-    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_REFUND_HANDLING,
-    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_INSTALL_UPGRADE_GAS_LIMIT, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
+    DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STANDARD_TRANSACTION_GAS_LIMIT, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-
 pub use cl_value::{
     handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
     DictionaryValue as CLValueDictionary, SystemEntityRegistry,
@@ -166,6 +166,7 @@ pub use motes::Motes;
 #[doc(inline)]
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
+    PackageStatus, ENTITY_INITIAL_VERSION,
 };
 pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
@@ -178,25 +179,26 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[cfg(any(feature = "std", test))]
+pub use transaction::GasLimited;
 pub use transaction::{
-    AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
-    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
+    AddressableEntityIdentifier, Approval, ApprovalsHash, Categorized as CategorizedTransaction,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
     DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
-    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, InitiatorAddr,
-    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
+    InitiatorAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, NamedArg,
+    PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionCategory,
     TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
     TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
-    TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionTarget, TransactionV1, TransactionV1Body, TransactionV1DecodeFromJsonError,
     TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransactionWithFinalizedApprovals, TransferTarget,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
     DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
 pub use transfer::{
-    FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
+    Transfer, TransferAddr, TransferFromStrError, TransferV1, TransferV2, TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{

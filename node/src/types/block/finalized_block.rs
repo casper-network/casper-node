@@ -4,24 +4,27 @@ use std::{
     hash::Hash,
 };
 
+#[cfg(test)]
+use std::collections::{BTreeMap, BTreeSet};
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
 #[cfg(test)]
-use casper_types::{SecretKey, Transaction};
-#[cfg(any(feature = "testing", test))]
+use casper_types::{SecretKey, Transaction, TransactionCategory};
+#[cfg(test)]
 use {casper_types::testing::TestRng, rand::Rng};
 
+use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
+
 use super::BlockPayload;
-use crate::types::TransactionHashWithApprovals;
 
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
-    pub(crate) transfer: Vec<TransactionHash>,
-    pub(crate) staking: Vec<TransactionHash>,
+    pub(crate) mint: Vec<TransactionHash>,
+    pub(crate) auction: Vec<TransactionHash>,
     pub(crate) install_upgrade: Vec<TransactionHash>,
     pub(crate) standard: Vec<TransactionHash>,
     pub(crate) rewarded_signatures: RewardedSignatures,
@@ -54,22 +57,14 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            transfer: block_payload
-                .transfer()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
-            staking: block_payload
-                .staking()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
+            mint: block_payload.mint().map(|(x, _)| x).copied().collect(),
+            auction: block_payload.auction().map(|(x, _)| x).copied().collect(),
             install_upgrade: block_payload
                 .install_upgrade()
-                .map(TransactionHashWithApprovals::transaction_hash)
+                .map(|(x, _)| x)
+                .copied()
                 .collect(),
-            standard: block_payload
-                .standard()
-                .map(TransactionHashWithApprovals::transaction_hash)
-                .collect(),
+            standard: block_payload.standard().map(|(x, _)| x).copied().collect(),
             rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit(),
@@ -82,9 +77,9 @@ impl FinalizedBlock {
 
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub(crate) fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.transfer
+        self.mint
             .iter()
-            .chain(&self.staking)
+            .chain(&self.auction)
             .chain(&self.install_upgrade)
             .chain(&self.standard)
     }
@@ -121,30 +116,16 @@ impl FinalizedBlock {
         timestamp: Timestamp,
         txns_iter: I,
     ) -> Self {
-        use std::iter;
-
-        let mut txns = txns_iter
-            .into_iter()
-            .map(TransactionHashWithApprovals::from)
-            .collect::<Vec<_>>();
-        if txns.is_empty() {
-            let count = rng.gen_range(0..11);
-            txns.extend(
-                iter::repeat_with(|| TransactionHashWithApprovals::from(&Transaction::random(rng)))
-                    .take(count),
-            );
+        let mut transactions = BTreeMap::new();
+        let mut standard = vec![];
+        for transaction in txns_iter {
+            standard.push((transaction.hash(), BTreeSet::new()));
         }
+        transactions.insert(TransactionCategory::Standard, standard);
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
-        let block_payload = BlockPayload::new(
-            txns,
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            rewarded_signatures,
-            random_bit,
-        );
+        let block_payload =
+            BlockPayload::new(transactions, vec![], rewarded_signatures, random_bit);
 
         let era_report = if is_switch {
             Some(InternalEraReport::random(rng))
@@ -168,8 +149,8 @@ impl FinalizedBlock {
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
-            transfer: block.transfer().copied().collect(),
-            staking: block.staking().copied().collect(),
+            mint: block.mint().copied().collect(),
+            auction: block.auction().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             timestamp: block.timestamp(),
@@ -195,8 +176,8 @@ impl Display for FinalizedBlock {
             self.height,
             self.era_id,
             self.timestamp,
-            self.transfer.len(),
-            self.staking.len(),
+            self.mint.len(),
+            self.auction.len(),
             self.install_upgrade.len(),
             self.standard.len(),
         )?;
@@ -208,8 +189,8 @@ impl Display for FinalizedBlock {
 }
 
 impl InternalEraReport {
-    /// Returns a random `EraReport`.
-    #[cfg(any(feature = "testing", test))]
+    /// Returns a random `InternalEraReport`.
+    #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
         let equivocators_count = rng.gen_range(0..5);
         let inactive_count = rng.gen_range(0..5);
@@ -224,5 +205,40 @@ impl InternalEraReport {
             equivocators,
             inactive_validators,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use casper_types::Deploy;
+
+    #[test]
+    fn should_convert_from_proposable_to_finalized_without_dropping_hashes() {
+        let mut rng = TestRng::new();
+
+        let standard = Transaction::Deploy(Deploy::random(&mut rng));
+        let hash = standard.hash();
+        let transactions = {
+            let mut ret = BTreeMap::new();
+            ret.insert(TransactionCategory::Standard, vec![(hash, BTreeSet::new())]);
+            ret.insert(TransactionCategory::Mint, vec![]);
+            ret.insert(TransactionCategory::InstallUpgrade, vec![]);
+            ret.insert(TransactionCategory::Auction, vec![]);
+            ret
+        };
+        let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false);
+
+        let fb = FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::random(&mut rng),
+            90,
+            PublicKey::random(&mut rng),
+        );
+
+        let transactions = fb.standard;
+        assert!(!transactions.is_empty())
     }
 }

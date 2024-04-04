@@ -17,7 +17,7 @@ use tokio::time;
 use casper_types::{
     generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, ChainNameDigest,
     Chainspec, ChainspecRawBytes, FinalitySignature, FinalitySignatureV2, ProtocolVersion,
-    PublicKey, SecretKey, Signature, TestBlockBuilder, U512,
+    PublicKey, SecretKey, Signature, TestBlockBuilder, TransactionConfig, U512,
 };
 use reactor::ReactorEvent;
 
@@ -197,6 +197,7 @@ impl Reactor for MockReactor {
             chainspec.core_config.recent_era_count(),
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
@@ -237,7 +238,7 @@ impl Reactor for MockReactor {
                 let effects = Effects::new();
                 let state = meta_block.mut_state();
                 assert!(state.is_stored());
-                state.register_as_sent_to_deploy_buffer();
+                state.register_as_sent_to_transaction_buffer();
                 if !state.is_executed() {
                     return effects;
                 }

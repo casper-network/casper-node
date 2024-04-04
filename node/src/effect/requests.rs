@@ -4,7 +4,7 @@
 //! top-level module documentation for details.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Display, Formatter},
     mem,
     sync::Arc,
@@ -15,25 +15,26 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{
-    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-    AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-    EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-    QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-    TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
+};
+use casper_storage::{
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
+    DbRawBytesSpec,
 };
 use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
-    execution::ExecutionResult,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
-    BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId, ExecutionInfo,
-    FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
-    TransactionWithFinalizedApprovals, Transfer,
+    execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
+    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -44,13 +45,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
+        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
     },
-    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
@@ -59,7 +60,6 @@ use crate::{
     },
     utils::Source,
 };
-use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 129);
@@ -352,6 +352,9 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    GetLatestSwitchBlockHeader {
+        responder: Responder<Option<BlockHeader>>,
+    },
     GetSwitchBlockHeaderByEra {
         /// Era ID for which to get the block header.
         era_id: EraId,
@@ -375,7 +378,8 @@ pub(crate) enum StorageRequest {
     /// Retrieve transaction with given hashes.
     GetTransactions {
         transaction_hashes: Vec<TransactionHash>,
-        responder: Responder<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>>,
+        #[allow(clippy::type_complexity)]
+        responder: Responder<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -395,13 +399,13 @@ pub(crate) enum StorageRequest {
         with_finalized_approvals: bool,
         responder: Responder<Option<(Transaction, Option<ExecutionInfo>)>>,
     },
-    /// Store execution results for a set of deploys of a single block.
+    /// Store execution results for a set of transactions of a single block.
     ///
     /// Will return a fatal error if there are already execution results known for a specific
-    /// deploy/block combination and a different result is inserted.
+    /// transaction/block combination and a different result is inserted.
     ///
-    /// Inserting the same block/deploy combination multiple times with the same execution results
-    /// is not an error and will silently be ignored.
+    /// Inserting the same transaction/block combination multiple times with the same execution
+    /// results is not an error and will silently be ignored.
     PutExecutionResults {
         /// Hash of block.
         block_hash: Box<BlockHash>,
@@ -482,13 +486,24 @@ pub(crate) enum StorageRequest {
         /// The transaction hash to store the finalized approvals for.
         transaction_hash: TransactionHash,
         /// The set of finalized approvals.
-        finalized_approvals: FinalizedApprovals,
+        finalized_approvals: BTreeSet<Approval>,
         /// Responder, responded to once the approvals are written.  If true, new approvals were
         /// written.
         responder: Responder<bool>,
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
+    /// Retrieve the block utilization score.
+    GetBlockUtilizationScore {
+        /// The era id.
+        era_id: EraId,
+        /// The block height of the switch block
+        block_height: u64,
+        /// The utilization within the switch block.
+        switch_block_utilization: u64,
+        /// Responder, responded once the utilization for the era has been determined.
+        responder: Responder<Option<(u64, u64)>>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -531,6 +546,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
                 write!(formatter, "get header for height {}", block_height)
+            }
+            StorageRequest::GetLatestSwitchBlockHeader { .. } => {
+                write!(formatter, "get latest switch block header")
             }
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
                 write!(formatter, "get header for era {}", era_id)
@@ -614,10 +632,13 @@ impl Display for StorageRequest {
                 write!(formatter, "get available block range",)
             }
             StorageRequest::StoreFinalizedApprovals {
-                transaction_hash: deploy_hash,
-                ..
+                transaction_hash, ..
             } => {
-                write!(formatter, "finalized approvals for deploy {}", deploy_hash)
+                write!(
+                    formatter,
+                    "finalized approvals for transaction {}",
+                    transaction_hash
+                )
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
                 write!(formatter, "put executed block {}", block.hash(),)
@@ -635,6 +656,9 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get raw data {}::{:?}", record_id, key)
             }
+            StorageRequest::GetBlockUtilizationScore { era_id, .. } => {
+                write!(formatter, "get utilization score for era {}", era_id)
+            }
         }
     }
 }
@@ -643,7 +667,7 @@ impl Display for StorageRequest {
 pub(crate) struct MakeBlockExecutableRequest {
     /// Hash of the block to be made executable.
     pub block_hash: BlockHash,
-    /// Responder with the executable block and it's deploys
+    /// Responder with the executable block and it's transactions
     pub responder: Responder<Option<ExecutableBlock>>,
 }
 
@@ -658,7 +682,7 @@ impl Display for MakeBlockExecutableRequest {
 /// A block is considered complete if
 ///
 /// * the block header and the actual block are persisted in storage,
-/// * all of its deploys are persisted in storage, and
+/// * all of its transactions are persisted in storage, and
 /// * the global state root the block refers to has no missing dependencies locally.
 #[derive(Debug, Serialize)]
 pub(crate) struct MarkBlockCompletedRequest {
@@ -674,21 +698,24 @@ impl Display for MarkBlockCompletedRequest {
 }
 
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) enum DeployBufferRequest {
+pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
+        era_id: EraId,
         responder: Responder<AppendableBlock>,
     },
 }
 
-impl Display for DeployBufferRequest {
+impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::GetAppendableBlock { timestamp, .. } => {
+            TransactionBufferRequest::GetAppendableBlock {
+                timestamp, era_id, ..
+            } => {
                 write!(
                     formatter,
-                    "request for appendable block at instant {}",
-                    timestamp
+                    "request for appendable block at instant {} for era {}",
+                    timestamp, era_id
                 )
             }
         }
@@ -812,12 +839,17 @@ pub(crate) enum ContractRuntimeRequest {
     },
     /// Execute transaction without committing results
     SpeculativelyExecute {
-        /// Hash of a block on top of which to execute the transaction.
-        execution_prestate: SpeculativeExecutionState,
+        /// Pre-state.
+        block_header: Box<BlockHeader>,
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<SpeculativeExecutionResult, engine_state::Error>>,
+        responder: Responder<SpeculativeExecutionResult>,
+    },
+    UpdateRuntimePrice(EraId, u8),
+    GetEraGasPrice {
+        era_id: EraId,
+        responder: Responder<Option<u8>>,
     },
 }
 
@@ -893,16 +925,22 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "trie: {:?}", request)
             }
             ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
                 transaction,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
                     "Execute {} on {}",
                     transaction.hash(),
-                    execution_prestate.state_root_hash
+                    block_header.state_root_hash()
                 )
+            }
+            ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
+                write!(formatter, "updating price to {}", era_gas_price)
+            }
+            ContractRuntimeRequest::GetEraGasPrice { era_id, .. } => {
+                write!(formatter, "Get gas price for era {}", era_id)
             }
         }
     }
@@ -973,7 +1011,7 @@ pub(crate) struct BlockValidationRequest {
     pub(crate) proposed_block_height: u64,
     /// The block to be validated.
     pub(crate) block: ProposedBlock<ClContext>,
-    /// The sender of the block, which will be asked to provide all missing deploys.
+    /// The sender of the block, which will be asked to provide all missing transactions.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
     ///
@@ -1135,20 +1173,17 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
-    pub(crate) speculative_exec_at_block: Option<Box<BlockHeader>>,
+    pub(crate) is_speculative: bool,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
 impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.speculative_exec_at_block.is_some() {
-            write!(
-                f,
-                "accept transaction {} for speculative exec",
-                self.transaction.hash()
-            )
-        } else {
-            write!(f, "accept transaction {}", self.transaction.hash())
-        }
+        write!(
+            f,
+            "accept transaction {} is_speculative: {}",
+            self.transaction.hash(),
+            self.is_speculative
+        )
     }
 }

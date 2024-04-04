@@ -22,7 +22,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, Key, Transfer, TransferAddr, U128, U256, U512,
+    CLValue, DeployInfo, Key, TransferAddr, TransferV1, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -103,7 +103,7 @@ pub enum ExecutionResultV1 {
     Failure {
         /// The effect of executing the deploy.
         effect: ExecutionEffect,
-        /// A record of Transfers performed while executing the deploy.
+        /// A record of version 1 Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
         cost: U512,
@@ -139,7 +139,7 @@ impl Distribution<ExecutionResultV1> for Standard {
         let transform_count = rng.gen_range(0..6);
         let mut transforms = Vec::new();
         for _ in 0..transform_count {
-            transforms.push(TransformEntry {
+            transforms.push(TransformV1 {
                 key: rng.gen::<u64>().to_string(),
                 transform: rng.gen(),
             });
@@ -275,7 +275,7 @@ pub struct ExecutionEffect {
     /// The resulting operations.
     pub operations: Vec<Operation>,
     /// The sequence of execution transforms.
-    pub transforms: Vec<TransformEntry>,
+    pub transforms: Vec<TransformV1>,
 }
 
 impl ToBytes for ExecutionEffect {
@@ -298,7 +298,7 @@ impl ToBytes for ExecutionEffect {
 impl FromBytes for ExecutionEffect {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
-        let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
+        let (transforms, remainder) = Vec::<TransformV1>::from_bytes(remainder)?;
         let json_effects = ExecutionEffect {
             operations,
             transforms,
@@ -410,14 +410,14 @@ impl FromBytes for OpKind {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct TransformEntry {
+pub struct TransformV1 {
     /// The formatted string of the `Key`.
     pub key: String,
     /// The transformation.
-    pub transform: Transform,
+    pub transform: TransformKindV1,
 }
 
-impl ToBytes for TransformEntry {
+impl ToBytes for TransformV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.key.write_bytes(writer)?;
         self.transform.write_bytes(writer)
@@ -434,11 +434,11 @@ impl ToBytes for TransformEntry {
     }
 }
 
-impl FromBytes for TransformEntry {
+impl FromBytes for TransformV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (key, remainder) = String::from_bytes(bytes)?;
-        let (transform, remainder) = Transform::from_bytes(remainder)?;
-        let transform_entry = TransformEntry { key, transform };
+        let (transform, remainder) = TransformKindV1::from_bytes(remainder)?;
+        let transform_entry = TransformV1 { key, transform };
         Ok((transform_entry, remainder))
     }
 }
@@ -447,9 +447,8 @@ impl FromBytes for TransformEntry {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[cfg_attr(feature = "json-schema", schemars(rename = "TransformV1"))]
 #[serde(deny_unknown_fields)]
-pub enum Transform {
+pub enum TransformKindV1 {
     /// A transform having no effect.
     Identity,
     /// Writes the given CLValue to global state.
@@ -466,8 +465,8 @@ pub enum Transform {
     WriteDeployInfo(DeployInfo),
     /// Writes the given EraInfo to global state.
     WriteEraInfo(EraInfo),
-    /// Writes the given Transfer to global state.
-    WriteTransfer(Transfer),
+    /// Writes the given version 1 Transfer to global state.
+    WriteTransfer(TransferV1),
     /// Writes the given Bid to global state.
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
@@ -498,83 +497,87 @@ pub enum Transform {
     WriteBidKind(BidKind),
 }
 
-impl ToBytes for Transform {
+impl ToBytes for TransformKindV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            Transform::Identity => (TransformTag::Identity as u8).write_bytes(writer),
-            Transform::WriteCLValue(value) => {
+            TransformKindV1::Identity => (TransformTag::Identity as u8).write_bytes(writer),
+            TransformKindV1::WriteCLValue(value) => {
                 (TransformTag::WriteCLValue as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::WriteAccount(account_hash) => {
+            TransformKindV1::WriteAccount(account_hash) => {
                 (TransformTag::WriteAccount as u8).write_bytes(writer)?;
                 account_hash.write_bytes(writer)
             }
-            Transform::WriteContractWasm => (TransformTag::WriteByteCode as u8).write_bytes(writer),
-            Transform::WriteContract => (TransformTag::WriteContract as u8).write_bytes(writer),
-            Transform::WriteContractPackage => {
+            TransformKindV1::WriteContractWasm => {
+                (TransformTag::WriteByteCode as u8).write_bytes(writer)
+            }
+            TransformKindV1::WriteContract => {
+                (TransformTag::WriteContract as u8).write_bytes(writer)
+            }
+            TransformKindV1::WriteContractPackage => {
                 (TransformTag::WritePackage as u8).write_bytes(writer)
             }
-            Transform::WriteDeployInfo(deploy_info) => {
+            TransformKindV1::WriteDeployInfo(deploy_info) => {
                 (TransformTag::WriteDeployInfo as u8).write_bytes(writer)?;
                 deploy_info.write_bytes(writer)
             }
-            Transform::WriteEraInfo(era_info) => {
+            TransformKindV1::WriteEraInfo(era_info) => {
                 (TransformTag::WriteEraInfo as u8).write_bytes(writer)?;
                 era_info.write_bytes(writer)
             }
-            Transform::WriteTransfer(transfer) => {
+            TransformKindV1::WriteTransfer(transfer) => {
                 (TransformTag::WriteTransfer as u8).write_bytes(writer)?;
                 transfer.write_bytes(writer)
             }
-            Transform::WriteBid(bid) => {
+            TransformKindV1::WriteBid(bid) => {
                 (TransformTag::WriteBid as u8).write_bytes(writer)?;
                 bid.write_bytes(writer)
             }
-            Transform::WriteWithdraw(unbonding_purses) => {
+            TransformKindV1::WriteWithdraw(unbonding_purses) => {
                 (TransformTag::WriteWithdraw as u8).write_bytes(writer)?;
                 unbonding_purses.write_bytes(writer)
             }
-            Transform::AddInt32(value) => {
+            TransformKindV1::AddInt32(value) => {
                 (TransformTag::AddInt32 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::AddUInt64(value) => {
+            TransformKindV1::AddUInt64(value) => {
                 (TransformTag::AddUInt64 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::AddUInt128(value) => {
+            TransformKindV1::AddUInt128(value) => {
                 (TransformTag::AddUInt128 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::AddUInt256(value) => {
+            TransformKindV1::AddUInt256(value) => {
                 (TransformTag::AddUInt256 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::AddUInt512(value) => {
+            TransformKindV1::AddUInt512(value) => {
                 (TransformTag::AddUInt512 as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::AddKeys(value) => {
+            TransformKindV1::AddKeys(value) => {
                 (TransformTag::AddKeys as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::Failure(value) => {
+            TransformKindV1::Failure(value) => {
                 (TransformTag::Failure as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::WriteUnbonding(value) => {
+            TransformKindV1::WriteUnbonding(value) => {
                 (TransformTag::WriteUnbonding as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::WriteAddressableEntity => {
+            TransformKindV1::WriteAddressableEntity => {
                 (TransformTag::WriteAddressableEntity as u8).write_bytes(writer)
             }
-            Transform::Prune(value) => {
+            TransformKindV1::Prune(value) => {
                 (TransformTag::Prune as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
-            Transform::WriteBidKind(value) => {
+            TransformKindV1::WriteBidKind(value) => {
                 (TransformTag::WriteBidKind as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
@@ -589,134 +592,134 @@ impl ToBytes for Transform {
 
     fn serialized_length(&self) -> usize {
         let body_len = match self {
-            Transform::Prune(key) => key.serialized_length(),
-            Transform::WriteCLValue(value) => value.serialized_length(),
-            Transform::WriteAccount(value) => value.serialized_length(),
-            Transform::WriteDeployInfo(value) => value.serialized_length(),
-            Transform::WriteEraInfo(value) => value.serialized_length(),
-            Transform::WriteTransfer(value) => value.serialized_length(),
-            Transform::AddInt32(value) => value.serialized_length(),
-            Transform::AddUInt64(value) => value.serialized_length(),
-            Transform::AddUInt128(value) => value.serialized_length(),
-            Transform::AddUInt256(value) => value.serialized_length(),
-            Transform::AddUInt512(value) => value.serialized_length(),
-            Transform::AddKeys(value) => value.serialized_length(),
-            Transform::Failure(value) => value.serialized_length(),
-            Transform::Identity
-            | Transform::WriteContractWasm
-            | Transform::WriteContract
-            | Transform::WriteContractPackage
-            | Transform::WriteAddressableEntity => 0,
-            Transform::WriteBid(value) => value.serialized_length(),
-            Transform::WriteBidKind(value) => value.serialized_length(),
-            Transform::WriteWithdraw(value) => value.serialized_length(),
-            Transform::WriteUnbonding(value) => value.serialized_length(),
+            TransformKindV1::Prune(key) => key.serialized_length(),
+            TransformKindV1::WriteCLValue(value) => value.serialized_length(),
+            TransformKindV1::WriteAccount(value) => value.serialized_length(),
+            TransformKindV1::WriteDeployInfo(value) => value.serialized_length(),
+            TransformKindV1::WriteEraInfo(value) => value.serialized_length(),
+            TransformKindV1::WriteTransfer(value) => value.serialized_length(),
+            TransformKindV1::AddInt32(value) => value.serialized_length(),
+            TransformKindV1::AddUInt64(value) => value.serialized_length(),
+            TransformKindV1::AddUInt128(value) => value.serialized_length(),
+            TransformKindV1::AddUInt256(value) => value.serialized_length(),
+            TransformKindV1::AddUInt512(value) => value.serialized_length(),
+            TransformKindV1::AddKeys(value) => value.serialized_length(),
+            TransformKindV1::Failure(value) => value.serialized_length(),
+            TransformKindV1::Identity
+            | TransformKindV1::WriteContractWasm
+            | TransformKindV1::WriteContract
+            | TransformKindV1::WriteContractPackage
+            | TransformKindV1::WriteAddressableEntity => 0,
+            TransformKindV1::WriteBid(value) => value.serialized_length(),
+            TransformKindV1::WriteBidKind(value) => value.serialized_length(),
+            TransformKindV1::WriteWithdraw(value) => value.serialized_length(),
+            TransformKindV1::WriteUnbonding(value) => value.serialized_length(),
         };
         U8_SERIALIZED_LENGTH + body_len
     }
 }
 
-impl FromBytes for Transform {
+impl FromBytes for TransformKindV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match TryFrom::try_from(tag)? {
-            TransformTag::Identity => Ok((Transform::Identity, remainder)),
+            TransformTag::Identity => Ok((TransformKindV1::Identity, remainder)),
             TransformTag::WriteCLValue => {
                 let (cl_value, remainder) = CLValue::from_bytes(remainder)?;
-                Ok((Transform::WriteCLValue(cl_value), remainder))
+                Ok((TransformKindV1::WriteCLValue(cl_value), remainder))
             }
             TransformTag::WriteAccount => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                Ok((Transform::WriteAccount(account_hash), remainder))
+                Ok((TransformKindV1::WriteAccount(account_hash), remainder))
             }
-            TransformTag::WriteByteCode => Ok((Transform::WriteContractWasm, remainder)),
-            TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
-            TransformTag::WritePackage => Ok((Transform::WriteContractPackage, remainder)),
+            TransformTag::WriteByteCode => Ok((TransformKindV1::WriteContractWasm, remainder)),
+            TransformTag::WriteContract => Ok((TransformKindV1::WriteContract, remainder)),
+            TransformTag::WritePackage => Ok((TransformKindV1::WriteContractPackage, remainder)),
             TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
-                Ok((Transform::WriteDeployInfo(deploy_info), remainder))
+                Ok((TransformKindV1::WriteDeployInfo(deploy_info), remainder))
             }
             TransformTag::WriteEraInfo => {
                 let (era_info, remainder) = EraInfo::from_bytes(remainder)?;
-                Ok((Transform::WriteEraInfo(era_info), remainder))
+                Ok((TransformKindV1::WriteEraInfo(era_info), remainder))
             }
             TransformTag::WriteTransfer => {
-                let (transfer, remainder) = Transfer::from_bytes(remainder)?;
-                Ok((Transform::WriteTransfer(transfer), remainder))
+                let (transfer, remainder) = TransferV1::from_bytes(remainder)?;
+                Ok((TransformKindV1::WriteTransfer(transfer), remainder))
             }
             TransformTag::AddInt32 => {
                 let (value_i32, remainder) = i32::from_bytes(remainder)?;
-                Ok((Transform::AddInt32(value_i32), remainder))
+                Ok((TransformKindV1::AddInt32(value_i32), remainder))
             }
             TransformTag::AddUInt64 => {
                 let (value_u64, remainder) = u64::from_bytes(remainder)?;
-                Ok((Transform::AddUInt64(value_u64), remainder))
+                Ok((TransformKindV1::AddUInt64(value_u64), remainder))
             }
             TransformTag::AddUInt128 => {
                 let (value_u128, remainder) = U128::from_bytes(remainder)?;
-                Ok((Transform::AddUInt128(value_u128), remainder))
+                Ok((TransformKindV1::AddUInt128(value_u128), remainder))
             }
             TransformTag::AddUInt256 => {
                 let (value_u256, remainder) = U256::from_bytes(remainder)?;
-                Ok((Transform::AddUInt256(value_u256), remainder))
+                Ok((TransformKindV1::AddUInt256(value_u256), remainder))
             }
             TransformTag::AddUInt512 => {
                 let (value_u512, remainder) = U512::from_bytes(remainder)?;
-                Ok((Transform::AddUInt512(value_u512), remainder))
+                Ok((TransformKindV1::AddUInt512(value_u512), remainder))
             }
             TransformTag::AddKeys => {
                 let (value, remainder) = Vec::<NamedKey>::from_bytes(remainder)?;
-                Ok((Transform::AddKeys(value), remainder))
+                Ok((TransformKindV1::AddKeys(value), remainder))
             }
             TransformTag::Failure => {
                 let (value, remainder) = String::from_bytes(remainder)?;
-                Ok((Transform::Failure(value), remainder))
+                Ok((TransformKindV1::Failure(value), remainder))
             }
             TransformTag::WriteBid => {
                 let (bid, remainder) = Bid::from_bytes(remainder)?;
-                Ok((Transform::WriteBid(Box::new(bid)), remainder))
+                Ok((TransformKindV1::WriteBid(Box::new(bid)), remainder))
             }
             TransformTag::WriteWithdraw => {
                 let (withdraw_purses, remainder) =
                     <Vec<WithdrawPurse> as FromBytes>::from_bytes(remainder)?;
-                Ok((Transform::WriteWithdraw(withdraw_purses), remainder))
+                Ok((TransformKindV1::WriteWithdraw(withdraw_purses), remainder))
             }
             TransformTag::WriteUnbonding => {
                 let (unbonding_purses, remainder) =
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
-                Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
+                Ok((TransformKindV1::WriteUnbonding(unbonding_purses), remainder))
             }
             TransformTag::WriteAddressableEntity => {
-                Ok((Transform::WriteAddressableEntity, remainder))
+                Ok((TransformKindV1::WriteAddressableEntity, remainder))
             }
             TransformTag::Prune => {
                 let (key, remainder) = Key::from_bytes(remainder)?;
-                Ok((Transform::Prune(key), remainder))
+                Ok((TransformKindV1::Prune(key), remainder))
             }
             TransformTag::WriteBidKind => {
                 let (value, remainder) = BidKind::from_bytes(remainder)?;
-                Ok((Transform::WriteBidKind(value), remainder))
+                Ok((TransformKindV1::WriteBidKind(value), remainder))
             }
         }
     }
 }
 
 #[cfg(any(feature = "testing", test))]
-impl Distribution<Transform> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
+impl Distribution<TransformKindV1> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TransformKindV1 {
         // TODO - include WriteDeployInfo and WriteTransfer as options
         match rng.gen_range(0..13) {
-            0 => Transform::Identity,
-            1 => Transform::WriteCLValue(CLValue::from_t(true).unwrap()),
-            2 => Transform::WriteAccount(AccountHash::new(rng.gen())),
-            3 => Transform::WriteContractWasm,
-            4 => Transform::WriteContract,
-            5 => Transform::WriteContractPackage,
-            6 => Transform::AddInt32(rng.gen()),
-            7 => Transform::AddUInt64(rng.gen()),
-            8 => Transform::AddUInt128(rng.gen::<u64>().into()),
-            9 => Transform::AddUInt256(rng.gen::<u64>().into()),
-            10 => Transform::AddUInt512(rng.gen::<u64>().into()),
+            0 => TransformKindV1::Identity,
+            1 => TransformKindV1::WriteCLValue(CLValue::from_t(true).unwrap()),
+            2 => TransformKindV1::WriteAccount(AccountHash::new(rng.gen())),
+            3 => TransformKindV1::WriteContractWasm,
+            4 => TransformKindV1::WriteContract,
+            5 => TransformKindV1::WriteContractPackage,
+            6 => TransformKindV1::AddInt32(rng.gen()),
+            7 => TransformKindV1::AddUInt64(rng.gen()),
+            8 => TransformKindV1::AddUInt128(rng.gen::<u64>().into()),
+            9 => TransformKindV1::AddUInt256(rng.gen::<u64>().into()),
+            10 => TransformKindV1::AddUInt512(rng.gen::<u64>().into()),
             11 => {
                 let mut named_keys = Vec::new();
                 for _ in 0..rng.gen_range(1..6) {
@@ -725,10 +728,10 @@ impl Distribution<Transform> for Standard {
                         key: rng.gen::<u64>().to_string(),
                     });
                 }
-                Transform::AddKeys(named_keys)
+                TransformKindV1::AddKeys(named_keys)
             }
-            12 => Transform::Failure(rng.gen::<u64>().to_string()),
-            13 => Transform::WriteAddressableEntity,
+            12 => TransformKindV1::Failure(rng.gen::<u64>().to_string()),
+            13 => TransformKindV1::WriteAddressableEntity,
             _ => unreachable!(),
         }
     }
@@ -781,7 +784,7 @@ mod tests {
     #[test]
     fn bytesrepr_test_transform() {
         let mut rng = TestRng::new();
-        let transform: Transform = rng.gen();
+        let transform: TransformKindV1 = rng.gen();
         bytesrepr::test_serialization_roundtrip(&transform);
     }
 

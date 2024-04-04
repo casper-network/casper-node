@@ -2,12 +2,8 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use thiserror::Error;
-use tracing::error;
 
-use casper_types::{
-    DeployConfigFailure, FinalizedApprovals, Transaction, TransactionId, TransactionV1ConfigFailure,
-};
+use casper_types::{InvalidTransaction, Transaction, TransactionId};
 
 use crate::{
     components::fetcher::{
@@ -18,17 +14,9 @@ use crate::{
     types::NodeId,
 };
 
-#[derive(Debug, Error)]
-pub(crate) enum TransactionConfigFailure {
-    #[error(transparent)]
-    Deploy(#[from] DeployConfigFailure),
-    #[error(transparent)]
-    V1(#[from] TransactionV1ConfigFailure),
-}
-
 impl FetchItem for Transaction {
     type Id = TransactionId;
-    type ValidationError = TransactionConfigFailure;
+    type ValidationError = InvalidTransaction;
     type ValidationMetadata = EmptyValidationMetadata;
 
     const TAG: Tag = Tag::Transaction;
@@ -84,7 +72,7 @@ impl ItemFetcher<Transaction> for Fetcher<Transaction> {
                 // We can treat the incoming approvals as finalized and now try and store them.
                 if !is_new {
                     effect_builder
-                        .store_finalized_approvals(item.hash(), FinalizedApprovals::new(&item))
+                        .store_finalized_approvals(item.hash(), item.approvals())
                         .await;
                 }
             }

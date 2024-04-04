@@ -1,9 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{
     Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -13,8 +12,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    AccessRights, EraId, Gas, Key, MintCosts, Motes, ProtocolVersion, PublicKey, SecretKey, URef,
+    U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -25,15 +24,17 @@ const TEST_PURSE_NAME: &str = "test_purse";
 const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_UREF_NAME: &str = "uref_name";
 
-static ACCOUNT_1_SK: Lazy<SecretKey> =
+static ACCOUNT_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([234u8; 32]).unwrap());
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SK));
-static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PK.to_account_hash());
+static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_1_SECRET_KEY));
+static ACCOUNT_1_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_1_PUBLIC_KEY.to_account_hash());
 
-static ACCOUNT_2_SK: Lazy<SecretKey> =
+static ACCOUNT_2_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([210u8; 32]).unwrap());
-static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SK));
-static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PK.to_account_hash());
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
+static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
 #[ignore]
 #[test]
@@ -123,7 +124,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         }
         WasmlessTransfer::AccountMainPurseToPublicKeyMainPurse => {
             runtime_args! {
-                mint::ARG_TARGET => ACCOUNT_2_PK.clone(),
+                mint::ARG_TARGET => ACCOUNT_2_PUBLIC_KEY.clone(),
                 mint::ARG_AMOUNT => transfer_amount,
                 mint::ARG_ID => id
             }
@@ -146,7 +147,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         WasmlessTransfer::PurseToPublicKey => {
             runtime_args! {
                 mint::ARG_SOURCE => account_1_purse,
-                mint::ARG_TARGET => ACCOUNT_2_PK.clone(),
+                mint::ARG_TARGET => ACCOUNT_2_PUBLIC_KEY.clone(),
                 mint::ARG_AMOUNT => transfer_amount,
                 mint::ARG_ID => id
             }
@@ -161,23 +162,16 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
         }
     };
 
-    let no_wasm_transfer_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let no_wasm_transfer_request = TransferRequestBuilder::new(0, AccountHash::default())
+        .with_args(runtime_args)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     builder
-        .exec(no_wasm_transfer_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(no_wasm_transfer_request)
+        .expect_success();
 
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -497,16 +491,10 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
     };
 
-    let no_wasm_transfer_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(addr)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[addr])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let no_wasm_transfer_request = TransferRequestBuilder::new(0, AccountHash::default())
+        .with_args(runtime_args)
+        .with_initiator(addr)
+        .build();
 
     let account_1_purse = builder
         .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
@@ -515,18 +503,13 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    builder.exec(no_wasm_transfer_request);
+    builder.transfer_and_commit(no_wasm_transfer_request);
 
     let result = builder
         .get_last_exec_result()
-        .expect("Expected to be called after run()")
-        .get(0)
-        .cloned()
-        .expect("Unable to get first deploy result");
+        .expect("Expected to be called after run()");
 
-    assert!(result.is_failure(), "was expected to fail");
-
-    let error = result.as_error().expect("should have error");
+    let error = result.error().expect("should have error");
 
     let account_1_closing_balance = builder.get_purse_balance(account_1_purse);
 
@@ -558,7 +541,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 #[ignore]
 #[test]
 fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -582,27 +565,13 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    let runtime_args = runtime_args! {
-       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-       mint::ARG_AMOUNT => transfer_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let no_wasm_transfer_request = TransferRequestBuilder::new(transfer_amount, *ACCOUNT_2_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     builder
-        .exec(no_wasm_transfer_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(no_wasm_transfer_request)
+        .expect_success();
 
     let account_2 = builder
         .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
@@ -651,7 +620,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
     .build();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(create_account_1_request)
         .expect_success()
         .commit();
@@ -696,7 +665,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
 #[ignore]
 #[test]
 fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -721,27 +690,14 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    let runtime_args = runtime_args! {
-       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-       mint::ARG_AMOUNT => account_1_to_account_2_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request_1 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
+    let no_wasm_transfer_request_1 =
+        TransferRequestBuilder::new(account_1_to_account_2_amount, *ACCOUNT_2_ADDR)
+            .with_initiator(*ACCOUNT_1_ADDR)
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
 
     builder
-        .exec(no_wasm_transfer_request_1)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(no_wasm_transfer_request_1)
+        .expect_success();
 
     let account_2 = builder
         .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
@@ -760,24 +716,12 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    let runtime_args = runtime_args! {
-       mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-       mint::ARG_AMOUNT => account_2_to_account_1_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request_2 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_2_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_2_ADDR])
-            .with_deploy_hash([43; 32])
+    let no_wasm_transfer_request_2 =
+        TransferRequestBuilder::new(account_2_to_account_1_amount, *ACCOUNT_1_ADDR)
+            .with_initiator(*ACCOUNT_2_ADDR)
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
 
-    builder.exec(no_wasm_transfer_request_2).commit();
+    builder.transfer_and_commit(no_wasm_transfer_request_2);
     // TODO: reenable when new payment code is added
     // let exec_result = &builder.get_last_exec_result().unwrap()[0];
     // let error = exec_result
@@ -793,7 +737,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
-    let wasmless_transfer_gas_cost = Gas::from(DEFAULT_WASMLESS_TRANSFER_COST);
+    let wasmless_transfer_gas_cost = Gas::from(MintCosts::default().transfer);
     let wasmless_transfer_cost = Motes::from_gas(
         wasmless_transfer_gas_cost,
         WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -820,27 +764,14 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    let runtime_args = runtime_args! {
-       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-       mint::ARG_AMOUNT => account_1_to_account_2_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request_1 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
+    let no_wasm_transfer_request_1 =
+        TransferRequestBuilder::new(account_1_to_account_2_amount, *ACCOUNT_2_ADDR)
+            .with_initiator(*ACCOUNT_1_ADDR)
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
 
     builder
-        .exec(no_wasm_transfer_request_1)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(no_wasm_transfer_request_1)
+        .expect_success();
 
     let account_2 = builder
         .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
@@ -859,26 +790,13 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     );
 
     // Another transfer but this time created account tries to do a transfer
-    let runtime_args = runtime_args! {
-       mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-       mint::ARG_AMOUNT => account_2_to_account_1_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request_2 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_2_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_2_ADDR])
-            .with_deploy_hash([43; 32])
+    let no_wasm_transfer_request_2 =
+        TransferRequestBuilder::new(account_2_to_account_1_amount, *ACCOUNT_1_ADDR)
+            .with_initiator(*ACCOUNT_2_ADDR)
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
 
     builder
-        .exec(no_wasm_transfer_request_2)
-        .commit()
+        .transfer_and_commit(no_wasm_transfer_request_2)
         .expect_success();
 }
 
@@ -913,25 +831,13 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
     assert_eq!(account_1_starting_balance, U512::zero());
 
-    let runtime_args = runtime_args! {
-       mint::ARG_SOURCE => account_1_purse,
-       mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-       mint::ARG_AMOUNT => account_1_to_account_2_amount,
-       mint::ARG_ID => <Option<u64>>::None
-    };
-
-    let no_wasm_transfer_request_1 = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*ACCOUNT_1_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(runtime_args)
-            .with_authorization_keys(&[*ACCOUNT_1_ADDR])
-            .with_deploy_hash([42; 32])
+    let no_wasm_transfer_request_1 =
+        TransferRequestBuilder::new(account_1_to_account_2_amount, *ACCOUNT_2_ADDR)
+            .with_source(account_1_purse)
+            .with_initiator(*ACCOUNT_1_ADDR)
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder.transfer_and_commit(no_wasm_transfer_request_1);
     //TODO: reenable when new payment code is added
     // let exec_result = &builder.get_last_exec_result().unwrap()[0];
     // let error = exec_result.as_error().expect("should have error");
@@ -945,7 +851,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
 #[ignore]
 #[test]
 fn transfer_wasmless_should_observe_upgraded_cost() {
-    let new_wasmless_transfer_cost_value = DEFAULT_WASMLESS_TRANSFER_COST * 2;
+    let new_wasmless_transfer_cost_value = MintCosts::default().transfer * 2;
     // let new_max_associated_keys = DEFAULT_MAX_ASSOCIATED_KEYS;
 
     let new_wasmless_transfer_gas_cost = Gas::from(new_wasmless_transfer_cost_value);
@@ -959,7 +865,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-    let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
+    let old_protocol_version = DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major,
         old_protocol_version.value().minor,
@@ -967,7 +873,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -975,7 +881,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+            .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
             .with_new_protocol_version(new_protocol_version)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build()
@@ -985,29 +891,12 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 
-    let no_wasm_transfer_request_1 = {
-        let wasmless_transfer_args = runtime_args! {
-        mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-        mint::ARG_AMOUNT => transfer_amount,
-        mint::ARG_ID => <Option<u64>>::None
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_empty_payment_bytes(runtime_args! {})
-            .with_transfer_args(wasmless_transfer_args)
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item)
-            .with_protocol_version(new_protocol_version)
-            .build()
-    };
+    let no_wasm_transfer_request_1 =
+        TransferRequestBuilder::new(transfer_amount, *ACCOUNT_2_ADDR).build();
 
     builder
-        .exec(no_wasm_transfer_request_1)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(no_wasm_transfer_request_1)
+        .expect_success();
 
     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
 

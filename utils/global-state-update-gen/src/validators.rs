@@ -1,4 +1,5 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{AsymmetricType, PublicKey, U512};
 use clap::ArgMatches;
 
@@ -59,6 +60,11 @@ pub(crate) fn generate_validators_update(matches: &ArgMatches<'_>) {
         protocol_version,
     };
 
-    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    let builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        state_hash,
+    );
     update_from_config(builder, config);
 }

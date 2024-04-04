@@ -3,7 +3,7 @@ use std::{
     net::SocketAddr,
 };
 
-use casper_types::binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
+use casper_binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
 use tokio::net::TcpStream;
 
 use crate::effect::Responder;
@@ -45,6 +45,9 @@ impl Display for Event {
                         write!(f, "get all items ({})", key_tag)
                     }
                     GetRequest::State(GlobalStateRequest::Trie { .. }) => write!(f, "get trie"),
+                    GetRequest::State(GlobalStateRequest::DictionaryItem { .. }) => {
+                        write!(f, "get dictionary item")
+                    }
                 },
                 BinaryRequest::TryAcceptTransaction { transaction, .. } => {
                     write!(f, "try accept transaction ({})", transaction.hash())

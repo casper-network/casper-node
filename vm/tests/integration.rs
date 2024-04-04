@@ -5,13 +5,12 @@ use casper_storage::global_state::{
     state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
-    execution::{Effects, TransformKind},
+    execution::{Effects, TransformKindV2},
     Digest, EntityAddr, Key,
 };
-use digest::consts::U32;
 use vm::{
-    storage::Address, ConfigBuilder, ExecuteRequest, ExecuteRequestBuilder, ExecuteResult,
-    ExecutionKind, Executor, ExecutorConfigBuilder, ExecutorKind, ExecutorV2, WasmEngine,
+    storage::Address, ExecuteRequest, ExecuteRequestBuilder, ExecutionKind, Executor,
+    ExecutorConfigBuilder, ExecutorKind, ExecutorV2,
 };
 
 const DEFAULT_ACCOUNT: Address = [42; 32];
@@ -110,7 +109,7 @@ fn cep18() {
         let mut values: Vec<_> = effects_1
             .transforms()
             .iter()
-            .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKind::Identity)
+            .filter(|t| t.key().is_smart_contract_key() && t.kind() != &TransformKindV2::Identity)
             .collect();
         assert_eq!(values.len(), 1, "{values:#?}");
         let transform = values.remove(0);

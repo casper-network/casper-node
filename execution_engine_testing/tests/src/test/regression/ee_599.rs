@@ -2,14 +2,14 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, U512};
 
 const CONTRACT_EE_599_REGRESSION: &str = "ee_599_regression.wasm";
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const DONATION_PURSE_COPY_KEY: &str = "donation_purse_copy";
-const EXPECTED_ERROR: &str = "ForgedReference";
+const EXPECTED_ERROR: &str = "Forged reference";
 const TRANSFER_FUNDS_KEY: &str = "transfer_funds";
 const VICTIM_ADDR: AccountHash = AccountHash::new([42; 32]);
 
@@ -36,7 +36,7 @@ fn setup() -> LmdbWasmTestBuilder {
     };
 
     let mut ctx = LmdbWasmTestBuilder::default();
-    ctx.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+    ctx.run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()
@@ -87,7 +87,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -147,7 +147,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -215,7 +215,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -277,7 +277,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",

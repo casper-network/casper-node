@@ -22,9 +22,9 @@ pub struct ExecutableBlock {
     /// The transactions for the `FinalizedBlock`.
     pub(crate) transactions: Vec<Transaction>,
     /// The hashes of the transfer transactions within the `FinalizedBlock`.
-    pub(crate) transfer: Vec<TransactionHash>,
+    pub(crate) mint: Vec<TransactionHash>,
     /// The hashes of the non-transfer, native transactions within the `FinalizedBlock`.
-    pub(crate) staking: Vec<TransactionHash>,
+    pub(crate) auction: Vec<TransactionHash>,
     /// The hashes of the installer/upgrader transactions within the `FinalizedBlock`.
     pub(crate) install_upgrade: Vec<TransactionHash>,
     /// The hashes of all other transactions within the `FinalizedBlock`.
@@ -49,8 +49,8 @@ impl ExecutableBlock {
             height: finalized_block.height,
             proposer: finalized_block.proposer,
             transactions,
-            transfer: finalized_block.transfer,
-            staking: finalized_block.staking,
+            mint: finalized_block.mint,
+            auction: finalized_block.auction,
             install_upgrade: finalized_block.install_upgrade,
             standard: finalized_block.standard,
             rewards: None,
@@ -73,8 +73,8 @@ impl ExecutableBlock {
             height: block.height(),
             proposer: Box::new(block.proposer().clone()),
             transactions,
-            transfer: block.transfer().copied().collect(),
-            staking: block.staking().copied().collect(),
+            mint: block.mint().copied().collect(),
+            auction: block.auction().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
@@ -91,8 +91,8 @@ impl fmt::Display for ExecutableBlock {
             self.height,
             self.era_id,
             self.timestamp,
-            self.transfer.len(),
-            self.staking.len(),
+            self.mint.len(),
+            self.auction.len(),
             self.install_upgrade.len(),
             self.standard.len(),
         )?;

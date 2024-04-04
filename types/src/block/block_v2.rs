@@ -53,6 +53,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         [23; Digest::LENGTH],
     )))];
     let rewarded_signatures = RewardedSignatures::default();
+    let current_gas_price = 1u8;
     BlockV2::new(
         parent_hash,
         parent_seed,
@@ -69,6 +70,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         installer_upgrader_hashes,
         other_hashes,
         rewarded_signatures,
+        current_gas_price,
     )
 });
 
@@ -102,16 +104,17 @@ impl BlockV2 {
         height: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        transfer: Vec<TransactionHash>,
-        staking: Vec<TransactionHash>,
+        mint: Vec<TransactionHash>,
+        auction: Vec<TransactionHash>,
         install_upgrade: Vec<TransactionHash>,
         standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
+        current_gas_price: u8,
     ) -> Self {
         let body = BlockBodyV2::new(
             proposer,
-            transfer,
-            staking,
+            mint,
+            auction,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -129,6 +132,7 @@ impl BlockV2 {
             era_id,
             height,
             protocol_version,
+            current_gas_price,
             #[cfg(any(feature = "once_cell", test))]
             OnceCell::new(),
         );
@@ -238,13 +242,13 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn transfer(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.body.transfer()
+    pub fn mint(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn staking(&self) -> impl Iterator<Item = &TransactionHash> {
-        self.body.staking()
+    pub fn auction(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.auction()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.

@@ -24,8 +24,13 @@ pub struct Motes(U512);
 
 impl Motes {
     /// Constructs a new `Motes`.
-    pub fn new(value: U512) -> Motes {
-        Motes(value)
+    pub fn new<T: Into<U512>>(value: T) -> Self {
+        Motes(value.into())
+    }
+
+    /// Constructs a new `Motes` with value `0`.
+    pub const fn zero() -> Self {
+        Motes(U512::zero())
     }
 
     /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
@@ -46,10 +51,17 @@ impl Motes {
     /// Converts the given `gas` to `Motes` by multiplying them by `conv_rate`.
     ///
     /// Returns `None` if an arithmetic overflow occurred.
-    pub fn from_gas(gas: Gas, conv_rate: u64) -> Option<Self> {
+    pub fn from_gas(gas: Gas, conv_rate: u8) -> Option<Self> {
         gas.value()
             .checked_mul(U512::from(conv_rate))
             .map(Self::new)
+    }
+
+    /// Converts the given `amount` to `Motes` by multiplying them by `price`.
+    ///
+    /// Returns `None` if an arithmetic overflow occurred.
+    pub fn from_price(amount: U512, price: u8) -> Option<Self> {
+        amount.checked_mul(U512::from(price)).map(Self::new)
     }
 }
 
@@ -97,7 +109,7 @@ impl Mul for Motes {
 
 impl Zero for Motes {
     fn zero() -> Self {
-        Motes::new(U512::zero())
+        Motes::zero()
     }
 
     fn is_zero(&self) -> bool {
@@ -124,7 +136,7 @@ impl ToBytes for Motes {
 impl FromBytes for Motes {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (value, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((Motes::new(value), remainder))
+        Ok((Motes(value), remainder))
     }
 }
 
@@ -137,7 +149,7 @@ mod tests {
     #[test]
     fn should_be_able_to_get_instance_of_motes() {
         let initial_value = 1;
-        let motes = Motes::new(U512::from(initial_value));
+        let motes = Motes::new(initial_value);
         assert_eq!(
             initial_value,
             motes.value().as_u64(),
@@ -147,18 +159,18 @@ mod tests {
 
     #[test]
     fn should_be_able_to_compare_two_instances_of_motes() {
-        let left_motes = Motes::new(U512::from(1));
-        let right_motes = Motes::new(U512::from(1));
+        let left_motes = Motes::new(1);
+        let right_motes = Motes::new(1);
         assert_eq!(left_motes, right_motes, "should be equal");
-        let right_motes = Motes::new(U512::from(2));
+        let right_motes = Motes::new(2);
         assert_ne!(left_motes, right_motes, "should not be equal")
     }
 
     #[test]
     fn should_be_able_to_add_two_instances_of_motes() {
-        let left_motes = Motes::new(U512::from(1));
-        let right_motes = Motes::new(U512::from(1));
-        let expected_motes = Motes::new(U512::from(2));
+        let left_motes = Motes::new(1);
+        let right_motes = Motes::new(1);
+        let expected_motes = Motes::new(2);
         assert_eq!(
             (left_motes + right_motes),
             expected_motes,
@@ -168,9 +180,9 @@ mod tests {
 
     #[test]
     fn should_be_able_to_subtract_two_instances_of_motes() {
-        let left_motes = Motes::new(U512::from(1));
-        let right_motes = Motes::new(U512::from(1));
-        let expected_motes = Motes::new(U512::from(0));
+        let left_motes = Motes::new(1);
+        let right_motes = Motes::new(1);
+        let expected_motes = Motes::new(0);
         assert_eq!(
             (left_motes - right_motes),
             expected_motes,
@@ -180,9 +192,9 @@ mod tests {
 
     #[test]
     fn should_be_able_to_multiply_two_instances_of_motes() {
-        let left_motes = Motes::new(U512::from(100));
-        let right_motes = Motes::new(U512::from(10));
-        let expected_motes = Motes::new(U512::from(1000));
+        let left_motes = Motes::new(100);
+        let right_motes = Motes::new(10);
+        let expected_motes = Motes::new(1000);
         assert_eq!(
             (left_motes * right_motes),
             expected_motes,
@@ -192,9 +204,9 @@ mod tests {
 
     #[test]
     fn should_be_able_to_divide_two_instances_of_motes() {
-        let left_motes = Motes::new(U512::from(1000));
-        let right_motes = Motes::new(U512::from(100));
-        let expected_motes = Motes::new(U512::from(10));
+        let left_motes = Motes::new(1000);
+        let right_motes = Motes::new(100);
+        let expected_motes = Motes::new(10);
         assert_eq!(
             (left_motes / right_motes),
             expected_motes,
@@ -204,34 +216,34 @@ mod tests {
 
     #[test]
     fn should_be_able_to_convert_from_motes() {
-        let gas = Gas::new(U512::from(100));
+        let gas = Gas::new(100);
         let motes = Motes::from_gas(gas, 10).expect("should have value");
-        let expected_motes = Motes::new(U512::from(1000));
+        let expected_motes = Motes::new(1000);
         assert_eq!(motes, expected_motes, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_default() {
         let motes = Motes::default();
-        let expected_motes = Motes::new(U512::from(0));
+        let expected_motes = Motes::new(0);
         assert_eq!(motes, expected_motes, "should be equal")
     }
 
     #[test]
     fn should_be_able_to_compare_relative_value() {
-        let left_motes = Motes::new(U512::from(100));
-        let right_motes = Motes::new(U512::from(10));
+        let left_motes = Motes::new(100);
+        let right_motes = Motes::new(10);
         assert!(left_motes > right_motes, "should be gt");
-        let right_motes = Motes::new(U512::from(100));
+        let right_motes = Motes::new(100);
         assert!(left_motes >= right_motes, "should be gte");
         assert!(left_motes <= right_motes, "should be lte");
-        let left_motes = Motes::new(U512::from(10));
+        let left_motes = Motes::new(10);
         assert!(left_motes < right_motes, "should be lt");
     }
 
     #[test]
     fn should_default() {
-        let left_motes = Motes::new(U512::from(0));
+        let left_motes = Motes::new(0);
         let right_motes = Motes::default();
         assert_eq!(left_motes, right_motes, "should be equal");
         let u512 = U512::zero();

@@ -5,9 +5,8 @@ use bytes::Bytes;
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     contracts::{ContractManifest, ContractV2, EntryPointV2},
-    package::PackageStatus,
     ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, Key, Package,
-    StoredValue, URef,
+    PackageStatus, StoredValue, URef,
 };
 use rand::Rng;
 use safe_transmute::SingleManyGuard;

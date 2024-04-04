@@ -12,7 +12,7 @@ use casper_types::{
         ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
         NamedKeyValue, NamedKeys, Weight,
     },
-    execution::{Effects, Transform, TransformKind},
+    execution::{Effects, TransformKindV2, TransformV2},
     gens::*,
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
@@ -70,10 +70,10 @@ impl StateReader<Key, StoredValue> for CountingDb {
     }
 }
 
-fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> Effects {
+fn effects(transform_keys_and_kinds: Vec<(Key, TransformKindV2)>) -> Effects {
     let mut effects = Effects::new();
     for (key, kind) in transform_keys_and_kinds {
-        effects.push(Transform::new(key, kind));
+        effects.push(TransformV2::new(key, kind));
     }
     effects
 }
@@ -119,7 +119,7 @@ fn tracking_copy_read() {
     // value read correctly
     assert_eq!(value, zero);
     // Reading does produce an identity transform.
-    assert_eq!(tc.effects, effects(vec![(k, TransformKind::Identity)]));
+    assert_eq!(tc.effects, effects(vec![(k, TransformKindV2::Identity)]));
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn tracking_copy_write() {
     // Writing creates a write transform.
     assert_eq!(
         tc.effects,
-        effects(vec![(k, TransformKind::Write(one.clone()))])
+        effects(vec![(k, TransformKindV2::Write(one.clone()))])
     );
 
     // writing again should update the values
@@ -150,8 +150,8 @@ fn tracking_copy_write() {
     assert_eq!(
         tc.effects,
         effects(vec![
-            (k, TransformKind::Write(one)),
-            (k, TransformKind::Write(two))
+            (k, TransformKindV2::Write(one)),
+            (k, TransformKindV2::Write(two))
         ])
     );
 }
@@ -170,14 +170,14 @@ fn tracking_copy_add_i32() {
     assert_matches!(add, Ok(_));
 
     // Adding creates an add transform.
-    assert_eq!(tc.effects, effects(vec![(k, TransformKind::AddInt32(3))]));
+    assert_eq!(tc.effects, effects(vec![(k, TransformKindV2::AddInt32(3))]));
 
     // adding again should update the values
     let add = tc.add(k, three);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.effects,
-        effects(vec![(k, TransformKind::AddInt32(3)); 2])
+        effects(vec![(k, TransformKindV2::AddInt32(3)); 2])
     );
 }
 
@@ -195,8 +195,8 @@ fn tracking_copy_rw() {
     assert_eq!(
         tc.effects,
         effects(vec![
-            (k, TransformKind::Identity),
-            (k, TransformKind::Write(value))
+            (k, TransformKindV2::Identity),
+            (k, TransformKindV2::Write(value))
         ])
     );
 }
@@ -215,8 +215,8 @@ fn tracking_copy_ra() {
     assert_eq!(
         tc.effects,
         effects(vec![
-            (k, TransformKind::Identity),
-            (k, TransformKind::AddInt32(3))
+            (k, TransformKindV2::Identity),
+            (k, TransformKindV2::AddInt32(3))
         ])
     );
 }
@@ -236,8 +236,8 @@ fn tracking_copy_aw() {
     assert_eq!(
         tc.effects,
         effects(vec![
-            (k, TransformKind::AddInt32(3)),
-            (k, TransformKind::Write(write_value))
+            (k, TransformKindV2::AddInt32(3)),
+            (k, TransformKindV2::Write(write_value))
         ])
     );
 }

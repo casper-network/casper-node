@@ -130,8 +130,8 @@ pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig
     // The total number of transactions should not exceed the number of approvals because each
     // transaction needs at least one approval to be valid.
     if let Some(total_txn_slots) = transaction_config
-        .block_max_transfer_count
-        .checked_add(transaction_config.block_max_staking_count)
+        .block_max_mint_count
+        .checked_add(transaction_config.block_max_auction_count)
         .and_then(|total| total.checked_add(transaction_config.block_max_install_upgrade_count))
         .and_then(|total| total.checked_add(transaction_config.block_max_standard_count))
     {
@@ -152,7 +152,7 @@ mod tests {
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
         MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
+        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig,
     };
 
     use super::*;
@@ -243,8 +243,6 @@ mod tests {
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
             enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
-            // TODO: Update this cost.
-            add_session_version: HostFunction::default(),
             manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
             emit_message: HostFunction::new(100, [0, 1, 2, 3]),
             cost_increase_per_message: 50,
@@ -385,8 +383,8 @@ mod tests {
     fn should_have_valid_transaction_counts() {
         let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 1,
+            block_max_mint_count: 100,
+            block_max_auction_count: 1,
             ..Default::default()
         };
         assert!(
@@ -397,8 +395,8 @@ mod tests {
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 50,
+            block_max_mint_count: 100,
+            block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
             block_max_standard_count: 25,
             ..Default::default()
@@ -410,8 +408,8 @@ mod tests {
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_transfer_count: 100,
-            block_max_staking_count: 50,
+            block_max_mint_count: 100,
+            block_max_auction_count: 50,
             block_max_install_upgrade_count: 25,
             block_max_standard_count: 24,
             ..Default::default()
@@ -562,10 +560,10 @@ mod tests {
             };
 
             for (index, account_config) in accounts.into_iter().enumerate() {
-                assert_eq!(account_config.balance(), Motes::new(U512::from(index + 1)),);
+                assert_eq!(account_config.balance(), Motes::new(index + 1),);
                 assert_eq!(
                     account_config.bonded_amount(),
-                    Motes::new(U512::from((index as u64 + 1) * 10))
+                    Motes::new((index as u64 + 1) * 10)
                 );
             }
         } else {
@@ -616,7 +614,7 @@ mod tests {
 
         assert_eq!(
             spec.transaction_config.deploy_config.max_payment_cost,
-            Motes::new(U512::from(9))
+            Motes::new(9)
         );
         assert_eq!(
             spec.transaction_config.max_ttl,
@@ -624,7 +622,7 @@ mod tests {
         );
         assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
         assert_eq!(spec.transaction_config.max_block_size, 12);
-        assert_eq!(spec.transaction_config.block_max_transfer_count, 125);
+        assert_eq!(spec.transaction_config.block_max_mint_count, 125);
         assert_eq!(spec.transaction_config.block_gas_limit, 13);
 
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);

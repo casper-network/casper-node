@@ -1,10 +1,10 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    addressable_entity::NamedKeyAddr, execution::TransformKind, runtime_args, CLValue, EntityAddr,
-    Key, RuntimeArgs, StoredValue,
+    addressable_entity::NamedKeyAddr, execution::TransformKindV2, runtime_args, CLValue,
+    EntityAddr, Key, RuntimeArgs, StoredValue,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -14,25 +14,23 @@ const ARG_AMOUNT: &str = "amount";
 fn should_run_ee_601_pay_session_new_uref_collision() {
     let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_deploy_hash([1; 32])
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_payment_code(
-                "ee_601_regression.wasm",
-                runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT },
-            )
-            .with_session_code("ee_601_regression.wasm", RuntimeArgs::default())
-            .with_authorization_keys(&[genesis_account_hash])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_deploy_hash([1; 32])
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_payment_code(
+            "ee_601_regression.wasm",
+            runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT },
+        )
+        .with_session_code("ee_601_regression.wasm", RuntimeArgs::default())
+        .with_authorization_keys(&[genesis_account_hash])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request);
 
     let entity_hash = builder
@@ -55,7 +53,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .map(|transform| transform.kind());
 
     let payment_uref = match payment_transforms.next().unwrap() {
-        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+        TransformKindV2::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
         _ => panic!("Should be Write transform"),
@@ -76,7 +74,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .map(|transform| transform.kind());
 
     let session_uref = match session_transforms.next().unwrap() {
-        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+        TransformKindV2::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
         _ => panic!("Should be Write transform"),

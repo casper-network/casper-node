@@ -297,10 +297,14 @@ enable_server = true
 address = '0.0.0.0:7779'
 
 # Flag that enables the `AllValues` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
-allow_request_get_all_values = false
+# We enable it for NCTL testing since we need deeper inspection for the network in tests.
+allow_request_get_all_values = true
 
-# Flag that enables the `Trie` gewt request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
+# Flag that enables the `Trie` get request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
+
+# Flag that enables the `TrySpeculativeExec` request. Disabled by default.
+allow_request_speculative_exec = false
 
 # Maximum size of a request in bytes.
 max_request_size_bytes = 4_194_304
@@ -308,11 +312,13 @@ max_request_size_bytes = 4_194_304
 # Maximum size of a response in bytes.
 max_response_size_bytes = 4_194_304
 
-# Maximum number of in-flight requests per client.
-client_request_limit = 3
+# Maximum number of in-flight requests.
+# This is based on measurements captured on a local instance of the sidecar,
+# it might make sense to increase this value if the sidecar is running on a separate machine.
+client_request_limit = 10
 
-# Number of requests that can be buffered per client.
-client_request_buffer_size = 16
+# Number of requests that can be buffered.
+client_request_buffer_size = 20
 
 # Maximum number of connections to the server.
 max_connections = 16
@@ -562,11 +568,11 @@ timestamp_leeway = '2 seconds'
 
 
 # ===========================================
-# Configuration options for the deploy buffer
+# Configuration options for the transaction buffer
 # ===========================================
-[deploy_buffer]
+[transaction_buffer]
 
-# The interval of checking for expired deploys.
+# The interval of checking for expired transactions.
 expiry_check_interval = '1 minute'
 
 

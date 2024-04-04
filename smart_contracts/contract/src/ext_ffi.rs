@@ -2,6 +2,10 @@
 //!
 //! Generally should not be used directly.  See the [`contract_api`](crate::contract_api) for
 //! high-level bindings suitable for writing smart contracts.
+
+#[cfg(doc)]
+use alloc::collections::BTreeMap;
+
 extern "C" {
     /// The bytes in the span of wasm memory from `key_ptr` to `key_ptr + key_size` must correspond
     /// to a valid global state key, otherwise the function will fail. If the key is de-serialized
@@ -506,12 +510,6 @@ extern "C" {
         existing_urefs_size: usize,
         output_size_ptr: *mut usize,
     ) -> i32;
-    /// Adds new session logic to an addressable entity of kind Account.
-    ///
-    /// # Arguments
-    /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
-    /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
-    pub fn casper_add_session_logic(entry_points_ptr: *const u8, entry_points_size: usize) -> i32;
     /// Adds a new version to a package.
     ///
     /// # Arguments

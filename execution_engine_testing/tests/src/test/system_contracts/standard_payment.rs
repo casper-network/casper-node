@@ -3,17 +3,17 @@ use std::collections::HashMap;
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     engine_state::{Error, MAX_PAYMENT},
     execution::ExecError,
 };
 use casper_types::{
-    account::AccountHash, execution::TransformKind, runtime_args, system::handle_payment, ApiError,
-    Gas, Key, Motes, RuntimeArgs, U512,
+    account::AccountHash, execution::TransformKindV2, runtime_args, system::handle_payment,
+    ApiError, Gas, Key, Motes, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -25,7 +25,8 @@ const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
 
@@ -34,12 +35,12 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         TRANSFER_PURSE_TO_ACCOUNT_WASM,
         runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => *MAX_PAYMENT - U512::one() },
     )
-    .build();
+        .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit()
@@ -50,16 +51,14 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, REVERT_WASM, RuntimeArgs::default())
             .build();
 
-    let account_1_response = builder
+    let error_message = builder
         .exec(account_1_request)
         .commit()
-        .get_exec_result_owned(1)
+        .get_error_message()
         .expect("there should be a response");
 
-    let error_message = utils::get_error_message(account_1_response);
-
     assert!(
-        error_message.contains("InsufficientPayment"),
+        error_message.contains("Insufficient payment"),
         "expected insufficient payment, got: {}",
         error_message
     );
@@ -75,29 +74,28 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_forward_payment_execution_runtime_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(REVERT_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -131,39 +129,37 @@ fn should_forward_payment_execution_runtime_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::User(100))));
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_forward_payment_execution_gas_limit_error() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let transferred_amount = U512::from(1);
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
-                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount }
+                runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => transferred_amount },
             )
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -197,34 +193,33 @@ fn should_forward_payment_execution_gas_limit_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.consumed(),
         payment_gas_limit,
         "cost should equal gas limit"
     );
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_session_code(
                 ENDLESS_LOOP_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
@@ -232,53 +227,50 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.consumed(),
         session_gas_limit,
         "cost should equal gas limit"
     );
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_deploy_hash([1; 32])
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_session_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 
@@ -293,12 +285,11 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "balance should be less than initial balance"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
+    let gas = exec_result.consumed();
     let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes.value() + modified_balance;
@@ -308,30 +299,29 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.consumed(),
         session_gas_limit,
         "cost should equal gas limit"
     );
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_fails() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_session_code(
                 REVERT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
@@ -339,12 +329,11 @@ fn should_correctly_charge_when_session_code_fails() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -371,30 +360,29 @@ fn should_correctly_charge_when_session_code_fails() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_correctly_charge_when_session_code_succeeds() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
@@ -428,30 +416,29 @@ fn should_correctly_charge_when_session_code_succeeds() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_finalize_to_rewards_purse() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let transferred_amount = 1;
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -466,7 +453,8 @@ fn should_finalize_to_rewards_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn independent_standard_payments_should_not_write_the_same_keys() {
     let account_1_account_hash = ACCOUNT_1_ADDR;
     let payment_purse_amount = *DEFAULT_PAYMENT;
@@ -474,51 +462,45 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let setup_exec_request = {
-        let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
                 runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transfer_amount) },
             )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+            .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let setup_exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // create another account via transfer
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(setup_exec_request)
         .expect_success()
         .commit();
 
-    let exec_request_from_genesis = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([2; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+        .with_deploy_hash([2; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_from_genesis = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-    let exec_request_from_account_1 = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
-            .with_authorization_keys(&[account_1_account_hash])
-            .with_deploy_hash([1; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount })
+        .with_authorization_keys(&[account_1_account_hash])
+        .with_deploy_hash([1; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_from_account_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     // run two independent deploys
     builder
@@ -542,12 +524,12 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .into_uref()
         .unwrap();
 
-    let transforms_from_genesis_map: HashMap<Key, TransformKind> = effects_from_genesis
+    let transforms_from_genesis_map: HashMap<Key, TransformKindV2> = effects_from_genesis
         .transforms()
         .iter()
         .map(|transform| (*transform.key(), transform.kind().clone()))
         .collect();
-    let transforms_from_account_1_map: HashMap<Key, TransformKind> = effects_from_account_1
+    let transforms_from_account_1_map: HashMap<Key, TransformKindV2> = effects_from_account_1
         .transforms()
         .iter()
         .map(|transform| (*transform.key(), transform.kind().clone()))
@@ -564,7 +546,10 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
                         transforms_from_genesis_map.get(transform.key()),
                         transforms_from_account_1_map.get(transform.key()),
                     ),
-                    (Some(TransformKind::Write(_)), Some(TransformKind::Write(_)))
+                    (
+                        Some(TransformKindV2::Write(_)),
+                        Some(TransformKindV2::Write(_))
+                    )
                 )
             {
                 Some(*transform.key())

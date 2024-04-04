@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -8,7 +8,8 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionCategory, TransactionConfig, U512,
 };
 
 use super::*;
@@ -21,14 +22,10 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{
-        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
-        TransactionHashWithApprovals,
-    },
+    types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
-
 const RECENT_ERA_COUNT: u64 = 5;
 const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -106,6 +103,7 @@ impl reactor::Reactor for Reactor {
             RECENT_ERA_COUNT,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
@@ -300,11 +298,11 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     let payment = ExecutableDeployItem::ModuleBytes {
         module_bytes: Bytes::new(),
         args: runtime_args! {
-          "amount" => U512::from(chainspec.system_costs_config.wasmless_transfer_cost()),
+          "amount" => U512::from(chainspec.system_costs_config.mint_costs().transfer),
         },
     };
 
-    let txns: Vec<Transaction> = std::iter::repeat_with(|| {
+    let txns: Vec<Transaction> = iter::repeat_with(|| {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
@@ -327,17 +325,18 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
     })
     .take(200)
     .collect();
-    let block_payload = BlockPayload::new(
-        txns.iter()
-            .map(TransactionHashWithApprovals::from)
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        Default::default(),
-        true,
-    );
+
+    let mut txn_set = BTreeMap::new();
+    let val = txns
+        .iter()
+        .map(|transaction| {
+            let hash = transaction.hash();
+            let approvals = transaction.approvals();
+            (hash, approvals)
+        })
+        .collect();
+    txn_set.insert(TransactionCategory::Mint, val);
+    let block_payload = BlockPayload::new(txn_set, vec![], Default::default(), true);
     let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             block_payload,
@@ -397,6 +396,9 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
     use casper_storage::global_state::{
         state::{CommitProvider, StateProvider},
         trie::Trie,
@@ -404,22 +406,20 @@ mod trie_chunking_tests {
     use casper_types::{
         account::AccountHash,
         bytesrepr,
-        execution::{Transform, TransformKind},
+        execution::{TransformKindV2, TransformV2},
         global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_FEE_HANDLING,
+        DEFAULT_REFUND_HANDLING,
     };
-    use prometheus::Registry;
-    use tempfile::tempdir;
 
+    use super::{Config as ContractRuntimeConfig, ContractRuntime};
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::ContractRuntimeError,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
-
-    use super::{Config as ContractRuntimeConfig, ContractRuntime};
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);
@@ -487,6 +487,7 @@ mod trie_chunking_tests {
                 allow_unrestricted_transfers: true,
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
+                balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),
@@ -503,7 +504,7 @@ mod trie_chunking_tests {
         let empty_state_root = contract_runtime.data_access_layer().empty_root();
         let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
-            effects.push(Transform::new(key, TransformKind::Write(value)));
+            effects.push(TransformV2::new(key, TransformKindV2::Write(value)));
         }
         let post_state_hash = &contract_runtime
             .data_access_layer()

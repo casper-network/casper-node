@@ -30,11 +30,12 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
+use casper_binary_port::{ConsensusStatus, ConsensusValidatorChanges};
+
 use casper_types::{
-    binary_port::{ConsensusStatus, ConsensusValidatorChanges},
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
-    EraId, FinalizedApprovals, PublicKey, RewardedSignatures, Timestamp, Transaction,
-    TransactionHash, ValidatorChange,
+    Approval, AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest,
+    DisplayIter, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
+    ValidatorChange,
 };
 
 use crate::{
@@ -61,14 +62,13 @@ use crate::{
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
-        FinalizedBlock, InternalEraReport, MetaBlockState, NodeId, TypedTransactionHash,
-        ValidatorMatrix,
+        FinalizedBlock, InternalEraReport, MetaBlockState, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
 
 pub use self::era::Era;
-use crate::{components::consensus::error::CreateNewEraError, types::TransactionHashWithApprovals};
+use crate::components::consensus::error::CreateNewEraError;
 
 use super::{traits::ConsensusNetworkMessage, BlockContext};
 
@@ -1065,7 +1065,7 @@ impl EraSupervisor {
                     current_block_height.saturating_sub(signature_rewards_max_delay);
 
                 let awaitable_appendable_block =
-                    effect_builder.request_appendable_block(block_context.timestamp());
+                    effect_builder.request_appendable_block(block_context.timestamp(), era_id);
                 let awaitable_blocks_with_metadata = async move {
                     effect_builder
                         .collect_past_blocks_with_metadata(
@@ -1143,11 +1143,8 @@ impl EraSupervisor {
                     }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
-                let finalized_approvals: HashMap<_, _> = proposed_block
-                    .all_transactions()
-                    .cloned()
-                    .map(TransactionHashWithApprovals::into_hash_and_finalized_approvals)
-                    .collect();
+                let finalized_approvals: HashMap<_, _> =
+                    proposed_block.all_transactions().cloned().collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
                         inactive = %DisplayIter::new(&era_report.inactive_validators),
@@ -1375,21 +1372,31 @@ impl SerializedMessage {
 async fn get_transactions<REv>(
     effect_builder: EffectBuilder<REv>,
     hashes: Vec<TransactionHash>,
-) -> Option<Vec<Transaction>>
+) -> Vec<Transaction>
 where
     REv: From<StorageRequest>,
 {
-    effect_builder
-        .get_transactions_from_storage(hashes)
-        .await
-        .into_iter()
-        .map(|maybe_transaction| maybe_transaction.map(|transaction| transaction.into_naive()))
-        .collect()
+    let from_storage = effect_builder.get_transactions_from_storage(hashes).await;
+
+    let mut ret = vec![];
+    for item in from_storage {
+        match item {
+            Some((transaction, Some(approvals))) => {
+                ret.push(transaction.with_approvals(approvals));
+            }
+            Some((transaction, None)) => {
+                ret.push(transaction);
+            }
+            None => continue,
+        }
+    }
+
+    ret
 }
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<TransactionHash, FinalizedApprovals>,
+    finalized_approvals: HashMap<TransactionHash, BTreeSet<Approval>>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
@@ -1400,23 +1407,11 @@ async fn execute_finalized_block<REv>(
             .await;
     }
     // Get all transactions in order they appear in the finalized block.
-    let transactions = match get_transactions(
+    let transactions = get_transactions(
         effect_builder,
         finalized_block.all_transactions().copied().collect(),
     )
-    .await
-    {
-        Some(transactions) => transactions,
-        None => {
-            fatal!(
-                effect_builder,
-                "Could not fetch transactions for finalized block: {:?}",
-                finalized_block
-            )
-            .await;
-            return;
-        }
-    };
+    .await;
 
     let executable_block =
         ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions);
@@ -1452,7 +1447,7 @@ where
             proposed_block
                 .value()
                 .all_transactions()
-                .map(|thwa| thwa.transaction_hash())
+                .map(|(x, _)| *x)
                 .collect(),
         )
         .await;
@@ -1495,12 +1490,12 @@ impl ProposedBlock<ClContext> {
     /// If this block contains a transaction that's also present in an ancestor, this returns the
     /// transaction hash, otherwise `None`.
     fn contains_replay(&self) -> Option<TransactionHash> {
-        let block_txns_set: BTreeSet<TypedTransactionHash> =
-            self.value().typed_transaction_hashes().collect();
+        let block_txns_set: BTreeSet<TransactionHash> =
+            self.value().all_transaction_hashes().collect();
         self.context()
             .ancestor_values()
             .iter()
-            .flat_map(|ancestor| ancestor.typed_transaction_hashes())
+            .flat_map(|ancestor| ancestor.all_transaction_hashes())
             .find(|typed_txn_hash| block_txns_set.contains(typed_txn_hash))
             .map(TransactionHash::from)
     }

@@ -13,9 +13,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::MessageTopicOperation,
-    package::EntityVersion,
-    AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, HashAddr, Key, PackageHash,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
+    AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, EntityVersion, HashAddr, Key,
+    PackageHash, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{

@@ -14,6 +14,7 @@ use clap::ArgMatches;
 use itertools::Itertools;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_PROTOCOL_VERSION;
 use casper_types::{
     system::auction::{
         Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,
@@ -39,7 +40,12 @@ pub(crate) fn generate_generic_update(matches: &ArgMatches<'_>) {
     let config_bytes = fs::read(config_path).expect("couldn't read the config file");
     let config: Config = toml::from_slice(&config_bytes).expect("couldn't parse the config file");
 
-    let builder = LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), state_hash);
+    let builder = LmdbWasmTestBuilder::open_raw(
+        data_dir,
+        Default::default(),
+        DEFAULT_PROTOCOL_VERSION,
+        state_hash,
+    );
 
     update_from_config(builder, config);
 }

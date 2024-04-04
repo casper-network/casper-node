@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{bytesrepr::Bytes, runtime_args, AddressableEntityHash, RuntimeArgs};
 
@@ -30,7 +29,7 @@ fn should_measure_gas_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -98,7 +97,7 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -176,7 +175,7 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 

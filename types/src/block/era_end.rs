@@ -36,7 +36,7 @@ pub enum EraEnd {
 }
 
 impl EraEnd {
-    /// Retrieves the deploy hashes within the block.
+    /// Returns the equivocators.
     pub fn equivocators(&self) -> &[PublicKey] {
         match self {
             EraEnd::V1(v1) => v1.equivocators(),
@@ -44,7 +44,7 @@ impl EraEnd {
         }
     }
 
-    /// Retrieves the transfer hashes within the block.
+    /// Returns the inactive validators.
     pub fn inactive_validators(&self) -> &[PublicKey] {
         match self {
             EraEnd::V1(v1) => v1.inactive_validators(),
@@ -52,7 +52,7 @@ impl EraEnd {
         }
     }
 
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    /// Returns the weights of validators in the upcoming era.
     pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
         match self {
             EraEnd::V1(v1) => v1.next_era_validator_weights(),
@@ -60,7 +60,7 @@ impl EraEnd {
         }
     }
 
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    /// Returns the rewards.
     pub fn rewards(&self) -> Rewards {
         match self {
             EraEnd::V1(v1) => Rewards::V1(v1.rewards()),

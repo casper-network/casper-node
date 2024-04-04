@@ -3,26 +3,23 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(doc)]
-use super::TransactionV1;
 use super::{DeployHash, TransactionV1Hash};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest,
 };
 
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
-
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
+const TAG_LENGTH: u8 = 1;
 
 /// A versioned wrapper for a transaction hash or deploy hash.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -38,6 +35,8 @@ pub enum TransactionHash {
 }
 
 impl TransactionHash {
+    /// The number of bytes in a `DeployHash` digest.
+    pub const LENGTH: usize = TAG_LENGTH as usize + Digest::LENGTH;
     /// Digest representation of hash.
     pub fn digest(&self) -> Digest {
         match self {
@@ -54,6 +53,12 @@ impl TransactionHash {
             1 => TransactionHash::from(TransactionV1Hash::random(rng)),
             _ => panic!(),
         }
+    }
+
+    /// Returns a new `TransactionHash` directly initialized with the provided bytes; no hashing
+    /// is done.
+    pub const fn from_raw(raw_digest: [u8; TransactionV1Hash::LENGTH]) -> Self {
+        TransactionHash::V1(TransactionV1Hash::from_raw(raw_digest))
     }
 }
 
@@ -81,6 +86,12 @@ impl From<&TransactionV1Hash> for TransactionHash {
     }
 }
 
+impl Default for TransactionHash {
+    fn default() -> Self {
+        TransactionHash::V1(TransactionV1Hash::default())
+    }
+}
+
 impl Display for TransactionHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
@@ -90,20 +101,16 @@ impl Display for TransactionHash {
     }
 }
 
-impl ToBytes for TransactionHash {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+impl AsRef<[u8]> for TransactionHash {
+    fn as_ref(&self) -> &[u8] {
         match self {
-            TransactionHash::Deploy(hash) => {
-                DEPLOY_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)
-            }
-            TransactionHash::V1(hash) => {
-                V1_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)
-            }
+            TransactionHash::Deploy(hash) => hash.as_ref(),
+            TransactionHash::V1(hash) => hash.as_ref(),
         }
     }
+}
 
+impl ToBytes for TransactionHash {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -116,6 +123,19 @@ impl ToBytes for TransactionHash {
                 TransactionHash::Deploy(hash) => hash.serialized_length(),
                 TransactionHash::V1(hash) => hash.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            TransactionHash::Deploy(hash) => {
+                DEPLOY_TAG.write_bytes(writer)?;
+                hash.write_bytes(writer)
+            }
+            TransactionHash::V1(hash) => {
+                V1_TAG.write_bytes(writer)?;
+                hash.write_bytes(writer)
+            }
+        }
     }
 }
 

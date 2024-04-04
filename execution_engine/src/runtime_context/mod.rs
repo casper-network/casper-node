@@ -22,27 +22,34 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, EntityKind, EntityKindTag, MessageTopicError, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, EntityKindTag, MessageTopicError, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
-    },
+    contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
     execution::Effects,
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
-    GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, Transfer,
-    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess,
+    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash,
+    Transfer, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
+
+/// Whether the execution is permitted to call FFI `casper_add_contract_version()` or not.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum CallingAddContractVersion {
+    /// Allowed.
+    Allowed,
+    /// Forbidden.
+    Forbidden,
+}
 
 /// Holds information specific to the deployed contract.
 pub struct RuntimeContext<'a, R> {
@@ -54,7 +61,7 @@ pub struct RuntimeContext<'a, R> {
     args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
     blocktime: BlockTime,
-    deploy_hash: DeployHash,
+    transaction_hash: TransactionHash,
     gas_limit: Gas,
     gas_counter: Gas,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -63,16 +70,16 @@ pub struct RuntimeContext<'a, R> {
     engine_config: EngineConfig,
     //TODO: Will be removed along with stored session in later PR.
     entry_point_type: EntryPointType,
-    transfers: Vec<TransferAddr>,
+    transfers: Vec<Transfer>,
     remaining_spending_limit: U512,
 
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
     entity_key: Key,
-    entity_kind: EntityKind,
     account_hash: AccountHash,
     emit_message_cost: U512,
+    calling_add_contract_version: CallingAddContractVersion,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -89,21 +96,21 @@ where
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         engine_config: EngineConfig,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         phase: Phase,
-        runtime_args: RuntimeArgs,
+        args: RuntimeArgs,
         gas_limit: Gas,
         gas_counter: Gas,
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
+        calling_add_contract_version: CallingAddContractVersion,
     ) -> Self {
         let emit_message_cost = engine_config
             .wasm_config()
@@ -116,13 +123,13 @@ where
             entry_point_type,
             named_keys,
             access_rights,
-            args: runtime_args,
+            args,
             entity,
             entity_key,
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -131,8 +138,8 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            entity_kind,
             emit_message_cost,
+            calling_add_contract_version,
         }
     }
 
@@ -149,7 +156,6 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let entity_kind = self.entity_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -157,7 +163,7 @@ where
 
         let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
-        let deploy_hash = self.deploy_hash;
+        let transaction_hash = self.transaction_hash;
         let phase = self.phase;
 
         let gas_limit = self.gas_limit;
@@ -177,7 +183,7 @@ where
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -186,8 +192,8 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            entity_kind,
             emit_message_cost: self.emit_message_cost,
+            calling_add_contract_version: self.calling_add_contract_version,
         }
     }
 
@@ -221,30 +227,27 @@ where
         &self.engine_config
     }
 
-    /// Returns the package kind associated with the current context.
-    pub fn get_entity_kind(&self) -> EntityKind {
-        self.entity_kind
-    }
-
     /// Returns whether the current context is of the system addressable entity.
     pub fn is_system_account(&self) -> bool {
-        if let Some(account_hash) = self.entity_kind.maybe_account_hash() {
-            return account_hash == PublicKey::System.to_account_hash();
+        if let Key::AddressableEntity(entity_addr) = self.entity_key {
+            entity_addr.value() == PublicKey::System.to_account_hash().value()
+        } else {
+            false
         }
-        false
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_entity(&mut self, entity_key: Key, name: &str) -> Result<(), ExecError> {
-        let entity_addr = if let Key::AddressableEntity(addr) = entity_key {
-            addr
-        } else {
-            return Err(ExecError::UnexpectedKeyVariant(entity_key));
-        };
-
-        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
-        if let Some(StoredValue::NamedKey(_)) = self.read_gs(&Key::NamedKey(named_key_addr))? {
-            self.prune_gs_unsafe(Key::NamedKey(named_key_addr));
+    fn remove_key_from_entity(&mut self, name: &str) -> Result<(), ExecError> {
+        let key = self.entity_key;
+        match key.as_entity_addr() {
+            None => return Err(ExecError::UnexpectedKeyVariant(key)),
+            Some(entity_addr) => {
+                let named_key =
+                    NamedKeyAddr::new_from_string(entity_addr, name.to_string())?.into();
+                if let Some(StoredValue::NamedKey(_)) = self.read_gs(&named_key)? {
+                    self.prune_gs_unsafe(named_key);
+                }
+            }
         }
         Ok(())
     }
@@ -254,9 +257,8 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), ExecError> {
-        let entity_key = self.get_entity_key();
         self.named_keys.remove(name);
-        self.remove_key_from_entity(entity_key, name)
+        self.remove_key_from_entity(name)
     }
 
     /// Returns the block time.
@@ -264,9 +266,9 @@ where
         self.blocktime
     }
 
-    /// Returns the deploy hash.
-    pub fn get_deploy_hash(&self) -> DeployHash {
-        self.deploy_hash
+    /// Returns the transaction hash.
+    pub fn get_transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
     }
 
     /// Extends access rights with a new map.
@@ -323,7 +325,7 @@ where
         self.entity_key
     }
 
-    /// Returns the initiater of the call chain.
+    /// Returns the initiator of the call chain.
     pub fn get_caller(&self) -> AccountHash {
         self.account_hash
     }
@@ -336,6 +338,11 @@ where
     /// Returns the current phase.
     pub fn phase(&self) -> Phase {
         self.phase
+    }
+
+    /// Returns `true` if the execution is permitted to call `casper_add_contract_version()`.
+    pub fn allow_casper_add_contract_version(&self) -> bool {
+        self.calling_add_contract_version == CallingAddContractVersion::Allowed
     }
 
     /// Generates new deterministic hash for uses as an address.
@@ -362,12 +369,6 @@ where
     /// Creates a new URef where the value it stores is CLType::Unit.
     pub(crate) fn new_unit_uref(&mut self) -> Result<URef, ExecError> {
         self.new_uref(StoredValue::CLValue(CLValue::unit()))
-    }
-
-    /// Creates a new transfer address using a transfer address generator.
-    pub fn new_transfer_addr(&mut self) -> Result<TransferAddr, ExecError> {
-        let transfer_addr = self.address_generator.borrow_mut().create_address();
-        Ok(TransferAddr::new(transfer_addr))
     }
 
     /// Puts `key` to the map of named keys of current context.
@@ -424,31 +425,25 @@ where
     /// Reads the balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
-    #[cfg(test)]
-    pub(crate) fn read_purse_uref(
+    pub(crate) fn available_balance(
         &mut self,
         purse_uref: &URef,
-    ) -> Result<Option<CLValue>, ExecError> {
-        match self
-            .tracking_copy
+        holds_epoch: HoldsEpoch,
+    ) -> Result<Motes, ExecError> {
+        let key = Key::URef(*purse_uref);
+        self.tracking_copy
             .borrow_mut()
-            .read(&Key::Hash(purse_uref.addr()))
-            .map_err(ExecError::TrackingCopy)?
-        {
-            Some(stored_value) => Ok(Some(
-                stored_value.try_into().map_err(ExecError::TypeMismatch)?,
-            )),
-            None => Ok(None),
-        }
+            .get_available_balance(key, holds_epoch)
+            .map_err(ExecError::TrackingCopy)
     }
 
     #[cfg(test)]
-    pub(crate) fn write_purse_uref(
+    pub(crate) fn write_balance(
         &mut self,
         purse_uref: URef,
         cl_value: CLValue,
     ) -> Result<(), ExecError> {
-        self.metered_write_gs_unsafe(Key::Hash(purse_uref.addr()), cl_value)
+        self.metered_write_gs_unsafe(Key::Balance(purse_uref.addr()), cl_value)
     }
 
     /// Read a stored value under a [`Key`].
@@ -472,7 +467,7 @@ where
     ///
     /// DO NOT EXPOSE THIS VIA THE FFI - This function bypasses security checks and should be used
     /// with caution.
-    pub fn read_gs_direct(&mut self, key: &Key) -> Result<Option<StoredValue>, ExecError> {
+    pub fn read_gs_unsafe(&mut self, key: &Key) -> Result<Option<StoredValue>, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .read(key)
@@ -516,18 +511,6 @@ where
             .reader()
             .keys_with_prefix(prefix)
             .map_err(Into::into)
-    }
-
-    /// Write a transfer instance to the global state.
-    pub fn write_transfer(&mut self, key: Key, value: Transfer) {
-        if let Key::Transfer(_) = key {
-            // Writing a `Transfer` will not exceed write size limit.
-            self.tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::Transfer(value));
-        } else {
-            panic!("Do not use this function for writing non-transfer keys")
-        }
     }
 
     /// Write an era info instance to the global state.
@@ -623,12 +606,12 @@ where
     }
 
     /// Returns list of transfers.
-    pub fn transfers(&self) -> &Vec<TransferAddr> {
+    pub fn transfers(&self) -> &Vec<Transfer> {
         &self.transfers
     }
 
     /// Returns mutable list of transfers.
-    pub fn transfers_mut(&mut self) -> &mut Vec<TransferAddr> {
+    pub fn transfers_mut(&mut self) -> &mut Vec<Transfer> {
         &mut self.transfers
     }
 
@@ -674,29 +657,28 @@ where
     fn validate_value(&self, value: &StoredValue) -> Result<(), ExecError> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
-            StoredValue::Account(_) => Ok(()),
-            StoredValue::ByteCode(_) => Ok(()),
-            StoredValue::Contract(_) => Ok(()),
-            StoredValue::AddressableEntity(_) => Ok(()),
-            // TODO: anything to validate here?
-            StoredValue::Package(_) => Ok(()),
-            StoredValue::Transfer(_) => Ok(()),
-            StoredValue::DeployInfo(_) => Ok(()),
-            StoredValue::EraInfo(_) => Ok(()),
-            StoredValue::Bid(_) => Ok(()),
-            StoredValue::BidKind(_) => Ok(()),
-            StoredValue::Withdraw(_) => Ok(()),
-            StoredValue::Unbonding(_) => Ok(()),
-            StoredValue::ContractPackage(_) => Ok(()),
-            StoredValue::ContractWasm(_) => Ok(()),
-            StoredValue::MessageTopic(_) => Ok(()),
-            StoredValue::Message(_) => Ok(()),
             StoredValue::NamedKey(named_key_value) => {
                 self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
                 self.validate_cl_value(named_key_value.get_name_as_cl_value())
             }
-            StoredValue::RawBytes(raw_bytes) => Ok(()),
-            StoredValue::ContractV2(contract) => Ok(()),
+            StoredValue::Account(_)
+            | StoredValue::ByteCode(_)
+            | StoredValue::Contract(_)
+            | StoredValue::AddressableEntity(_)
+            | StoredValue::Package(_)
+            | StoredValue::LegacyTransfer(_)
+            | StoredValue::DeployInfo(_)
+            | StoredValue::EraInfo(_)
+            | StoredValue::Bid(_)
+            | StoredValue::BidKind(_)
+            | StoredValue::Withdraw(_)
+            | StoredValue::Unbonding(_)
+            | StoredValue::ContractPackage(_)
+            | StoredValue::ContractWasm(_)
+            | StoredValue::MessageTopic(_)
+            | StoredValue::Message(_)
+            | StoredValue::RawBytes(_raw_bytes)
+            | StoredValue::ContractV2(_contract) => Ok(()),
         }
     }
 
@@ -759,100 +741,34 @@ where
 
     /// Tests whether reading from the `key` is valid.
     pub fn is_readable(&self, key: &Key) -> bool {
-        match key {
-            Key::URef(uref) => uref.is_readable(),
-            Key::Balance(_) => false,
-            Key::Account(_)
-            | Key::Hash(_)
-            | Key::Transfer(_)
-            | Key::DeployInfo(_)
-            | Key::EraInfo(_)
-            | Key::Bid(_)
-            | Key::Withdraw(_)
-            | Key::Dictionary(_)
-            | Key::SystemEntityRegistry
-            | Key::EraSummary
-            | Key::Unbond(_)
-            | Key::ChainspecRegistry
-            | Key::ChecksumRegistry
-            | Key::BidAddr(_)
-            | Key::Package(_)
-            | Key::AddressableEntity(..)
-            | Key::ByteCode(..)
-            | Key::Message(_)
-            | Key::NamedKey(_) => true,
-            Key::State(_) => false,
+        match self.entity_key.as_entity_addr() {
+            Some(entity_addr) => key.is_readable(&entity_addr),
+            None => {
+                error!(?self.entity_key, "entity_key is unexpected key variant (expected Key::AddressableEntity)");
+                panic!("is_readable: entity_key is unexpected key variant");
+            }
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
-        match key {
-            Key::AddressableEntity(entity_addr) => match self.get_entity_key().into_entity_hash() {
-                Some(entity_hash) => entity_hash == AddressableEntityHash::new(entity_addr.value()),
-                None => false,
-            },
-            Key::URef(uref) => uref.is_addable(),
-            Key::NamedKey(named_key_addr) => {
-                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
-                    named_key_addr.entity_addr() == entity_addr
-                } else {
-                    false
-                }
+        match self.entity_key.as_entity_addr() {
+            Some(entity_addr) => key.is_addable(&entity_addr),
+            None => {
+                error!(?self.entity_key, "entity_key is unexpected key variant (expected Key::AddressableEntity)");
+                panic!("is_addable: entity_key is unexpected key variant");
             }
-            Key::Hash(_)
-            | Key::Account(_)
-            | Key::Transfer(_)
-            | Key::DeployInfo(_)
-            | Key::EraInfo(_)
-            | Key::Balance(_)
-            | Key::Bid(_)
-            | Key::Withdraw(_)
-            | Key::Dictionary(_)
-            | Key::SystemEntityRegistry
-            | Key::EraSummary
-            | Key::Unbond(_)
-            | Key::ChainspecRegistry
-            | Key::ChecksumRegistry
-            | Key::BidAddr(_)
-            | Key::Package(_)
-            | Key::ByteCode(..)
-            | Key::Message(_) => false,
-            Key::State(_) => false,
         }
     }
 
     /// Tests whether writing to `key` is valid.
     pub fn is_writeable(&self, key: &Key) -> bool {
-        match key {
-            Key::URef(uref) => uref.is_writeable(),
-            Key::NamedKey(named_key_addr) => {
-                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
-                    named_key_addr.entity_addr() == entity_addr
-                } else {
-                    false
-                }
+        match self.entity_key.as_entity_addr() {
+            Some(entity_addr) => key.is_writeable(&entity_addr),
+            None => {
+                error!(?self.entity_key, "entity_key is unexpected key variant (expected Key::AddressableEntity)");
+                panic!("is_writeable: entity_key is unexpected key variant");
             }
-            Key::Account(_)
-            | Key::Hash(_)
-            | Key::Transfer(_)
-            | Key::DeployInfo(_)
-            | Key::EraInfo(_)
-            | Key::Balance(_)
-            | Key::Bid(_)
-            | Key::Withdraw(_)
-            | Key::Dictionary(_)
-            | Key::SystemEntityRegistry
-            | Key::EraSummary
-            | Key::Unbond(_)
-            | Key::ChainspecRegistry
-            | Key::ChecksumRegistry
-            | Key::BidAddr(_)
-            | Key::Package(_)
-            | Key::AddressableEntity(..)
-            | Key::ByteCode(..)
-            | Key::Message(_)
-            | Key::State(_) => false,
         }
     }
 
@@ -864,10 +780,8 @@ where
     pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), ExecError> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
-        let is_system = self.entity_kind.is_system();
-
         // gas charge overflow protection
-        match prev.checked_add(gas.cost(is_system)) {
+        match prev.checked_add(gas) {
             None => {
                 self.set_gas_counter(gas_limit);
                 Err(ExecError::GasLimit)
@@ -889,7 +803,7 @@ where
         contract_hash: &AddressableEntityHash,
     ) -> Result<bool, ExecError> {
         Ok(self
-            .system_contract_registry()?
+            .system_entity_registry()?
             .has_contract_hash(contract_hash))
     }
 
@@ -959,16 +873,23 @@ where
     pub(crate) fn metered_emit_message(
         &mut self,
         topic_key: Key,
-        topic_value: MessageTopicSummary,
-        message_key: Key,
-        message_value: MessageChecksum,
+        block_time: BlockTime,
+        block_message_count: u64,
+        topic_message_count: u32,
         message: Message,
     ) -> Result<(), ExecError> {
-        let topic_value = StoredValue::MessageTopic(topic_value);
-        let message_value = StoredValue::Message(message_value);
+        let topic_value =
+            StoredValue::MessageTopic(MessageTopicSummary::new(topic_message_count, block_time));
+        let message_key = message.message_key();
+        let message_value = StoredValue::Message(message.checksum().map_err(ExecError::BytesRepr)?);
+
+        let block_message_count_value =
+            StoredValue::CLValue(CLValue::from_t((block_time, block_message_count))?);
 
         // Charge for amount as measured by serialized length
-        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        let bytes_count = topic_value.serialized_length()
+            + message_value.serialized_length()
+            + block_message_count_value.serialized_length();
         self.charge_gas_storage(bytes_count)?;
 
         self.tracking_copy.borrow_mut().emit_message(
@@ -976,6 +897,7 @@ where
             topic_value,
             message_key,
             message_value,
+            block_message_count_value,
             message,
         );
         Ok(())
@@ -1042,26 +964,23 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), ExecError> {
-        let entity_key = match self.entry_point_type {
-            EntryPointType::AddressableEntity => self.entity_key,
-            EntryPointType::Session | EntryPointType::Factory => {
-                self.get_entity_address_for_account_hash(self.account_hash)?
-            }
+        let entity_key = self.entity_key;
+        let entity_addr = match entity_key.as_entity_addr() {
+            Some(entity_addr) => entity_addr,
+            None => return Err(ExecError::UnexpectedKeyVariant(entity_key)),
         };
 
-        // Check permission to modify associated keys
-        if !self.is_valid_context(entity_key) {
+        if EntryPointType::Caller == self.entry_point_type
+            && entity_addr.tag() != EntityKindTag::Account
+        {
             // Exit early with error to avoid mutations
             return Err(AddKeyFailure::PermissionDenied.into());
         }
 
-        // Converts an account's public key into a URef
-        let key = self.get_entity_key();
-
-        // Take an addressable entity out of the global state
+        // Get the current entity record
         let entity = {
-            let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
-
+            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+            // enforce max keys limit
             if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
                 return Err(ExecError::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
@@ -1074,9 +993,10 @@ where
             entity
         };
 
-        let entity_value = self.addressable_entity_to_validated_value(entity)?;
-
-        self.metered_write_gs_unsafe(key, entity_value)?;
+        self.metered_write_gs_unsafe(
+            entity_key,
+            self.addressable_entity_to_validated_value(entity)?,
+        )?;
 
         Ok(())
     }
@@ -1086,9 +1006,15 @@ where
         &mut self,
         account_hash: AccountHash,
     ) -> Result<(), ExecError> {
-        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
-        // Check permission to modify associated keys
-        if !self.is_valid_context(entity_key) {
+        let entity_key = self.entity_key;
+        let entity_addr = match entity_key.as_entity_addr() {
+            Some(entity_addr) => entity_addr,
+            None => return Err(ExecError::UnexpectedKeyVariant(entity_key)),
+        };
+
+        if EntryPointType::Caller == self.entry_point_type
+            && entity_addr.tag() != EntityKindTag::Account
+        {
             // Exit early with error to avoid mutations
             return Err(RemoveKeyFailure::PermissionDenied.into());
         }
@@ -1123,9 +1049,15 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), ExecError> {
-        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
-        // Check permission to modify associated keys
-        if !self.is_valid_context(entity_key) {
+        let entity_key = self.entity_key;
+        let entity_addr = match entity_key.as_entity_addr() {
+            Some(entity_addr) => entity_addr,
+            None => return Err(ExecError::UnexpectedKeyVariant(entity_key)),
+        };
+
+        if EntryPointType::Caller == self.entry_point_type
+            && entity_addr.tag() != EntityKindTag::Account
+        {
             // Exit early with error to avoid mutations
             return Err(UpdateKeyFailure::PermissionDenied.into());
         }
@@ -1168,22 +1100,23 @@ where
         action_type: ActionType,
         threshold: Weight,
     ) -> Result<(), ExecError> {
-        let entity_key = match self.entry_point_type {
-            EntryPointType::AddressableEntity => self.entity_key,
-            EntryPointType::Session | EntryPointType::Factory => {
-                self.get_entity_address_for_account_hash(self.account_hash)?
+        let entity_key = self.entity_key;
+        let entity_addr = match entity_key.as_entity_addr() {
+            Some(entity_addr) => entity_addr,
+            None => {
+                return Err(ExecError::UnexpectedKeyVariant(entity_key));
             }
         };
-        // Check permission to modify associated keys
-        if !self.is_valid_context(entity_key) {
+
+        if EntryPointType::Caller == self.entry_point_type
+            && entity_addr.tag() != EntityKindTag::Account
+        {
             // Exit early with error to avoid mutations
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        let key = self.get_entity_key();
-
         // Take an addressable entity out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
 
         // Exit early in case of error without updating global state
         if self.is_authorized_by_admin() {
@@ -1195,7 +1128,7 @@ where
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
-        self.metered_write_gs_unsafe(key, entity_value)?;
+        self.metered_write_gs_unsafe(entity_key, entity_value)?;
 
         Ok(())
     }
@@ -1207,14 +1140,6 @@ where
         let value = StoredValue::AddressableEntity(entity);
         self.validate_value(&value)?;
         Ok(value)
-    }
-
-    pub(crate) fn get_entity_address_for_account_hash(
-        &mut self,
-        account_hash: AccountHash,
-    ) -> Result<Key, ExecError> {
-        let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
-        CLValue::into_t::<Key>(cl_value).map_err(ExecError::CLValue)
     }
 
     pub(crate) fn read_addressable_entity_by_account_hash(
@@ -1235,11 +1160,6 @@ where
             Some(_other_variant_1) => Err(ExecError::UnexpectedStoredValueVariant),
             None => Ok(None),
         }
-    }
-
-    /// Checks if the account context is valid.
-    fn is_valid_context(&self, entity_key: Key) -> bool {
-        self.get_entity_key() == entity_key
     }
 
     /// Gets main purse id
@@ -1379,7 +1299,7 @@ where
         &self,
         name: &str,
     ) -> Result<AddressableEntityHash, ExecError> {
-        let registry = self.system_contract_registry()?;
+        let registry = self.system_entity_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);
             ExecError::MissingSystemContractHash(name.to_string())
@@ -1395,13 +1315,13 @@ where
         ))
     }
 
-    /// Returns system contract registry by querying the global state.
-    pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, ExecError> {
+    /// Returns system entity registry by querying the global state.
+    pub fn system_entity_registry(&self) -> Result<SystemEntityRegistry, ExecError> {
         self.tracking_copy
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|err| {
-                error!("Missing system contract registry");
+                error!("Missing system entity registry");
                 ExecError::TrackingCopy(err)
             })
     }
@@ -1441,7 +1361,7 @@ where
     ) -> Result<Result<(), MessageTopicError>, ExecError> {
         let entity_key: Key = self.get_entity_key();
         let entity_addr = entity_key
-            .into_entity_hash()
+            .as_entity_addr()
             .ok_or(ExecError::InvalidContext)?;
 
         // Take the addressable entity out of the global state

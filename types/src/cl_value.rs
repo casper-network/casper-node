@@ -16,11 +16,11 @@ use crate::{
 mod checksum_registry;
 mod dictionary;
 mod jsonrepr;
-mod system_contract_registry;
+mod system_entity_registry;
 
 pub use checksum_registry::ChecksumRegistry;
 pub use dictionary::{handle_stored_dictionary_value, DictionaryValue};
-pub use system_contract_registry::SystemEntityRegistry;
+pub use system_entity_registry::SystemEntityRegistry;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]

@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{package::EntityVersion, runtime_args, PackageHash};
+use casper_types::{runtime_args, EntityVersion, PackageHash};
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const PURSE_NAME_ARG_NAME: &str = "purse_name";

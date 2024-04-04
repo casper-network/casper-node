@@ -9,6 +9,12 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
+use casper_binary_port::{
+    BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest,
+    DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult,
+    GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+    NodeStatus, PayloadType, ReactorStateName, RecordId, TransactionWithExecutionInfo,
+};
 use casper_storage::{
     data_access_layer::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
@@ -17,16 +23,12 @@ use casper_storage::{
     global_state::trie::TrieRaw,
 };
 use casper_types::{
-    binary_port::{
-        self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-        BinaryResponseAndRequest, DbRawBytesSpec, GetRequest, GetTrieFullResult,
-        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
-        NodeStatus, ReactorStateName, RecordId, TransactionWithExecutionInfo,
-    },
+    addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Digest, GlobalStateIdentifier, Peers, ProtocolVersion,
-    SignedBlock, TimeDiff, Timestamp, Transaction,
+    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, Key, Peers, ProtocolVersion,
+    SignedBlock, StoredValue, TimeDiff, Transaction,
 };
+
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -46,7 +48,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::SpeculativeExecutionResult,
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -57,12 +59,13 @@ use crate::{
     },
     reactor::{main_reactor::MainEvent, Finalize, QueueKind},
     types::NodeRng,
-    utils::ListeningError,
+    utils::{display_error, ListeningError},
 };
 
 use self::{error::Error, metrics::Metrics};
 
 use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
+
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
@@ -106,135 +109,6 @@ impl BinaryPort {
     }
 }
 
-impl<REv> Component<REv> for BinaryPort
-where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + From<AcceptTransactionRequest>
-        + From<NetworkInfoRequest>
-        + From<ReactorInfoRequest>
-        + From<ConsensusRequest>
-        + From<BlockSynchronizerRequest>
-        + From<UpgradeWatcherRequest>
-        + From<ChainspecRawBytesRequest>
-        + Send,
-{
-    type Event = Event;
-
-    fn handle_event(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        event: Self::Event,
-    ) -> Effects<Self::Event> {
-        match &self.state {
-            ComponentState::Uninitialized => {
-                warn!(
-                    ?event,
-                    name = <Self as Component<MainEvent>>::name(self),
-                    "should not handle this event when component is uninitialized"
-                );
-                Effects::new()
-            }
-            ComponentState::Initializing => match event {
-                Event::Initialize => {
-                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
-                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
-                    effects
-                }
-                _ => {
-                    warn!(
-                        ?event,
-                        name = <Self as Component<MainEvent>>::name(self),
-                        "binary port is initializing, ignoring event"
-                    );
-                    Effects::new()
-                }
-            },
-            ComponentState::Initialized => match event {
-                Event::Initialize => {
-                    error!(
-                        ?event,
-                        name = <Self as Component<MainEvent>>::name(self),
-                        "component already initialized"
-                    );
-                    Effects::new()
-                }
-                Event::AcceptConnection {
-                    stream,
-                    peer,
-                    responder,
-                } => {
-                    if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
-                        self.metrics.binary_port_connections_count.inc();
-                        let config = Arc::clone(&self.config);
-                        tokio::spawn(handle_client(peer, stream, effect_builder, config, permit));
-                    } else {
-                        warn!(
-                            "connection limit reached, dropping connection from {}",
-                            peer
-                        );
-                    }
-                    responder.respond(()).ignore()
-                }
-                Event::HandleRequest { request, responder } => {
-                    let config = Arc::clone(&self.config);
-                    let metrics = Arc::clone(&self.metrics);
-                    async move {
-                        let response =
-                            handle_request(request, effect_builder, &config, &metrics).await;
-                        responder.respond(response).await
-                    }
-                    .ignore()
-                }
-            },
-            ComponentState::Fatal(msg) => {
-                error!(
-                    msg,
-                    ?event,
-                    name = <Self as Component<MainEvent>>::name(self),
-                    "should not handle this event when this component has fatal error"
-                );
-                Effects::new()
-            }
-        }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
-    }
-}
-
-impl<REv> InitializedComponent<REv> for BinaryPort
-where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + From<AcceptTransactionRequest>
-        + From<NetworkInfoRequest>
-        + From<ReactorInfoRequest>
-        + From<ConsensusRequest>
-        + From<BlockSynchronizerRequest>
-        + From<UpgradeWatcherRequest>
-        + From<ChainspecRawBytesRequest>
-        + Send,
-{
-    fn state(&self) -> &ComponentState {
-        &self.state
-    }
-
-    fn set_state(&mut self, new_state: ComponentState) {
-        info!(
-            ?new_state,
-            name = <Self as Component<MainEvent>>::name(self),
-            "component state changed"
-        );
-
-        self.state = new_state;
-    }
-}
-
 async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
@@ -254,41 +128,27 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let version = effect_builder.get_protocol_version().await;
+    let protocol_version = effect_builder.get_protocol_version().await;
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
             metrics.binary_port_try_accept_transaction_count.inc();
-            try_accept_transaction(effect_builder, transaction, None, version).await
+            try_accept_transaction(effect_builder, transaction, false, protocol_version).await
         }
-        BinaryRequest::TrySpeculativeExec {
-            transaction,
-            state_root_hash,
-            block_time,
-            protocol_version,
-            speculative_exec_at_block,
-        } => {
+        BinaryRequest::TrySpeculativeExec { transaction } => {
             metrics.binary_port_try_speculative_exec_count.inc();
-            let response = try_accept_transaction(
-                effect_builder,
-                transaction.clone(),
-                Some(speculative_exec_at_block),
-                version,
-            )
-            .await;
+            if !config.allow_request_speculative_exec {
+                return BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version);
+            }
+            let response =
+                try_accept_transaction(effect_builder, transaction.clone(), true, protocol_version)
+                    .await;
             if !response.is_success() {
                 return response;
             }
-            try_speculative_execution(
-                effect_builder,
-                state_root_hash,
-                block_time,
-                protocol_version,
-                transaction,
-            )
-            .await
+            try_speculative_execution(effect_builder, transaction, protocol_version).await
         }
         BinaryRequest::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics, version).await
+            handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
         }
     }
 }
@@ -320,10 +180,7 @@ where
         } if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
             metrics.binary_port_get_record_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
-                return BinaryResponse::new_error(
-                    binary_port::ErrorCode::BadRequest,
-                    protocol_version,
-                );
+                return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
             };
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
@@ -332,13 +189,9 @@ where
                 return BinaryResponse::new_empty(protocol_version);
             };
             let Ok(serialized) = bincode::serialize(&transfers) else {
-                return BinaryResponse::new_error(
-                    binary_port::ErrorCode::InternalError,
-                    protocol_version,
-                );
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
-            let bytes = DbRawBytesSpec::new_current(&serialized);
-            BinaryResponse::from_db_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
+            BinaryResponse::from_raw_bytes(PayloadType::Transfers, serialized, protocol_version)
         }
         GetRequest::Record {
             record_type_tag,
@@ -347,28 +200,28 @@ where
             metrics.binary_port_get_record_count.inc();
             match RecordId::try_from(record_type_tag) {
                 Ok(record_id) => {
-                    let maybe_raw_bytes = effect_builder.get_raw_data(record_id, key).await;
-                    BinaryResponse::from_db_raw_bytes(record_id, maybe_raw_bytes, protocol_version)
+                    let Some(db_bytes) = effect_builder.get_raw_data(record_id, key).await else {
+                        return BinaryResponse::new_empty(protocol_version);
+                    };
+                    let payload_type = PayloadType::from_record_id(record_id, db_bytes.is_legacy());
+                    BinaryResponse::from_raw_bytes(
+                        payload_type,
+                        db_bytes.into_raw_bytes(),
+                        protocol_version,
+                    )
                 }
-                Err(_) => BinaryResponse::new_error(
-                    binary_port::ErrorCode::UnsupportedRequest,
-                    protocol_version,
-                ),
+                Err(_) => {
+                    BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version)
+                }
             }
         }
         GetRequest::Information { info_type_tag, key } => {
             metrics.binary_port_get_info_count.inc();
             let Ok(tag) = InformationRequestTag::try_from(info_type_tag) else {
-                return BinaryResponse::new_error(
-                    binary_port::ErrorCode::UnsupportedRequest,
-                    protocol_version,
-                );
+                return BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version);
             };
             let Ok(req) = InformationRequest::try_from((tag, &key[..])) else {
-                return BinaryResponse::new_error(
-                    binary_port::ErrorCode::BadRequest,
-                    protocol_version,
-                );
+                return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
             };
             handle_info_request(req, effect_builder, protocol_version).await
         }
@@ -378,7 +231,6 @@ where
         }
     }
 }
-
 async fn handle_get_all_items<REv>(
     state_identifier: Option<GlobalStateIdentifier>,
     key_tag: casper_types::KeyTag,
@@ -398,11 +250,11 @@ where
             BinaryResponse::from_value(values, protocol_version)
         }
         TaggedValuesResult::RootNotFound => {
-            let error_code = binary_port::ErrorCode::RootNotFound;
+            let error_code = ErrorCode::RootNotFound;
             BinaryResponse::new_error(error_code, protocol_version)
         }
         TaggedValuesResult::Failure(_err) => {
-            BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
+            BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
         }
     }
 }
@@ -422,24 +274,23 @@ where
             base_key,
             path,
         } => {
-            handle_get_item_request(
-                effect_builder,
-                state_identifier,
-                base_key,
-                path,
-                protocol_version,
-            )
-            .await
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            match get_global_state_item(effect_builder, state_root_hash, base_key, path).await {
+                Ok(Some(result)) => BinaryResponse::from_value(result, protocol_version),
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
+                Err(err) => BinaryResponse::new_error(err, protocol_version),
+            }
         }
         GlobalStateRequest::AllItems {
             state_identifier,
             key_tag,
         } => {
             if !config.allow_request_get_all_values {
-                BinaryResponse::new_error(
-                    binary_port::ErrorCode::FunctionDisabled,
-                    protocol_version,
-                )
+                BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 handle_get_all_items(state_identifier, key_tag, effect_builder, protocol_version)
                     .await
@@ -447,10 +298,7 @@ where
         }
         GlobalStateRequest::Trie { trie_key } => {
             let response = if !config.allow_request_get_trie {
-                BinaryResponse::new_error(
-                    binary_port::ErrorCode::FunctionDisabled,
-                    protocol_version,
-                )
+                BinaryResponse::new_error(ErrorCode::FunctionDisabled, protocol_version)
             } else {
                 let req = TrieRequest::new(trie_key, None);
                 match effect_builder.get_trie(req).await.into_legacy() {
@@ -458,52 +306,185 @@ where
                         GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
                         protocol_version,
                     ),
-                    Err(_err) => BinaryResponse::new_error(
-                        binary_port::ErrorCode::InternalError,
-                        protocol_version,
-                    ),
+                    Err(_err) => {
+                        BinaryResponse::new_error(ErrorCode::InternalError, protocol_version)
+                    }
                 }
             };
             response
         }
+        GlobalStateRequest::DictionaryItem {
+            state_identifier,
+            identifier,
+        } => {
+            let Some(state_root_hash) =
+                resolve_state_root_hash(effect_builder, state_identifier).await
+            else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let result = match identifier {
+                DictionaryItemIdentifier::AccountNamedKey {
+                    hash,
+                    dictionary_name,
+                    dictionary_item_key,
+                } => {
+                    get_dictionary_item_by_legacy_named_key(
+                        effect_builder,
+                        state_root_hash,
+                        Key::Account(hash),
+                        dictionary_name,
+                        dictionary_item_key,
+                    )
+                    .await
+                }
+                DictionaryItemIdentifier::ContractNamedKey {
+                    hash,
+                    dictionary_name,
+                    dictionary_item_key,
+                } => {
+                    get_dictionary_item_by_legacy_named_key(
+                        effect_builder,
+                        state_root_hash,
+                        Key::Hash(hash),
+                        dictionary_name,
+                        dictionary_item_key,
+                    )
+                    .await
+                }
+                DictionaryItemIdentifier::EntityNamedKey {
+                    addr,
+                    dictionary_name,
+                    dictionary_item_key,
+                } => {
+                    get_dictionary_item_by_named_key(
+                        effect_builder,
+                        state_root_hash,
+                        addr,
+                        dictionary_name,
+                        dictionary_item_key,
+                    )
+                    .await
+                }
+                DictionaryItemIdentifier::URef {
+                    seed_uref,
+                    dictionary_item_key,
+                } => {
+                    let key = Key::dictionary(seed_uref, dictionary_item_key.as_bytes());
+                    get_global_state_item(effect_builder, state_root_hash, key, vec![])
+                        .await
+                        .map(|maybe_res| maybe_res.map(|res| DictionaryQueryResult::new(key, res)))
+                }
+                DictionaryItemIdentifier::DictionaryItem(addr) => {
+                    let key = Key::Dictionary(addr);
+                    get_global_state_item(effect_builder, state_root_hash, key, vec![])
+                        .await
+                        .map(|maybe_res| maybe_res.map(|res| DictionaryQueryResult::new(key, res)))
+                }
+            };
+            match result {
+                Ok(Some(result)) => BinaryResponse::from_value(result, protocol_version),
+                Ok(None) => BinaryResponse::new_empty(protocol_version),
+                Err(err) => BinaryResponse::new_error(err, protocol_version),
+            }
+        }
     }
 }
 
-async fn handle_get_item_request<REv>(
+async fn get_dictionary_item_by_legacy_named_key<REv>(
     effect_builder: EffectBuilder<REv>,
-    state_identifier: Option<GlobalStateIdentifier>,
-    base_key: casper_types::Key,
-    path: Vec<String>,
-    protocol_version: ProtocolVersion,
-) -> BinaryResponse
+    state_root_hash: Digest,
+    entity_key: Key,
+    dictionary_name: String,
+    dictionary_item_key: String,
+) -> Result<Option<DictionaryQueryResult>, ErrorCode>
 where
     REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await
-    else {
-        return BinaryResponse::new_empty(protocol_version);
-    };
+    match effect_builder
+        .query_global_state(QueryRequest::new(state_root_hash, entity_key, vec![]))
+        .await
+    {
+        QueryResult::Success { value, .. } => {
+            let named_keys = match &*value {
+                StoredValue::Account(account) => account.named_keys(),
+                StoredValue::Contract(contract) => contract.named_keys(),
+                _ => return Err(ErrorCode::DictionaryURefNotFound),
+            };
+            let Some(uref) = named_keys.get(&dictionary_name).and_then(Key::as_uref) else {
+                return Err(ErrorCode::DictionaryURefNotFound);
+            };
+            let key = Key::dictionary(*uref, dictionary_item_key.as_bytes());
+            let Some(query_result) =
+                get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+            else {
+                return Ok(None);
+            };
 
+            Ok(Some(DictionaryQueryResult::new(key, query_result)))
+        }
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
+            Err(ErrorCode::DictionaryURefNotFound)
+        }
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
+    }
+}
+
+async fn get_dictionary_item_by_named_key<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    entity_addr: EntityAddr,
+    dictionary_name: String,
+    dictionary_item_key: String,
+) -> Result<Option<DictionaryQueryResult>, ErrorCode>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let Ok(key_addr) = NamedKeyAddr::new_from_string(entity_addr, dictionary_name) else {
+        return Err(ErrorCode::InternalError);
+    };
+    let req = QueryRequest::new(state_root_hash, Key::NamedKey(key_addr), vec![]);
+    match effect_builder.query_global_state(req).await {
+        QueryResult::Success { value, .. } => {
+            let StoredValue::NamedKey(key_val) = &*value else {
+                return Err(ErrorCode::DictionaryURefNotFound);
+            };
+            let Ok(Key::URef(uref)) = key_val.get_key() else {
+                return Err(ErrorCode::DictionaryURefNotFound);
+            };
+            let key = Key::dictionary(uref, dictionary_item_key.as_bytes());
+            let Some(query_result) =
+                get_global_state_item(effect_builder, state_root_hash, key, vec![]).await?
+            else {
+                return Ok(None);
+            };
+            Ok(Some(DictionaryQueryResult::new(key, query_result)))
+        }
+        QueryResult::RootNotFound | QueryResult::ValueNotFound(_) => {
+            Err(ErrorCode::DictionaryURefNotFound)
+        }
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
+    }
+}
+
+async fn get_global_state_item<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    base_key: Key,
+    path: Vec<String>,
+) -> Result<Option<GlobalStateQueryResult>, ErrorCode>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
     match effect_builder
         .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
         .await
     {
-        QueryResult::Success { value, proofs } => BinaryResponse::from_value(
-            GlobalStateQueryResult::new(*value, proofs),
-            protocol_version,
-        ),
-        QueryResult::RootNotFound => {
-            let error_code = binary_port::ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
+        QueryResult::Success { value, proofs } => {
+            Ok(Some(GlobalStateQueryResult::new(*value, proofs)))
         }
-        QueryResult::ValueNotFound(_) => {
-            let error_code = binary_port::ErrorCode::NotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
-        }
-        QueryResult::Failure(_) => {
-            let error_code = binary_port::ErrorCode::QueryFailedToExecute;
-            BinaryResponse::new_error(error_code, protocol_version)
-        }
+        QueryResult::RootNotFound => Err(ErrorCode::RootNotFound),
+        QueryResult::ValueNotFound(_) => Err(ErrorCode::NotFound),
+        QueryResult::Failure(_) => Err(ErrorCode::FailedQuery),
     }
 }
 
@@ -605,6 +586,12 @@ where
             (*effect_builder.get_chainspec_raw_bytes().await).clone(),
             protocol_version,
         ),
+        InformationRequest::LatestSwitchBlockHeader => BinaryResponse::from_option(
+            effect_builder
+                .get_latest_switch_block_header_from_storage()
+                .await,
+            protocol_version,
+        ),
         InformationRequest::NodeStatus => {
             let (
                 node_uptime,
@@ -617,6 +604,7 @@ where
                 last_progress,
                 available_block_range,
                 block_sync,
+                latest_switch_block_header,
             ) = join!(
                 effect_builder.get_uptime(),
                 effect_builder.get_network_name(),
@@ -628,6 +616,7 @@ where
                 effect_builder.get_last_progress(),
                 effect_builder.get_available_block_range_from_storage(),
                 effect_builder.get_block_synchronizer_status(),
+                effect_builder.get_latest_switch_block_header_from_storage(),
             );
             let starting_state_root_hash = effect_builder
                 .get_block_header_at_height_from_storage(available_block_range.low(), true)
@@ -644,10 +633,7 @@ where
             let reactor_state = ReactorStateName::new(reactor_state);
 
             let Ok(uptime) = TimeDiff::try_from(node_uptime) else {
-                return BinaryResponse::new_error(
-                    binary_port::ErrorCode::InternalError,
-                    protocol_version,
-                );
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
             };
 
             let status = NodeStatus {
@@ -664,6 +650,8 @@ where
                 last_progress: last_progress.into(),
                 available_block_range,
                 block_sync,
+                latest_switch_block_hash: latest_switch_block_header
+                    .map(|header| header.block_hash()),
             };
             BinaryResponse::from_value(status, protocol_version)
         }
@@ -673,14 +661,14 @@ where
 async fn try_accept_transaction<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
-    speculative_exec_at: Option<BlockHeader>,
+    is_speculative: bool,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<AcceptTransactionRequest>,
 {
     effect_builder
-        .try_accept_transaction(transaction, speculative_exec_at.map(Box::new))
+        .try_accept_transaction(transaction, is_speculative)
         .await
         .map_or_else(
             |err| BinaryResponse::new_error(err.into(), protocol_version),
@@ -690,28 +678,32 @@ where
 
 async fn try_speculative_execution<REv>(
     effect_builder: EffectBuilder<REv>,
-    state_root_hash: Digest,
-    block_time: Timestamp,
-    protocol_version: ProtocolVersion,
     transaction: Transaction,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
-    REv: From<Event> + From<ContractRuntimeRequest>,
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
-    effect_builder
-        .speculatively_execute(
-            SpeculativeExecutionState {
-                state_root_hash,
-                block_time,
-                protocol_version,
-            },
-            Box::new(transaction),
-        )
+    let tip = match effect_builder
+        .get_highest_complete_block_header_from_storage()
         .await
-        .map_or_else(
-            |err| BinaryResponse::new_error(err.into(), protocol_version),
-            |val| BinaryResponse::from_value(val, protocol_version),
-        )
+    {
+        Some(tip) => tip,
+        None => return BinaryResponse::new_error(ErrorCode::NoCompleteBlocks, protocol_version),
+    };
+
+    let result = effect_builder
+        .speculatively_execute(Box::new(tip), Box::new(transaction))
+        .await;
+
+    match result {
+        SpeculativeExecutionResult::InvalidTransaction(ite) => {
+            BinaryResponse::new_error(ite.into(), protocol_version)
+        }
+        SpeculativeExecutionResult::WasmV1(spec_exec_result) => {
+            BinaryResponse::from_value(spec_exec_result, protocol_version)
+        }
+    }
 }
 
 async fn client_loop<REv, const N: usize, R, W>(
@@ -759,29 +751,23 @@ where
     REv: From<Event>,
 {
     let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
-        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
     };
 
     if !header
         .protocol_version()
         .is_compatible_with(&protocol_version)
     {
-        return BinaryResponse::new_error(
-            binary_port::ErrorCode::UnsupportedProtocolVersion,
-            protocol_version,
-        );
+        return BinaryResponse::new_error(ErrorCode::UnsupportedProtocolVersion, protocol_version);
     }
 
     // we might receive a request added in a minor version if we're behind
     let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
-        return BinaryResponse::new_error(
-            binary_port::ErrorCode::UnsupportedRequest,
-            protocol_version,
-        );
+        return BinaryResponse::new_error(ErrorCode::UnsupportedRequest, protocol_version);
     };
 
     let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
-        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+        return BinaryResponse::new_error(ErrorCode::BadRequest, protocol_version);
     };
 
     effect_builder
@@ -818,7 +804,7 @@ async fn handle_client<REv>(
 
     if let Err(err) = client_loop(server, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
-        info!(%addr, %err, "binary port client handler error");
+        info!(%addr, err=display_error(&err), "binary port client handler error");
     }
 }
 
@@ -881,42 +867,6 @@ async fn run_server<REv>(
                 }
             }
         }
-    }
-}
-
-impl<REv> PortBoundComponent<REv> for BinaryPort
-where
-    REv: From<Event>
-        + From<StorageRequest>
-        + From<ContractRuntimeRequest>
-        + From<AcceptTransactionRequest>
-        + From<NetworkInfoRequest>
-        + From<ReactorInfoRequest>
-        + From<ConsensusRequest>
-        + From<BlockSynchronizerRequest>
-        + From<UpgradeWatcherRequest>
-        + From<ChainspecRawBytesRequest>
-        + Send,
-{
-    type Error = ListeningError;
-    type ComponentEvent = Event;
-
-    fn listen(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let local_addr = Arc::clone(&self.local_addr);
-        let server_join_handle = tokio::spawn(run_server(
-            local_addr,
-            effect_builder,
-            Arc::clone(&self.config),
-            Arc::clone(&self.shutdown_trigger),
-        ));
-        self.server_join_handle
-            .set(server_join_handle)
-            .expect("server join handle should not be set elsewhere");
-
-        Ok(Effects::new())
     }
 }
 
@@ -985,5 +935,170 @@ where
             .get_highest_complete_block_header_from_storage()
             .await
             .map(|header| *header.state_root_hash()),
+    }
+}
+
+impl<REv> Component<REv> for BinaryPort
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + Send,
+{
+    type Event = Event;
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
+
+    fn handle_event(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        event: Self::Event,
+    ) -> Effects<Self::Event> {
+        match &self.state {
+            ComponentState::Uninitialized => {
+                warn!(
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when component is uninitialized"
+                );
+                Effects::new()
+            }
+            ComponentState::Initializing => match event {
+                Event::Initialize => {
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
+                    <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+                    effects
+                }
+                _ => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "binary port is initializing, ignoring event"
+                    );
+                    Effects::new()
+                }
+            },
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::AcceptConnection {
+                    stream,
+                    peer,
+                    responder,
+                } => {
+                    if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
+                        self.metrics.binary_port_connections_count.inc();
+                        let config = Arc::clone(&self.config);
+                        tokio::spawn(handle_client(peer, stream, effect_builder, config, permit));
+                    } else {
+                        warn!(
+                            "connection limit reached, dropping connection from {}",
+                            peer
+                        );
+                    }
+                    responder.respond(()).ignore()
+                }
+                Event::HandleRequest { request, responder } => {
+                    let config = Arc::clone(&self.config);
+                    let metrics = Arc::clone(&self.metrics);
+                    async move {
+                        let response =
+                            handle_request(request, effect_builder, &config, &metrics).await;
+                        responder.respond(response).await
+                    }
+                    .ignore()
+                }
+            },
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
+        }
+    }
+}
+
+impl<REv> InitializedComponent<REv> for BinaryPort
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + Send,
+{
+    fn state(&self) -> &ComponentState {
+        &self.state
+    }
+
+    fn set_state(&mut self, new_state: ComponentState) {
+        info!(
+            ?new_state,
+            name = <Self as Component<MainEvent>>::name(self),
+            "component state changed"
+        );
+
+        self.state = new_state;
+    }
+}
+
+impl<REv> PortBoundComponent<REv> for BinaryPort
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + Send,
+{
+    type Error = ListeningError;
+    type ComponentEvent = Event;
+
+    fn listen(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+    ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
+        let local_addr = Arc::clone(&self.local_addr);
+        let server_join_handle = tokio::spawn(run_server(
+            local_addr,
+            effect_builder,
+            Arc::clone(&self.config),
+            Arc::clone(&self.shutdown_trigger),
+        ));
+        self.server_join_handle
+            .set(server_join_handle)
+            .expect("server join handle should not be set elsewhere");
+
+        Ok(Effects::new())
     }
 }

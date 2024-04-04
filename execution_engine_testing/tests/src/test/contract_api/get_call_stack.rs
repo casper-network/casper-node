@@ -1,10 +1,7 @@
 use num_traits::One;
 
-use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
-use casper_execution_engine::{
-    engine_state::{Error as CoreError, ExecuteRequest},
-    execution::ExecError,
-};
+use casper_engine_test_support::{ExecuteRequest, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
+use casper_execution_engine::{engine_state::Error as CoreError, execution::ExecError};
 use casper_types::{
     addressable_entity::NamedKeys, system::Caller, AddressableEntity, AddressableEntityHash,
     CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue,
@@ -35,7 +32,7 @@ fn stored_session(contract_hash: AddressableEntityHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractHash(contract_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_SESSION.to_string(),
-        entry_point_type: EntryPointType::Session,
+        entry_point_type: EntryPointType::Caller,
     }
 }
 
@@ -43,7 +40,7 @@ fn stored_versioned_session(contract_package_hash: PackageHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractPackageHash(contract_package_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_SESSION.to_string(),
-        entry_point_type: EntryPointType::Session,
+        entry_point_type: EntryPointType::Caller,
     }
 }
 
@@ -51,7 +48,7 @@ fn stored_contract(contract_hash: AddressableEntityHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractHash(contract_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
-        entry_point_type: EntryPointType::AddressableEntity,
+        entry_point_type: EntryPointType::Called,
     }
 }
 
@@ -59,7 +56,7 @@ fn stored_versioned_contract(contract_package_hash: PackageHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractPackageHash(contract_package_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
-        entry_point_type: EntryPointType::AddressableEntity,
+        entry_point_type: EntryPointType::Called,
     }
 }
 
@@ -174,7 +171,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 
         let current_entity_hash = package.current_entity_hash().unwrap();
         let current_contract_entity_key =
-            EntityAddr::new_contract_entity_addr(current_entity_hash.value());
+            EntityAddr::new_smart_contract(current_entity_hash.value());
 
         let cl_value = self
             .query(
@@ -212,12 +209,12 @@ fn assert_each_context_has_correct_call_stack_info(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::AddressableEntity | EntryPointType::Factory => builder
+            EntryPointType::Called | EntryPointType::Factory => builder
                 .get_call_stack_from_contract_context(
                     &stored_call_stack_key,
                     current_contract_package_hash,
                 ),
-            EntryPointType::Session => {
+            EntryPointType::Caller => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
         };
@@ -233,7 +230,7 @@ fn assert_each_context_has_correct_call_stack_info(
 
         assert_eq!(
             head,
-            [Caller::Session {
+            [Caller::Initiator {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -263,7 +260,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
     let (head, _) = call_stack.split_at(usize::one());
     assert_eq!(
         head,
-        [Caller::Session {
+        [Caller::Initiator {
             account_hash: *DEFAULT_ACCOUNT_ADDR,
         }],
     );
@@ -272,19 +269,19 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::AddressableEntity | EntryPointType::Factory => builder
+            EntryPointType::Called | EntryPointType::Factory => builder
                 .get_call_stack_from_contract_context(
                     &stored_call_stack_key,
                     current_contract_package_hash.value(),
                 ),
-            EntryPointType::Session => {
+            EntryPointType::Caller => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
         };
         let (head, rest) = call_stack.split_at(usize::one());
         assert_eq!(
             head,
-            [Caller::Session {
+            [Caller::Initiator {
                 account_hash: *DEFAULT_ACCOUNT_ADDR,
             }],
         );
@@ -296,7 +293,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
     for (index, expected_call_stack_element) in call_stack.iter().enumerate() {
         let maybe_call = calls.get(index);
         match (maybe_call, expected_call_stack_element) {
-            // Versioned Call with EntryPointType::Contract
+            // Versioned Call with EntryPointType::Called
             (
                 Some(Call {
                     entry_point_type,
@@ -304,25 +301,25 @@ fn assert_call_stack_matches_calls(call_stack: Vec<Caller>, calls: &[Call]) {
                         ContractAddress::ContractPackageHash(current_contract_package_hash),
                     ..
                 }),
-                Caller::AddressableEntity {
+                Caller::Entity {
                     package_hash: contract_package_hash,
                     ..
                 },
-            ) if *entry_point_type == EntryPointType::AddressableEntity
+            ) if *entry_point_type == EntryPointType::Called
                 && *contract_package_hash == *current_contract_package_hash => {}
 
-            // Unversioned Call with EntryPointType::Contract
+            // Unversioned Call with EntryPointType::Called
             (
                 Some(Call {
                     entry_point_type,
                     contract_address: ContractAddress::ContractHash(current_contract_hash),
                     ..
                 }),
-                Caller::AddressableEntity {
+                Caller::Entity {
                     entity_hash: contract_hash,
                     ..
                 },
-            ) if *entry_point_type == EntryPointType::AddressableEntity
+            ) if *entry_point_type == EntryPointType::Called
                 && *contract_hash == *current_contract_hash => {}
 
             _ => panic!(
@@ -337,7 +334,7 @@ mod session {
     use crate::test::contract_api::get_call_stack::EntityWithKeys;
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_execution_engine::execution::ExecError;
-    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
+    use casper_types::{execution::TransformKindV2, runtime_args, system::mint, Key};
     use num_traits::Zero;
 
     use super::{
@@ -1185,7 +1182,7 @@ mod session {
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
                     == &Key::Package(current_contract_package_hash)
-                    && transform.kind() == &TransformKind::Identity),
+                    && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 
@@ -1366,7 +1363,7 @@ mod session {
             assert!(
                 effects.transforms().iter().any(|transform| transform.key()
                     == &Key::contract_entity_key(current_contract_hash.into())
-                    && transform.kind() == &TransformKind::Identity),
+                    && transform.kind() == &TransformKindV2::Identity),
                 "Missing `Identity` transform for a contract being called."
             );
 
@@ -3137,24 +3134,22 @@ mod payment {
     const DEPTHS: &[usize] = &[0, 6, 10];
 
     fn execute(builder: &mut LmdbWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3169,33 +3164,31 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
 
-            let sender = *DEFAULT_ACCOUNT_ADDR;
+        let sender = *DEFAULT_ACCOUNT_ADDR;
 
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_versioned_payment_contract_by_name(
-                    CONTRACT_PACKAGE_NAME,
-                    None,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_versioned_payment_contract_by_name(
+                CONTRACT_PACKAGE_NAME,
+                None,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3211,29 +3204,27 @@ mod payment {
         subcalls: Vec<Call>,
         current_contract_package_hash: HashAddr,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_versioned_payment_contract_by_hash(
-                    current_contract_package_hash,
-                    None,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_versioned_payment_contract_by_hash(
+                current_contract_package_hash,
+                None,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3248,32 +3239,30 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
 
-            let sender = *DEFAULT_ACCOUNT_ADDR;
+        let sender = *DEFAULT_ACCOUNT_ADDR;
 
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_payment_named_key(
-                    CONTRACT_NAME,
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_payment_named_key(
+                CONTRACT_NAME,
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         super::execute_and_assert_result(
             call_depth,
@@ -3289,28 +3278,26 @@ mod payment {
         subcalls: Vec<Call>,
         current_contract_hash: HashAddr,
     ) {
-        let execute_request = {
-            let mut rng = rand::thread_rng();
-            let deploy_hash = rng.gen();
-            let sender = *DEFAULT_ACCOUNT_ADDR;
-            let args = runtime_args! {
-                ARG_CALLS => subcalls,
-                ARG_CURRENT_DEPTH => 0u8,
-                mint::ARG_AMOUNT => approved_amount(call_depth),
-            };
-            let deploy = DeployItemBuilder::new()
-                .with_address(sender)
-                .with_stored_payment_hash(
-                    current_contract_hash.into(),
-                    CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
-                    args,
-                )
-                .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
-                .with_authorization_keys(&[sender])
-                .with_deploy_hash(deploy_hash)
-                .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        let mut rng = rand::thread_rng();
+        let deploy_hash = rng.gen();
+        let sender = *DEFAULT_ACCOUNT_ADDR;
+        let args = runtime_args! {
+            ARG_CALLS => subcalls,
+            ARG_CURRENT_DEPTH => 0u8,
+            mint::ARG_AMOUNT => approved_amount(call_depth),
         };
+        let deploy_item = DeployItemBuilder::new()
+            .with_address(sender)
+            .with_stored_payment_hash(
+                current_contract_hash.into(),
+                CONTRACT_FORWARDER_ENTRYPOINT_SESSION,
+                args,
+            )
+            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
+            .with_authorization_keys(&[sender])
+            .with_deploy_hash(deploy_hash)
+            .build();
+        let execute_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
         let is_entry_point_type_session = true;
 
@@ -3585,7 +3572,7 @@ mod payment {
     // Stored session + recursive subcall
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3610,7 +3597,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3639,7 +3626,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3659,7 +3646,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3687,7 +3674,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3712,7 +3699,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3744,7 +3731,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3764,7 +3751,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3789,7 +3776,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3814,7 +3801,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3844,7 +3831,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3864,7 +3851,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3892,7 +3879,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3916,7 +3903,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3948,7 +3935,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -3968,6 +3955,7 @@ mod payment {
     }
 
     #[ignore]
+    #[allow(unused)]
     #[test]
     fn stored_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
@@ -3995,7 +3983,7 @@ mod payment {
     // Stored session + recursive subcall failure cases
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for call_depth in DEPTHS {
@@ -4026,7 +4014,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4062,7 +4050,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4094,7 +4082,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_versioned_payment_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4128,7 +4116,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
@@ -4159,7 +4147,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4194,7 +4182,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
@@ -4225,7 +4213,7 @@ mod payment {
     }
 
     #[ignore]
-    #[test]
+    #[allow(unused)]
     fn stored_payment_by_name_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();

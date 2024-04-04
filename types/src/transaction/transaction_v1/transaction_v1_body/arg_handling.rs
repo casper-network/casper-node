@@ -2,18 +2,17 @@ use core::marker::PhantomData;
 
 use tracing::debug;
 
-use super::super::TransactionV1ConfigFailure;
 use crate::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    system::auction::ARG_VALIDATOR_PUBLIC_KEY,
-    CLTyped, CLValue, CLValueError, PublicKey, RuntimeArgs, URef, U512,
+    system::auction::ARG_VALIDATOR,
+    CLType, CLTyped, CLValue, CLValueError, InvalidTransactionV1, PublicKey, RuntimeArgs,
+    TransferTarget, URef, U512,
 };
 
-const TRANSFER_ARG_SOURCE: RequiredArg<URef> = RequiredArg::new("source");
-const TRANSFER_ARG_TARGET: RequiredArg<URef> = RequiredArg::new("target");
 const TRANSFER_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
-const TRANSFER_ARG_TO: OptionalArg<AccountHash> = OptionalArg::new("to");
+const TRANSFER_ARG_SOURCE: OptionalArg<URef> = OptionalArg::new("source");
+const TRANSFER_ARG_TARGET: &str = "target";
 const TRANSFER_ARG_ID: OptionalArg<u64> = OptionalArg::new("id");
 
 const ADD_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
@@ -36,8 +35,7 @@ const REDELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("valid
 const REDELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
 const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("new_validator");
 
-const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> =
-    RequiredArg::new(ARG_VALIDATOR_PUBLIC_KEY);
+const ACTIVATE_BID_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new(ARG_VALIDATOR);
 
 struct RequiredArg<T> {
     name: &'static str,
@@ -52,13 +50,13 @@ impl<T> RequiredArg<T> {
         }
     }
 
-    fn get(&self, args: &RuntimeArgs) -> Result<T, TransactionV1ConfigFailure>
+    fn get(&self, args: &RuntimeArgs) -> Result<T, InvalidTransactionV1>
     where
         T: CLTyped + FromBytes,
     {
         let cl_value = args.get(self.name).ok_or_else(|| {
             debug!("missing required runtime argument '{}'", self.name);
-            TransactionV1ConfigFailure::MissingArg {
+            InvalidTransactionV1::MissingArg {
                 arg_name: self.name.to_string(),
             }
         })?;
@@ -86,7 +84,7 @@ impl<T> OptionalArg<T> {
         }
     }
 
-    fn get(&self, args: &RuntimeArgs) -> Result<Option<T>, TransactionV1ConfigFailure>
+    fn get(&self, args: &RuntimeArgs) -> Result<Option<T>, InvalidTransactionV1>
     where
         T: CLTyped + FromBytes,
     {
@@ -109,36 +107,46 @@ impl<T> OptionalArg<T> {
 fn parse_cl_value<T: CLTyped + FromBytes>(
     cl_value: &CLValue,
     arg_name: &str,
-) -> Result<T, TransactionV1ConfigFailure> {
-    cl_value.to_t::<T>().map_err(|_| {
-        debug!(
-            "expected runtime argument '{arg_name}' to be of type {}, but is {}",
-            T::cl_type(),
-            cl_value.cl_type()
-        );
-        TransactionV1ConfigFailure::UnexpectedArgType {
-            arg_name: arg_name.to_string(),
-            expected: T::cl_type(),
-            got: cl_value.cl_type().clone(),
-        }
+) -> Result<T, InvalidTransactionV1> {
+    cl_value.to_t::<T>().map_err(|error| {
+        let error = match error {
+            CLValueError::Serialization(error) => InvalidTransactionV1::InvalidArg {
+                arg_name: arg_name.to_string(),
+                error,
+            },
+            CLValueError::Type(_) => InvalidTransactionV1::UnexpectedArgType {
+                arg_name: arg_name.to_string(),
+                expected: vec![T::cl_type()],
+                got: cl_value.cl_type().clone(),
+            },
+        };
+        debug!("{error}");
+        error
     })
 }
 
 /// Creates a `RuntimeArgs` suitable for use in a transfer transaction.
-pub(in crate::transaction::transaction_v1) fn new_transfer_args<A: Into<U512>>(
-    source: URef,
-    target: URef,
+pub(in crate::transaction::transaction_v1) fn new_transfer_args<
+    A: Into<U512>,
+    T: Into<TransferTarget>,
+>(
     amount: A,
-    maybe_to: Option<AccountHash>,
+    maybe_source: Option<URef>,
+    target: T,
     maybe_id: Option<u64>,
 ) -> Result<RuntimeArgs, CLValueError> {
     let mut args = RuntimeArgs::new();
-    TRANSFER_ARG_SOURCE.insert(&mut args, source)?;
-    TRANSFER_ARG_TARGET.insert(&mut args, target)?;
-    TRANSFER_ARG_AMOUNT.insert(&mut args, amount.into())?;
-    if let Some(to) = maybe_to {
-        TRANSFER_ARG_TO.insert(&mut args, to)?;
+    if let Some(source) = maybe_source {
+        TRANSFER_ARG_SOURCE.insert(&mut args, source)?;
     }
+    match target.into() {
+        TransferTarget::PublicKey(public_key) => args.insert(TRANSFER_ARG_TARGET, public_key)?,
+        TransferTarget::AccountHash(account_hash) => {
+            args.insert(TRANSFER_ARG_TARGET, account_hash)?
+        }
+        TransferTarget::URef(uref) => args.insert(TRANSFER_ARG_TARGET, uref)?,
+    }
+    TRANSFER_ARG_AMOUNT.insert(&mut args, amount.into())?;
     if let Some(id) = maybe_id {
         TRANSFER_ARG_ID.insert(&mut args, id)?;
     }
@@ -149,9 +157,7 @@ pub(in crate::transaction::transaction_v1) fn new_transfer_args<A: Into<U512>>(
 pub(in crate::transaction::transaction_v1) fn has_valid_transfer_args(
     args: &RuntimeArgs,
     native_transfer_minimum_motes: u64,
-) -> Result<(), TransactionV1ConfigFailure> {
-    let _source = TRANSFER_ARG_SOURCE.get(args)?;
-    let _target = TRANSFER_ARG_TARGET.get(args)?;
+) -> Result<(), InvalidTransactionV1> {
     let amount = TRANSFER_ARG_AMOUNT.get(args)?;
     if amount < U512::from(native_transfer_minimum_motes) {
         debug!(
@@ -159,12 +165,46 @@ pub(in crate::transaction::transaction_v1) fn has_valid_transfer_args(
             %amount,
             "insufficient transfer amount"
         );
-        return Err(TransactionV1ConfigFailure::InsufficientTransferAmount {
+        return Err(InvalidTransactionV1::InsufficientTransferAmount {
             minimum: native_transfer_minimum_motes,
             attempted: amount,
         });
     }
-    let _maybe_to = TRANSFER_ARG_TO.get(args)?;
+    let _source = TRANSFER_ARG_SOURCE.get(args)?;
+
+    let target_cl_value = args.get(TRANSFER_ARG_TARGET).ok_or_else(|| {
+        debug!("missing required runtime argument '{TRANSFER_ARG_TARGET}'");
+        InvalidTransactionV1::MissingArg {
+            arg_name: TRANSFER_ARG_TARGET.to_string(),
+        }
+    })?;
+    match target_cl_value.cl_type() {
+        CLType::PublicKey => {
+            let _ = parse_cl_value::<PublicKey>(target_cl_value, TRANSFER_ARG_TARGET);
+        }
+        CLType::ByteArray(32) => {
+            let _ = parse_cl_value::<AccountHash>(target_cl_value, TRANSFER_ARG_TARGET);
+        }
+        CLType::URef => {
+            let _ = parse_cl_value::<URef>(target_cl_value, TRANSFER_ARG_TARGET);
+        }
+        _ => {
+            debug!(
+                "expected runtime argument '{TRANSFER_ARG_TARGET}' to be of type {}, {} or {},
+                but is {}",
+                CLType::PublicKey,
+                CLType::ByteArray(32),
+                CLType::URef,
+                target_cl_value.cl_type()
+            );
+            return Err(InvalidTransactionV1::UnexpectedArgType {
+                arg_name: TRANSFER_ARG_TARGET.to_string(),
+                expected: vec![CLType::PublicKey, CLType::ByteArray(32), CLType::URef],
+                got: target_cl_value.cl_type().clone(),
+            });
+        }
+    }
+
     let _maybe_id = TRANSFER_ARG_ID.get(args)?;
     Ok(())
 }
@@ -185,7 +225,7 @@ pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
 /// Checks the given `RuntimeArgs` are suitable for use in an add_bid transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_add_bid_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _public_key = ADD_BID_ARG_PUBLIC_KEY.get(args)?;
     let _delegation_rate = ADD_BID_ARG_DELEGATION_RATE.get(args)?;
     let _amount = ADD_BID_ARG_AMOUNT.get(args)?;
@@ -206,7 +246,7 @@ pub(in crate::transaction::transaction_v1) fn new_withdraw_bid_args<A: Into<U512
 /// Checks the given `RuntimeArgs` are suitable for use in an withdraw_bid transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_withdraw_bid_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _public_key = WITHDRAW_BID_ARG_PUBLIC_KEY.get(args)?;
     let _amount = WITHDRAW_BID_ARG_AMOUNT.get(args)?;
     Ok(())
@@ -228,7 +268,7 @@ pub(in crate::transaction::transaction_v1) fn new_delegate_args<A: Into<U512>>(
 /// Checks the given `RuntimeArgs` are suitable for use in a delegate transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_delegate_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _delegator = DELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = DELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = DELEGATE_ARG_AMOUNT.get(args)?;
@@ -251,7 +291,7 @@ pub(in crate::transaction::transaction_v1) fn new_undelegate_args<A: Into<U512>>
 /// Checks the given `RuntimeArgs` are suitable for use in an undelegate transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_undelegate_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _delegator = UNDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = UNDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = UNDELEGATE_ARG_AMOUNT.get(args)?;
@@ -276,7 +316,7 @@ pub(in crate::transaction::transaction_v1) fn new_redelegate_args<A: Into<U512>>
 /// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _delegator = REDELEGATE_ARG_DELEGATOR.get(args)?;
     let _validator = REDELEGATE_ARG_VALIDATOR.get(args)?;
     let _amount = REDELEGATE_ARG_AMOUNT.get(args)?;
@@ -287,7 +327,7 @@ pub(in crate::transaction::transaction_v1) fn has_valid_redelegate_args(
 /// Checks the given `RuntimeArgs` are suitable for use in a redelegate transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_activate_bid_args(
     args: &RuntimeArgs,
-) -> Result<(), TransactionV1ConfigFailure> {
+) -> Result<(), InvalidTransactionV1> {
     let _validator = ACTIVATE_BID_ARG_VALIDATOR.get(args)?;
     Ok(())
 }
@@ -303,12 +343,31 @@ mod tests {
     fn should_validate_transfer_args() {
         let rng = &mut TestRng::new();
         let min_motes = 10_u64;
-        // Check random args, within motes limit.
+        // Check random args, PublicKey target, within motes limit.
         let args = new_transfer_args(
-            rng.gen(),
-            rng.gen(),
             U512::from(rng.gen_range(min_motes..=u64::MAX)),
             rng.gen::<bool>().then(|| rng.gen()),
+            PublicKey::random(rng),
+            rng.gen::<bool>().then(|| rng.gen()),
+        )
+        .unwrap();
+        has_valid_transfer_args(&args, min_motes).unwrap();
+
+        // Check random args, AccountHash target, within motes limit.
+        let args = new_transfer_args(
+            U512::from(rng.gen_range(min_motes..=u64::MAX)),
+            rng.gen::<bool>().then(|| rng.gen()),
+            rng.gen::<AccountHash>(),
+            rng.gen::<bool>().then(|| rng.gen()),
+        )
+        .unwrap();
+        has_valid_transfer_args(&args, min_motes).unwrap();
+
+        // Check random args, URef target, within motes limit.
+        let args = new_transfer_args(
+            U512::from(rng.gen_range(min_motes..=u64::MAX)),
+            rng.gen::<bool>().then(|| rng.gen()),
+            rng.gen::<URef>(),
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
@@ -316,10 +375,9 @@ mod tests {
 
         // Check at minimum motes limit.
         let args = new_transfer_args(
-            rng.gen(),
-            rng.gen(),
             U512::from(min_motes),
             rng.gen::<bool>().then(|| rng.gen()),
+            PublicKey::random(rng),
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
@@ -327,10 +385,9 @@ mod tests {
 
         // Check with extra arg.
         let mut args = new_transfer_args(
-            rng.gen(),
-            rng.gen(),
             U512::from(min_motes),
             rng.gen::<bool>().then(|| rng.gen()),
+            PublicKey::random(rng),
             rng.gen::<bool>().then(|| rng.gen()),
         )
         .unwrap();
@@ -344,12 +401,11 @@ mod tests {
         let min_motes = 10_u64;
 
         let args = runtime_args! {
-            TRANSFER_ARG_SOURCE.name => rng.gen::<URef>(),
-            TRANSFER_ARG_TARGET.name => rng.gen::<URef>(),
-            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes - 1)
+            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes - 1),
+            TRANSFER_ARG_TARGET => PublicKey::random(rng)
         };
 
-        let expected_error = TransactionV1ConfigFailure::InsufficientTransferAmount {
+        let expected_error = InvalidTransactionV1::InsufficientTransferAmount {
             minimum: min_motes,
             attempted: U512::from(min_motes - 1),
         };
@@ -365,26 +421,12 @@ mod tests {
         let rng = &mut TestRng::new();
         let min_motes = 10_u64;
 
-        // Missing "source".
-        let args = runtime_args! {
-            TRANSFER_ARG_TARGET.name => rng.gen::<URef>(),
-            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes)
-        };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
-            arg_name: TRANSFER_ARG_SOURCE.name.to_string(),
-        };
-        assert_eq!(
-            has_valid_transfer_args(&args, min_motes),
-            Err(expected_error)
-        );
-
         // Missing "target".
         let args = runtime_args! {
-            TRANSFER_ARG_SOURCE.name => rng.gen::<URef>(),
-            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes)
+            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
-            arg_name: TRANSFER_ARG_TARGET.name.to_string(),
+        let expected_error = InvalidTransactionV1::MissingArg {
+            arg_name: TRANSFER_ARG_TARGET.to_string(),
         };
         assert_eq!(
             has_valid_transfer_args(&args, min_motes),
@@ -393,10 +435,9 @@ mod tests {
 
         // Missing "amount".
         let args = runtime_args! {
-            TRANSFER_ARG_SOURCE.name => rng.gen::<URef>(),
-            TRANSFER_ARG_TARGET.name => rng.gen::<URef>()
+            TRANSFER_ARG_TARGET => PublicKey::random(rng)
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: TRANSFER_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(
@@ -410,32 +451,30 @@ mod tests {
         let rng = &mut TestRng::new();
         let min_motes = 10_u64;
 
-        // Wrong "source" type (a required arg).
+        // Wrong "target" type (a required arg).
         let args = runtime_args! {
-            TRANSFER_ARG_SOURCE.name => 1_u8,
-            TRANSFER_ARG_TARGET.name => rng.gen::<URef>(),
-            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes)
+            TRANSFER_ARG_AMOUNT.name => U512::from(min_motes),
+            TRANSFER_ARG_TARGET => "wrong"
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
-            arg_name: TRANSFER_ARG_SOURCE.name.to_string(),
-            expected: CLType::URef,
-            got: CLType::U8,
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
+            arg_name: TRANSFER_ARG_TARGET.to_string(),
+            expected: vec![CLType::PublicKey, CLType::ByteArray(32), CLType::URef],
+            got: CLType::String,
         };
         assert_eq!(
             has_valid_transfer_args(&args, min_motes),
             Err(expected_error)
         );
 
-        // Wrong "to" type (an optional arg).
+        // Wrong "source" type (an optional arg).
         let args = runtime_args! {
-            TRANSFER_ARG_SOURCE.name => rng.gen::<URef>(),
-            TRANSFER_ARG_TARGET.name => rng.gen::<URef>(),
             TRANSFER_ARG_AMOUNT.name => U512::from(min_motes),
-            TRANSFER_ARG_TO.name => 1_u8
+            TRANSFER_ARG_SOURCE.name => 1_u8,
+            TRANSFER_ARG_TARGET => PublicKey::random(rng)
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
-            arg_name: TRANSFER_ARG_TO.name.to_string(),
-            expected: Option::<AccountHash>::cl_type(),
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
+            arg_name: TRANSFER_ARG_SOURCE.name.to_string(),
+            expected: vec![Option::<URef>::cl_type()],
             got: CLType::U8,
         };
         assert_eq!(
@@ -467,7 +506,7 @@ mod tests {
             ADD_BID_ARG_DELEGATION_RATE.name => rng.gen::<u8>(),
             ADD_BID_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_PUBLIC_KEY.name.to_string(),
         };
         assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
@@ -477,7 +516,7 @@ mod tests {
             ADD_BID_ARG_PUBLIC_KEY.name => PublicKey::random(rng),
             ADD_BID_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_DELEGATION_RATE.name.to_string(),
         };
         assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
@@ -487,7 +526,7 @@ mod tests {
             ADD_BID_ARG_PUBLIC_KEY.name => PublicKey::random(rng),
             ADD_BID_ARG_DELEGATION_RATE.name => rng.gen::<u8>()
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: ADD_BID_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
@@ -503,9 +542,9 @@ mod tests {
             ADD_BID_ARG_DELEGATION_RATE.name => rng.gen::<u8>(),
             ADD_BID_ARG_AMOUNT.name => rng.gen::<u64>()
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
             arg_name: ADD_BID_ARG_AMOUNT.name.to_string(),
-            expected: CLType::U512,
+            expected: vec![CLType::U512],
             got: CLType::U64,
         };
         assert_eq!(has_valid_add_bid_args(&args), Err(expected_error));
@@ -532,7 +571,7 @@ mod tests {
         let args = runtime_args! {
             WITHDRAW_BID_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: WITHDRAW_BID_ARG_PUBLIC_KEY.name.to_string(),
         };
         assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
@@ -541,7 +580,7 @@ mod tests {
         let args = runtime_args! {
             WITHDRAW_BID_ARG_PUBLIC_KEY.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: WITHDRAW_BID_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
@@ -556,9 +595,9 @@ mod tests {
             WITHDRAW_BID_ARG_PUBLIC_KEY.name => PublicKey::random(rng),
             WITHDRAW_BID_ARG_AMOUNT.name => rng.gen::<u64>()
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
             arg_name: WITHDRAW_BID_ARG_AMOUNT.name.to_string(),
-            expected: CLType::U512,
+            expected: vec![CLType::U512],
             got: CLType::U64,
         };
         assert_eq!(has_valid_withdraw_bid_args(&args), Err(expected_error));
@@ -591,7 +630,7 @@ mod tests {
             DELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             DELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_DELEGATOR.name.to_string(),
         };
         assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
@@ -601,7 +640,7 @@ mod tests {
             DELEGATE_ARG_DELEGATOR.name => PublicKey::random(rng),
             DELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_VALIDATOR.name.to_string(),
         };
         assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
@@ -611,7 +650,7 @@ mod tests {
             DELEGATE_ARG_DELEGATOR.name => PublicKey::random(rng),
             DELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: DELEGATE_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
@@ -627,9 +666,9 @@ mod tests {
             DELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             DELEGATE_ARG_AMOUNT.name => rng.gen::<u64>()
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
             arg_name: DELEGATE_ARG_AMOUNT.name.to_string(),
-            expected: CLType::U512,
+            expected: vec![CLType::U512],
             got: CLType::U64,
         };
         assert_eq!(has_valid_delegate_args(&args), Err(expected_error));
@@ -662,7 +701,7 @@ mod tests {
             UNDELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             UNDELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_DELEGATOR.name.to_string(),
         };
         assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
@@ -672,7 +711,7 @@ mod tests {
             UNDELEGATE_ARG_DELEGATOR.name => PublicKey::random(rng),
             UNDELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>())
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_VALIDATOR.name.to_string(),
         };
         assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
@@ -682,7 +721,7 @@ mod tests {
             UNDELEGATE_ARG_DELEGATOR.name => PublicKey::random(rng),
             UNDELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: UNDELEGATE_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
@@ -698,9 +737,9 @@ mod tests {
             UNDELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             UNDELEGATE_ARG_AMOUNT.name => rng.gen::<u64>()
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
             arg_name: UNDELEGATE_ARG_AMOUNT.name.to_string(),
-            expected: CLType::U512,
+            expected: vec![CLType::U512],
             got: CLType::U64,
         };
         assert_eq!(has_valid_undelegate_args(&args), Err(expected_error));
@@ -735,7 +774,7 @@ mod tests {
             REDELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>()),
             REDELEGATE_ARG_NEW_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_DELEGATOR.name.to_string(),
         };
         assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
@@ -746,7 +785,7 @@ mod tests {
             REDELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>()),
             REDELEGATE_ARG_NEW_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_VALIDATOR.name.to_string(),
         };
         assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
@@ -757,7 +796,7 @@ mod tests {
             REDELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             REDELEGATE_ARG_NEW_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_AMOUNT.name.to_string(),
         };
         assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
@@ -768,7 +807,7 @@ mod tests {
             REDELEGATE_ARG_VALIDATOR.name => PublicKey::random(rng),
             REDELEGATE_ARG_AMOUNT.name => U512::from(rng.gen::<u64>()),
         };
-        let expected_error = TransactionV1ConfigFailure::MissingArg {
+        let expected_error = InvalidTransactionV1::MissingArg {
             arg_name: REDELEGATE_ARG_NEW_VALIDATOR.name.to_string(),
         };
         assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));
@@ -785,9 +824,9 @@ mod tests {
             REDELEGATE_ARG_AMOUNT.name => rng.gen::<u64>(),
             REDELEGATE_ARG_NEW_VALIDATOR.name => PublicKey::random(rng),
         };
-        let expected_error = TransactionV1ConfigFailure::UnexpectedArgType {
+        let expected_error = InvalidTransactionV1::UnexpectedArgType {
             arg_name: REDELEGATE_ARG_AMOUNT.name.to_string(),
-            expected: CLType::U512,
+            expected: vec![CLType::U512],
             got: CLType::U64,
         };
         assert_eq!(has_valid_redelegate_args(&args), Err(expected_error));

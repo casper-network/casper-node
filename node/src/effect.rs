@@ -5,8 +5,8 @@
 //!
 //! A pinned, boxed future returning an event is called an effect and typed as an `Effect<Ev>`,
 //! where `Ev` is the event's type, as every effect must have its return value either wrapped in an
-//! event through [`EffectExt::event`](crate::effect::EffectExt::event) or ignored using
-//! [`EffectExt::ignore`](crate::effect::EffectExt::ignore). As an example, the
+//! event through [`EffectExt::event`](EffectExt::event) or ignored using
+//! [`EffectExt::ignore`](EffectExt::ignore). As an example, the
 //! [`handle_event`](crate::components::Component::handle_event) function of a component always
 //! returns `Effect<Self::Event>`.
 //!
@@ -34,7 +34,7 @@
 //!
 //!   Component events are also created from the return values of effects: While effects do not
 //!   return events themselves when called, their return values are turned first into component
-//!   events through the [`event`](crate::effect::EffectExt) method. In a second step, inside the
+//!   events through the [`event`](EffectExt) method. In a second step, inside the
 //!   reactors routing code, `wrap_effect` will then convert from component to reactor event.
 //!
 //! # Using effects
@@ -76,10 +76,10 @@
 //! Announcements are often dispatched to multiple components by the reactor; since that usually
 //! involves a [`clone`](`Clone::clone`), they should be kept light.
 //!
-//! A good example is the arrival of a new deploy passed in by a client. Depending on the setup it
-//! may be stored, buffered or, in certain testing setups, just discarded. None of this is a concern
-//! of the component that talks to the client and deserializes the incoming deploy though, instead
-//! it simply returns an effect that produces an announcement.
+//! A good example is the arrival of a new transaction passed in by a client. Depending on the setup
+//! it may be stored, buffered or, in certain testing setups, just discarded. None of this is a
+//! concern of the component that talks to the client and deserializes the incoming transaction
+//! though, instead it simply returns an effect that produces an announcement.
 //!
 //! **Requests** are complex events that are used when a component needs something from other
 //! components. Typically, an effect (which uses [`EffectBuilder::make_request`] in its
@@ -98,7 +98,7 @@ pub(crate) mod requests;
 use std::{
     any::type_name,
     borrow::Cow,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     future::Future,
     mem,
@@ -114,29 +114,27 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{
-    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-    BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+use casper_binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
-
-use casper_storage::data_access_layer::{
-    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
-    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_storage::{
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
+    DbRawBytesSpec,
 };
 use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
     execution::{Effects as ExecutionEffects, ExecutionResult},
-    package::Package,
-    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
-    BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
-    FinalitySignatureId, FinalitySignatureV2, FinalizedApprovals, Key, NextUpgrade,
+    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
     ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, TransactionWithFinalizedApprovals, Transfer, U512,
+    TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -146,13 +144,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
+        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -162,23 +160,21 @@ use crate::{
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
-use casper_storage::block_store::types::ApprovalsHashes;
-
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
+    ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
-    TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -806,14 +802,14 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces which deploys have expired.
-    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    /// Announces which transactions have expired.
+    pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
-        REv: From<DeployBufferAnnouncement>,
+        REv: From<TransactionBufferAnnouncement>,
     {
         self.event_queue
             .schedule(
-                DeployBufferAnnouncement::DeploysExpired(hashes),
+                TransactionBufferAnnouncement::TransactionsExpired(hashes),
                 QueueKind::Validation,
             )
             .await;
@@ -905,9 +901,9 @@ impl<REv> EffectBuilder<REv> {
 
     /// Request that a block with a specific height be marked completed.
     ///
-    /// Completion means that the block itself (along with its header) and all of its deploys have
-    /// been persisted to storage and its global state root hash is missing no dependencies in the
-    /// global state.
+    /// Completion means that the block itself (along with its header) and all of its transactions
+    /// have been persisted to storage and its global state root hash is missing no dependencies
+    /// in the global state.
     pub(crate) async fn mark_block_completed(self, block_height: u64) -> bool
     where
         REv: From<MarkBlockCompletedRequest>,
@@ -926,7 +922,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-        speculative_exec_at_block: Option<Box<BlockHeader>>,
+        is_speculative: bool,
     ) -> Result<(), transaction_acceptor::Error>
     where
         REv: From<AcceptTransactionRequest>,
@@ -934,7 +930,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             },
             QueueKind::Api,
@@ -1051,6 +1047,21 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
+    pub(crate) async fn announce_new_era_gas_price(self, era_id: EraId, next_era_gas_price: u8)
+    where
+        REv: From<ContractRuntimeAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ContractRuntimeAnnouncement::NextEraGasPrice {
+                    era_id,
+                    next_era_gas_price,
+                },
+                QueueKind::ContractRuntime,
+            )
+            .await
+    }
+
     /// Begins gossiping an item.
     pub(crate) async fn begin_gossip<T>(self, item_id: T::Id, source: Source, target: GossipTarget)
     where
@@ -1129,6 +1140,27 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetBlock {
                 block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_block_utilization(
+        self,
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+    ) -> Option<(u64, u64)>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                switch_block_utilization: transaction_count,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1221,6 +1253,17 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_latest_switch_block_header_from_storage(self) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetLatestSwitchBlockHeader { responder },
             QueueKind::FromStorage,
         )
         .await
@@ -1515,6 +1558,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_current_gas_price(self, era_id: EraId) -> Option<u8>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetEraGasPrice { era_id, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
     pub(crate) async fn put_transaction_to_storage(self, transaction: Transaction) -> bool
     where
         REv: From<StorageRequest>,
@@ -1536,7 +1590,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_transactions_from_storage(
         self,
         transaction_hashes: Vec<TransactionHash>,
-    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
+    ) -> SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>
     where
         REv: From<StorageRequest>,
     {
@@ -1626,9 +1680,9 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Stores the given execution results for the deploys in the given block in the linear block
-    /// store.
-    pub(crate) async fn put_execution_results_to_storage(
+    /// Stores the given execution results for the transactions in the given block in the linear
+    /// block store.
+    pub(crate) async fn put_execution_artifacts_to_storage(
         self,
         block_hash: BlockHash,
         block_height: u64,
@@ -1757,14 +1811,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Passes the timestamp of a future block for which deploys are to be proposed.
-    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
+    /// Passes the timestamp of a future block for which transactions are to be proposed.
+    pub(crate) async fn request_appendable_block(
+        self,
+        timestamp: Timestamp,
+        era_id: EraId,
+    ) -> AppendableBlock
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<TransactionBufferRequest>,
     {
         self.make_request(
-            |responder| DeployBufferRequest::GetAppendableBlock {
+            |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
+                era_id,
                 responder,
             },
             QueueKind::Consensus,
@@ -1805,7 +1864,7 @@ impl<REv> EffectBuilder<REv> {
             .await
     }
 
-    /// Checks whether the deploys included in the block exist on the network and the block is
+    /// Checks whether the transactions included in the block exist on the network and the block is
     /// valid.
     pub(crate) async fn validate_block(
         self,
@@ -2200,7 +2259,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn store_finalized_approvals(
         self,
         transaction_hash: TransactionHash,
-        finalized_approvals: FinalizedApprovals,
+        finalized_approvals: BTreeSet<Approval>,
     ) -> bool
     where
         REv: From<StorageRequest>,
@@ -2220,15 +2279,15 @@ impl<REv> EffectBuilder<REv> {
     /// used for debugging & discovery purposes.
     pub(crate) async fn speculatively_execute(
         self,
-        execution_prestate: SpeculativeExecutionState,
+        block_header: Box<BlockHeader>,
         transaction: Box<Transaction>,
-    ) -> Result<SpeculativeExecutionResult, engine_state::Error>
+    ) -> SpeculativeExecutionResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
+                block_header,
                 transaction,
                 responder,
             },

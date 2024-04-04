@@ -1,6 +1,5 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use num_traits::Zero;
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
@@ -86,7 +85,7 @@ impl GenesisValidator {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<GenesisValidator> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisValidator {
-        let bonded_amount = Motes::new(rng.gen());
+        let bonded_amount = Motes::new(rng.gen::<u64>());
         let delegation_rate = rng.gen();
 
         GenesisValidator::new(bonded_amount, delegation_rate)
@@ -386,7 +385,7 @@ impl Distribution<GenesisAccount> for Standard {
         rng.fill_bytes(&mut bytes[..]);
         let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
-        let balance = Motes::new(rng.gen());
+        let balance = Motes::new(rng.gen::<u64>());
         let validator = rng.gen();
 
         GenesisAccount::account(public_key, balance, validator)
@@ -419,8 +418,8 @@ impl ToBytes for GenesisAccount {
                 buffer.push(GenesisAccountTag::Delegator as u8);
                 buffer.extend(validator_public_key.to_bytes()?);
                 buffer.extend(delegator_public_key.to_bytes()?);
-                buffer.extend(balance.value().to_bytes()?);
-                buffer.extend(delegated_amount.value().to_bytes()?);
+                buffer.extend(balance.to_bytes()?);
+                buffer.extend(delegated_amount.to_bytes()?);
             }
             GenesisAccount::Administrator(administrator_account) => {
                 buffer.push(GenesisAccountTag::Administrator as u8);
@@ -486,7 +485,7 @@ impl FromBytes for GenesisAccount {
                     validator_public_key,
                     delegator_public_key,
                     balance,
-                    Motes::new(delegated_amount_value),
+                    delegated_amount_value,
                 );
                 Ok((genesis_account, remainder))
             }

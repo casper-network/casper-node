@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
     CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig,
-    ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, WasmConfig,
+    ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, VacancyConfig, WasmConfig,
 };
 
 use crate::utils::{
@@ -79,6 +79,7 @@ pub(super) struct TomlChainspec {
     highway: HighwayConfig,
     wasm: WasmConfig,
     system_costs: SystemConfig,
+    vacancy: VacancyConfig,
 }
 
 impl From<&Chainspec> for TomlChainspec {
@@ -97,6 +98,7 @@ impl From<&Chainspec> for TomlChainspec {
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;
+        let vacancy = chainspec.vacancy_config;
 
         TomlChainspec {
             protocol,
@@ -106,6 +108,7 @@ impl From<&Chainspec> for TomlChainspec {
             highway,
             wasm,
             system_costs,
+            vacancy,
         }
     }
 }
@@ -115,7 +118,8 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
 ) -> Result<(Chainspec, ChainspecRawBytes), Error> {
     let chainspec_bytes =
         file_utils::read_file(chainspec_path.as_ref()).map_err(Error::LoadChainspec)?;
-    let toml_chainspec: TomlChainspec = toml::from_slice(&chainspec_bytes)?;
+    let toml_chainspec: TomlChainspec =
+        toml::from_str(std::str::from_utf8(&chainspec_bytes).unwrap())?;
 
     let root = chainspec_path
         .as_ref()
@@ -158,6 +162,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         highway_config: toml_chainspec.highway,
         wasm_config: toml_chainspec.wasm,
         system_costs_config: toml_chainspec.system_costs,
+        vacancy_config: toml_chainspec.vacancy,
     };
     let chainspec_raw_bytes = ChainspecRawBytes::new(
         Bytes::from(chainspec_bytes),
@@ -189,7 +194,7 @@ pub(super) fn parse_toml_accounts<P: AsRef<Path>>(
         return Ok((config, maybe_bytes));
     }
     let bytes = file_utils::read_file(accounts_path)?;
-    let config: AccountsConfig = toml::from_slice(&bytes)?;
+    let config: AccountsConfig = toml::from_str(std::str::from_utf8(&bytes).unwrap())?;
     Ok((config, Some(Bytes::from(bytes))))
 }
 
@@ -201,6 +206,6 @@ pub(super) fn parse_toml_global_state<P: AsRef<Path>>(
         return Ok(None);
     }
     let bytes = file_utils::read_file(update_path)?;
-    let config: GlobalStateUpdateConfig = toml::from_slice(&bytes)?;
+    let config = toml::from_str(std::str::from_utf8(&bytes).unwrap())?;
     Ok(Some((config, Bytes::from(bytes))))
 }

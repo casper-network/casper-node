@@ -12,7 +12,7 @@ use casper_engine_test_support::{
 };
 use casper_storage::data_access_layer::{SlashItem, StepResult};
 use casper_types::{
-    execution::TransformKind,
+    execution::TransformKindV2,
     system::auction::{
         BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
@@ -41,17 +41,17 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
             ACCOUNT_1_PUBLIC_KEY.clone(),
-            Motes::new(ACCOUNT_1_BALANCE.into()),
+            Motes::new(ACCOUNT_1_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(ACCOUNT_1_BOND.into()),
+                Motes::new(ACCOUNT_1_BOND),
                 DelegationRate::zero(),
             )),
         );
         let account_2 = GenesisAccount::account(
             ACCOUNT_2_PUBLIC_KEY.clone(),
-            Motes::new(ACCOUNT_2_BALANCE.into()),
+            Motes::new(ACCOUNT_2_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(ACCOUNT_2_BOND.into()),
+                Motes::new(ACCOUNT_2_BOND),
                 DelegationRate::zero(),
             )),
         );
@@ -170,7 +170,7 @@ fn should_not_create_any_purse() {
         .transforms()
         .iter()
         .filter_map(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::CLValue(cl_value))
+            TransformKindV2::Write(StoredValue::CLValue(cl_value))
                 if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())
@@ -185,7 +185,7 @@ fn should_not_create_any_purse() {
         .transforms()
         .iter()
         .filter_map(|transform| match transform.kind() {
-            TransformKind::Write(StoredValue::CLValue(cl_value))
+            TransformKindV2::Write(StoredValue::CLValue(cl_value))
                 if transform.key().as_balance().is_some() && cl_value == &cl_u512_zero =>
             {
                 Some(*transform.key())

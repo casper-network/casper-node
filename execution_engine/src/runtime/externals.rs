@@ -13,11 +13,10 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     crypto,
-    package::PackageStatus,
     system::auction::EraInfo,
     AddressableEntityHash, ApiError, EntityVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    U512, UREF_SERIALIZED_LENGTH,
+    HostFunctionCost, Key, PackageHash, PackageStatus, StoredValue, URef,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, ExecError, Runtime};
@@ -195,7 +194,7 @@ where
                 let (gas_arg,): (u32,) = Args::parse(args)?;
                 // Gas is special cased internal host function and for accounting purposes it isn't
                 // represented in protocol data.
-                self.gas(Gas::new(gas_arg.into()))?;
+                self.gas(Gas::new(gas_arg))?;
                 Ok(None)
             }
 
@@ -603,20 +602,6 @@ where
                     existing_urefs,
                     output_size_ptr,
                 )?;
-                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
-            }
-            FunctionIndex::AddSessionVersion => {
-                // args(0) = pointer to entrypoints in wasm memory
-                // args(1) = size of entrypoints in wasm memory
-                let (entry_points_ptr, entry_points_size) = Args::parse(args)?;
-                self.charge_host_function_call(
-                    &host_function_costs.add_session_version,
-                    [entry_points_ptr, entry_points_size],
-                )?;
-
-                let entry_points: EntryPoints =
-                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
-                let ret = self.add_session_version(entry_points)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::AddPackageVersion => {

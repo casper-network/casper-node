@@ -102,7 +102,7 @@ impl ValidatorMatrix {
         }
     }
 
-    /// Creates a new validator matrix with just a single validator.
+    /// Creates a new validator matrix with multiple validators.
     #[cfg(test)]
     pub(crate) fn new_with_validators<I: IntoIterator<Item = PublicKey>>(
         secret_signing_key: Arc<SecretKey>,

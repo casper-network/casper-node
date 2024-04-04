@@ -38,6 +38,7 @@ mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use casper_storage::block_store::{
     lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
@@ -50,7 +51,7 @@ use casper_storage::block_store::{
 
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -59,20 +60,16 @@ use std::{
     sync::Arc,
 };
 
+use casper_storage::DbRawBytesSpec;
 #[cfg(test)]
 use casper_types::SignedBlock;
 use casper_types::{
-    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
-    },
-    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures,
-    BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash,
-    DeployHash, EraId, ExecutionInfo, FinalitySignature, FinalizedApprovals, ProtocolVersion,
-    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash,
-    TransactionWithFinalizedApprovals, Transfer,
+    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2},
+    Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
+    BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
+    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
+    Transaction, TransactionConfig, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -151,6 +148,10 @@ pub struct Storage {
     max_ttl: MaxTtl,
     /// The hash of the chain name.
     chain_name_hash: ChainNameDigest,
+    /// The transaction config as specified by the chainspec.
+    transaction_config: TransactionConfig,
+    /// The utilization of blocks.
+    utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -246,6 +247,7 @@ impl Storage {
         recent_era_count: u64,
         registry: Option<&Registry>,
         force_resync: bool,
+        transaction_config: TransactionConfig,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -287,8 +289,10 @@ impl Storage {
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
             max_ttl,
+            utilization_tracker: BTreeMap::new(),
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
+            transaction_config,
         };
 
         if force_resync {
@@ -673,8 +677,12 @@ impl Storage {
                     &transaction_id.transaction_hash(),
                 )? {
                     None => None,
-                    Some(transaction_with_finalized_approvals) => {
-                        let transaction = transaction_with_finalized_approvals.into_naive();
+                    Some((transaction, maybe_approvals)) => {
+                        let transaction = if let Some(approvals) = maybe_approvals {
+                            transaction.with_approvals(approvals)
+                        } else {
+                            transaction
+                        };
                         (transaction.fetch_id() == transaction_id).then_some(transaction)
                     }
                 };
@@ -691,7 +699,13 @@ impl Storage {
                     match self
                         .get_transaction_with_finalized_approvals(&mut ro_txn, &transaction_hash)?
                     {
-                        Some(transaction_wfa) => transaction_wfa.into_naive(),
+                        Some((transaction, maybe_approvals)) => {
+                            if let Some(approvals) = maybe_approvals {
+                                transaction.with_approvals(approvals)
+                            } else {
+                                transaction
+                            }
+                        }
                         None => return Ok(responder.respond(None).ignore()),
                     }
                 } else {
@@ -911,6 +925,11 @@ impl Storage {
                     .read_block_header_by_height(block_height, only_from_available_block_range)?;
                 responder.respond(maybe_header).ignore()
             }
+            StorageRequest::GetLatestSwitchBlockHeader { responder } => {
+                let txn = self.block_store.checkout_ro()?;
+                let maybe_header = txn.read(LatestSwitchBlock)?;
+                responder.respond(maybe_header).ignore()
+            }
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder } => {
                 let txn = self.block_store.checkout_ro()?;
                 let maybe_header = txn.read(era_id)?;
@@ -932,9 +951,12 @@ impl Storage {
                 ref transaction_hash,
                 ref finalized_approvals,
                 responder,
-            } => responder
-                .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
-                .ignore(),
+            } => {
+                info!(txt=?transaction_hash, count=finalized_approvals.len(), "storing finalized approvals {:?}", finalized_approvals);
+                responder
+                    .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
+                    .ignore()
+            }
             StorageRequest::PutExecutedBlock {
                 block,
                 approvals_hashes,
@@ -942,8 +964,10 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
+                let transaction_config = self.transaction_config;
                 responder
                     .respond(self.put_executed_block(
+                        transaction_config,
                         &block,
                         &approvals_hashes,
                         execution_results,
@@ -970,9 +994,28 @@ impl Storage {
                 responder,
                 record_id,
             } => {
+                let db_table_id = utils::db_table_id_from_record_id(record_id)
+                    .map_err(|_| FatalStorageError::UnexpectedRecordId(record_id))?;
                 let txn = self.block_store.checkout_ro()?;
-                let maybe_data: Option<DbRawBytesSpec> = txn.read((record_id, key))?;
-                responder.respond(maybe_data).ignore()
+                let maybe_data: Option<DbRawBytesSpec> = txn.read((db_table_id, key))?;
+                match maybe_data {
+                    None => responder.respond(None).ignore(),
+                    Some(db_raw) => responder.respond(Some(db_raw)).ignore(),
+                }
+            }
+            StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                switch_block_utilization,
+                responder,
+            } => {
+                let utilization = self.get_block_utilization_score(
+                    era_id,
+                    block_height,
+                    switch_block_utilization,
+                );
+
+                responder.respond(utilization).ignore()
             }
         })
     }
@@ -999,10 +1042,12 @@ impl Storage {
     }
 
     /// Retrieves a set of transactions, along with their potential finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transactions_with_finalized_approvals<'a>(
         &self,
         transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
-    ) -> Result<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>, FatalStorageError> {
+    ) -> Result<SmallVec<[Option<(Transaction, Option<BTreeSet<Approval>>)>; 1]>, FatalStorageError>
+    {
         let mut ro_txn = self.block_store.checkout_ro()?;
 
         transaction_hashes
@@ -1015,11 +1060,14 @@ impl Storage {
 
     pub(crate) fn put_executed_block(
         &mut self,
+        transaction_config: TransactionConfig,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
+        let era_id = block.era_id();
+        let block_utilization_score = block.block_utilization(transaction_config);
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1029,6 +1077,17 @@ impl Storage {
             exec_results: execution_results,
         })?;
         txn.commit()?;
+
+        match self.utilization_tracker.get_mut(&era_id) {
+            Some(block_score) => {
+                block_score.insert(block.height(), block_utilization_score);
+            }
+            None => {
+                let mut block_score = BTreeMap::new();
+                block_score.insert(block.height(), block_utilization_score);
+                self.utilization_tracker.insert(era_id, block_score);
+            }
+        }
 
         Ok(true)
     }
@@ -1191,7 +1250,7 @@ impl Storage {
         &self,
         block_hash: BlockHash,
     ) -> Result<Option<(BlockV2, Vec<Transaction>)>, FatalStorageError> {
-        let mut txn = self.block_store.checkout_ro()?;
+        let txn = self.block_store.checkout_ro()?;
 
         let Some(block) = txn.read(block_hash)? else {
             debug!(
@@ -1211,28 +1270,20 @@ impl Storage {
             return Ok(None);
         };
 
-        let transactions_with_aprovals: Result<
-            SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>,
-            FatalStorageError,
-        > = block
-            .all_transactions()
-            .map(|transaction_hash| {
-                self.get_transaction_with_finalized_approvals(&mut txn, transaction_hash)
-                    .map_err(FatalStorageError::from)
-            })
-            .collect();
+        let mut transactions = vec![];
+        for (transaction, _) in (self
+            .get_transactions_with_finalized_approvals(block.all_transactions())?)
+        .into_iter()
+        .flatten()
+        {
+            transactions.push(transaction)
+        }
 
-        Ok(transactions_with_aprovals?
-            .into_iter()
-            .map(|maybe_transaction| {
-                maybe_transaction.map(TransactionWithFinalizedApprovals::into_naive)
-            })
-            .collect::<Option<Vec<Transaction>>>()
-            .map(|transactions| (block, transactions)))
+        Ok(Some((block, transactions)))
     }
 
     /// Retrieves the highest complete block header from storage, if one exists. May return an
-    /// LMDB error.       
+    /// LMDB error.
     fn get_highest_complete_block_header(&self) -> Result<Option<BlockHeader>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
@@ -1411,44 +1462,33 @@ impl Storage {
     fn store_finalized_approvals(
         &mut self,
         transaction_hash: &TransactionHash,
-        finalized_approvals: &FinalizedApprovals,
+        finalized_approvals: &BTreeSet<Approval>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
-        let original_transaction = txn.read(*transaction_hash)?.ok_or({
+        let original_transaction: Transaction = txn.read(*transaction_hash)?.ok_or({
             FatalStorageError::UnexpectedFinalizedApprovals {
                 transaction_hash: *transaction_hash,
             }
         })?;
 
         // Only store the finalized approvals if they are different from the original ones.
-        let maybe_existing_finalized_approvals = txn.read(*transaction_hash)?;
+        let maybe_existing_finalized_approvals: Option<BTreeSet<Approval>> =
+            txn.read(*transaction_hash)?;
         if maybe_existing_finalized_approvals.as_ref() == Some(finalized_approvals) {
             return Ok(false);
         }
 
-        let should_store = match (original_transaction, finalized_approvals) {
-            (
-                Transaction::Deploy(original_deploy),
-                FinalizedApprovals::Deploy(finalzd_approvals),
-            ) => original_deploy.approvals() != finalzd_approvals.inner(),
-            (Transaction::V1(original_transaction), FinalizedApprovals::V1(finalzd_approvals)) => {
-                original_transaction.approvals() != finalzd_approvals.inner()
-            }
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new((mismatch.0, mismatch.1.clone())));
-                error!(%mismatch, "failed storing finalized approvals");
-                return Err(FatalStorageError::from(mismatch));
-            }
-        };
-
-        if should_store {
+        let original_approvals = original_transaction.approvals();
+        if &original_approvals != finalized_approvals {
             let _ = txn.write(&TransactionFinalizedApprovals {
                 transaction_hash: *transaction_hash,
                 finalized_approvals: finalized_approvals.clone(),
             })?;
             txn.commit()?;
+            return Ok(true);
         }
-        Ok(should_store)
+
+        Ok(false)
     }
 
     /// Retrieves successful transfers associated with block.
@@ -1515,8 +1555,12 @@ impl Storage {
         let mut txn = self.block_store.checkout_ro()?;
         let transaction =
             match self.get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)? {
-                Some(transaction_with_finalized_approvals) => {
-                    transaction_with_finalized_approvals.into_naive()
+                Some((transaction, maybe_approvals)) => {
+                    if let Some(approvals) = maybe_approvals {
+                        transaction.with_approvals(approvals)
+                    } else {
+                        transaction
+                    }
                 }
                 None => return Ok(None),
             };
@@ -1548,7 +1592,7 @@ impl Storage {
             Some(transaction) => transaction,
         };
 
-        let finalized_approvals: FinalizedApprovals = match txn.read(transaction_hash)? {
+        let finalized_approvals = match txn.read(transaction_hash)? {
             None => return Ok(None),
             Some(approvals) => approvals,
         };
@@ -1558,78 +1602,51 @@ impl Storage {
             finalized_approvals,
             transaction,
         ) {
-            (
-                TransactionApprovalsHash::Deploy(approvals_hash),
-                FinalizedApprovals::Deploy(approvals),
-                Transaction::Deploy(deploy),
-            ) => match DeployApprovalsHash::compute(approvals.inner()) {
-                Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
-                    let deploy = deploy.with_approvals(approvals.into_inner());
-                    Ok(Some(Transaction::from(deploy)))
+            (approvals_hash, finalized_approvals, Transaction::Deploy(deploy)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                        let deploy = deploy.with_approvals(finalized_approvals);
+                        Ok(Some(Transaction::from(deploy)))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized deploy approvals hash");
+                        Err(FatalStorageError::UnexpectedSerializationFailure(error))
+                    }
                 }
-                Ok(_computed_approvals_hash) => Ok(None),
-                Err(error) => {
-                    error!(%error, "failed to calculate finalized deploy approvals hash");
-                    Err(FatalStorageError::UnexpectedSerializationFailure(error))
+            }
+            (approvals_hash, finalized_approvals, Transaction::V1(transaction_v1)) => {
+                match ApprovalsHash::compute(&finalized_approvals) {
+                    Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
+                        let transaction_v1 = transaction_v1.with_approvals(finalized_approvals);
+                        Ok(Some(Transaction::from(transaction_v1)))
+                    }
+                    Ok(_computed_approvals_hash) => Ok(None),
+                    Err(error) => {
+                        error!(%error, "failed to calculate finalized transaction approvals hash");
+                        Err(FatalStorageError::UnexpectedSerializationFailure(error))
+                    }
                 }
-            },
-            (
-                TransactionApprovalsHash::V1(approvals_hash),
-                FinalizedApprovals::V1(approvals),
-                Transaction::V1(transaction_v1),
-            ) => match TransactionV1ApprovalsHash::compute(approvals.inner()) {
-                Ok(computed_approvals_hash) if computed_approvals_hash == approvals_hash => {
-                    let transaction_v1 = transaction_v1.with_approvals(approvals.into_inner());
-                    Ok(Some(Transaction::from(transaction_v1)))
-                }
-                Ok(_computed_approvals_hash) => Ok(None),
-                Err(error) => {
-                    error!(%error, "failed to calculate finalized transaction approvals hash");
-                    Err(FatalStorageError::UnexpectedSerializationFailure(error))
-                }
-            },
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new(mismatch));
-                error!(%mismatch, "failed getting transaction by ID");
-                Err(FatalStorageError::from(mismatch))
             }
         }
     }
 
     /// Retrieves a single transaction along with its finalized approvals.
+    #[allow(clippy::type_complexity)]
     fn get_transaction_with_finalized_approvals(
         &self,
         txn: &mut (impl DataReader<TransactionHash, Transaction>
-                  + DataReader<TransactionHash, FinalizedApprovals>),
+                  + DataReader<TransactionHash, BTreeSet<Approval>>),
         transaction_hash: &TransactionHash,
-    ) -> Result<Option<TransactionWithFinalizedApprovals>, FatalStorageError> {
+    ) -> Result<Option<(Transaction, Option<BTreeSet<Approval>>)>, FatalStorageError> {
         let maybe_transaction: Option<Transaction> = txn.read(*transaction_hash)?;
         let transaction = match maybe_transaction {
             Some(transaction) => transaction,
             None => return Ok(None),
         };
 
-        let finalized_approvals: Option<FinalizedApprovals> = txn.read(*transaction_hash)?;
-        let ret = match (transaction, finalized_approvals) {
-            (
-                Transaction::Deploy(deploy),
-                Some(FinalizedApprovals::Deploy(finalized_approvals)),
-            ) => TransactionWithFinalizedApprovals::new_deploy(deploy, Some(finalized_approvals)),
-            (Transaction::Deploy(deploy), None) => {
-                TransactionWithFinalizedApprovals::new_deploy(deploy, None)
-            }
-            (Transaction::V1(transaction), Some(FinalizedApprovals::V1(finalized_approvals))) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, Some(finalized_approvals))
-            }
-            (Transaction::V1(transaction), None) => {
-                TransactionWithFinalizedApprovals::new_v1(transaction, None)
-            }
-            mismatch => {
-                let mismatch = VariantMismatch(Box::new(mismatch));
-                error!(%mismatch, "failed getting transaction with finalized approvals");
-                return Err(FatalStorageError::from(mismatch));
-            }
-        };
+        let maybe_finalized_approvals: Option<BTreeSet<Approval>> = txn.read(*transaction_hash)?;
+        let ret = (transaction, maybe_finalized_approvals);
 
         Ok(Some(ret))
     }
@@ -1951,6 +1968,38 @@ impl Storage {
         }
         Ok(Some(ret))
     }
+
+    fn get_block_utilization_score(
+        &mut self,
+        era_id: EraId,
+        block_height: u64,
+        block_utilization: u64,
+    ) -> Option<(u64, u64)> {
+        let ret = match self.utilization_tracker.get_mut(&era_id) {
+            Some(utilization) => {
+                utilization.entry(block_height).or_insert(block_utilization);
+
+                let transaction_count = utilization.values().into_iter().sum();
+                let block_count = utilization.keys().len() as u64;
+
+                Some((transaction_count, block_count))
+            }
+            None => {
+                let mut utilization = BTreeMap::new();
+                utilization.insert(block_height, block_utilization);
+
+                self.utilization_tracker.insert(era_id, utilization);
+
+                let block_count = 1u64;
+                Some((block_utilization, block_count))
+            }
+        };
+
+        self.utilization_tracker
+            .retain(|key_era_id, _| key_era_id.value() + 2 >= era_id.value());
+
+        ret
+    }
 }
 
 /// Decodes an item's ID, typically from an incoming request.
@@ -2023,30 +2072,34 @@ fn move_storage_files_to_network_subdir(
 /// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
 /// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
 fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
-    let mut transfers: Vec<Transfer> = vec![];
+    let mut all_transfers: Vec<Transfer> = vec![];
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
-            for transform_entry in &effect.transforms {
-                if let execution_result_v1::Transform::WriteTransfer(transfer) =
-                    &transform_entry.transform
+            for transform_v1 in &effect.transforms {
+                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer_v1) =
+                    &transform_v1.transform
                 {
-                    transfers.push(*transfer);
+                    all_transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }
-        ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-            for transform in effects.transforms() {
-                if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind() {
-                    transfers.push(*transfer);
+        ExecutionResult::V2(ExecutionResultV2 {
+            transfers,
+            error_message,
+            ..
+        }) => {
+            if error_message.is_none() {
+                for transfer in transfers {
+                    all_transfers.push(transfer.clone());
                 }
             }
+            // else no-op: we only record transfers from successful executions.
         }
-        ExecutionResult::V1(ExecutionResultV1::Failure { .. })
-        | ExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+        ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
         }
     }
-    transfers
+    all_transfers
 }
 
 // Testing code. The functions below allow direct inspection of the storage component and should
@@ -2061,7 +2114,7 @@ impl Storage {
     pub(crate) fn get_transaction_with_finalized_approvals_by_hash(
         &self,
         transaction_hash: &TransactionHash,
-    ) -> Option<TransactionWithFinalizedApprovals> {
+    ) -> Option<(Transaction, Option<BTreeSet<Approval>>)> {
         let mut txn = self
             .block_store
             .checkout_ro()
