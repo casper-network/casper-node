@@ -257,11 +257,6 @@ impl<T: Debug> AutoClosingResponder<T> {
     pub(crate) async fn respond(self, data: T) {
         self.into_inner().respond(Some(data)).await
     }
-
-    /// Send `None` to the origin of the request.
-    pub(crate) async fn respond_none(self) {
-        self.into_inner().respond(None).await
-    }
 }
 
 impl<T> Drop for AutoClosingResponder<T> {
