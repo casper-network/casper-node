@@ -4,7 +4,7 @@ use casper_types::{
     account::AccountHash,
     global_state::TrieMerkleProof,
     system::{
-        handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
+        handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
         mint::BalanceHoldAddrTag,
         HANDLE_PAYMENT,
     },
@@ -33,6 +33,7 @@ pub enum BalanceHandling {
 /// Represents a way to make a balance inquiry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BalanceIdentifier {
+    Refund,
     Payment,
     Accumulate,
     Purse(URef),
@@ -52,6 +53,7 @@ impl BalanceIdentifier {
             | BalanceIdentifier::Account(_)
             | BalanceIdentifier::PenalizedAccount(_)
             | BalanceIdentifier::Entity(_)
+            | BalanceIdentifier::Refund
             | BalanceIdentifier::Payment
             | BalanceIdentifier::Accumulate => None,
         }
@@ -88,6 +90,9 @@ impl BalanceIdentifier {
                     Ok(entity) => entity.main_purse(),
                     Err(tce) => return Err(tce),
                 }
+            }
+            BalanceIdentifier::Refund => {
+                self.get_system_purse(tc, HANDLE_PAYMENT, REFUND_PURSE_KEY)?
             }
             BalanceIdentifier::Payment => {
                 self.get_system_purse(tc, HANDLE_PAYMENT, PAYMENT_PURSE_KEY)?

@@ -56,6 +56,13 @@ impl Motes {
             .checked_mul(U512::from(conv_rate))
             .map(Self::new)
     }
+
+    /// Converts the given `amount` to `Motes` by multiplying them by `price`.
+    ///
+    /// Returns `None` if an arithmetic overflow occurred.
+    pub fn from_price(amount: U512, price: u8) -> Option<Self> {
+        amount.checked_mul(U512::from(price)).map(Self::new)
+    }
 }
 
 impl fmt::Display for Motes {

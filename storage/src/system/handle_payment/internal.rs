@@ -1,16 +1,14 @@
-use casper_types::{
-    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-    FeeHandling, HoldsEpoch, Key, Phase, PublicKey, RefundHandling, URef, U512,
-};
-use num::{CheckedMul, One};
-use num_rational::Ratio;
-use num_traits::Zero;
-use tracing::error;
-
 use super::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider,
 };
+use casper_types::{
+    system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
+    HoldsEpoch, Key, Phase, PublicKey, URef, U512,
+};
+use num::CheckedMul;
+use num_rational::Ratio;
+use num_traits::Zero;
 
 /// Returns the purse for accepting payment for transactions.
 pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &mut R) -> Result<URef, Error> {
@@ -49,13 +47,13 @@ pub fn get_refund_purse<R: RuntimeProvider>(
 /// # Note
 ///
 /// Any dust amounts are added to the fee.
-fn calculate_overpayment_and_fee(
+pub fn calculate_overpayment_and_fee(
     limit: U512,
     gas_price: u8,
     cost: U512,
     consumed: U512,
     available_balance: U512,
-    refund_handling: RefundHandling,
+    refund_ratio: Ratio<U512>,
 ) -> Result<(U512, U512), Error> {
     /*
         cost is limit * price,  unused = limit - consumed
@@ -93,7 +91,7 @@ fn calculate_overpayment_and_fee(
     if available_balance < cost {
         return Ok((U512::zero(), available_balance));
     }
-    if refund_handling.skip_refund() {
+    if refund_ratio.is_zero() {
         return Ok((U512::zero(), cost));
     }
     let unspent = limit.saturating_sub(consumed);
@@ -101,17 +99,6 @@ fn calculate_overpayment_and_fee(
         return Ok((U512::zero(), cost));
     }
     let base_refund = unspent * gas_price;
-    let refund_ratio = match refund_handling {
-        RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
-            debug_assert!(
-                refund_ratio <= Ratio::one(),
-                "refund ratio should be a proper fraction"
-            );
-            let (numer, denom) = refund_ratio.into();
-            Ratio::new_raw(U512::from(numer), U512::from(denom))
-        }
-        RefundHandling::NoRefund => Ratio::zero(),
-    };
 
     let adjusted_refund = Ratio::from(base_refund)
         .checked_mul(&refund_ratio)
@@ -123,108 +110,6 @@ fn calculate_overpayment_and_fee(
         .ok_or(Error::ArithmeticOverflow)?;
 
     Ok((adjusted_refund, fee))
-}
-
-/// This function handles payment post-processing to pay out fees and refunds.
-///
-/// The behavior of this function is very load bearing and complex, based on every possible
-/// combination of [`FeeHandling`] and [`RefundHandling`] handling variants.
-///
-/// NOTE: If a network is configured for both NoFee and NoRefund, this method will error if called.
-#[allow(clippy::too_many_arguments)]
-pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
-    provider: &mut P,
-    limit: U512,
-    gas_price: u8,
-    cost: U512,
-    consumed: U512,
-    source_purse: URef,
-    target_purse: URef,
-    holds_epoch: HoldsEpoch,
-) -> Result<(), Error> {
-    let refund_handling = provider.refund_handling();
-    let fee_handling = provider.fee_handling();
-    if fee_handling.skip_fee_handling() && refund_handling.skip_refund() {
-        // this method should not even be called if NoFee && NoRefund are set,
-        //   as there is nothing to finalize
-        return Err(Error::IncompatiblePaymentSettings);
-    }
-
-    let caller = provider.get_caller();
-    if caller != PublicKey::System.to_account_hash() {
-        return Err(Error::SystemFunctionCalledByUserAccount);
-    }
-
-    let source_available_balance = match provider.available_balance(source_purse, holds_epoch)? {
-        Some(balance) => balance,
-        None => return Err(Error::PaymentPurseBalanceNotFound),
-    };
-
-    let (refund, fee) = calculate_overpayment_and_fee(
-        limit,
-        gas_price,
-        cost,
-        consumed,
-        source_available_balance,
-        refund_handling,
-    )?;
-
-    if !refund.is_zero() {
-        match refund_handling {
-            RefundHandling::Refund { .. } => {
-                let maybe_refund_purse = get_refund_purse(provider)?;
-                if let Some(refund_purse) = maybe_refund_purse {
-                    // refund purse cannot also be source purse
-                    if refund_purse.remove_access_rights() == source_purse.remove_access_rights() {
-                        return Err(Error::RefundPurseIsPaymentPurse);
-                    }
-                    //unset refund purse after reading it
-                    provider.remove_key(REFUND_PURSE_KEY)?;
-                    if let Err(error) =
-                        provider.transfer_purse_to_purse(source_purse, refund_purse, refund)
-                    {
-                        error!(
-                            %error,
-                            %refund,
-                            %source_purse,
-                            %refund_purse,
-                            "unable to transfer refund to a refund purse"
-                        );
-                    }
-                }
-            }
-            RefundHandling::Burn { .. } => {
-                burn(provider, source_purse, Some(refund))?;
-            }
-            RefundHandling::NoRefund => {
-                // this must be due to either programmer error or invalid chainspec settings
-                return Err(Error::IncompatiblePaymentSettings);
-            }
-        }
-    }
-
-    // Pay or burn the fee.
-    match fee_handling {
-        FeeHandling::PayToProposer | FeeHandling::Accumulate => {
-            match provider.transfer_purse_to_purse(source_purse, target_purse, fee) {
-                Ok(()) => {}
-                Err(error) => {
-                    error!(%error, %fee, %target_purse, "unable to transfer fee");
-                    return Err(Error::FailedTransferToRewardsPurse);
-                }
-            }
-        }
-        FeeHandling::Burn => {
-            burn(provider, source_purse, Some(refund))?;
-        }
-        FeeHandling::NoFee => {
-            if !fee.is_zero() {
-                // this must be due to either programmer error or invalid chainspec settings
-                return Err(Error::IncompatiblePaymentSettings);
-            }
-        }
-    }
-    Ok(())
 }
 
 pub fn burn<P: MintProvider + RuntimeProvider + StorageProvider>(
@@ -308,19 +193,28 @@ mod tests {
     // refund returns it to payer, while burn destroys it
 
     #[test]
-    fn should_burn_expected_amount() {
-        let handling = RefundHandling::Burn {
-            refund_ratio: Ratio::new_raw(1, 1),
-        };
-        test_handle_payment(handling);
-    }
+    fn should_calculate_expected_amounts() {
+        let limit = U512::from(6u64);
+        let gas_price = 1;
+        let cost = limit;
+        let consumed = U512::from(3u64);
+        let available = U512::from(10u64);
 
-    #[test]
-    fn should_refund_expected_amount() {
-        let handling = RefundHandling::Refund {
-            refund_ratio: Ratio::new_raw(1, 1),
-        };
-        test_handle_payment(handling);
+        let (overpay, fee) = calculate_overpayment_and_fee(
+            limit,
+            gas_price,
+            cost,
+            consumed,
+            available,
+            Ratio::new_raw(U512::from(1), U512::from(1)),
+        )
+        .unwrap();
+
+        let unspent = limit.saturating_sub(consumed);
+        let expected = unspent;
+        assert_eq!(expected, overpay, "overpay");
+        let expected_fee = consumed;
+        assert_eq!(expected_fee, fee, "fee");
     }
 
     #[test]
@@ -333,46 +227,27 @@ mod tests {
         let denom = 100;
 
         for numer in 0..=denom {
-            let refund_ratio = Ratio::new_raw(numer, denom);
-            let handling = RefundHandling::Refund { refund_ratio };
+            let refund_ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
             let (overpay, fee) = calculate_overpayment_and_fee(
-                limit, gas_price, cost, consumed, available, handling,
+                limit,
+                gas_price,
+                cost,
+                consumed,
+                available,
+                refund_ratio,
             )
             .unwrap();
 
-            let unspent = limit.saturating_sub(consumed).as_u64();
+            let unspent = limit.saturating_sub(consumed);
             let expected = Ratio::from(unspent)
                 .checked_mul(&refund_ratio)
                 .ok_or(Error::ArithmeticOverflow)
                 .expect("should math")
                 .to_integer();
-            assert_eq!(expected, overpay.as_u64(), "overpay");
-            let expected_fee = limit.as_u64() - expected;
-            assert_eq!(expected_fee, fee.as_u64(), "fee");
+            assert_eq!(expected, overpay, "overpay");
+            let expected_fee = limit - expected;
+            assert_eq!(expected_fee, fee, "fee");
         }
-    }
-
-    fn test_handle_payment(refund_handling: RefundHandling) {
-        let limit = U512::from(6u64);
-        let gas_price = 1;
-        let cost = limit;
-        let consumed = U512::from(3u64);
-        let available = U512::from(10u64);
-        let (overpay, fee) = calculate_overpayment_and_fee(
-            limit,
-            gas_price,
-            cost,
-            consumed,
-            available,
-            refund_handling,
-        )
-        .unwrap();
-
-        let unspent = limit.saturating_sub(consumed);
-        let expected = unspent;
-        assert_eq!(expected, overpay, "{:?}", refund_handling);
-        let expected_fee = consumed;
-        assert_eq!(expected_fee, fee, "fee");
     }
 
     #[test]
@@ -384,12 +259,15 @@ mod tests {
         let available = U512::from(10u64);
 
         for percentage in 0..=100 {
-            let handling = RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(percentage, 100),
-            };
+            let refund_ratio = Ratio::new_raw(U512::from(percentage), U512::from(100));
 
             let (overpay, fee) = calculate_overpayment_and_fee(
-                limit, gas_price, cost, consumed, available, handling,
+                limit,
+                gas_price,
+                cost,
+                consumed,
+                available,
+                refund_ratio,
             )
             .expect("should have overpay and fee");
 
@@ -414,9 +292,7 @@ mod tests {
             cost,
             consumed,
             available,
-            RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(1, 1),
-            },
+            Ratio::new_raw(U512::from(1), U512::from(1)),
         )
         .unwrap();
 
@@ -439,9 +315,7 @@ mod tests {
             cost,
             consumed,
             available,
-            RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(1, 1),
-            },
+            Ratio::new_raw(U512::from(1), U512::from(1)),
         )
         .unwrap();
 
@@ -467,9 +341,7 @@ mod tests {
             cost,
             consumed,
             available,
-            RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(1, 1),
-            },
+            Ratio::new_raw(U512::from(1), U512::from(1)),
         )
         .unwrap();
 
