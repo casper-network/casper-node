@@ -711,6 +711,23 @@ impl<REv> EffectBuilder<REv> {
         //       delivery.
     }
 
+    /// Sends a network message, drops a ticket upon successful sending.
+    ///
+    /// Similar to `send_message`, except a [`Ticket`] is passed as well, which will be dropped as
+    /// soon as `send_message` returns (but no earlier).
+    pub(crate) async fn send_message_and_drop_ticket<P>(
+        self,
+        dest: NodeId,
+        payload: P,
+        ticket: Ticket,
+    ) where
+        REv: From<NetworkRequest<P>>,
+    {
+        self.send_message(dest, payload).await;
+
+        drop(ticket);
+    }
+
     /// Sends a network message with best effort.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer will
