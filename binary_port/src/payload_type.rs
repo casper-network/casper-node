@@ -23,9 +23,9 @@ use crate::{
     speculative_execution_result::SpeculativeExecutionResult,
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
-        ReactorStateName, TransactionWithExecutionInfo, Uptime,
+        ReactorStateName,
     },
-    RecordId,
+    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -103,6 +103,8 @@ pub enum PayloadType {
     GetTrieFullResult,
     /// Node status.
     NodeStatus,
+    /// Result of querying for a dictionary item.
+    DictionaryQueryResult,
 }
 
 impl PayloadType {
@@ -188,6 +190,9 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::StoredValues as u8 => Ok(PayloadType::StoredValues),
             x if x == PayloadType::GetTrieFullResult as u8 => Ok(PayloadType::GetTrieFullResult),
             x if x == PayloadType::NodeStatus as u8 => Ok(PayloadType::NodeStatus),
+            x if x == PayloadType::DictionaryQueryResult as u8 => {
+                Ok(PayloadType::DictionaryQueryResult)
+            }
             _ => Err(()),
         }
     }
@@ -239,6 +244,7 @@ impl fmt::Display for PayloadType {
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
             PayloadType::NodeStatus => write!(f, "NodeStatus"),
             PayloadType::WasmV1Result => write!(f, "WasmV1Result"),
+            PayloadType::DictionaryQueryResult => write!(f, "DictionaryQueryResult"),
         }
     }
 }
@@ -272,12 +278,13 @@ const NEXT_UPGRADE_TAG: u8 = 25;
 const CONSENSUS_STATUS_TAG: u8 = 26;
 const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
 const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
-const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 29;
-const STORED_VALUES_TAG: u8 = 30;
-const GET_TRIE_FULL_RESULT_TAG: u8 = 31;
-const NODE_STATUS_TAG: u8 = 32;
-const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 33;
-const WASM_V1_RESULT_TAG: u8 = 34;
+const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
+const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
+const STORED_VALUES_TAG: u8 = 31;
+const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
+const NODE_STATUS_TAG: u8 = 33;
+const DICTIONARY_QUERY_RESULT_TAG: u8 = 34;
+const WASM_V1_RESULT_TAG: u8 = 35;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -327,6 +334,7 @@ impl ToBytes for PayloadType {
             PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
             PayloadType::NodeStatus => NODE_STATUS_TAG,
             PayloadType::WasmV1Result => WASM_V1_RESULT_TAG,
+            PayloadType::DictionaryQueryResult => DICTIONARY_QUERY_RESULT_TAG,
         }
         .write_bytes(writer)
     }
@@ -370,6 +378,7 @@ impl FromBytes for PayloadType {
             STORED_VALUES_TAG => PayloadType::StoredValues,
             GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
             NODE_STATUS_TAG => PayloadType::NodeStatus,
+            DICTIONARY_QUERY_RESULT_TAG => PayloadType::DictionaryQueryResult,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((record_id, remainder))
@@ -452,6 +461,10 @@ impl PayloadEntity for ConsensusValidatorChanges {
 
 impl PayloadEntity for GlobalStateQueryResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
+}
+
+impl PayloadEntity for DictionaryQueryResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::DictionaryQueryResult;
 }
 
 impl PayloadEntity for Vec<StoredValue> {

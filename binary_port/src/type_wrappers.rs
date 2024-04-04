@@ -6,8 +6,10 @@ use datasize::DataSize;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    EraId, ExecutionInfo, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
+    EraId, ExecutionInfo, Key, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
 };
+
+use super::GlobalStateQueryResult;
 
 // `bytesrepr` implementations for type wrappers are repetitive, hence this macro helper. We should
 // get rid of this after we introduce the proper "bytesrepr-derive" proc macro.
@@ -276,6 +278,51 @@ impl FromBytes for TransactionWithExecutionInfo {
     }
 }
 
+/// A query result for a dictionary item, contains the dictionary item key and a global state query
+/// result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DictionaryQueryResult {
+    key: Key,
+    query_result: GlobalStateQueryResult,
+}
+
+impl DictionaryQueryResult {
+    /// Constructs new dictionary query result.
+    pub fn new(key: Key, query_result: GlobalStateQueryResult) -> Self {
+        Self { key, query_result }
+    }
+
+    /// Converts `self` into the dictionary item key and global state query result.
+    pub fn into_inner(self) -> (Key, GlobalStateQueryResult) {
+        (self.key, self.query_result)
+    }
+}
+
+impl ToBytes for DictionaryQueryResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.key.write_bytes(writer)?;
+        self.query_result.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.key.serialized_length() + self.query_result.serialized_length()
+    }
+}
+
+impl FromBytes for DictionaryQueryResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (query_result, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((DictionaryQueryResult::new(key, query_result), remainder))
+    }
+}
+
 impl_bytesrepr_for_type_wrapper!(Uptime);
 impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
@@ -289,7 +336,9 @@ mod tests {
     use rand::Rng;
 
     use super::*;
-    use casper_types::testing::TestRng;
+    use casper_types::{
+        execution::ExecutionResult, testing::TestRng, BlockHash, CLValue, StoredValue,
+    };
 
     #[test]
     fn uptime_roundtrip() {
@@ -337,6 +386,31 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&ConsensusStatus::new(
             PublicKey::random(rng),
             Some(TimeDiff::from_millis(rng.gen())),
+        ));
+    }
+
+    #[test]
+    fn transaction_with_execution_info_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&TransactionWithExecutionInfo::new(
+            Transaction::random(rng),
+            rng.gen::<bool>().then(|| ExecutionInfo {
+                block_hash: BlockHash::random(rng),
+                block_height: rng.gen(),
+                execution_result: rng.gen::<bool>().then(|| ExecutionResult::random(rng)),
+            }),
+        ));
+    }
+
+    #[test]
+    fn dictionary_query_result_roundtrip() {
+        let rng = &mut TestRng::new();
+        bytesrepr::test_serialization_roundtrip(&DictionaryQueryResult::new(
+            Key::Account(rng.gen()),
+            GlobalStateQueryResult::new(
+                StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap()),
+                vec![],
+            ),
         ));
     }
 }

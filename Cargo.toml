@@ -29,8 +29,6 @@ default-members = [
     "binary_port",
 ]
 
-exclude = ["utils/nctl/remotes/casper-client-rs"]
-
 # Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
 # perf data.
 [profile.release.package.casper-engine-tests]

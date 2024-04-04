@@ -149,6 +149,11 @@ impl ConfigsOverride {
         self
     }
 
+    fn with_min_gas_price(mut self, min_gas_price: u8) -> Self {
+        self.min_gas_price = min_gas_price;
+        self
+    }
+
     fn with_max_gas_price(mut self, max_gas_price: u8) -> Self {
         self.max_gas_price = max_gas_price;
         self
@@ -2018,7 +2023,7 @@ const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 20000;
 //milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000;
+const BLOCK_TIME: u64 = 1750;
 //milliseconds
 const TIME_OUT: u64 = 600;
 //seconds

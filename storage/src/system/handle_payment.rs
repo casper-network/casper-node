@@ -5,6 +5,7 @@ pub mod runtime_provider;
 pub mod storage_provider;
 
 use casper_types::{system::handle_payment::Error, AccessRights, HoldsEpoch, URef, U512};
+use num_rational::Ratio;
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
@@ -34,27 +35,29 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         Ok(maybe_purse.map(|p| p.remove_access_rights()))
     }
 
-    /// Finalize payment with `amount_spent` and a given `account`.
+    /// Calculate overpayment and fees (if any) for payment finalization.
     #[allow(clippy::too_many_arguments)]
-    fn finalize_payment(
+    fn calculate_overpayment_and_fee(
         &mut self,
         limit: U512,
         gas_price: u8,
         cost: U512,
         consumed: U512,
         source_purse: URef,
-        target_purse: URef,
         holds_epoch: HoldsEpoch,
-    ) -> Result<(), Error> {
-        internal::finalize_payment(
-            self,
+        refund_ratio: Ratio<U512>,
+    ) -> Result<(U512, U512), Error> {
+        let available_balance = match self.available_balance(source_purse, holds_epoch)? {
+            Some(balance) => balance,
+            None => return Err(Error::PaymentPurseBalanceNotFound),
+        };
+        internal::calculate_overpayment_and_fee(
             limit,
             gas_price,
             cost,
             consumed,
-            source_purse,
-            target_purse,
-            holds_epoch,
+            available_balance,
+            refund_ratio,
         )
     }
 
@@ -67,6 +70,7 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         internal::distribute_accumulated_fees(self, source_uref, amount)
     }
 
+    /// Burns the imputed amount from the imputed purse.
     fn burn(&mut self, source_uref: URef, amount: Option<U512>) -> Result<(), Error> {
         internal::burn(self, source_uref, amount)
     }

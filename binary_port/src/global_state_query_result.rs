@@ -30,6 +30,11 @@ impl GlobalStateQueryResult {
         }
     }
 
+    /// Returns the stored value.
+    pub fn value(&self) -> &StoredValue {
+        &self.value
+    }
+
     /// Returns the stored value and the merkle proof.
     pub fn into_inner(self) -> (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>) {
         (self.value, self.merkle_proof)

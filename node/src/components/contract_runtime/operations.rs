@@ -10,8 +10,9 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldRequest, BalanceIdentifier,
         BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
         EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
-        HandlePaymentMode, HandlePaymentRequest, InsufficientBalanceHandling, PruneRequest,
-        PruneResult, StepRequest, StepResult, TransferRequest,
+        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
+        InsufficientBalanceHandling, PruneRequest, PruneResult, StepRequest, StepResult,
+        TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -26,7 +27,7 @@ use casper_types::{
     system::mint::BalanceHoldAddrTag,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
     Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
-    PublicKey, Transaction, TransactionCategory, U512,
+    PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
 };
 
 use super::{
@@ -98,6 +99,8 @@ pub fn execute_finalized_block(
         .iter()
         .map(Transaction::fetch_id)
         .collect_vec();
+
+    let refund_handling = chainspec.core_config.refund_handling;
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
 
     for transaction in executable_block.transactions {
@@ -109,24 +112,52 @@ pub fn execute_finalized_block(
         let entry_point = transaction.entry_point();
         let authorization_keys = transaction.authorization_keys();
 
-        // there are three separate mote / gas / token values and it is important to not mix them up
-        // we solve for halting state using a `gas limit` which is the maximum amount of
-        // computation we will allow a given transaction to consume. the transaction itself
-        // provides a function to determine this if provided with the current cost tables
-        //
-        // next there is the actual cost, i.e. how much we charge for that computation
-        // this is calculated by multiplying the gas limit by the current `gas_price`
-        // gas price has a floor of 1, and the ceiling is configured in the chainspec
-        // NOTE: when the gas price is 1, the gas limit and the cost are coincidentally equal
-        // because x == x * 1; thus it is recommended to run tests with gas price >1 to
-        // avoid being confused by this
-        //
-        // the third important value is the amount of computation consumed by executing a
-        // transaction  for native transactions there is no wasm and the consumed always
-        // equals the limit  for bytecode / wasm based transactions the consumed is based on
-        // what opcodes were executed      in such cases, consumed can range from >0 to
-        // <=gas_limit. consumed is determined after execution and is important for payment
-        // post processing
+        // set up the refund purse for this transaction, if refunds are on
+        if !refund_handling.skip_refund() {
+            // if refunds are turned on we initialize the refund purse to the initiator's main
+            // purse before doing any processing. NOTE: when executed, custom payment logic
+            // has the option to call set_refund_purse on the handle payment contract to set
+            // up a different refund purse, if desired.
+            let handle_refund_request = HandleRefundRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                protocol_version,
+                transaction_hash,
+                HandleRefundMode::SetRefundPurse {
+                    target: Box::new(initiator_addr.clone().into()),
+                },
+            );
+            let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+            if let Err(rnf) = artifact_builder.with_set_refund_purse_result(&handle_refund_result) {
+                if rnf {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                artifacts.push(artifact_builder.build());
+                continue; // no reason to commit the effects, move on
+            }
+            state_root_hash =
+                scratch_state.commit(state_root_hash, handle_refund_result.effects().clone())?;
+        }
+
+        /*
+        we solve for halting state using a `gas limit` which is the maximum amount of
+        computation we will allow a given transaction to consume. the transaction itself
+        provides a function to determine this if provided with the current cost tables
+        gas_limit is ALWAYS calculated with price == 1.
+
+        next there is the actual cost, i.e. how much we charge for that computation
+        this is calculated by multiplying the gas limit by the current `gas_price`
+        gas price has a floor of 1, and the ceiling is configured in the chainspec
+        NOTE: when the gas price is 1, the gas limit and the cost are coincidentally
+        equal because x == x * 1; thus it is recommended to run tests with
+        price >1 to avoid being confused by this.
+
+        the third important value is the amount of computation consumed by executing a
+        transaction  for native transactions there is no wasm and the consumed always
+        equals the limit  for bytecode / wasm based transactions the consumed is based on
+        what opcodes were executed and can range from >=0 to <=gas_limit.
+        consumed is determined after execution and is used for refund & fee post processing.
+        */
 
         // NOTE: this is the allowed computation limit   (gas limit)
         let gas_limit = match transaction.gas_limit(chainspec) {
@@ -194,6 +225,8 @@ pub fn execute_finalized_block(
                             BalanceIdentifier::Payment
                         }
                     };
+                    state_root_hash =
+                        scratch_state.commit(state_root_hash, pay_result.effects().clone())?;
                     artifact_builder
                         .with_wasm_v1_result(pay_result)
                         .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
@@ -245,11 +278,13 @@ pub fn execute_finalized_block(
                             holds_epoch,
                             protocol_version,
                             transaction_hash,
-                            initiator_addr,
+                            initiator_addr.clone(),
                             authorization_keys,
                             runtime_args,
                         ));
                     let consumed = gas_limit;
+                    state_root_hash =
+                        scratch_state.commit(state_root_hash, transfer_result.effects().clone())?;
                     artifact_builder
                         .with_added_consumed(consumed)
                         .with_transfer_result(transfer_result)
@@ -268,11 +303,13 @@ pub fn execute_finalized_block(
                                 state_root_hash,
                                 protocol_version,
                                 transaction_hash,
-                                initiator_addr,
+                                initiator_addr.clone(),
                                 authorization_keys,
                                 auction_method,
                             ));
                             let consumed = gas_limit;
+                            state_root_hash = scratch_state
+                                .commit(state_root_hash, bidding_result.effects().clone())?;
                             artifact_builder
                                 .with_added_consumed(consumed)
                                 .with_bidding_result(bidding_result)
@@ -300,6 +337,8 @@ pub fn execute_finalized_block(
                             let wasm_v1_result =
                                 execution_engine_v1.execute(&scratch_state, wasm_v1_request);
                             trace!(%transaction_hash, ?category, ?wasm_v1_result, "able to get wasm v1 result");
+                            state_root_hash = scratch_state
+                                .commit(state_root_hash, wasm_v1_result.effects().clone())?;
                             // note: consumed is scraped from wasm_v1_result along w/ other fields
                             artifact_builder
                                 .with_wasm_v1_result(wasm_v1_result)
@@ -316,100 +355,178 @@ pub fn execute_finalized_block(
             debug!(%transaction_hash, "not eligible for execution");
         }
 
-        let fee_handling = chainspec.core_config.fee_handling;
-        // handle payment per the chainspec determined fee setting
-        match fee_handling {
-            FeeHandling::NoFee => {
-                // in this mode, a hold for full cost is placed on the payer's purse.
-                let handle_payment_request = HandlePaymentRequest::new(
+        // handle refunds per the chainspec determined setting.
+        let refund_amount = match refund_handling {
+            RefundHandling::NoRefund => U512::zero(),
+            RefundHandling::Refund { refund_ratio } => {
+                // if it is standard payment we will instead just reduce the amount taken,
+                // rather than take all and then refund some back later
+                // however, we take custom payment up front and thus need to refund
+                if transaction.is_standard_payment() {
+                    U512::zero()
+                } else {
+                    let consumed = Gas::new(artifact_builder.consumed());
+                    let handle_refund_request = HandleRefundRequest::new(
+                        native_runtime_config.clone(),
+                        state_root_hash,
+                        protocol_version,
+                        transaction_hash,
+                        HandleRefundMode::Refund {
+                            limit: gas_limit.value(),
+                            gas_price: current_gas_price,
+                            consumed: consumed.value(),
+                            cost,
+                            // as this is currently behind a custom payment check,
+                            // the source is always BalanceIdentifier::Payment
+                            source: Box::new(balance_identifier.clone()),
+                            target: Box::new(BalanceIdentifier::Refund),
+                            ratio: refund_ratio,
+                            initiator_addr: Box::new(initiator_addr.clone()),
+                        },
+                    );
+                    let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+                    let refunded_amount = handle_refund_result.refund_amount();
+                    state_root_hash = scratch_state
+                        .commit(state_root_hash, handle_refund_result.effects().clone())?;
+                    artifact_builder
+                        .with_handle_refund_result(&handle_refund_result)
+                        .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                    refunded_amount
+                }
+            }
+            RefundHandling::Burn { refund_ratio } => {
+                // regardless of custom or standard payment, burn the appropriate amount from source
+                let consumed = Gas::new(artifact_builder.consumed());
+                let handle_refund_request = HandleRefundRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::clear_holds(balance_identifier.clone(), holds_epoch),
+                    HandleRefundMode::Burn {
+                        limit: gas_limit.value(),
+                        gas_price: current_gas_price,
+                        cost,
+                        consumed: consumed.value(),
+                        source: Box::new(balance_identifier.clone()),
+                        ratio: refund_ratio,
+                    },
                 );
-                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                let handle_refund_result = scratch_state.handle_refund(handle_refund_request);
+                let burned_amount = handle_refund_result.refund_amount();
+                state_root_hash = scratch_state
+                    .commit(state_root_hash, handle_refund_result.effects().clone())?;
                 artifact_builder
-                    .with_handle_payment_result(&handle_payment_result)
+                    .with_handle_refund_result(&handle_refund_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
-                let hold_result = scratch_state.balance_hold(BalanceHoldRequest::new(
+                burned_amount
+            }
+        };
+
+        // handle fees per the chainspec determined setting.
+        let fee_handling = chainspec.core_config.fee_handling;
+        match fee_handling {
+            FeeHandling::NoFee => {
+                // this is an opportunity to prune away any expired holds on source.
+                // it has no effect on the outcome, but it reduces width of gs at the tip of the
+                // chain
+                let handle_fee_request = HandleFeeRequest::new(
+                    native_runtime_config.clone(),
+                    state_root_hash,
+                    protocol_version,
+                    transaction_hash,
+                    HandleFeeMode::clear_holds(balance_identifier.clone(), holds_epoch),
+                );
+                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
+                artifact_builder
+                    .with_handle_fee_result(&handle_fee_result)
+                    .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
+                // in this mode, a hold for cost - refund (if any) is placed on the payer's purse.
+                let amount = cost.saturating_sub(refund_amount);
+                let hold_request = BalanceHoldRequest::new(
                     state_root_hash,
                     protocol_version,
                     balance_identifier,
                     BalanceHoldAddrTag::Gas,
-                    cost,
+                    amount,
                     block_time,
                     holds_epoch,
                     insufficient_balance_handling,
-                ));
+                );
+                let hold_result = scratch_state.balance_hold(hold_request);
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, hold_result.effects().clone())?;
                 artifact_builder
                     .with_balance_hold_result(&hold_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::PayToProposer => {
                 // in this mode, the consumed gas is paid as a fee to the block proposer
-                let consumed = Gas::new(artifact_builder.consumed());
-                let handle_payment_request = HandlePaymentRequest::new(
+                let amount = cost.saturating_sub(refund_amount);
+                let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::finalize(
-                        gas_limit.value(),
-                        current_gas_price,
-                        cost,
-                        consumed.value(),
+                    HandleFeeMode::pay(
+                        Box::new(initiator_addr),
                         balance_identifier,
                         BalanceIdentifier::Public(*(proposer.clone())),
+                        amount,
                         holds_epoch,
                     ),
                 );
-                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
                 artifact_builder
-                    .with_handle_payment_result(&handle_payment_result)
+                    .with_handle_fee_result(&handle_fee_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::Accumulate => {
-                // in this mode, consumed gas is accumulated into a single purse for later
-                // distribution
-                let consumed = Gas::new(artifact_builder.consumed());
-                let handle_payment_request = HandlePaymentRequest::new(
+                // in this mode, consumed gas is accumulated into a single purse
+                // for later distribution
+                let amount = cost.saturating_sub(refund_amount);
+                let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::finalize(
-                        gas_limit.value(),
-                        current_gas_price,
-                        cost,
-                        consumed.value(),
+                    HandleFeeMode::pay(
+                        Box::new(initiator_addr),
                         balance_identifier,
                         BalanceIdentifier::Accumulate,
+                        amount,
                         holds_epoch,
                     ),
                 );
-                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
                 artifact_builder
-                    .with_handle_payment_result(&handle_payment_result)
+                    .with_handle_fee_result(&handle_fee_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
             FeeHandling::Burn => {
-                let consumed = artifact_builder.consumed();
-                let handle_payment_request = HandlePaymentRequest::new(
+                // in this mode, the fee portion is burned.
+                let amount = cost.saturating_sub(refund_amount);
+                let handle_fee_request = HandleFeeRequest::new(
                     native_runtime_config.clone(),
                     state_root_hash,
                     protocol_version,
                     transaction_hash,
-                    HandlePaymentMode::burn(balance_identifier, Some(consumed)),
+                    HandleFeeMode::burn(balance_identifier, Some(amount)),
                 );
-                let handle_payment_result = scratch_state.handle_payment(handle_payment_request);
+                let handle_fee_result = scratch_state.handle_fee(handle_fee_request);
+                state_root_hash =
+                    scratch_state.commit(state_root_hash, handle_fee_result.effects().clone())?;
                 artifact_builder
-                    .with_handle_payment_result(&handle_payment_result)
+                    .with_handle_fee_result(&handle_fee_result)
                     .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
             }
         }
 
-        scratch_state.commit(state_root_hash, artifact_builder.effects())?;
         if let Some(metrics) = metrics.as_ref() {
             metrics
                 .commit_effects
@@ -448,28 +565,6 @@ pub fn execute_finalized_block(
             .collect()
     };
 
-    // Pay out block fees, if relevant. This auto-commits
-    {
-        let fee_req = FeeRequest::new(
-            native_runtime_config.clone(),
-            state_root_hash,
-            protocol_version,
-            block_time,
-            holds_epoch,
-        );
-        match scratch_state.distribute_fees(fee_req) {
-            FeeResult::RootNotFound => {
-                return Err(BlockExecutionError::RootNotFound(state_root_hash));
-            }
-            FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
-            FeeResult::Success {
-                post_state_hash, ..
-            } => {
-                state_root_hash = post_state_hash;
-            }
-        }
-    }
-
     // Update exec_block metric BEFORE determining per era things such as era rewards and step.
     // the commit_step function handles the metrics for step
     if let Some(metrics) = metrics.as_ref() {
@@ -483,6 +578,28 @@ pub fn execute_finalized_block(
     // thus if in future the calling logic passes rewards per block it should just work as is.
     // This auto-commits.
     if let Some(rewards) = &executable_block.rewards {
+        // Pay out block fees, if relevant. This auto-commits
+        {
+            let fee_req = FeeRequest::new(
+                native_runtime_config.clone(),
+                state_root_hash,
+                protocol_version,
+                block_time,
+                holds_epoch,
+            );
+            match scratch_state.distribute_fees(fee_req) {
+                FeeResult::RootNotFound => {
+                    return Err(BlockExecutionError::RootNotFound(state_root_hash));
+                }
+                FeeResult::Failure(fer) => return Err(BlockExecutionError::DistributeFees(fer)),
+                FeeResult::Success {
+                    post_state_hash, ..
+                } => {
+                    state_root_hash = post_state_hash;
+                }
+            }
+        }
+
         let rewards_req = BlockRewardsRequest::new(
             native_runtime_config.clone(),
             state_root_hash,
