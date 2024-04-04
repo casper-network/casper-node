@@ -4426,7 +4426,7 @@ fn should_fail_bid_public_key_change_if_conflicting_validator_bid_exists() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -4575,7 +4575,7 @@ fn should_change_validator_bid_public_key() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -4672,7 +4672,8 @@ fn should_change_validator_bid_public_key() {
     assert_eq!(delegator.staked_amount(), U512::from(DELEGATE_AMOUNT_2));
 
     // distribute rewards
-    let total_payout = builder.base_round_reward(None);
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+    let total_payout = builder.base_round_reward(None, protocol_version);
     let mut rewards = BTreeMap::new();
     rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
