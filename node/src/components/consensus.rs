@@ -521,8 +521,8 @@ where
             Event::DemandIncoming(ConsensusDemand {
                 sender,
                 request_msg: demand,
-                auto_closing_responder,
-            }) => self.handle_demand(effect_builder, rng, sender, demand, auto_closing_responder),
+                ticket,
+            }) => self.handle_demand(effect_builder, rng, sender, demand, ticket),
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)
             }

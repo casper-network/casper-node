@@ -399,11 +399,12 @@ pub(crate) trait FromIncoming<P> {
         _effect_builder: EffectBuilder<Self>,
         _sender: NodeId,
         payload: P,
-    ) -> Result<(Self, BoxFuture<'static, Option<P>>), P>
+        ticket: Ticket,
+    ) -> Result<(Self, BoxFuture<'static, Option<P>>), (P, Ticket)>
     where
         Self: Sized + Send,
     {
-        Err(payload)
+        Err((payload, ticket))
     }
 }
 

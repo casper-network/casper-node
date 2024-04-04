@@ -12,11 +12,8 @@ use serde::Serialize;
 
 use crate::{
     components::{consensus, fetcher::Tag, gossiper, network::Ticket},
-    protocol::Message,
     types::{FinalitySignature, NodeId, TrieOrChunkIdDisplay},
 };
-
-use super::AutoClosingResponder;
 
 /// An envelope for an incoming message, attaching a sender address and a backpressure ticket.
 #[derive(DataSize, Debug, Serialize)]
@@ -43,8 +40,9 @@ pub struct DemandIncoming<M> {
     pub(crate) sender: NodeId,
     /// The wrapped demand.
     pub(crate) request_msg: Box<M>,
-    /// Responder to send the answer down through.
-    pub(crate) auto_closing_responder: AutoClosingResponder<Message>,
+    /// Ticket associated with the demand.
+    #[serde(skip)]
+    pub(crate) ticket: Ticket,
 }
 
 impl<M> Display for DemandIncoming<M>

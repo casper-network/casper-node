@@ -46,16 +46,16 @@ use crate::{
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
             Event, HighwayProtocol, NewBlockPayload, ReactorEventT, TimerId, ValidationResult, Zug,
         },
-        network::blocklist::BlocklistJustification,
+        network::{blocklist::BlocklistJustification, Ticket},
     },
     consensus::ValidationError,
     effect::{
         announcements::FatalAnnouncement,
         requests::{ContractRuntimeRequest, ProposedBlockValidationRequest, StorageRequest},
-        AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     failpoints::Failpoint,
-    fatal, protocol,
+    fatal,
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
         DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
@@ -734,7 +734,7 @@ impl EraSupervisor {
         rng: &mut NodeRng,
         sender: NodeId,
         request: Box<ConsensusRequestMessage>,
-        auto_closing_responder: AutoClosingResponder<protocol::Message>,
+        ticket: Ticket,
     ) -> Effects<Event> {
         let ConsensusRequestMessage { era_id, payload } = *request;
 
@@ -742,7 +742,8 @@ impl EraSupervisor {
         match self.open_eras.get_mut(&era_id) {
             None => {
                 self.log_missing_era(era_id);
-                auto_closing_responder.respond_none().ignore()
+                drop(ticket);
+                Effects::new()
             }
             Some(era) => {
                 let (outcomes, response) =
@@ -752,12 +753,16 @@ impl EraSupervisor {
                     self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes);
                 if let Some(payload) = response {
                     effects.extend(
-                        auto_closing_responder
-                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                        effect_builder
+                            .send_message_and_drop_ticket(
+                                sender,
+                                ConsensusMessage::Protocol { era_id, payload }.into(),
+                                ticket,
+                            )
                             .ignore(),
                     );
                 } else {
-                    effects.extend(auto_closing_responder.respond_none().ignore());
+                    drop(ticket);
                 }
                 effects
             }

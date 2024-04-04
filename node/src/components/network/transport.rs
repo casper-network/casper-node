@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use datasize::DataSize;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -79,11 +80,13 @@ pub(super) fn create_rpc_builder(
 ///
 /// Dropping it will cause an "ACK", which in the Juliet transport's case is an empty response, to
 /// be sent. Cancellations or responses with actual payloads are not used at this time.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct Ticket {
     /// The underlying request.
+    #[data_size(skip)]
     opt_request: Option<Box<IncomingRequest>>,
     /// A weak reference to the networking metrics.
+    #[data_size(skip)]
     net_metrics: Weak<Metrics>,
 }
 

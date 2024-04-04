@@ -24,7 +24,7 @@ use crate::{
             NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand,
             TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
         },
-        AutoClosingResponder, EffectBuilder,
+        EffectBuilder,
     },
     types::{Block, Deploy, FinalitySignature, NodeId},
 };
@@ -430,7 +430,8 @@ where
         effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         payload: Message,
-    ) -> Result<(Self, BoxFuture<'static, Option<Message>>), Message>
+        ticket: Ticket,
+    ) -> Result<(Self, BoxFuture<'static, Option<Message>>), (Message, Ticket)>
     where
         Self: Sized + Send,
     {
@@ -439,10 +440,11 @@ where
                 tag: Tag::TrieOrChunk,
                 serialized_id,
             } => {
+                // TODO: Do not create a responder anymore here.
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
                     request_msg: Box::new(TrieRequest(serialized_id)),
-                    auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                    ticket,
                 });
 
                 Ok((ev, fut.boxed()))
@@ -452,12 +454,12 @@ where
                     effect_builder.create_request_parts(move |responder| ConsensusDemand {
                         sender,
                         request_msg: Box::new(request_msg),
-                        auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                        ticket,
                     });
 
                 Ok((ev, fut.boxed()))
             }
-            _ => Err(payload),
+            _ => Err((payload, ticket)),
         }
     }
 }
