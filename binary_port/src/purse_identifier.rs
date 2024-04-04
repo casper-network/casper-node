@@ -21,7 +21,7 @@ const ENTITY_PURSE_TAG: u8 = 5;
 pub enum PurseIdentifier {
     Payment,
     Accumulate,
-    URef(URef),
+    Purse(URef),
     PublicKey(PublicKey),
     Account(AccountHash),
     Entity(EntityAddr),
@@ -33,7 +33,7 @@ impl PurseIdentifier {
         match rng.gen_range(0..6) {
             PAYMENT_PURSE_TAG => PurseIdentifier::Payment,
             ACCUMULATE_PURSE_TAG => PurseIdentifier::Accumulate,
-            UREF_PURSE_TAG => PurseIdentifier::URef(rng.gen()),
+            UREF_PURSE_TAG => PurseIdentifier::Purse(rng.gen()),
             PUBLIC_KEY_PURSE_TAG => PurseIdentifier::PublicKey(PublicKey::random(rng)),
             ACCOUNT_PURSE_TAG => PurseIdentifier::Account(rng.gen()),
             ENTITY_PURSE_TAG => PurseIdentifier::Entity(rng.gen()),
@@ -53,7 +53,7 @@ impl ToBytes for PurseIdentifier {
         match self {
             PurseIdentifier::Payment => PAYMENT_PURSE_TAG.write_bytes(writer),
             PurseIdentifier::Accumulate => ACCUMULATE_PURSE_TAG.write_bytes(writer),
-            PurseIdentifier::URef(uref) => {
+            PurseIdentifier::Purse(uref) => {
                 UREF_PURSE_TAG.write_bytes(writer)?;
                 uref.write_bytes(writer)
             }
@@ -77,7 +77,7 @@ impl ToBytes for PurseIdentifier {
             + match self {
                 PurseIdentifier::Payment => 0,
                 PurseIdentifier::Accumulate => 0,
-                PurseIdentifier::URef(uref) => uref.serialized_length(),
+                PurseIdentifier::Purse(uref) => uref.serialized_length(),
                 PurseIdentifier::PublicKey(key) => key.serialized_length(),
                 PurseIdentifier::Account(account) => account.serialized_length(),
                 PurseIdentifier::Entity(entity) => entity.serialized_length(),
@@ -93,7 +93,7 @@ impl FromBytes for PurseIdentifier {
             ACCUMULATE_PURSE_TAG => Ok((PurseIdentifier::Accumulate, remainder)),
             UREF_PURSE_TAG => {
                 let (uref, remainder) = URef::from_bytes(remainder)?;
-                Ok((PurseIdentifier::URef(uref), remainder))
+                Ok((PurseIdentifier::Purse(uref), remainder))
             }
             PUBLIC_KEY_PURSE_TAG => {
                 let (key, remainder) = PublicKey::from_bytes(remainder)?;

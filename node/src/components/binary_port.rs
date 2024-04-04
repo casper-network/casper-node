@@ -514,7 +514,7 @@ where
     let balance_id = match purse_identifier {
         PurseIdentifier::Payment => BalanceIdentifier::Payment,
         PurseIdentifier::Accumulate => BalanceIdentifier::Accumulate,
-        PurseIdentifier::URef(uref) => BalanceIdentifier::Purse(uref),
+        PurseIdentifier::Purse(uref) => BalanceIdentifier::Purse(uref),
         PurseIdentifier::PublicKey(pub_key) => BalanceIdentifier::Public(pub_key),
         PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
         PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
