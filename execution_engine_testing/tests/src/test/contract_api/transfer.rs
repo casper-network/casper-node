@@ -3,8 +3,8 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 use casper_types::{
@@ -54,7 +54,7 @@ fn should_transfer_to_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -107,7 +107,7 @@ fn should_transfer_to_public_key() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -158,7 +158,7 @@ fn should_transfer_from_purse_to_public_key() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Create a funded a purse, and store it in named keys
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -240,7 +240,7 @@ fn should_transfer_from_account_to_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let builder = builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -330,7 +330,7 @@ fn should_transfer_to_existing_account() {
     // Run genesis
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    let builder = builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -447,7 +447,7 @@ fn should_fail_when_insufficient_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         // Exec transfer contract
         .exec(exec_request_1)
         .expect_success()
@@ -460,51 +460,115 @@ fn should_fail_when_insufficient_funds() {
         .exec(exec_request_3)
         .commit();
 
-    let exec_results = builder
+    let exec_result = builder
         .get_exec_result_owned(2)
         .expect("should have exec response");
-    assert_eq!(exec_results.len(), 1);
-    let exec_result = exec_results[0].as_error().expect("should have error");
-    let error = assert_matches!(exec_result, EngineError::Exec(ExecError::Revert(e)) => *e, "{:?}", exec_result);
-    assert_eq!(error, ApiError::from(mint::Error::InsufficientFunds));
+    let exec_result = exec_result.error().expect("should have error");
+    let error = assert_matches!(exec_result, EngineError::Exec(ExecError::Revert(e)) => e, "{:?}", exec_result);
+    assert_eq!(*error, ApiError::from(mint::Error::InsufficientFunds));
 }
 
 #[ignore]
+#[allow(unused)]
 #[test]
 fn should_transfer_total_amount() {
-    let mut builder = LmdbWasmTestBuilder::default();
+    // NOTE: as of protocol version 2.0.0 the execution engine is no longer reponsible
+    // for payment, refund, or fee handling...thus
+    // full transactions executed via the node are subject to payment, fee, refund,
+    // etc based upon chainspec settings, but when using the EE directly as is done
+    // in this test, there is no charge and all transfers are at face value.
+    fn balance_checker(bldr: &mut LmdbWasmTestBuilder, account_hash: AccountHash) -> U512 {
+        let entity = bldr
+            .get_entity_by_account_hash(account_hash)
+            .expect("should have account entity");
+        let entity_main_purse = entity.main_purse();
+        bldr.get_purse_balance(entity_main_purse)
+    }
+    fn commit(bldr: &mut LmdbWasmTestBuilder, req_bldr: ExecuteRequestBuilder) {
+        let req = req_bldr.build();
+        bldr.exec(req).expect_success().commit();
+    }
+    fn genesis() -> LmdbWasmTestBuilder {
+        let mut builder = LmdbWasmTestBuilder::default();
+        builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+        builder
+    }
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" => *ACCOUNT_1_ADDR, "amount" => *ACCOUNT_1_INITIAL_BALANCE },
-    )
-    .build();
+    let mut builder = genesis();
 
-    let transfer_amount_1 = *ACCOUNT_1_INITIAL_BALANCE - *DEFAULT_PAYMENT;
+    let balance_x_initial = balance_checker(&mut builder, *DEFAULT_ACCOUNT_ADDR);
+    let amount_to_fund = *ACCOUNT_1_INITIAL_BALANCE;
 
-    let exec_request_2 = ExecuteRequestBuilder::standard(
-        *ACCOUNT_1_ADDR,
-        CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
-        runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => transfer_amount_1 },
-    )
-    .build();
-
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
-
-    builder.exec(exec_request_1).expect_success().commit();
-
-    builder.exec(exec_request_2).commit().expect_success();
-
-    let account_1 = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
-        .expect("should have account");
-    let account_1_main_purse = account_1.main_purse();
-    let account_1_balance = builder.get_purse_balance(account_1_main_purse);
-
+    // fund account 1 from default account
+    commit(
+        &mut builder,
+        ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
+            runtime_args! { "target" => *ACCOUNT_1_ADDR, "amount" => amount_to_fund },
+        ),
+    );
+    let balance_x_out = balance_checker(&mut builder, *DEFAULT_ACCOUNT_ADDR);
     assert_eq!(
-        account_1_balance,
-        builder.calculate_refund_amount(*DEFAULT_PAYMENT),
-        "account 1 should only have refunded amount after transferring full amount"
+        balance_x_initial - amount_to_fund,
+        balance_x_out,
+        "funded amount should be deducted from funder's balance"
+    );
+    let balance_y_initial = balance_checker(&mut builder, *ACCOUNT_1_ADDR);
+    assert_eq!(
+        amount_to_fund, balance_y_initial,
+        "receiving account's balance should match funding amount"
+    );
+    let diff = balance_x_initial - balance_y_initial;
+    assert_eq!(
+        diff, balance_x_out,
+        "funder's balance difference should equal funded amount"
+    );
+
+    // transfer it to a different account
+    commit(
+        &mut builder,
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_1_ADDR,
+            CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
+            runtime_args! { "target" => *ACCOUNT_2_ADDR, "amount" => balance_y_initial },
+        ),
+    );
+    let balance_y_out = balance_checker(&mut builder, *ACCOUNT_1_ADDR);
+    assert_eq!(
+        balance_y_initial - amount_to_fund,
+        balance_y_out,
+        "funded amount should be deducted from funder's balance"
+    );
+    let balance_z_initial = balance_checker(&mut builder, *ACCOUNT_2_ADDR);
+    assert_eq!(
+        amount_to_fund, balance_z_initial,
+        "receiving account's balance should match funding amount"
+    );
+    let diff = balance_y_initial - balance_z_initial;
+    assert_eq!(
+        diff, balance_y_out,
+        "funder's balance difference should equal funded amount"
+    );
+
+    // transfer it back to originator
+    commit(
+        &mut builder,
+        ExecuteRequestBuilder::standard(
+            *ACCOUNT_2_ADDR,
+            CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
+            runtime_args! { "target" => *DEFAULT_ACCOUNT_ADDR, "amount" => balance_z_initial },
+        ),
+    );
+    let balance_x_in = balance_checker(&mut builder, *DEFAULT_ACCOUNT_ADDR);
+    let balance_z_out = balance_checker(&mut builder, *ACCOUNT_2_ADDR);
+    assert_eq!(
+        U512::zero(),
+        balance_z_out,
+        "trampoline account should be zero'd"
+    );
+    assert_eq!(
+        balance_x_initial, balance_x_in,
+        "original balance should be restored"
     );
 }

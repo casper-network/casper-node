@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ChainspecConfig, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
@@ -11,7 +11,7 @@ use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
     GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
+    SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -33,8 +33,8 @@ static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCO
 
 static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let account_1 = {
-        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE.into());
-        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT.into());
+        let account_1_balance = Motes::new(ACCOUNT_1_BALANCE);
+        let account_1_bonded_amount = Motes::new(ACCOUNT_1_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_1_PUBLIC_KEY.clone(),
             account_1_balance,
@@ -45,8 +45,8 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
         )
     };
     let account_2 = {
-        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE.into());
-        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT.into());
+        let account_2_balance = Motes::new(ACCOUNT_2_BALANCE);
+        let account_2_bonded_amount = Motes::new(ACCOUNT_2_BONDED_AMOUNT);
         GenesisAccount::account(
             ACCOUNT_2_PUBLIC_KEY.clone(),
             account_2_balance,
@@ -64,7 +64,7 @@ static GENESIS_CUSTOM_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 fn should_run_genesis() {
     let protocol_version = ProtocolVersion::V1_0_0;
 
-    let run_genesis_request = ChainspecConfig::create_genesis_request_from_production_chainspec(
+    let run_genesis_request = ChainspecConfig::create_genesis_request_from_local_chainspec(
         GENESIS_CUSTOM_ACCOUNTS.clone(),
         protocol_version,
     )
@@ -121,15 +121,13 @@ fn should_track_total_token_supply_in_mint() {
     let accounts = GENESIS_CUSTOM_ACCOUNTS.clone();
     let wasm_config = *DEFAULT_WASM_CONFIG;
     let system_config = *DEFAULT_SYSTEM_CONFIG;
-    let protocol_version = ProtocolVersion::V1_0_0;
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
     let validator_slots = DEFAULT_VALIDATOR_SLOTS;
     let auction_delay = DEFAULT_AUCTION_DELAY;
     let locked_funds_period = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let refund_handling = DEFAULT_REFUND_HANDLING;
-    let fee_handling = DEFAULT_FEE_HANDLING;
     let config = GenesisConfigBuilder::default()
         .with_accounts(accounts.clone())
         .with_wasm_config(wasm_config)
@@ -140,8 +138,6 @@ fn should_track_total_token_supply_in_mint() {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
         .build();
 
     let genesis_request = GenesisRequest::new(
@@ -155,7 +151,7 @@ fn should_track_total_token_supply_in_mint() {
 
     builder.run_genesis(genesis_request);
 
-    let total_supply = builder.total_supply(None);
+    let total_supply = builder.total_supply(None, protocol_version);
 
     let expected_balance: U512 = accounts.iter().map(|item| item.balance().value()).sum();
     let expected_staked_amount: U512 = accounts

@@ -38,8 +38,6 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
-use casper_types::BlockHeader;
-
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
@@ -263,7 +261,7 @@ pub(crate) enum Source {
     /// A client.
     Client,
     /// A client via the speculative_exec server.
-    SpeculativeExec(Box<BlockHeader>),
+    SpeculativeExec,
     /// This node.
     Ourself,
 }
@@ -272,7 +270,7 @@ impl Source {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_client(&self) -> bool {
         match self {
-            Source::Client | Source::SpeculativeExec(_) => true,
+            Source::Client | Source::SpeculativeExec => true,
             Source::PeerGossiped(_) | Source::Peer(_) | Source::Ourself => false,
         }
     }
@@ -281,7 +279,7 @@ impl Source {
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
             Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
-            Source::Client | Source::SpeculativeExec(_) | Source::Ourself => None,
+            Source::Client | Source::SpeculativeExec | Source::Ourself => None,
         }
     }
 }
@@ -292,7 +290,7 @@ impl Display for Source {
             Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
-            Source::SpeculativeExec(_) => write!(formatter, "client (speculative exec)"),
+            Source::SpeculativeExec => write!(formatter, "client (speculative exec)"),
             Source::Ourself => write!(formatter, "ourself"),
         }
     }

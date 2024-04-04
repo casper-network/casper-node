@@ -32,12 +32,12 @@ static ACCOUNTS_WITH_GENESIS_VALIDATORS: Lazy<Vec<GenesisAccount>> = Lazy::new(|
     vec![
         GenesisAccount::account(
             DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             None,
         ),
         GenesisAccount::account(
             DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
                 Motes::new(*DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE),
                 15,
@@ -133,7 +133,7 @@ fn should_initialize_default_vesting_schedule() {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             )
             .is_success(),
@@ -171,8 +171,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
     };
 
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -197,47 +197,43 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     builder.exec(add_bid_request).expect_success().commit();
 
-    let withdraw_bid_request_1 = {
-        let sender = *DEFAULT_PROPOSER_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_WITHDRAW_BID;
-        let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
-        let session_args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
-        };
-
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash([58; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let sender = *DEFAULT_PROPOSER_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_WITHDRAW_BID;
+    let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
     };
 
-    let withdraw_bid_request_2 = {
-        let sender = *DEFAULT_PROPOSER_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_WITHDRAW_BID;
-        let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
-        let session_args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
-        };
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_standard_payment(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash([58; 32])
+        .build();
 
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash([59; 32])
-            .build();
+    let withdraw_bid_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let sender = *DEFAULT_PROPOSER_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_WITHDRAW_BID;
+    let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_standard_payment(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash([59; 32])
+        .build();
+
+    let withdraw_bid_request_2 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(withdraw_bid_request_1)
@@ -258,7 +254,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -274,7 +270,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -303,8 +299,8 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
     };
 
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         exec_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
@@ -337,7 +333,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .with_run_auction(true)
                     .build(),
             )
@@ -345,26 +341,24 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         "should run step to initialize a schedule"
     );
 
-    let withdraw_bid_request_1 = {
-        let sender = *DEFAULT_PROPOSER_ADDR;
-        let contract_hash = builder.get_auction_contract_hash();
-        let entry_point = auction::METHOD_WITHDRAW_BID;
-        let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
-        let session_args = runtime_args! {
-            auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-            auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
-        };
-
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_stored_session_hash(contract_hash, entry_point, session_args)
-            .with_empty_payment_bytes(payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash([58; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let sender = *DEFAULT_PROPOSER_ADDR;
+    let contract_hash = builder.get_auction_contract_hash();
+    let entry_point = auction::METHOD_WITHDRAW_BID;
+    let payment_args = runtime_args! { standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT, };
+    let session_args = runtime_args! {
+        auction::ARG_PUBLIC_KEY => DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
+        auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
     };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_stored_session_hash(contract_hash, entry_point, session_args)
+        .with_standard_payment(payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash([58; 32])
+        .build();
+
+    let withdraw_bid_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(withdraw_bid_request_1)
@@ -399,7 +393,7 @@ mod fixture {
                 StepRequestBuilder::default()
                     .with_era_end_timestamp_millis(era_end_timestamp_millis)
                     .with_parent_state_hash(builder.get_post_state_hash())
-                    .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+                    .with_protocol_version(DEFAULT_PROTOCOL_VERSION)
                     .build(),
             );
         })

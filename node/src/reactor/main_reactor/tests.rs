@@ -1,4 +1,5 @@
 mod binary_port;
+mod transactions;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,6 +12,7 @@ use std::{
 };
 
 use either::Either;
+use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use num_traits::One;
@@ -20,10 +22,16 @@ use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_storage::{
-    data_access_layer::{BidsRequest, BidsResult, TotalSupplyRequest, TotalSupplyResult},
+    data_access_layer::{
+        balance::{BalanceHandling, BalanceResult},
+        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
+        TotalSupplyRequest, TotalSupplyResult,
+    },
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
+    account::AccountHash,
+    crypto,
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
@@ -32,9 +40,10 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, Key, Motes, NextUpgrade, ProtocolVersion, PublicKey,
-    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
+    PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
+    StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -104,6 +113,54 @@ struct ConfigsOverride {
     min_gas_price: u8,
     upper_threshold: u64,
     lower_threshold: u64,
+    refund_handling_override: Option<RefundHandling>,
+    fee_handling_override: Option<FeeHandling>,
+    pricing_handling_override: Option<PricingHandling>,
+    allow_reservations_override: Option<bool>,
+    balance_hold_interval_override: Option<TimeDiff>,
+}
+
+impl ConfigsOverride {
+    fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
+        self.refund_handling_override = Some(refund_handling);
+        self
+    }
+
+    fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling_override = Some(fee_handling);
+        self
+    }
+
+    fn with_pricing_handling(mut self, pricing_handling: PricingHandling) -> Self {
+        self.pricing_handling_override = Some(pricing_handling);
+        self
+    }
+
+    #[allow(unused)]
+    fn with_allow_reservations(mut self, allow_reservations: bool) -> Self {
+        self.allow_reservations_override = Some(allow_reservations);
+        self
+    }
+
+    fn with_balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval_override = Some(balance_hold_interval);
+        self
+    }
+
+    fn with_min_gas_price(mut self, min_gas_price: u8) -> Self {
+        self.min_gas_price = min_gas_price;
+        self
+    }
+
+    fn with_max_gas_price(mut self, max_gas_price: u8) -> Self {
+        self.max_gas_price = max_gas_price;
+        self
+    }
+
+    fn with_minimum_era_height(mut self, minimum_era_height: u64) -> Self {
+        self.minimum_era_height = minimum_era_height;
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -127,6 +184,11 @@ impl Default for ConfigsOverride {
             min_gas_price: 1,
             upper_threshold: 90,
             lower_threshold: 50,
+            refund_handling_override: None,
+            fee_handling_override: None,
+            pricing_handling_override: None,
+            allow_reservations_override: None,
+            balance_hold_interval_override: None,
         }
     }
 }
@@ -192,8 +254,8 @@ impl TestFixture {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let min_motes = 1_000_000_000_000u64; // 1000 token
-        let max_motes = min_motes * 100; // 100_000 token
+        let min_motes = 100_000_000_000_000_000u64;
+        let max_motes = min_motes * 100;
         let balance = U512::from(rng.gen_range(min_motes..max_motes));
 
         // Override accounts with those generated from the keys.
@@ -240,6 +302,11 @@ impl TestFixture {
             min_gas_price: min,
             upper_threshold: go_up,
             lower_threshold: go_down,
+            refund_handling_override,
+            fee_handling_override,
+            pricing_handling_override,
+            allow_reservations_override,
+            balance_hold_interval_override,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -264,6 +331,22 @@ impl TestFixture {
         chainspec.highway_config.maximum_round_length =
             chainspec.core_config.minimum_block_time * 2;
         chainspec.core_config.signature_rewards_max_delay = signature_rewards_max_delay;
+
+        if let Some(refund_handling) = refund_handling_override {
+            chainspec.core_config.refund_handling = refund_handling;
+        }
+        if let Some(fee_handling) = fee_handling_override {
+            chainspec.core_config.fee_handling = fee_handling;
+        }
+        if let Some(pricing_handling) = pricing_handling_override {
+            chainspec.core_config.pricing_handling = pricing_handling;
+        }
+        if let Some(allow_reservations) = allow_reservations_override {
+            chainspec.core_config.allow_reservations = allow_reservations;
+        }
+        if let Some(balance_hold_interval) = balance_hold_interval_override {
+            chainspec.core_config.balance_hold_interval = balance_hold_interval;
+        }
 
         let mut fixture = TestFixture {
             rng,
@@ -555,11 +638,30 @@ impl TestFixture {
         self.try_run_until(
             move |nodes: &Nodes| {
                 nodes.values().all(|runner| {
-                    runner
+                    if runner
                         .main_reactor()
                         .storage()
                         .read_execution_result(txn_hash)
                         .is_some()
+                    {
+                        let exec_info = runner
+                            .main_reactor()
+                            .storage()
+                            .read_execution_info(*txn_hash);
+
+                        if let Some(exec_info) = exec_info {
+                            runner
+                                .main_reactor()
+                                .storage()
+                                .read_block_header_by_height(exec_info.block_height, true)
+                                .unwrap()
+                                .is_some()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
                 })
             },
             within,
@@ -611,7 +713,6 @@ impl TestFixture {
             .storage
             .read_highest_block()
             .expect("should have block");
-
         let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
@@ -662,7 +763,7 @@ impl TestFixture {
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
-        // we can get it out of the system contract registry which is just a
+        // we can get it out of the system entity registry which is just a
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
@@ -674,14 +775,14 @@ impl TestFixture {
             .expect("should not have gs storage error")
             .expect("should have stored value");
 
-        let system_contract_registry: SystemEntityRegistry = match maybe_registry {
+        let system_entity_registry: SystemEntityRegistry = match maybe_registry {
             StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
             _ => {
                 panic!("expected CLValue")
             }
         };
 
-        *system_contract_registry.get(system_contract_name).unwrap()
+        *system_entity_registry.get(system_contract_name).unwrap()
     }
 
     #[track_caller]
@@ -696,6 +797,53 @@ impl TestFixture {
         let price = runner.main_reactor().contract_runtime.current_era_price();
 
         price.gas_price()
+    }
+
+    #[track_caller]
+    fn check_account_balance_hold_at_tip(&self, account_public_key: PublicKey) -> U512 {
+        let (_, runner) = self
+            .network
+            .nodes()
+            .iter()
+            .next()
+            .expect("must have runner");
+
+        let highest_block = runner
+            .main_reactor()
+            .storage
+            .read_highest_block()
+            .expect("should have block");
+
+        let block_time = highest_block.clone_header().timestamp();
+
+        let holds_epoch = HoldsEpoch::from_timestamp(
+            block_time,
+            self.chainspec.core_config.balance_hold_interval,
+        );
+
+        let balance_request = BalanceRequest::from_public_key(
+            *highest_block.state_root_hash(),
+            highest_block.protocol_version(),
+            account_public_key,
+            BalanceHandling::Available { holds_epoch },
+        );
+
+        let balance_result = runner
+            .main_reactor()
+            .contract_runtime
+            .data_access_layer()
+            .balance(balance_request);
+
+        if let BalanceResult::Success { balance_holds, .. } = balance_result {
+            balance_holds
+                .values()
+                .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                .collect_vec()
+                .into_iter()
+                .sum()
+        } else {
+            panic!("failed balance result")
+        }
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
@@ -741,18 +889,20 @@ impl TestFixture {
             .expect("node 0 should have given execution result")
         {
             ExecutionResult::V1(_) => unreachable!(),
-            ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-                effects.transforms().to_vec()
-            }
-            ExecutionResult::V2(ExecutionResultV2::Failure {
-                cost,
+            ExecutionResult::V2(ExecutionResultV2 {
+                effects,
+                consumed: gas,
                 error_message,
                 ..
             }) => {
-                panic!(
-                    "transaction execution failed: {} cost: {}",
-                    error_message, cost
-                );
+                if error_message.is_none() {
+                    effects.transforms().to_vec()
+                } else {
+                    panic!(
+                        "transaction execution failed: {:?} gas: {}",
+                        error_message, gas
+                    );
+                }
             }
         }
     }
@@ -1360,11 +1510,11 @@ async fn should_store_finalized_approvals() {
     // Run until the transaction gets executed.
     let has_stored_exec_results = |nodes: &Nodes| {
         nodes.values().all(|runner| {
-            runner
+            let read = runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&transaction_hash)
-                .is_some()
+                .read_execution_result(&transaction_hash);
+            read.is_some()
         })
     };
     fixture.run_until(has_stored_exec_results, ONE_MIN).await;
@@ -1728,7 +1878,7 @@ async fn run_redelegate_bid_network() {
     // Inject the transaction and run the network until executed.
     fixture.inject_transaction(txn).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&txn_hash, ONE_MIN)
         .await;
 
     // Ensure execution succeeded and that there is a Write transform for the bid's key.
@@ -1736,6 +1886,7 @@ async fn run_redelegate_bid_network() {
         &bob_public_key,
         Some(&alice_public_key),
     ));
+
     fixture
         .successful_execution_transforms(&txn_hash)
         .iter()
@@ -1763,18 +1914,18 @@ async fn run_redelegate_bid_network() {
     );
 
     deploy.sign(&alice_secret_key);
-    let txn = Transaction::Deploy(deploy);
-    let txn_hash = txn.hash();
+    let transaction = Transaction::Deploy(deploy);
+    let transaction_hash = transaction.hash();
 
     // Inject the transaction and run the network until executed.
-    fixture.inject_transaction(txn).await;
+    fixture.inject_transaction(transaction).await;
     fixture
-        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .run_until_executed_transaction(&transaction_hash, TEN_SECS)
         .await;
 
     // Ensure execution succeeded and that there is a Prune transform for the bid's key.
     fixture
-        .successful_execution_transforms(&txn_hash)
+        .successful_execution_transforms(&transaction_hash)
         .iter()
         .find(|transform| match transform.kind() {
             TransformKindV2::Prune(prune_key) => prune_key == &bid_key,
@@ -1831,10 +1982,13 @@ async fn rewards_are_calculated() {
 const STAKE: u128 = 1000000000;
 const PRIME_STAKES: [u128; 5] = [106907, 106921, 106937, 106949, 106957];
 const ERA_COUNT: u64 = 3;
-const ERA_DURATION: u64 = 20000; //milliseconds
+const ERA_DURATION: u64 = 20000;
+//milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000; //milliseconds
-const TIME_OUT: u64 = 600; //seconds
+const BLOCK_TIME: u64 = 2000;
+//milliseconds
+const TIME_OUT: u64 = 600;
+//seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
@@ -2490,9 +2644,6 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
         minimum_era_height: 5,
         lower_threshold: 0,
         upper_threshold: 1,
-        max_standard_count: 1,
-        max_staking_count: 1,
-        max_install_count: 1,
         max_transfer_count: 1,
         max_gas_price,
         ..Default::default()
@@ -2509,22 +2660,23 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let switch_block = fixture.switch_block(ERA_ONE);
 
     let mut current_era = switch_block.era_id();
+    let chain_name = fixture.chainspec.network_config.name.clone();
 
     // Run the network at load for at least 5 eras.
     for _ in 0..5 {
         let target_public_key = PublicKey::random(&mut fixture.rng);
-        let mut native_transfer = Deploy::native_transfer(
-            fixture.chainspec.network_config.name.clone(),
-            alice_public_key.clone(),
-            target_public_key,
-            None,
-            Timestamp::now(),
-            TimeDiff::from_seconds(1200),
-            max_gas_price as u64,
-        );
+        let fixed_native_mint_transaction =
+            TransactionV1Builder::new_transfer(10_000_000_000u64, None, target_public_key, None)
+                .expect("must get builder")
+                .with_chain_name(chain_name.clone())
+                .with_secret_key(&alice_secret_key)
+                .with_pricing_mode(PricingMode::Fixed {
+                    gas_price_tolerance: max_gas_price,
+                })
+                .build()
+                .expect("must get transaction");
 
-        native_transfer.sign(&alice_secret_key);
-        let txn = Transaction::Deploy(native_transfer);
+        let txn = Transaction::V1(fixed_native_mint_transaction);
         fixture.inject_transaction(txn).await;
         let next_era = current_era.successor();
         fixture
@@ -2536,6 +2688,39 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let expected_gas_price = fixture.chainspec.vacancy_config.max_gas_price;
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
+    let target_public_key = PublicKey::random(&mut fixture.rng);
+
+    let holds_before = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());
+    let amount = 10_000_000_000u64;
+
+    let fixed_native_mint_transaction =
+        TransactionV1Builder::new_transfer(amount, None, target_public_key, None)
+            .expect("must get builder")
+            .with_chain_name(chain_name)
+            .with_secret_key(&alice_secret_key)
+            .with_pricing_mode(PricingMode::Fixed {
+                gas_price_tolerance: max_gas_price,
+            })
+            .build()
+            .expect("must get transaction");
+
+    let txn = Transaction::V1(fixed_native_mint_transaction);
+    let txn_hash = txn.hash();
+
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let holds_after = fixture.check_account_balance_hold_at_tip(alice_public_key.clone());
+
+    let current_gas_price = fixture
+        .highest_complete_block()
+        .maybe_current_gas_price()
+        .expect("must have gas price");
+    let cost =
+        fixture.chainspec.system_costs_config.mint_costs().transfer * (current_gas_price as u32);
+    assert_eq!(holds_after, holds_before + U512::from(cost));
 
     // Run the network at zero load and ensure the value falls back to the floor.
     for _ in 0..5 {

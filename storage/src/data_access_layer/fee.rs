@@ -6,7 +6,8 @@ use crate::system::{
     transfer::TransferError,
 };
 use casper_types::{
-    account::AccountHash, execution::Effects, Digest, FeeHandling, ProtocolVersion, TransferAddr,
+    account::AccountHash, execution::Effects, BlockTime, Digest, FeeHandling, HoldsEpoch,
+    ProtocolVersion, Transfer,
 };
 
 use crate::tracking_copy::TrackingCopyError;
@@ -16,7 +17,8 @@ pub struct FeeRequest {
     config: NativeRuntimeConfig,
     state_hash: Digest,
     protocol_version: ProtocolVersion,
-    block_time: u64,
+    block_time: BlockTime,
+    holds_epoch: HoldsEpoch,
 }
 
 impl FeeRequest {
@@ -24,13 +26,15 @@ impl FeeRequest {
         config: NativeRuntimeConfig,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
-        block_time: u64,
+        block_time: BlockTime,
+        holds_epoch: HoldsEpoch,
     ) -> Self {
         FeeRequest {
             config,
             state_hash,
             protocol_version,
             block_time,
+            holds_epoch,
         }
     }
 
@@ -55,8 +59,13 @@ impl FeeRequest {
     }
 
     /// Returns block time.
-    pub fn block_time(&self) -> u64 {
+    pub fn block_time(&self) -> BlockTime {
         self.block_time
+    }
+
+    /// Returns holds epoch.
+    pub fn holds_epoch(&self) -> HoldsEpoch {
+        self.holds_epoch
     }
 
     /// Returns administrative accounts, if any.
@@ -108,7 +117,7 @@ pub enum FeeResult {
     Failure(FeeError),
     Success {
         /// List of transfers that happened during execution.
-        transfers: Vec<TransferAddr>,
+        transfers: Vec<Transfer>,
         /// State hash after fee distribution outcome is committed to the global state.
         post_state_hash: Digest,
         /// Effects of the fee distribution process.

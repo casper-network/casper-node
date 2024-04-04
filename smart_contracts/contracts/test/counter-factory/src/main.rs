@@ -85,7 +85,7 @@ fn installer(name: String, initial_value: U512) {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -93,7 +93,7 @@ fn installer(name: String, initial_value: U512) {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -138,7 +138,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Template,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -146,7 +146,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Template,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entry_points.add_entry_point(entry_point);
 

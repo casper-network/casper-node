@@ -15,24 +15,26 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{
-    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-    AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-    EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-    QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-    TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
+};
+use casper_storage::{
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
+    DbRawBytesSpec,
 };
 use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
-    execution::ExecutionResult,
-    Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId,
-    ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    execution::ExecutionResult, Approval, AvailableBlockRange, Block, BlockHash, BlockHeader,
+    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, Key, NextUpgrade,
+    ProtocolVersion, PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -43,13 +45,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock},
+        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
     },
-    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     types::{
         appendable_block::AppendableBlock, BlockExecutionResultsOrChunk,
@@ -58,7 +60,6 @@ use crate::{
     },
     utils::Source,
 };
-use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 129);
@@ -492,10 +493,15 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
+    /// Retrieve the block utilization score.
     GetBlockUtilizationScore {
+        /// The era id.
         era_id: EraId,
+        /// The block height of the switch block
         block_height: u64,
-        transaction_count: u64,
+        /// The utilization within the switch block.
+        switch_block_utilization: u64,
+        /// Responder, responded once the utilization for the era has been determined.
         responder: Responder<Option<(u64, u64)>>,
     },
 }
@@ -833,12 +839,12 @@ pub(crate) enum ContractRuntimeRequest {
     },
     /// Execute transaction without committing results
     SpeculativelyExecute {
-        /// Hash of a block on top of which to execute the transaction.
-        execution_prestate: SpeculativeExecutionState,
+        /// Pre-state.
+        block_header: Box<BlockHeader>,
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<SpeculativeExecutionResult, engine_state::Error>>,
+        responder: Responder<SpeculativeExecutionResult>,
     },
     UpdateRuntimePrice(EraId, u8),
     GetEraGasPrice {
@@ -919,15 +925,15 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "trie: {:?}", request)
             }
             ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
                 transaction,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
                     "Execute {} on {}",
                     transaction.hash(),
-                    execution_prestate.state_root_hash
+                    block_header.state_root_hash()
                 )
             }
             ContractRuntimeRequest::UpdateRuntimePrice(_, era_gas_price) => {
@@ -1167,20 +1173,17 @@ impl Display for SetNodeStopRequest {
 #[derive(DataSize, Debug, Serialize)]
 pub(crate) struct AcceptTransactionRequest {
     pub(crate) transaction: Transaction,
-    pub(crate) speculative_exec_at_block: Option<Box<BlockHeader>>,
+    pub(crate) is_speculative: bool,
     pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
 impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.speculative_exec_at_block.is_some() {
-            write!(
-                f,
-                "accept transaction {} for speculative exec",
-                self.transaction.hash()
-            )
-        } else {
-            write!(f, "accept transaction {}", self.transaction.hash())
-        }
+        write!(
+            f,
+            "accept transaction {} is_speculative: {}",
+            self.transaction.hash(),
+            self.is_speculative
+        )
     }
 }

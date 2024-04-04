@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -8,7 +8,8 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionCategory, U512,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionCategory, TransactionConfig, U512,
 };
 
 use super::*;
@@ -102,6 +103,7 @@ impl reactor::Reactor for Reactor {
             RECENT_ERA_COUNT,
             Some(registry),
             false,
+            TransactionConfig::default(),
         )
         .unwrap();
 
@@ -300,7 +302,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         },
     };
 
-    let txns: Vec<Transaction> = std::iter::repeat_with(|| {
+    let txns: Vec<Transaction> = iter::repeat_with(|| {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
@@ -394,6 +396,9 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
     use casper_storage::global_state::{
         state::{CommitProvider, StateProvider},
         trie::Trie,
@@ -405,18 +410,16 @@ mod trie_chunking_tests {
         global_state::Pointer,
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_BALANCE_HOLD_INTERVAL, DEFAULT_FEE_HANDLING,
+        DEFAULT_REFUND_HANDLING,
     };
-    use prometheus::Registry;
-    use tempfile::tempdir;
 
+    use super::{Config as ContractRuntimeConfig, ContractRuntime};
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::ContractRuntimeError,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
-
-    use super::{Config as ContractRuntimeConfig, ContractRuntime};
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);
@@ -484,6 +487,7 @@ mod trie_chunking_tests {
                 allow_unrestricted_transfers: true,
                 fee_handling: DEFAULT_FEE_HANDLING,
                 refund_handling: DEFAULT_REFUND_HANDLING,
+                balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
                 ..CoreConfig::random(rng)
             },
             wasm_config: Default::default(),

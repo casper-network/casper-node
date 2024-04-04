@@ -1,26 +1,11 @@
 use num_rational::Ratio;
-use once_cell::sync::Lazy;
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    ops::Range,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, error, info};
-
-use casper_execution_engine::engine_state::ExecutionEngineV1;
-use casper_storage::{
-    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
-};
-use casper_types::{Chainspec, EraId, Key};
 
 use crate::{
     contract_runtime::{
         exec_queue::{ExecQueue, QueueItem},
         execute_finalized_block,
         metrics::Metrics,
-        rewards, BlockAndExecutionResults, BlockExecutionError, ExecutionPreState,
-        StepEffectsAndUpcomingEraValidators,
+        rewards, BlockAndExecutionArtifacts, BlockExecutionError, ExecutionPreState, StepOutcome,
     },
     effect::{
         announcements::{ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement},
@@ -30,6 +15,22 @@ use crate::{
     fatal,
     types::{ExecutableBlock, MetaBlock, MetaBlockState},
 };
+
+use casper_binary_port::SpeculativeExecutionResult;
+use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Result};
+use casper_storage::{
+    data_access_layer::DataAccessLayer, global_state::state::lmdb::LmdbGlobalState,
+};
+use casper_types::{Chainspec, EraId, Key};
+use once_cell::sync::Lazy;
+use std::{
+    cmp,
+    collections::{BTreeMap, HashMap},
+    fmt::Debug,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
+use tracing::{debug, error, info};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
 ///
@@ -47,13 +48,18 @@ static INTENSIVE_TASKS_SEMAPHORE: Lazy<tokio::sync::Semaphore> =
 pub(super) async fn run_intensive_task<T, V>(task: T) -> V
 where
     T: 'static + Send + FnOnce() -> V,
-    V: 'static + Send,
+    V: 'static + Send + Debug,
 {
     // This will never panic since the semaphore is never closed.
     let _permit = INTENSIVE_TASKS_SEMAPHORE.acquire().await.unwrap();
-    tokio::task::spawn_blocking(task)
-        .await
-        .expect("task panicked")
+    let result = tokio::task::spawn_blocking(task).await;
+    match result {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("{:?}", err);
+            panic!("intensive contract runtime task errored: {:?}", err);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -80,8 +86,6 @@ pub(super) async fn exec_or_requeue<REv>(
 {
     debug!("ContractRuntime: execute_finalized_block_or_requeue");
     let contract_runtime_metrics = metrics.clone();
-    let block_max_install_upgrade_count =
-        chainspec.transaction_config.block_max_install_upgrade_count;
     let is_era_end = executable_block.era_report.is_some();
     if is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
@@ -94,7 +98,7 @@ pub(super) async fn exec_or_requeue<REv>(
             {
                 Ok(rewards) => rewards,
                 Err(e) => {
-                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
+                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await;
                 }
             };
 
@@ -111,6 +115,8 @@ pub(super) async fn exec_or_requeue<REv>(
         let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
         let block_max_mint_count = chainspec.transaction_config.block_max_mint_count;
         let block_max_auction_count = chainspec.transaction_config.block_max_auction_count;
+        let block_max_install_upgrade_count =
+            chainspec.transaction_config.block_max_install_upgrade_count;
         let go_up = chainspec.vacancy_config.upper_threshold;
         let go_down = chainspec.vacancy_config.lower_threshold;
         let max = chainspec.vacancy_config.max_gas_price;
@@ -119,10 +125,32 @@ pub(super) async fn exec_or_requeue<REv>(
         let era_id = executable_block.era_id;
         let block_height = executable_block.height;
 
-        let switch_block_transaction_hashes = executable_block.transactions.len() as u64;
+        let per_block_capacity = {
+            block_max_install_upgrade_count
+                + block_max_standard_count
+                + block_max_mint_count
+                + block_max_auction_count
+        } as u64;
+
+        let switch_block_utilization_score = {
+            let has_hit_slot_limt = {
+                (executable_block.mint.len() as u32 >= block_max_mint_count)
+                    || (executable_block.auction.len() as u32 >= block_max_auction_count)
+                    || (executable_block.standard.len() as u32 >= block_max_standard_count)
+                    || (executable_block.install_upgrade.len() as u32
+                        >= block_max_install_upgrade_count)
+            };
+
+            if has_hit_slot_limt {
+                100u64
+            } else {
+                let num = executable_block.transactions.len() as u64;
+                Ratio::new(num * 100, per_block_capacity).to_integer()
+            }
+        };
 
         let maybe_utilization = effect_builder
-            .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
+            .get_block_utilization(era_id, block_height, switch_block_utilization_score)
             .await;
 
         match maybe_utilization {
@@ -131,18 +159,7 @@ pub(super) async fn exec_or_requeue<REv>(
                 return fatal!(effect_builder, "{}", error).await;
             }
             Some((utilization, block_count)) => {
-                let per_block_capacity = {
-                    block_max_install_upgrade_count
-                        + block_max_standard_count
-                        + block_max_mint_count
-                        + block_max_auction_count
-                } as u64;
-
-                let era_score = {
-                    let numerator = utilization * 100;
-                    let denominator = per_block_capacity * block_count;
-                    Ratio::new(numerator, denominator).to_integer()
-                };
+                let era_score = { Ratio::new(utilization, block_count).to_integer() };
 
                 let new_gas_price = if era_score >= go_up {
                     let new_gas_price = current_gas_price + 1;
@@ -169,11 +186,11 @@ pub(super) async fn exec_or_requeue<REv>(
         None
     };
 
-    let BlockAndExecutionResults {
+    let BlockAndExecutionArtifacts {
         block,
         approvals_hashes,
-        execution_results,
-        maybe_step_effects_and_upcoming_era_validators,
+        execution_artifacts,
+        step_outcome: maybe_step_outcome,
     } = match run_intensive_task(move || {
         debug!("ContractRuntime: execute_finalized_block");
         execute_finalized_block(
@@ -190,7 +207,7 @@ pub(super) async fn exec_or_requeue<REv>(
     })
     .await
     {
-        Ok(block_and_execution_results) => block_and_execution_results,
+        Ok(ret) => ret,
         Err(error) => {
             error!(%error, "failed to execute block");
             return fatal!(effect_builder, "{}", error).await;
@@ -221,10 +238,10 @@ pub(super) async fn exec_or_requeue<REv>(
 
     let current_era_id = block.era_id();
 
-    if let Some(StepEffectsAndUpcomingEraValidators {
+    if let Some(StepOutcome {
         step_effects,
         mut upcoming_era_validators,
-    }) = maybe_step_effects_and_upcoming_era_validators
+    }) = maybe_step_outcome
     {
         effect_builder
             .announce_commit_step_success(current_era_id, step_effects)
@@ -257,29 +274,26 @@ pub(super) async fn exec_or_requeue<REv>(
         "executed block"
     );
 
-    let execution_results_map: HashMap<_, _> = execution_results
+    let artifacts_map: HashMap<_, _> = execution_artifacts
         .iter()
         .cloned()
         .map(|artifact| (artifact.transaction_hash, artifact.execution_result))
         .collect();
+
     if meta_block_state.register_as_stored().was_updated() {
         effect_builder
-            .put_executed_block_to_storage(
-                Arc::clone(&block),
-                approvals_hashes,
-                execution_results_map,
-            )
+            .put_executed_block_to_storage(Arc::clone(&block), approvals_hashes, artifacts_map)
             .await;
     } else {
         effect_builder
             .put_approvals_hashes_to_storage(approvals_hashes)
             .await;
         effect_builder
-            .put_execution_results_to_storage(
+            .put_execution_artifacts_to_storage(
                 *block.hash(),
                 block.height(),
                 block.era_id(),
-                execution_results_map,
+                artifacts_map,
             )
             .await;
     }
@@ -295,7 +309,7 @@ pub(super) async fn exec_or_requeue<REv>(
         );
     }
 
-    let meta_block = MetaBlock::new_forward(block, execution_results, meta_block_state);
+    let meta_block = MetaBlock::new_forward(block, execution_artifacts, meta_block_state);
     effect_builder.announce_meta_block(meta_block).await;
 
     // If the child is already finalized, start execution.
@@ -371,15 +385,31 @@ pub(super) fn calculate_prune_eras(
     Some(range.map(EraId::new).map(Key::EraInfo).collect())
 }
 
+pub(crate) fn spec_exec_from_wasm_v1_result(
+    wasm_v1_result: WasmV1Result,
+) -> SpeculativeExecutionResult {
+    let transfers = wasm_v1_result.transfers().to_owned();
+    let limit = wasm_v1_result.limit().to_owned();
+    let consumed = wasm_v1_result.consumed().to_owned();
+    let effects = wasm_v1_result.effects().to_owned();
+    let messages = wasm_v1_result.messages().to_owned();
+    let error_msg = wasm_v1_result
+        .error()
+        .to_owned()
+        .map(|err| format!("{:?}", err));
+
+    SpeculativeExecutionResult::new(transfers, limit, consumed, effects, messages, error_msg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn calculation_is_safe_with_invalid_input() {
-        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0,), None);
-        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5,), None);
-        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0,), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 0), None);
+        assert_eq!(calculate_prune_eras(EraId::new(0), 0, 0, 5), None);
+        assert_eq!(calculate_prune_eras(EraId::new(u64::MAX), 0, 0, 0), None);
         assert_eq!(
             calculate_prune_eras(EraId::new(u64::MAX), 1, u64::MAX, u64::MAX),
             None
@@ -392,7 +422,7 @@ mod tests {
         // batch out of u64::MAX of erainfos needs to iterate over all chunks.
         assert!(calculate_prune_eras(EraId::new(u64::MAX), 0, u64::MAX, 100,).is_none(),);
         assert_eq!(
-            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100,)
+            calculate_prune_eras(EraId::new(u64::MAX), 1, 100, 100)
                 .unwrap()
                 .len(),
             100
@@ -412,7 +442,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(0))])
         );
@@ -421,7 +451,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(1))])
         );
@@ -430,7 +460,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(2))])
         );
@@ -439,7 +469,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(3))])
         );
@@ -448,7 +478,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 4,
-                1
+                1,
             ),
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
@@ -473,11 +503,11 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                2
+                2,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
-                Key::EraInfo(EraId::new(1))
+                Key::EraInfo(EraId::new(1)),
             ])
         );
         assert_eq!(
@@ -485,11 +515,11 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                2
+                2,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(2)),
-                Key::EraInfo(EraId::new(3))
+                Key::EraInfo(EraId::new(3)),
             ])
         );
         assert_eq!(
@@ -497,7 +527,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                2
+                2,
             ),
             Some(vec![Key::EraInfo(EraId::new(4))])
         );
@@ -506,7 +536,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 3,
-                2
+                2,
             ),
             None
         );
@@ -522,7 +552,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                3
+                3,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -535,7 +565,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                3
+                3,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(3)),
@@ -548,7 +578,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                3
+                3,
             ),
             None
         );
@@ -564,7 +594,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                4
+                4,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -578,9 +608,9 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 1,
-                4
+                4,
             ),
-            Some(vec![Key::EraInfo(EraId::new(4)),])
+            Some(vec![Key::EraInfo(EraId::new(4))])
         );
 
         assert_eq!(
@@ -588,7 +618,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                4
+                4,
             ),
             None
         );
@@ -604,7 +634,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                5
+                5,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -629,7 +659,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                5
+                5,
             ),
             None
         );
@@ -645,7 +675,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height,
-                6
+                6,
             ),
             Some(vec![
                 Key::EraInfo(EraId::new(0)),
@@ -670,7 +700,7 @@ mod tests {
                 ACTIVATION_POINT_ERA_ID,
                 activation_height,
                 current_height + 2,
-                6
+                6,
             ),
             None
         );

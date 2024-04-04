@@ -316,7 +316,7 @@ impl UpgradePoint {
     fn from_chainspec_path<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
         let bytes = file_utils::read_file(path.as_ref().join(CHAINSPEC_FILENAME))
             .map_err(Error::LoadUpgradePoint)?;
-        Ok(toml::from_slice(&bytes)?)
+        Ok(toml::from_str(std::str::from_utf8(&bytes).unwrap())?)
     }
 }
 
@@ -523,11 +523,9 @@ mod tests {
         fs::create_dir(&subdir).unwrap();
 
         let path = subdir.join(CHAINSPEC_FILENAME);
-        fs::write(
-            path,
-            toml::to_string_pretty(&chainspec).expect("should encode to toml"),
-        )
-        .expect("should install chainspec");
+
+        let pretty = toml::to_string_pretty(&chainspec);
+        fs::write(path, pretty.expect("should encode to toml")).expect("should install chainspec");
         chainspec
     }
 
@@ -541,20 +539,20 @@ mod tests {
 
         let mut rng = crate::new_rng();
 
-        let mut current = ProtocolVersion::from_parts(0, 9, 9);
-        let v1_0_0 = ProtocolVersion::from_parts(1, 0, 0);
-        let chainspec_v1_0_0 = install_chainspec(&mut rng, tempdir.path(), &v1_0_0);
+        let mut current = ProtocolVersion::from_parts(1, 9, 9);
+        let v2_0_0 = ProtocolVersion::from_parts(2, 0, 0);
+        let chainspec_v2_0_0 = install_chainspec(&mut rng, tempdir.path(), &v2_0_0);
         assert_eq!(
             next_point(&current),
-            chainspec_v1_0_0.protocol_config.into()
+            chainspec_v2_0_0.protocol_config.into()
         );
 
-        current = v1_0_0;
-        let v1_0_3 = ProtocolVersion::from_parts(1, 0, 3);
-        let chainspec_v1_0_3 = install_chainspec(&mut rng, tempdir.path(), &v1_0_3);
+        current = v2_0_0;
+        let v2_0_3 = ProtocolVersion::from_parts(2, 0, 3);
+        let chainspec_v2_0_3 = install_chainspec(&mut rng, tempdir.path(), &v2_0_3);
         assert_eq!(
             next_point(&current),
-            chainspec_v1_0_3.protocol_config.into()
+            chainspec_v2_0_3.protocol_config.into()
         );
     }
 

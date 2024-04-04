@@ -1637,8 +1637,9 @@
             "Classic": {
               "type": "object",
               "required": [
-                "gas_price",
-                "payment_amount"
+                "gas_price_tolerance",
+                "payment_amount",
+                "standard_payment"
               ],
               "properties": {
                 "payment_amount": {
@@ -1647,11 +1648,15 @@
                   "format": "uint64",
                   "minimum": 0.0
                 },
-                "gas_price": {
-                  "description": "User-specified gas_price tolerance (minimum 1).",
+                "gas_price_tolerance": {
+                  "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
+                },
+                "standard_payment": {
+                  "description": "Standard payment.",
+                  "type": "boolean"
                 }
               },
               "additionalProperties": false
@@ -1675,7 +1680,7 @@
                 "gas_price_tolerance": {
                   "description": "User-specified gas_price tolerance (minimum 1). This is interpreted to mean \"do not include this transaction in a block if the current gas price is greater than this number\"",
                   "type": "integer",
-                  "format": "uint64",
+                  "format": "uint8",
                   "minimum": 0.0
                 }
               },
@@ -1695,7 +1700,8 @@
               "type": "object",
               "required": [
                 "paid_amount",
-                "receipt"
+                "receipt",
+                "strike_price"
               ],
               "properties": {
                 "receipt": {
@@ -1708,11 +1714,15 @@
                 },
                 "paid_amount": {
                   "description": "Price paid in the past to reserve space in a future block.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "strike_price": {
+                  "description": "The gas price at the time of reservation.",
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -1882,10 +1892,10 @@
           "description": "Hex-encoded entity address identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntity"
+            "ByHash"
           ],
           "properties": {
-            "InvocableEntity": {
+            "ByHash": {
               "type": "string"
             }
           },
@@ -1895,10 +1905,10 @@
           "description": "The alias identifying the invocable entity.",
           "type": "object",
           "required": [
-            "InvocableEntityAlias"
+            "ByName"
           ],
           "properties": {
-            "InvocableEntityAlias": {
+            "ByName": {
               "type": "string"
             }
           },
@@ -1908,10 +1918,10 @@
           "description": "The address and optional version identifying the package.",
           "type": "object",
           "required": [
-            "Package"
+            "ByPackageHash"
           ],
           "properties": {
-            "Package": {
+            "ByPackageHash": {
               "type": "object",
               "required": [
                 "addr"
@@ -1940,16 +1950,16 @@
           "description": "The alias and optional version identifying the package.",
           "type": "object",
           "required": [
-            "PackageAlias"
+            "ByPackageName"
           ],
           "properties": {
-            "PackageAlias": {
+            "ByPackageName": {
               "type": "object",
               "required": [
-                "alias"
+                "name"
               ],
               "properties": {
-                "alias": {
+                "name": {
                   "description": "The package alias.",
                   "type": "string"
                 },
@@ -2179,7 +2189,7 @@
                   ]
                 },
                 "transfers": {
-                  "description": "A record of Transfers performed while executing the deploy.",
+                  "description": "A record of version 1 Transfers performed while executing the deploy.",
                   "type": "array",
                   "items": {
                     "$ref": "#/definitions/TransferAddr"
@@ -2444,14 +2454,14 @@
           "additionalProperties": false
         },
         {
-          "description": "Writes the given Transfer to global state.",
+          "description": "Writes the given version 1 Transfer to global state.",
           "type": "object",
           "required": [
             "WriteTransfer"
           ],
           "properties": {
             "WriteTransfer": {
-              "$ref": "#/definitions/Transfer"
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
@@ -2653,7 +2663,7 @@
           ]
         },
         "transfers": {
-          "description": "Transfers performed by the Deploy.",
+          "description": "Version 1 transfers performed by the Deploy.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransferAddr"
@@ -2687,7 +2697,7 @@
       "additionalProperties": false
     },
     "TransferAddr": {
-      "description": "Hex-encoded transfer address.",
+      "description": "Hex-encoded version 1 transfer address.",
       "type": "string"
     },
     "URef": {
@@ -2796,8 +2806,8 @@
         }
       ]
     },
-    "Transfer": {
-      "description": "Represents a transfer from one purse to another",
+    "TransferV1": {
+      "description": "Represents a version 1 transfer from one purse to another.",
       "type": "object",
       "required": [
         "amount",
@@ -3297,102 +3307,220 @@
       "additionalProperties": false
     },
     "ExecutionResultV2": {
-      "description": "The result of executing a single deploy.",
+      "description": "The result of executing a single transaction.",
+      "type": "object",
+      "required": [
+        "consumed",
+        "cost",
+        "effects",
+        "initiator",
+        "limit",
+        "payment",
+        "transfers"
+      ],
+      "properties": {
+        "initiator": {
+          "description": "Who initiatied this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "error_message": {
+          "description": "If there is no error message, this execution was processed successfully. If there is an error message, this execution failed to fully process for the stated reason.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "What was the maximum allowed gas limit for this transaction?.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "consumed": {
+          "description": "How much gas was consumed executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "cost": {
+          "description": "How much was paid for this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "payment": {
+          "description": "Breakdown of payments made to cover the cost.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PaymentInfo"
+          }
+        },
+        "transfers": {
+          "description": "A record of transfers performed while executing this transaction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Transfer"
+          }
+        },
+        "effects": {
+          "description": "The effects of executing this transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Effects"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/U512"
+        }
+      ]
+    },
+    "PaymentInfo": {
+      "description": "Breakdown of payments made to cover the cost.",
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "description": "Source purse used for payment of the transaction.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        }
+      }
+    },
+    "Transfer": {
+      "description": "A versioned wrapper for a transfer.",
       "oneOf": [
         {
-          "description": "The result of a failed execution.",
+          "description": "A version 1 transfer.",
           "type": "object",
           "required": [
-            "Failure"
+            "Version1"
           ],
           "properties": {
-            "Failure": {
-              "type": "object",
-              "required": [
-                "cost",
-                "effects",
-                "error_message",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
-                },
-                "error_message": {
-                  "description": "The error message associated with executing the deploy.",
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
+            "Version1": {
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "The result of a successful execution.",
+          "description": "A version 2 transfer.",
           "type": "object",
           "required": [
-            "Success"
+            "Version2"
           ],
           "properties": {
-            "Success": {
-              "type": "object",
-              "required": [
-                "cost",
-                "effects",
-                "transfers"
-              ],
-              "properties": {
-                "effects": {
-                  "description": "The effects of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Effects"
-                    }
-                  ]
-                },
-                "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/TransferAddr"
-                  }
-                },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/U512"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
+            "Version2": {
+              "$ref": "#/definitions/TransferV2"
             }
           },
           "additionalProperties": false
         }
       ]
+    },
+    "TransferV2": {
+      "description": "Represents a version 2 transfer from one purse to another.",
+      "type": "object",
+      "required": [
+        "amount",
+        "from",
+        "gas",
+        "source",
+        "target",
+        "transaction_hash"
+      ],
+      "properties": {
+        "transaction_hash": {
+          "description": "Transaction that created the transfer.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TransactionHash"
+            }
+          ]
+        },
+        "from": {
+          "description": "Entity from which transfer was executed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/InitiatorAddr"
+            }
+          ]
+        },
+        "to": {
+          "description": "Account to which funds are transferred.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AccountHash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "description": "Source purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "target": {
+          "description": "Target purse.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "amount": {
+          "description": "Transfer amount.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "gas": {
+          "description": "Gas.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Gas"
+            }
+          ]
+        },
+        "id": {
+          "description": "User-defined ID.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
     },
     "Effects": {
       "description": "A log of all transforms produced during execution.",
@@ -3419,7 +3547,7 @@
       "additionalProperties": false
     },
     "TransformKindV2": {
-      "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
+      "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of `TransformKindV2` are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
       "oneOf": [
         {
           "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
@@ -3619,14 +3747,14 @@
           "additionalProperties": false
         },
         {
-          "description": "A `Transfer`.",
+          "description": "A version 1 (legacy) transfer.",
           "type": "object",
           "required": [
-            "Transfer"
+            "LegacyTransfer"
           ],
           "properties": {
-            "Transfer": {
-              "$ref": "#/definitions/Transfer"
+            "LegacyTransfer": {
+              "$ref": "#/definitions/TransferV1"
             }
           },
           "additionalProperties": false
@@ -4066,21 +4194,21 @@
       "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
       "oneOf": [
         {
-          "description": "Runs as session code (caller) Deprecated, retained to allow read back of legacy stored session.",
+          "description": "Runs using the calling entity's context. In v1.x this was used for both \"session\" code run using the originating Account's context, and also for \"StoredSession\" code that ran in the caller's context. While this made systemic sense due to the way the runtime context nesting works, this dual usage was very confusing to most human beings.\n\nIn v2.x the renamed Caller variant is exclusively used for wasm run using the initiating account entity's context. Previously installed 1.x stored session code should continue to work as the binary value matches but we no longer allow such logic to be upgraded, nor do we allow new stored session to be installed.",
           "type": "string",
           "enum": [
-            "Session"
+            "Caller"
           ]
         },
         {
-          "description": "Runs within called entity's context (called)",
+          "description": "Runs using the called entity's context.",
           "type": "string",
           "enum": [
-            "AddressableEntity"
+            "Called"
           ]
         },
         {
-          "description": "This entry point is intended to extract a subset of bytecode. Runs within called entity's context (called)",
+          "description": "Extract a subset of bytecode and installs it as a new smart contract. Runs using the called entity's context.",
           "type": "string",
           "enum": [
             "Factory"
@@ -4733,14 +4861,14 @@
       "type": "object",
       "required": [
         "block_index",
-        "entity_addr",
+        "entity_hash",
         "message",
         "topic_index",
         "topic_name",
         "topic_name_hash"
       ],
       "properties": {
-        "entity_addr": {
+        "entity_hash": {
           "description": "The identity of the entity that produced the message.",
           "allOf": [
             {

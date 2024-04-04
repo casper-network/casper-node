@@ -18,5 +18,10 @@ pub mod tracking_copy;
 pub use address_generator::{AddressGenerator, AddressGeneratorBuilder};
 pub use tracking_copy::TrackingCopy;
 
+pub use block_store::{
+    lmdb::{DbTableId, UnknownDbTableId},
+    DbRawBytesSpec,
+};
+
 #[cfg(test)]
 pub use self::tracking_copy::new_temporary_tracking_copy;

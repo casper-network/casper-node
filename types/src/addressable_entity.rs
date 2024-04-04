@@ -57,7 +57,6 @@ pub use self::{
     named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
-
 use crate::{
     account::{Account, AccountHash},
     byte_code::ByteCodeHash,
@@ -77,18 +76,9 @@ pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
 
-/// The tag for Contract Packages associated with Wasm stored on chain.
-pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
-/// The tag for Contract Package associated with a native contract implementation.
-pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
-/// The tag for Contract Package associated with an Account hash.
-pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
-/// The tag for Contract Packages associated with legacy packages.
-pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
-
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
-const ENTITY_PREFIX: &str = "addressable-entity-";
+const ENTITY_PREFIX: &str = "entity-";
 const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 const CONTRACT_ENTITY_PREFIX: &str = "contract-";
 const SYSTEM_ENTITY_PREFIX: &str = "system-";
@@ -260,6 +250,11 @@ impl AddressableEntityHash {
     /// Constructs a new `AddressableEntityHash` from the raw bytes of the contract hash.
     pub const fn new(value: HashAddr) -> AddressableEntityHash {
         AddressableEntityHash(value)
+    }
+
+    /// Get the entity addr for this entity hash from the corresponding entity.
+    pub fn entity_addr(&self, entity: AddressableEntity) -> EntityAddr {
+        entity.entity_addr(*self)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -654,7 +649,7 @@ impl EntryPoints {
     pub fn contains_stored_session(&self) -> bool {
         self.0
             .values()
-            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Session)
+            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Caller)
     }
 }
 
@@ -680,13 +675,16 @@ impl KeyValueJsonSchema for EntryPointLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
 }
 
-#[allow(missing_docs)]
+/// Tag for the variants of [`EntityKind`].
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[repr(u8)]
 pub enum EntityKindTag {
+    /// `EntityKind::System` variant.
     System = 0,
+    /// `EntityKind::Account` variant.
     Account = 1,
+    /// `EntityKind::SmartContract` variant.
     SmartContract = 2,
 }
 
@@ -885,14 +883,14 @@ impl FromBytes for EntityKind {
 impl Display for EntityKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            EntityKind::SmartContract => {
-                write!(f, "PackageKind:Wasm")
-            }
             EntityKind::System(system_entity) => {
-                write!(f, "PackageKind:System({})", system_entity)
+                write!(f, "system-entity-kind({})", system_entity)
             }
             EntityKind::Account(account_hash) => {
-                write!(f, "PackageKind:Account({})", account_hash)
+                write!(f, "account-entity-kind({})", account_hash)
+            }
+            EntityKind::SmartContract => {
+                write!(f, "smart-contract-entity-kind")
             }
         }
     }
@@ -924,30 +922,30 @@ pub enum EntityAddr {
 }
 
 impl EntityAddr {
-    /// The length in bytes of a [`EntityAddr`].
-    pub const ENTITY_ADDR_LENGTH: usize = U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+    /// The length in bytes of an `EntityAddr`.
+    pub const LENGTH: usize = U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 
-    /// Constructs a new [`EntityAddr`] for a system entity.
-    pub const fn new_system_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+    /// Constructs a new `EntityAddr` for a system entity.
+    pub const fn new_system(hash_addr: HashAddr) -> Self {
         Self::System(hash_addr)
     }
 
-    /// Constructs a new [`EntityAddr`] for an Account entity.
-    pub const fn new_account_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+    /// Constructs a new `EntityAddr` for an Account entity.
+    pub const fn new_account(hash_addr: HashAddr) -> Self {
         Self::Account(hash_addr)
     }
 
-    /// Constructs a new [`EntityAddr`] for a smart contract.
-    pub const fn new_contract_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+    /// Constructs a new `EntityAddr` for a smart contract.
+    pub const fn new_smart_contract(hash_addr: HashAddr) -> Self {
         Self::SmartContract(hash_addr)
     }
 
-    /// Constructs a new [`EntityAddr`] based on the supplied tag.
-    pub fn new_with_tag(entity_kind: EntityKind, hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+    /// Constructs a new `EntityAddr` based on the supplied kind.
+    pub fn new_of_kind(entity_kind: EntityKind, hash_addr: HashAddr) -> Self {
         match entity_kind {
-            EntityKind::System(_) => Self::new_system_entity_addr(hash_addr),
-            EntityKind::Account(_) => Self::new_account_entity_addr(hash_addr),
-            EntityKind::SmartContract => Self::new_contract_entity_addr(hash_addr),
+            EntityKind::System(_) => Self::new_system(hash_addr),
+            EntityKind::Account(_) => Self::new_account(hash_addr),
+            EntityKind::SmartContract => Self::new_smart_contract(hash_addr),
         }
     }
 
@@ -958,6 +956,12 @@ impl EntityAddr {
             EntityAddr::Account(_) => EntityKindTag::Account,
             EntityAddr::SmartContract(_) => EntityKindTag::SmartContract,
         }
+    }
+
+    /// Is this a system entity address?
+    pub fn is_system(&self) -> bool {
+        self.tag() == EntityKindTag::System
+            || self.value() == PublicKey::System.to_account_hash().value()
     }
 
     /// Returns the 32 bytes of the [`EntityAddr`].
@@ -979,16 +983,41 @@ impl EntityAddr {
 
     /// Returns the formatted String representation of the [`EntityAddr`].
     pub fn to_formatted_string(&self) -> String {
-        format!("{}", self)
+        match self {
+            EntityAddr::System(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    SYSTEM_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+            EntityAddr::Account(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    ACCOUNT_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+            EntityAddr::SmartContract(addr) => {
+                format!(
+                    "{}{}{}",
+                    ENTITY_PREFIX,
+                    CONTRACT_ENTITY_PREFIX,
+                    base16::encode_lower(addr)
+                )
+            }
+        }
     }
 
     /// Constructs an [`EntityAddr`] from a formatted String.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
-            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
-                (str, EntityKindTag::Account)
-            } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
                 (str, EntityKindTag::System)
+            } else if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
+                (str, EntityKindTag::Account)
             } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
                 (str, EntityKindTag::SmartContract)
             } else {
@@ -997,9 +1026,9 @@ impl EntityAddr {
             let addr = checksummed_hex::decode(addr_str).map_err(FromStrError::Hex)?;
             let hash_addr = HashAddr::try_from(addr.as_ref()).map_err(FromStrError::Hash)?;
             let entity_addr = match tag {
-                EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
-                EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
-                EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(hash_addr),
+                EntityKindTag::System => EntityAddr::new_system(hash_addr),
+                EntityKindTag::Account => EntityAddr::new_account(hash_addr),
+                EntityKindTag::SmartContract => EntityAddr::new_smart_contract(hash_addr),
             };
 
             return Ok(entity_addr);
@@ -1012,36 +1041,42 @@ impl EntityAddr {
 impl ToBytes for EntityAddr {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.push(self.tag() as u8);
-        buffer.append(&mut self.value().to_bytes()?);
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        EntityAddr::ENTITY_ADDR_LENGTH
+        EntityAddr::LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntityAddr::System(addr) => {
+                EntityKindTag::System.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+            EntityAddr::Account(addr) => {
+                EntityKindTag::Account.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+            EntityAddr::SmartContract(addr) => {
+                EntityKindTag::SmartContract.write_bytes(writer)?;
+                addr.write_bytes(writer)
+            }
+        }
     }
 }
 
 impl FromBytes for EntityAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder): (EntityKindTag, &[u8]) = FromBytes::from_bytes(bytes)?;
-        match tag {
-            EntityKindTag::System => {
-                HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
-                    (EntityAddr::new_system_entity_addr(hash_addr), remainder)
-                })
-            }
-            EntityKindTag::Account => {
-                HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
-                    (EntityAddr::new_account_entity_addr(hash_addr), remainder)
-                })
-            }
-            EntityKindTag::SmartContract => {
-                HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
-                    (EntityAddr::new_contract_entity_addr(hash_addr), remainder)
-                })
-            }
-        }
+        let (tag, remainder) = EntityKindTag::from_bytes(bytes)?;
+        let (addr, remainder) = HashAddr::from_bytes(remainder)?;
+        let entity_addr = match tag {
+            EntityKindTag::System => EntityAddr::System(addr),
+            EntityKindTag::Account => EntityAddr::Account(addr),
+            EntityKindTag::SmartContract => EntityAddr::SmartContract(addr),
+        };
+        Ok((entity_addr, remainder))
     }
 }
 
@@ -1053,13 +1088,7 @@ impl From<EntityAddr> for AddressableEntityHash {
 
 impl Display for EntityAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}{}-{}",
-            ADDRESSABLE_ENTITY_STRING_PREFIX,
-            self.tag(),
-            base16::encode_lower(&self.value())
-        )
+        f.write_str(&self.to_formatted_string())
     }
 }
 
@@ -1067,13 +1096,21 @@ impl Debug for EntityAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             EntityAddr::System(hash_addr) => {
-                write!(f, "EntityAddr::System({:?})", hash_addr)
+                write!(f, "EntityAddr::System({})", base16::encode_lower(hash_addr))
             }
             EntityAddr::Account(hash_addr) => {
-                write!(f, "EntityAddr::Account({:?})", hash_addr)
+                write!(
+                    f,
+                    "EntityAddr::Account({})",
+                    base16::encode_lower(hash_addr)
+                )
             }
             EntityAddr::SmartContract(hash_addr) => {
-                write!(f, "EntityAddr::SmartContract({:?})", hash_addr)
+                write!(
+                    f,
+                    "EntityAddr::SmartContract({})",
+                    base16::encode_lower(hash_addr)
+                )
             }
         }
     }
@@ -1105,7 +1142,7 @@ pub struct NamedKeyAddr {
 
 impl NamedKeyAddr {
     /// The length in bytes of a [`NamedKeyAddr`].
-    pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::ENTITY_ADDR_LENGTH;
+    pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::LENGTH;
 
     /// Constructs a new [`NamedKeyAddr`] based on the supplied bytes.
     pub const fn new_named_key_entry(
@@ -1157,6 +1194,15 @@ impl NamedKeyAddr {
         }
 
         Err(FromStrError::InvalidPrefix)
+    }
+}
+
+impl Default for NamedKeyAddr {
+    fn default() -> Self {
+        NamedKeyAddr {
+            base_addr: EntityAddr::System(HashAddr::default()),
+            string_bytes: Default::default(),
+        }
     }
 }
 
@@ -1492,6 +1538,16 @@ impl AddressableEntity {
         }
     }
 
+    /// Get the entity addr for this entity from the corresponding hash.
+    pub fn entity_addr(&self, entity_hash: AddressableEntityHash) -> EntityAddr {
+        let hash_addr = entity_hash.value();
+        match self.entity_kind {
+            EntityKind::System(_) => EntityAddr::new_system(hash_addr),
+            EntityKind::Account(_) => EntityAddr::new_account(hash_addr),
+            EntityKind::SmartContract => EntityAddr::new_smart_contract(hash_addr),
+        }
+    }
+
     /// Hash for accessing contract package
     pub fn package_hash(&self) -> PackageHash {
         self.package_hash
@@ -1737,8 +1793,8 @@ impl AddressableEntity {
         false
     }
 
-    /// Returns the kind of Package.
-    pub fn entity_kind(&self) -> EntityKind {
+    /// Returns the kind of `AddressableEntity`.
+    pub fn kind(&self) -> EntityKind {
         self.entity_kind
     }
 
@@ -1813,7 +1869,7 @@ impl ToBytes for AddressableEntity {
         self.associated_keys().write_bytes(&mut result)?;
         self.action_thresholds().write_bytes(&mut result)?;
         self.message_topics().write_bytes(&mut result)?;
-        self.entity_kind().write_bytes(&mut result)?;
+        self.kind().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1838,7 +1894,7 @@ impl ToBytes for AddressableEntity {
         self.associated_keys().write_bytes(writer)?;
         self.action_thresholds().write_bytes(writer)?;
         self.message_topics().write_bytes(writer)?;
-        self.entity_kind().write_bytes(writer)?;
+        self.kind().write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1928,13 +1984,21 @@ impl From<Account> for AddressableEntity {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
-    /// Runs as session code (caller)
-    /// Deprecated, retained to allow read back of legacy stored session.
-    Session = 0b00000000,
-    /// Runs within called entity's context (called)
-    AddressableEntity = 0b00000001,
-    /// This entry point is intended to extract a subset of bytecode.
-    /// Runs within called entity's context (called)
+    /// Runs using the calling entity's context.
+    /// In v1.x this was used for both "session" code run using the originating
+    /// Account's context, and also for "StoredSession" code that ran in the
+    /// caller's context. While this made systemic sense due to the way the runtime
+    /// context nesting works, this dual usage was very confusing to most human beings.
+    ///
+    /// In v2.x the renamed Caller variant is exclusively used for wasm run using the initiating
+    /// account entity's context. Previously installed 1.x stored session code should
+    /// continue to work as the binary value matches but we no longer allow such logic
+    /// to be upgraded, nor do we allow new stored session to be installed.
+    Caller = 0b00000000,
+    /// Runs using the called entity's context.
+    Called = 0b00000001,
+    /// Extract a subset of bytecode and installs it as a new smart contract.
+    /// Runs using the called entity's context.
     Factory = 0b10000000,
 }
 
@@ -1956,8 +2020,8 @@ impl EntryPointType {
     /// Returns true if entry point type is invalid for the context.
     pub fn is_invalid_context(&self) -> bool {
         match self {
-            EntryPointType::Session => true,
-            EntryPointType::AddressableEntity | EntryPointType::Factory => false,
+            EntryPointType::Caller => true,
+            EntryPointType::Called | EntryPointType::Factory => false,
         }
     }
 }
@@ -2083,7 +2147,7 @@ impl Default for EntryPoint {
             args: Vec::new(),
             ret: CLType::Unit,
             access: EntryPointAccess::Public,
-            entry_point_type: EntryPointType::Session,
+            entry_point_type: EntryPointType::Caller,
         }
     }
 }
@@ -2327,10 +2391,8 @@ mod tests {
 
     #[test]
     fn named_key_addr_from_str() {
-        let named_key_addr = NamedKeyAddr::new_named_key_entry(
-            EntityAddr::new_contract_entity_addr([3; 32]),
-            [4; 32],
-        );
+        let named_key_addr =
+            NamedKeyAddr::new_named_key_entry(EntityAddr::new_smart_contract([3; 32]), [4; 32]);
         let encoded = named_key_addr.to_formatted_string();
         let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(named_key_addr, decoded);
@@ -2362,11 +2424,11 @@ mod tests {
 
     #[test]
     fn serialization_roundtrip() {
-        let entity_addr = EntityAddr::new_system_entity_addr([1; 32]);
+        let entity_addr = EntityAddr::new_system([1; 32]);
         bytesrepr::test_serialization_roundtrip(&entity_addr);
-        let entity_addr = EntityAddr::new_account_entity_addr([1; 32]);
+        let entity_addr = EntityAddr::new_account([1; 32]);
         bytesrepr::test_serialization_roundtrip(&entity_addr);
-        let entity_addr = EntityAddr::new_contract_entity_addr([1; 32]);
+        let entity_addr = EntityAddr::new_smart_contract([1; 32]);
         bytesrepr::test_serialization_roundtrip(&entity_addr);
     }
 

@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{Transaction, TransactionConfigFailure, TransactionId};
+use casper_types::{InvalidTransaction, Transaction, TransactionId};
 
 use crate::{
     components::fetcher::{
@@ -16,7 +16,7 @@ use crate::{
 
 impl FetchItem for Transaction {
     type Id = TransactionId;
-    type ValidationError = TransactionConfigFailure;
+    type ValidationError = InvalidTransaction;
     type ValidationMetadata = EmptyValidationMetadata;
 
     const TAG: Tag = Tag::Transaction;

@@ -2,9 +2,8 @@ use casper_storage::global_state::{error::Error as GlobalStateError, state::Stat
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error,
-    BlockTime, CLValue, FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef,
-    U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error, CLValue,
+    FeeHandling, HoldsEpoch, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
 use casper_storage::system::handle_payment::{
@@ -64,8 +63,12 @@ where
         }
     }
 
-    fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
-        self.get_balance(purse)
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::GetBalance))
     }
 
@@ -129,15 +132,11 @@ where
         self.context.phase()
     }
 
-    fn get_block_time(&self) -> BlockTime {
-        self.context.get_blocktime()
-    }
-
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
     }
 
-    fn refund_handling(&self) -> &RefundHandling {
+    fn refund_handling(&self) -> RefundHandling {
         self.context.engine_config().refund_handling()
     }
 
@@ -145,8 +144,11 @@ where
         self.context.engine_config().fee_handling()
     }
 
-    fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        self.context.engine_config().administrative_accounts()
+    fn administrative_accounts(&self) -> BTreeSet<AccountHash> {
+        self.context
+            .engine_config()
+            .administrative_accounts()
+            .clone()
     }
 }
 

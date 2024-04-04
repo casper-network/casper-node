@@ -7,8 +7,9 @@ use casper_types::{execution::Effects, Digest, EraId};
 use crate::tracking_copy::TrackingCopy;
 
 mod addressable_entity;
+pub mod auction;
 pub mod balance;
-pub mod bidding;
+mod balance_hold;
 pub mod bids;
 pub mod block_rewards;
 pub mod era_validators;
@@ -16,6 +17,8 @@ mod execution_results_checksum;
 mod fee;
 mod flush;
 mod genesis;
+pub mod handle_payment;
+pub mod mint;
 mod protocol_upgrade;
 pub mod prune;
 pub mod query;
@@ -24,12 +27,14 @@ pub mod step;
 mod system_entity_registry;
 pub mod tagged_values;
 mod total_supply;
-pub mod transfer;
 mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
+pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
 pub use balance::{BalanceIdentifier, BalanceRequest, BalanceResult};
-pub use bidding::{BiddingRequest, BiddingResult};
+pub use balance_hold::{
+    BalanceHoldError, BalanceHoldRequest, BalanceHoldResult, InsufficientBalanceHandling,
+};
 pub use bids::{BidsRequest, BidsResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
@@ -40,6 +45,8 @@ pub use execution_results_checksum::{
 pub use fee::{FeeError, FeeRequest, FeeResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
+pub use handle_payment::{HandlePaymentMode, HandlePaymentRequest, HandlePaymentResult};
+pub use mint::{TransferRequest, TransferResult};
 pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use prune::{PruneRequest, PruneResult};
 pub use query::{QueryRequest, QueryResult};
@@ -50,10 +57,7 @@ pub use system_entity_registry::{
     SystemEntityRegistrySelector,
 };
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
-pub use transfer::{TransferRequest, TransferResult};
 pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
-
-pub use bidding::AuctionMethod;
 
 pub struct Block {
     _era_id: EraId,

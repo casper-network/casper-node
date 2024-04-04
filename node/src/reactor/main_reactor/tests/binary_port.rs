@@ -6,17 +6,17 @@ use std::{
     time::Duration,
 };
 
+use casper_binary_port::{
+    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
+    ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
+    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
+    InformationRequestTag, LastProgress, NetworkName, NodeStatus, PayloadType, ReactorStateName,
+    RecordId, Uptime,
+};
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
     account::{AccountHash, ActionThresholds, AssociatedKeys},
     addressable_entity::{NamedKeyAddr, NamedKeyValue},
-    binary_port::{
-        BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusStatus, ConsensusValidatorChanges, DictionaryItemIdentifier,
-        DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
-        GlobalStateRequest, InformationRequest, InformationRequestTag, LastProgress, NetworkName,
-        NodeStatus, PayloadType, ReactorStateName, RecordId, Uptime,
-    },
     bytesrepr::{FromBytes, ToBytes},
     execution::{Effects, TransformKindV2, TransformV2},
     testing::TestRng,
@@ -348,7 +348,7 @@ async fn binary_port_component() {
             TEST_DICT_NAME.to_owned(),
             TEST_DICT_ITEM_KEY.to_owned(),
         ),
-        try_spec_exec_invalid(&mut rng, highest_block.clone_header()),
+        try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
     ];
@@ -862,17 +862,11 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     }
 }
 
-fn try_spec_exec_invalid(rng: &mut TestRng, header: BlockHeader) -> TestCase {
+fn try_spec_exec_invalid(rng: &mut TestRng) -> TestCase {
     let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
     TestCase {
         name: "try_spec_exec_invalid",
-        request: BinaryRequest::TrySpeculativeExec {
-            state_root_hash: *header.state_root_hash(),
-            block_time: header.timestamp(),
-            protocol_version: header.protocol_version(),
-            transaction,
-            speculative_exec_at_block: header,
-        },
+        request: BinaryRequest::TrySpeculativeExec { transaction },
         asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
     }
 }

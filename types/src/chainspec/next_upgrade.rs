@@ -11,10 +11,10 @@ use crate::{
     ActivationPoint, ProtocolConfig, ProtocolVersion,
 };
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 
 /// Information about the next protocol upgrade.
@@ -40,8 +40,9 @@ impl NextUpgrade {
         self.activation_point
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         Self {
             activation_point: ActivationPoint::random(rng),
             protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),

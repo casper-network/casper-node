@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_types::{
     account::AccountHash,
     runtime_args,
-    system::{auction, auction::DelegationRate, mint},
+    system::{auction, auction::DelegationRate},
     AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, Key, PackageHash,
     ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
     U512,
@@ -33,19 +34,13 @@ const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let transfer = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
-            mint::ARG_ID => Some(42u64),
-        },
-    )
-    .build();
+    let transfer = TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR)
+        .with_transfer_id(42)
+        .build();
 
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -144,15 +139,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -164,12 +154,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (Error::Exec(ExecError::InvalidContext), Error::Exec(ExecError::InvalidContext)) => (),
@@ -478,15 +466,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -499,12 +482,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg1Type::cl_type();
     let found = gh_1470_regression::Arg3Type::cl_type();
@@ -588,15 +569,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .expect_failure()
         .commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -609,12 +585,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.error().expect("should have error");
 
     let expected = gh_1470_regression::Arg3Type::cl_type();
     let found = gh_1470_regression::Arg4Type::cl_type();
@@ -675,19 +649,11 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer_args = runtime_args! {
-        mint::ARG_AMOUNT => U512::one(),
-        mint::ARG_TARGET => AccountHash::new([3; 32]),
-        mint::ARG_ID => Some(1u64),
-    };
-
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
+    let transfer = TransferRequestBuilder::new(1, AccountHash::new([3; 32]))
+        .with_transfer_id(1)
         .build();
 
-    println!("About to execute");
-
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 }
 
 #[ignore]
@@ -695,12 +661,6 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
 fn should_transfer_after_minor_version_bump_from_1_2_0() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
-
-    let transfer_args = runtime_args! {
-        mint::ARG_AMOUNT => U512::one(),
-        mint::ARG_TARGET => AccountHash::new([3; 32]),
-        mint::ARG_ID => Some(1u64),
-    };
 
     let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
 
@@ -726,10 +686,10 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
         .upgrade(&mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
+    let transfer = TransferRequestBuilder::new(1, AccountHash::new([3; 32]))
+        .with_transfer_id(1)
         .build();
-    builder.exec(transfer).expect_success().commit();
+    builder.transfer_and_commit(transfer).expect_success();
 }
 
 #[ignore]
@@ -768,7 +728,6 @@ fn should_add_bid_after_major_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -817,7 +776,6 @@ fn should_add_bid_after_minor_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -862,7 +820,6 @@ fn should_wasm_transfer_after_major_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
@@ -910,7 +867,6 @@ fn should_wasm_transfer_after_minor_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();

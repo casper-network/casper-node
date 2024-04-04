@@ -38,7 +38,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

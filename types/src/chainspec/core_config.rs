@@ -20,13 +20,30 @@ use crate::{
     ProtocolVersion, PublicKey, TimeDiff,
 };
 
-use super::{fee_handling::FeeHandling, refund_handling::RefundHandling};
+use super::{
+    fee_handling::FeeHandling, pricing_handling::PricingHandling, refund_handling::RefundHandling,
+};
 
 /// Default value for maximum associated keys configuration option.
 pub const DEFAULT_MAX_ASSOCIATED_KEYS: u32 = 100;
 
 /// Default value for maximum runtime call stack height configuration option.
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
+
+/// Default refund handling.
+pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::NoRefund;
+
+/// Default pricing handling.
+pub const DEFAULT_PRICING_HANDLING: PricingHandling = PricingHandling::Fixed;
+
+/// Default fee handling.
+pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::NoFee;
+
+/// Default allow reservations.
+pub const DEFAULT_ALLOW_RESERVATIONS: bool = false;
+
+/// Default balance hold interval.
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -120,14 +137,20 @@ pub struct CoreConfig {
     pub allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub compute_rewards: bool,
-    /// Administrative accounts are a valid option for a private chain only.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     pub refund_handling: RefundHandling,
     /// Fee handling.
     pub fee_handling: FeeHandling,
+    /// Pricing handling.
+    pub pricing_handling: PricingHandling,
+    /// Allow reservations.
+    pub allow_reservations: bool,
+    /// How long does it take for a balance hold to fade away?
+    pub balance_hold_interval: TimeDiff,
+    /// Administrative accounts are a valid option for a private chain only.
+    //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub administrators: BTreeSet<PublicKey>,
 }
 
 impl CoreConfig {
@@ -196,11 +219,21 @@ impl CoreConfig {
             RefundHandling::Refund { refund_ratio }
         };
 
+        let pricing_handling = if rng.gen() {
+            PricingHandling::Classic
+        } else {
+            PricingHandling::Fixed
+        };
+
+        let allow_reservations = DEFAULT_ALLOW_RESERVATIONS;
+
         let fee_handling = if rng.gen() {
             FeeHandling::PayToProposer
         } else {
-            FeeHandling::Accumulate
+            FeeHandling::NoFee
         };
+
+        let balance_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
 
         CoreConfig {
             era_duration,
@@ -231,7 +264,10 @@ impl CoreConfig {
             allow_unrestricted_transfers,
             compute_rewards,
             refund_handling,
+            pricing_handling,
+            allow_reservations,
             fee_handling,
+            balance_hold_interval,
         }
     }
 }
@@ -267,10 +303,11 @@ impl Default for CoreConfig {
             allow_unrestricted_transfers: true,
             compute_rewards: true,
             administrators: Default::default(),
-            refund_handling: RefundHandling::Refund {
-                refund_ratio: Ratio::new_raw(99, 100),
-            },
-            fee_handling: FeeHandling::PayToProposer,
+            refund_handling: DEFAULT_REFUND_HANDLING,
+            pricing_handling: DEFAULT_PRICING_HANDLING,
+            fee_handling: DEFAULT_FEE_HANDLING,
+            allow_reservations: DEFAULT_ALLOW_RESERVATIONS,
+            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }
@@ -309,7 +346,10 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.compute_rewards.to_bytes()?);
         buffer.extend(self.administrators.to_bytes()?);
         buffer.extend(self.refund_handling.to_bytes()?);
+        buffer.extend(self.pricing_handling.to_bytes()?);
         buffer.extend(self.fee_handling.to_bytes()?);
+        buffer.extend(self.allow_reservations.to_bytes()?);
+        buffer.extend(self.balance_hold_interval.to_bytes()?);
         Ok(buffer)
     }
 
@@ -344,7 +384,10 @@ impl ToBytes for CoreConfig {
             + self.compute_rewards.serialized_length()
             + self.administrators.serialized_length()
             + self.refund_handling.serialized_length()
+            + self.pricing_handling.serialized_length()
             + self.fee_handling.serialized_length()
+            + self.allow_reservations.serialized_length()
+            + self.balance_hold_interval.serialized_length()
     }
 }
 
@@ -379,7 +422,10 @@ impl FromBytes for CoreConfig {
         let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
         let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
         let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (pricing_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_reservations, remainder) = FromBytes::from_bytes(remainder)?;
+        let (balance_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -409,7 +455,10 @@ impl FromBytes for CoreConfig {
             compute_rewards,
             administrators: administrative_accounts,
             refund_handling,
+            pricing_handling,
             fee_handling,
+            allow_reservations,
+            balance_hold_interval,
         };
         Ok((config, remainder))
     }

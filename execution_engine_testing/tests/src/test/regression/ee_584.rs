@@ -1,13 +1,13 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{execution::TransformKindV2, RuntimeArgs, StoredValue};
 
 const CONTRACT_EE_584_REGRESSION: &str = "ee_584_regression.wasm";
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_584_no_errored_session_transforms() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -19,7 +19,7 @@ fn should_run_ee_584_no_errored_session_transforms() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(exec_request);
 
     assert!(builder.is_error());

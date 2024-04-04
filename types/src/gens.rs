@@ -18,38 +18,41 @@ use proptest::{
 };
 
 use crate::{
-    account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
-    addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
+    account::{
+        self, action_thresholds::gens::account_action_thresholds_arb,
+        associated_keys::gens::account_associated_keys_arb, Account, AccountHash,
+    },
+    addressable_entity::{
+        action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+        MessageTopics, NamedKeyValue, NamedKeys, Parameters, Weight,
+    },
+    byte_code::ByteCodeKind,
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
+    contracts::{
+        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
+        ContractVersions,
+    },
     crypto::{self, gens::public_key_arb_no_system},
+    deploy_info::gens::deploy_info_arb,
     global_state::{Pointer, TrieMerkleProof, TrieMerkleProofStep},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
-    system::auction::{
-        gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
-        DELEGATION_RATE_DENOMINATOR,
+    system::{
+        auction::{
+            gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
+            ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
+        },
+        mint::BalanceHoldAddr,
     },
-    transfer::TransferAddr,
+    transaction::gens::deploy_hash_arb,
+    transfer::{
+        gens::{transfer_v1_addr_arb, transfer_v1_arb},
+        TransferAddr,
+    },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
     Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
     U256, U512,
 };
-
-use crate::{
-    account::{associated_keys::gens::account_associated_keys_arb, Account},
-    addressable_entity::{
-        action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
-        NamedKeyValue,
-    },
-    byte_code::ByteCodeKind,
-    contracts::{
-        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
-        ContractVersions,
-    },
-    deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
-};
-pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
@@ -107,7 +110,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
         uref_arb().prop_map(Key::URef),
-        transfer_addr_arb().prop_map(Key::Transfer),
+        transfer_v1_addr_arb().prop_map(Key::Transfer),
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
@@ -115,6 +118,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         bid_addr_delegator_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
+        balance_hold_addr_arb().prop_map(Key::BalanceHold),
         Just(Key::EraSummary),
     ]
 }
@@ -141,6 +145,12 @@ pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
     let x = u8_slice_32();
     let y = u8_slice_32();
     (x, y).prop_map(BidAddr::new_delegator_addr)
+}
+
+pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
+    let x = uref_arb().prop_map(|uref| uref.addr());
+    let y = any::<u64>();
+    (x, y).prop_map(|(x, y)| BalanceHoldAddr::new_gas(x, BlockTime::new(y)))
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -318,8 +328,8 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
 
 pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
-        Just(EntryPointType::Session),
-        Just(EntryPointType::AddressableEntity),
+        Just(EntryPointType::Caller),
+        Just(EntryPointType::Called),
         Just(EntryPointType::Factory),
     ]
 }
@@ -709,7 +719,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         contract_arb().prop_map(StoredValue::Contract),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         package_arb().prop_map(StoredValue::Package),
-        transfer_arb().prop_map(StoredValue::Transfer),
+        transfer_v1_arb().prop_map(StoredValue::LegacyTransfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
         unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
@@ -719,31 +729,31 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
-        named_key_value_arb().prop_map(StoredValue::NamedKey)
+        named_key_value_arb().prop_map(StoredValue::NamedKey),
     ]
     .prop_map(|stored_value|
-        // The following match statement is here only to make sure
-        // we don't forget to update the generator when a new variant is added.
-        match stored_value {
-            StoredValue::CLValue(_) => stored_value,
-            StoredValue::Account(_) => stored_value,
-            StoredValue::ContractWasm(_) => stored_value,
-            StoredValue::Contract(_) => stored_value,
-            StoredValue::ContractPackage(_) => stored_value,
-            StoredValue::Transfer(_) => stored_value,
-            StoredValue::DeployInfo(_) => stored_value,
-            StoredValue::EraInfo(_) => stored_value,
-            StoredValue::Bid(_) => stored_value,
-            StoredValue::Withdraw(_) => stored_value,
-            StoredValue::Unbonding(_) => stored_value,
-            StoredValue::AddressableEntity(_) => stored_value,
-            StoredValue::BidKind(_) => stored_value,
-            StoredValue::Package(_) => stored_value,
-            StoredValue::ByteCode(_) => stored_value,
-            StoredValue::MessageTopic(_) => stored_value,
-            StoredValue::Message(_) => stored_value,
-            StoredValue::NamedKey(_) => stored_value,
-        })
+            // The following match statement is here only to make sure
+            // we don't forget to update the generator when a new variant is added.
+            match stored_value {
+                StoredValue::CLValue(_) => stored_value,
+                StoredValue::Account(_) => stored_value,
+                StoredValue::ContractWasm(_) => stored_value,
+                StoredValue::Contract(_) => stored_value,
+                StoredValue::ContractPackage(_) => stored_value,
+                StoredValue::LegacyTransfer(_) => stored_value,
+                StoredValue::DeployInfo(_) => stored_value,
+                StoredValue::EraInfo(_) => stored_value,
+                StoredValue::Bid(_) => stored_value,
+                StoredValue::Withdraw(_) => stored_value,
+                StoredValue::Unbonding(_) => stored_value,
+                StoredValue::AddressableEntity(_) => stored_value,
+                StoredValue::BidKind(_) => stored_value,
+                StoredValue::Package(_) => stored_value,
+                StoredValue::ByteCode(_) => stored_value,
+                StoredValue::MessageTopic(_) => stored_value,
+                StoredValue::Message(_) => stored_value,
+                StoredValue::NamedKey(_) => stored_value,
+            })
 }
 
 pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {

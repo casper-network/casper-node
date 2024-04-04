@@ -4,21 +4,21 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc, time::SystemTime};
 
 use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::BalanceRequest;
+use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
-    package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
-    AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
-    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
-    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, SystemConfig, Transaction,
-    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
+    system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
+    Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr,
+    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{
@@ -72,20 +72,17 @@ impl<REv> ReactorEventT for REv where
 #[derive(Debug, DataSize)]
 pub struct TransactionAcceptor {
     acceptor_config: Config,
-    chain_name: String,
-    protocol_version: ProtocolVersion,
-    cost_table: SystemConfig,
-    transaction_config: TransactionConfig,
-    max_associated_keys: u32,
+    chainspec: Arc<Chainspec>,
     administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
     metrics: metrics::Metrics,
+    balance_hold_interval: u64,
 }
 
 impl TransactionAcceptor {
     pub(crate) fn new(
         acceptor_config: Config,
-        chainspec: &Chainspec,
+        chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         let administrators = chainspec
@@ -94,15 +91,13 @@ impl TransactionAcceptor {
             .iter()
             .map(|public_key| public_key.to_account_hash())
             .collect();
+        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
         Ok(TransactionAcceptor {
             acceptor_config,
-            chain_name: chainspec.network_config.name.clone(),
-            protocol_version: chainspec.protocol_version(),
-            cost_table: chainspec.system_costs_config,
-            transaction_config: chainspec.transaction_config,
-            max_associated_keys: chainspec.core_config.max_associated_keys,
+            chainspec,
             administrators,
             metrics: metrics::Metrics::new(registry)?,
+            balance_hold_interval,
         })
     }
 
@@ -120,24 +115,18 @@ impl TransactionAcceptor {
         let is_config_compliant = match &event_metadata.transaction {
             Transaction::Deploy(deploy) => deploy
                 .is_config_compliant(
-                    &self.chain_name,
-                    &self.cost_table,
-                    &self.transaction_config,
-                    self.max_associated_keys,
+                    &self.chainspec,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
             Transaction::V1(txn) => txn
                 .is_config_compliant(
-                    &self.chain_name,
-                    &self.cost_table,
-                    &self.transaction_config,
-                    self.max_associated_keys,
+                    &self.chainspec,
                     self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
-                .map_err(Error::from),
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
 
         if let Err(error) = is_config_compliant {
@@ -158,23 +147,6 @@ impl TransactionAcceptor {
                     current_node_timestamp,
                 },
             );
-        }
-
-        // If this has been received from the speculative exec server, use the block specified in
-        // the request, otherwise use the highest complete block.
-        if let Source::SpeculativeExec(block_header) = &event_metadata.source {
-            let account_key = match event_metadata.transaction.initiator_addr() {
-                InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
-                InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-            };
-            let block_header = block_header.clone();
-            return effect_builder
-                .get_addressable_entity(*block_header.state_root_hash(), account_key)
-                .event(move |result| Event::GetAddressableEntityResult {
-                    event_metadata,
-                    maybe_entity: result.into_option(),
-                    block_header,
-                });
         }
 
         effect_builder
@@ -245,10 +217,15 @@ impl TransactionAcceptor {
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
                 let protocol_version = block_header.protocol_version();
+                let hold_interval = self.balance_hold_interval;
+                let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+                let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+                let balance_handling = BalanceHandling::Available { holds_epoch };
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     protocol_version,
                     entity.main_purse(),
+                    balance_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)
@@ -342,6 +319,18 @@ impl TransactionAcceptor {
                         block_header,
                         is_payment: true,
                         contract_hash,
+                        maybe_entity: result.into_option(),
+                    })
+            }
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Addr(entity_addr),
+            ) => {
+                let query_key = Key::AddressableEntity(entity_addr);
+                effect_builder
+                    .get_addressable_entity(*block_header.state_root_hash(), query_key)
+                    .event(move |result| Event::GetAddressableEntityResult {
+                        event_metadata,
+                        block_header,
                         maybe_entity: result.into_option(),
                     })
             }
@@ -452,6 +441,18 @@ impl TransactionAcceptor {
                         maybe_entity: result.into_option(),
                     })
             }
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Addr(entity_addr),
+            ) => {
+                let key = Key::AddressableEntity(entity_addr);
+                effect_builder
+                    .get_addressable_entity(*block_header.state_root_hash(), key)
+                    .event(move |result| Event::GetAddressableEntityResult {
+                        event_metadata,
+                        block_header,
+                        maybe_entity: result.into_option(),
+                    })
+            }
             ExecutableDeployItemIdentifier::Package(
                 ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
@@ -497,14 +498,14 @@ impl TransactionAcceptor {
             }
             Transaction::V1(txn) => match txn.target() {
                 TransactionTarget::Stored { id, .. } => match id {
-                    TransactionInvocationTarget::InvocableEntity(entity_addr) => {
+                    TransactionInvocationTarget::ByHash(entity_addr) => {
                         NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
                     }
-                    TransactionInvocationTarget::Package { addr, version } => {
+                    TransactionInvocationTarget::ByPackageHash { addr, version } => {
                         NextStep::GetPackage(*addr, *version)
                     }
-                    TransactionInvocationTarget::InvocableEntityAlias(_)
-                    | TransactionInvocationTarget::PackageAlias { .. } => {
+                    TransactionInvocationTarget::ByName(_)
+                    | TransactionInvocationTarget::ByPackageName { .. } => {
                         NextStep::CryptoValidation
                     }
                 },
@@ -639,8 +640,10 @@ impl TransactionAcceptor {
             }
         };
 
-        let entity_version_key =
-            EntityVersionKey::new(self.protocol_version.value().major, entity_version);
+        let entity_version_key = EntityVersionKey::new(
+            self.chainspec.protocol_config.version.value().major,
+            entity_version,
+        );
 
         if package.is_version_missing(entity_version_key) {
             let error = Error::parameter_failure(
@@ -687,8 +690,12 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
     ) -> Effects<Event> {
         let is_valid = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Error::from),
-            Transaction::V1(txn) => txn.verify().map_err(Error::from),
+            Transaction::Deploy(deploy) => deploy
+                .is_valid()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
+            Transaction::V1(txn) => txn
+                .verify()
+                .map_err(|err| Error::InvalidTransaction(err.into())),
         };
         if let Err(error) = is_valid {
             return self.reject_transaction(effect_builder, *event_metadata, error);
@@ -696,7 +703,7 @@ impl TransactionAcceptor {
 
         // If this has been received from the speculative exec server, we just want to call the
         // responder and finish.  Otherwise store the transaction and announce it if required.
-        if let Source::SpeculativeExec(_) = event_metadata.source {
+        if let Source::SpeculativeExec = event_metadata.source {
             if let Some(responder) = event_metadata.maybe_responder {
                 return responder.respond(Ok(())).ignore();
             }
@@ -725,9 +732,7 @@ impl TransactionAcceptor {
             maybe_responder,
             verification_start_timestamp,
         } = event_metadata;
-        if !matches!(source, Source::SpeculativeExec(_)) {
-            self.metrics.observe_rejected(verification_start_timestamp);
-        }
+        self.metrics.observe_rejected(verification_start_timestamp);
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
             // The client has submitted an invalid transaction
@@ -735,14 +740,11 @@ impl TransactionAcceptor {
             effects.extend(responder.respond(Err(error)).ignore());
         }
 
-        // If this has NOT been received from the speculative exec server, announce it.
-        if !matches!(source, Source::SpeculativeExec(_)) {
-            effects.extend(
-                effect_builder
-                    .announce_invalid_transaction(transaction, source)
-                    .ignore(),
-            );
-        }
+        effects.extend(
+            effect_builder
+                .announce_invalid_transaction(transaction, source)
+                .ignore(),
+        );
         effects
     }
 
@@ -822,6 +824,10 @@ impl TransactionAcceptor {
 
 impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
     type Event = Event;
+
+    fn name(&self) -> &str {
+        COMPONENT_NAME
+    }
 
     fn handle_event(
         &mut self,
@@ -903,10 +909,6 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 is_new,
             } => self.handle_stored_finalized_approvals(effect_builder, event_metadata, is_new),
         }
-    }
-
-    fn name(&self) -> &str {
-        COMPONENT_NAME
     }
 }
 

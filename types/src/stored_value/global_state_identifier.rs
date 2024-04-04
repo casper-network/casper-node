@@ -1,17 +1,17 @@
 use alloc::vec::Vec;
 
-#[cfg(test)]
-use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     BlockHash, BlockIdentifier, Digest,
 };
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 const BLOCK_HASH_TAG: u8 = 0;
 const BLOCK_HEIGHT_TAG: u8 = 1;
@@ -31,8 +31,9 @@ pub enum GlobalStateIdentifier {
 }
 
 impl GlobalStateIdentifier {
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
             0 => Self::BlockHash(BlockHash::random(rng)),
             1 => Self::BlockHeight(rng.gen()),

@@ -38,6 +38,7 @@ mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
+mod utils;
 
 use casper_storage::block_store::{
     lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
@@ -59,18 +60,16 @@ use std::{
     sync::Arc,
 };
 
+use casper_storage::DbRawBytesSpec;
 #[cfg(test)]
 use casper_types::SignedBlock;
 use casper_types::{
-    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
-    execution::{
-        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKindV2,
-    },
+    execution::{execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2},
     Approval, ApprovalsHash, AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader,
     BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, BlockV2, ChainNameDigest, DeployHash,
-    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, StoredValue,
-    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    EraId, ExecutionInfo, FinalitySignature, ProtocolVersion, SignedBlockHeader, Timestamp,
+    Transaction, TransactionConfig, TransactionHash, TransactionHeader, TransactionId, Transfer,
 };
 use datasize::DataSize;
 use prometheus::Registry;
@@ -149,6 +148,8 @@ pub struct Storage {
     max_ttl: MaxTtl,
     /// The hash of the chain name.
     chain_name_hash: ChainNameDigest,
+    /// The transaction config as specified by the chainspec.
+    transaction_config: TransactionConfig,
     /// The utilization of blocks.
     utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
@@ -246,6 +247,7 @@ impl Storage {
         recent_era_count: u64,
         registry: Option<&Registry>,
         force_resync: bool,
+        transaction_config: TransactionConfig,
     ) -> Result<Self, FatalStorageError> {
         let config = cfg.value();
 
@@ -290,6 +292,7 @@ impl Storage {
             utilization_tracker: BTreeMap::new(),
             metrics,
             chain_name_hash: ChainNameDigest::from_chain_name(network_name),
+            transaction_config,
         };
 
         if force_resync {
@@ -948,9 +951,12 @@ impl Storage {
                 ref transaction_hash,
                 ref finalized_approvals,
                 responder,
-            } => responder
-                .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
-                .ignore(),
+            } => {
+                info!(txt=?transaction_hash, count=finalized_approvals.len(), "storing finalized approvals {:?}", finalized_approvals);
+                responder
+                    .respond(self.store_finalized_approvals(transaction_hash, finalized_approvals)?)
+                    .ignore()
+            }
             StorageRequest::PutExecutedBlock {
                 block,
                 approvals_hashes,
@@ -958,8 +964,10 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
+                let transaction_config = self.transaction_config;
                 responder
                     .respond(self.put_executed_block(
+                        transaction_config,
                         &block,
                         &approvals_hashes,
                         execution_results,
@@ -986,18 +994,26 @@ impl Storage {
                 responder,
                 record_id,
             } => {
+                let db_table_id = utils::db_table_id_from_record_id(record_id)
+                    .map_err(|_| FatalStorageError::UnexpectedRecordId(record_id))?;
                 let txn = self.block_store.checkout_ro()?;
-                let maybe_data: Option<DbRawBytesSpec> = txn.read((record_id, key))?;
-                responder.respond(maybe_data).ignore()
+                let maybe_data: Option<DbRawBytesSpec> = txn.read((db_table_id, key))?;
+                match maybe_data {
+                    None => responder.respond(None).ignore(),
+                    Some(db_raw) => responder.respond(Some(db_raw)).ignore(),
+                }
             }
             StorageRequest::GetBlockUtilizationScore {
                 era_id,
                 block_height,
-                transaction_count,
+                switch_block_utilization,
                 responder,
             } => {
-                let utilization =
-                    self.get_block_utilization_score(era_id, block_height, transaction_count);
+                let utilization = self.get_block_utilization_score(
+                    era_id,
+                    block_height,
+                    switch_block_utilization,
+                );
 
                 responder.respond(utilization).ignore()
             }
@@ -1044,13 +1060,14 @@ impl Storage {
 
     pub(crate) fn put_executed_block(
         &mut self,
+        transaction_config: TransactionConfig,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.block_store.checkout_rw()?;
-        let transaction_hash_count = block.transaction_count();
         let era_id = block.era_id();
+        let block_utilization_score = block.block_utilization(transaction_config);
         let block_hash = txn.write(block)?;
         let _ = txn.write(approvals_hashes)?;
         let block_info = BlockHashHeightAndEra::new(block_hash, block.height(), block.era_id());
@@ -1061,17 +1078,13 @@ impl Storage {
         })?;
         txn.commit()?;
 
-        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
-            block_score.insert(block.height(), transaction_hash_count);
-        };
-
         match self.utilization_tracker.get_mut(&era_id) {
             Some(block_score) => {
-                block_score.insert(block.height(), transaction_hash_count);
+                block_score.insert(block.height(), block_utilization_score);
             }
             None => {
                 let mut block_score = BTreeMap::new();
-                block_score.insert(block.height(), transaction_hash_count);
+                block_score.insert(block.height(), block_utilization_score);
                 self.utilization_tracker.insert(era_id, block_score);
             }
         }
@@ -1960,11 +1973,11 @@ impl Storage {
         &mut self,
         era_id: EraId,
         block_height: u64,
-        transaction_count: u64,
+        block_utilization: u64,
     ) -> Option<(u64, u64)> {
         let ret = match self.utilization_tracker.get_mut(&era_id) {
             Some(utilization) => {
-                utilization.entry(block_height).or_insert(transaction_count);
+                utilization.entry(block_height).or_insert(block_utilization);
 
                 let transaction_count = utilization.values().into_iter().sum();
                 let block_count = utilization.keys().len() as u64;
@@ -1973,12 +1986,12 @@ impl Storage {
             }
             None => {
                 let mut utilization = BTreeMap::new();
-                utilization.insert(block_height, transaction_count);
+                utilization.insert(block_height, block_utilization);
 
                 self.utilization_tracker.insert(era_id, utilization);
 
                 let block_count = 1u64;
-                Some((transaction_count, block_count))
+                Some((block_utilization, block_count))
             }
         };
 
@@ -2059,30 +2072,34 @@ fn move_storage_files_to_network_subdir(
 /// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
 /// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
 fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
-    let mut transfers: Vec<Transfer> = vec![];
+    let mut all_transfers: Vec<Transfer> = vec![];
     match execution_result {
         ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
-            for transform_entry in &effect.transforms {
-                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer) =
-                    &transform_entry.transform
+            for transform_v1 in &effect.transforms {
+                if let execution_result_v1::TransformKindV1::WriteTransfer(transfer_v1) =
+                    &transform_v1.transform
                 {
-                    transfers.push(*transfer);
+                    all_transfers.push(Transfer::V1(transfer_v1.clone()));
                 }
             }
         }
-        ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
-            for transform in effects.transforms() {
-                if let TransformKindV2::Write(StoredValue::Transfer(transfer)) = transform.kind() {
-                    transfers.push(*transfer);
+        ExecutionResult::V2(ExecutionResultV2 {
+            transfers,
+            error_message,
+            ..
+        }) => {
+            if error_message.is_none() {
+                for transfer in transfers {
+                    all_transfers.push(transfer.clone());
                 }
             }
+            // else no-op: we only record transfers from successful executions.
         }
-        ExecutionResult::V1(ExecutionResultV1::Failure { .. })
-        | ExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+        ExecutionResult::V1(ExecutionResultV1::Failure { .. }) => {
             // No-op: we only record transfers from successful executions.
         }
     }
-    transfers
+    all_transfers
 }
 
 // Testing code. The functions below allow direct inspection of the storage component and should

@@ -1,6 +1,7 @@
 mod approvals_hashes;
 mod block_hash_height_and_era;
 mod deploy_metadata_v1;
+mod transfers;
 
 use std::{
     borrow::Cow,
@@ -15,6 +16,7 @@ use casper_types::{
 
 pub(crate) use approvals_hashes::LegacyApprovalsHashes;
 pub(crate) use deploy_metadata_v1::DeployMetadataV1;
+pub(in crate::block_store) use transfers::Transfers;
 
 pub type ExecutionResults = HashMap<TransactionHash, ExecutionResult>;
 

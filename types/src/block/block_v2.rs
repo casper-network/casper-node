@@ -242,12 +242,12 @@ impl BlockV2 {
     }
 
     /// Returns the hashes of the transfer transactions within the block.
-    pub fn transfer(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn mint(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.mint()
     }
 
     /// Returns the hashes of the non-transfer, native transactions within the block.
-    pub fn staking(&self) -> impl Iterator<Item = &TransactionHash> {
+    pub fn auction(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.auction()
     }
 

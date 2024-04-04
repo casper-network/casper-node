@@ -23,6 +23,7 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
+casper-binary-port = { version = "1.0.0", path = "../binary_port" }
 casper-execution-engine = { version = "6.0.0", path = "../execution_engine" }
 casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
 casper-storage = { version = "1.4.3", path = "../storage" }
@@ -84,7 +85,7 @@ tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec"] }
 mio = "0.8.11"
-toml = "0.5.6"
+toml = { version = "0.7.8", features = ["preserve_order"] }
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"

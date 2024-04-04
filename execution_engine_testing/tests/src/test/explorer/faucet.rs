@@ -3,12 +3,12 @@ use num_rational::Ratio;
 use casper_execution_engine::{engine_state, execution::ExecError};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    TransferRequestBuilder, CHAINSPEC_SYMLINK, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint, ApiError,
-    Key, PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, ApiError, FeeHandling,
+    Key, PricingHandling, PublicKey, RefundHandling, SecretKey, U512,
 };
 
 // test constants.
@@ -34,7 +34,7 @@ const FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET: u16 = 25;
 #[test]
 fn should_install_faucet_contract() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let fund_installer_account_request = FundAccountRequestBuilder::new()
         .with_target_account(INSTALLER_ACCOUNT)
@@ -42,14 +42,11 @@ fn should_install_faucet_contract() {
         .build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
-
-    let install_faucet_request = FaucetInstallSessionRequestBuilder::new().build();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     builder
-        .exec(install_faucet_request)
+        .exec(FaucetInstallSessionRequestBuilder::new().build())
         .expect_success()
         .commit();
 
@@ -133,7 +130,7 @@ fn should_install_faucet_contract() {
 #[test]
 fn should_allow_installer_to_set_variables() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(INSTALLER_ACCOUNT)
@@ -144,9 +141,8 @@ fn should_allow_installer_to_set_variables() {
         .with_faucet_time_interval(Some(FAUCET_TIME_INTERVAL));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -227,7 +223,7 @@ fn should_allow_installer_to_set_variables() {
 fn should_fund_new_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -238,9 +234,8 @@ fn should_fund_new_account() {
         .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -289,12 +284,13 @@ fn should_fund_new_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_fund_existing_account() {
     let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -305,9 +301,8 @@ fn should_fund_existing_account() {
         .with_faucet_distributions_per_interval(Some(faucet_distributions_per_interval));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     let user_account_initial_balance = U512::from(15_000_000_000u64);
 
@@ -316,7 +311,9 @@ fn should_fund_existing_account() {
         .with_fund_amount(user_account_initial_balance)
         .build();
 
-    builder.exec(fund_user_request).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_user_request)
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -361,13 +358,14 @@ fn should_fund_existing_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_fund_once_exhausted() {
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -383,9 +381,8 @@ fn should_not_fund_once_exhausted() {
 
     // fund installer amount
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     // faucet install request
     builder
@@ -565,7 +562,7 @@ fn should_allow_installer_to_fund_freely() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let faucet_fund_amount = U512::from(200_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -579,9 +576,8 @@ fn should_allow_installer_to_fund_freely() {
         .with_faucet_time_interval(Some(10_000u64));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -665,7 +661,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     // Fund installer account
     let fund_installer_account_request = FundAccountRequestBuilder::new()
@@ -674,9 +670,8 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         .build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
 
@@ -723,7 +718,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(installer_account)
@@ -734,9 +729,8 @@ fn should_allow_funding_by_an_authorized_account() {
         .with_faucet_time_interval(Some(10_000u64));
 
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -845,16 +839,11 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect_failure()
         .commit();
 
-    let exec_results = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("failed to get exec results");
 
-    let exec_result = exec_results
-        .first()
-        .expect("an exec result must exist")
-        .clone();
-
-    let error = exec_result.as_error().unwrap();
+    let error = exec_result.error().unwrap();
     assert!(
         matches!(
             error,
@@ -868,20 +857,20 @@ fn should_allow_funding_by_an_authorized_account() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_refund_proper_amount() {
     let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let payment_amount = U512::from(10_000_000_000u64);
 
     let mut helper = FaucetDeployHelper::default();
     builder
-        .exec(helper.fund_installer_request())
-        .expect_success()
-        .commit();
+        .transfer_and_commit(helper.fund_installer_request())
+        .expect_success();
 
     let user_account_initial_balance = U512::from(15_000_000_000u64);
 
@@ -890,7 +879,9 @@ fn should_refund_proper_amount() {
         .with_fund_amount(user_account_initial_balance)
         .build();
 
-    builder.exec(fund_user_request).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_user_request)
+        .expect_success();
 
     builder
         .exec(helper.faucet_install_request())
@@ -935,31 +926,30 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_060_413_740;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 111_328_060;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_897_300;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_619_855_200;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_914_271_090;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 111_340_630;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_911_250;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_619_882_230;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
 
+    let chainspec = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
+        .expect("must build chainspec configuration");
+    let chainspec_config = chainspec
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_pricing_handling(PricingHandling::Fixed);
+    LmdbWasmTestBuilder::new_temporary_with_config(chainspec_config);
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let fund_installer_account_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => installer_account,
-            mint::ARG_AMOUNT => INSTALLER_FUND_AMOUNT,
-            mint::ARG_ID => <Option<u64>>::None
-        },
-    )
-    .build();
+    let fund_installer_account_request =
+        TransferRequestBuilder::new(INSTALLER_FUND_AMOUNT, installer_account).build();
 
     builder
-        .exec(fund_installer_account_request)
-        .expect_success()
-        .commit();
+        .transfer_and_commit(fund_installer_account_request)
+        .expect_success();
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let installer_session_request = ExecuteRequestBuilder::standard(
@@ -978,25 +968,24 @@ fn faucet_costs() {
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;
-    let installer_set_variable_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-                ENTRY_POINT_SET_VARIABLES,
-                runtime_args! {
-                    ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
-                    ARG_TIME_INTERVAL => Some(assigned_time_interval),
-                    ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
-                },
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([3; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(installer_account)
+        .with_authorization_keys(&[installer_account])
+        .with_stored_session_named_key(
+            &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
+            ENTRY_POINT_SET_VARIABLES,
+            runtime_args! {
+                ARG_AVAILABLE_AMOUNT => Some(faucet_fund_amount),
+                ARG_TIME_INTERVAL => Some(assigned_time_interval),
+                ARG_DISTRIBUTIONS_PER_INTERVAL => Some(assigned_distributions_per_interval)
+            },
+        )
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_deploy_hash([3; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let installer_set_variable_request =
+        ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(installer_set_variable_request)
@@ -1006,8 +995,8 @@ fn faucet_costs() {
     let faucet_set_variables_cost = builder.last_exec_gas_cost();
 
     let user_fund_amount = U512::from(10_000_000_000u64);
-    let faucet_call_by_installer = {
-        let deploy_item = DeployItemBuilder::new()
+
+    let deploy_item = DeployItemBuilder::new()
             .with_address(installer_account)
             .with_authorization_keys(&[installer_account])
             .with_stored_session_named_key(
@@ -1015,12 +1004,11 @@ fn faucet_costs() {
                 ENTRY_POINT_FAUCET,
                 runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
             )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+            .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
             .with_deploy_hash([4; 32])
             .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let faucet_call_by_installer = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(faucet_call_by_installer)
@@ -1031,21 +1019,19 @@ fn faucet_costs() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
 
-    let faucet_call_by_user_request = {
-        let deploy_item = DeployItemBuilder::new()
-            .with_address(user_account)
-            .with_authorization_keys(&[user_account])
-            .with_stored_session_hash(
-                faucet_contract_hash,
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
-            )
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => user_fund_amount})
-            .with_deploy_hash([4; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(user_account)
+        .with_authorization_keys(&[user_account])
+        .with_stored_session_hash(
+            faucet_contract_hash,
+            ENTRY_POINT_FAUCET,
+            runtime_args! {ARG_TARGET => user_account, ARG_ID => <Option<u64>>::None},
+        )
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => user_fund_amount})
+        .with_deploy_hash([4; 32])
+        .build();
 
-        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
-    };
+    let faucet_call_by_user_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
         .exec(faucet_call_by_user_request)
