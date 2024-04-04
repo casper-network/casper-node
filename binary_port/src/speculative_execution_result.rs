@@ -27,6 +27,7 @@ static SPECULATIVE_EXECUTION_RESULT: Lazy<SpeculativeExecutionResult> = Lazy::ne
         None,
     )
 });
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SpeculativeExecutionResult {
     /// Block hash against which the execution was performed.
