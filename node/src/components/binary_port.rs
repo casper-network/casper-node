@@ -27,8 +27,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch, Key, Peers,
-    ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Transaction,
+    BlockHeader, BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch, Key,
+    Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
 };
 
 use datasize::DataSize;
@@ -386,60 +386,38 @@ where
                 Err(err) => BinaryResponse::new_error(err, protocol_version),
             }
         }
-        GlobalStateRequest::Balance {
+        GlobalStateRequest::BalanceByBlock {
+            block_identifier,
+            purse_identifier,
+        } => {
+            let Some(header) = resolve_block_header(effect_builder, block_identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            get_balance(
+                effect_builder,
+                *header.state_root_hash(),
+                header.timestamp(),
+                purse_identifier,
+                protocol_version,
+            )
+            .await
+        }
+        GlobalStateRequest::BalanceByStateRoot {
             state_identifier,
             purse_identifier,
-            holds_timestamp,
+            timestamp,
         } => {
             let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
                 return BinaryResponse::new_empty(protocol_version);
             };
-            let balance_id = match purse_identifier {
-                PurseIdentifier::Payment => BalanceIdentifier::Payment,
-                PurseIdentifier::Accumulate => BalanceIdentifier::Accumulate,
-                PurseIdentifier::URef(uref) => BalanceIdentifier::Purse(uref),
-                PurseIdentifier::PublicKey(pub_key) => BalanceIdentifier::Public(pub_key),
-                PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
-                PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
-            };
-            let balance_handling = match holds_timestamp {
-                Some(timestamp) => {
-                    let holds_interval = effect_builder.get_balance_holds_interval().await;
-                    BalanceHandling::Available {
-                        holds_epoch: HoldsEpoch::from_timestamp(timestamp, holds_interval),
-                    }
-                }
-                None => BalanceHandling::Total,
-            };
-            let balance_req = BalanceRequest::new(
+            get_balance(
+                effect_builder,
                 state_root_hash,
+                timestamp,
+                purse_identifier,
                 protocol_version,
-                balance_id,
-                balance_handling,
-            );
-            match effect_builder.get_balance(balance_req).await {
-                BalanceResult::RootNotFound => {
-                    BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
-                }
-                BalanceResult::Success {
-                    total_balance,
-                    available_balance,
-                    total_balance_proof,
-                    balance_holds,
-                    ..
-                } => {
-                    let response = BalanceResponse {
-                        total_balance,
-                        available_balance,
-                        total_balance_proof,
-                        balance_holds,
-                    };
-                    BinaryResponse::from_value(response, protocol_version)
-                }
-                BalanceResult::Failure(_) => {
-                    BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
-                }
-            }
+            )
+            .await
         }
     }
 }
@@ -520,6 +498,62 @@ where
     }
 }
 
+async fn get_balance<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    timestamp: Timestamp,
+    purse_identifier: PurseIdentifier,
+    protocol_version: ProtocolVersion,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<ReactorInfoRequest>,
+{
+    let balance_id = match purse_identifier {
+        PurseIdentifier::Payment => BalanceIdentifier::Payment,
+        PurseIdentifier::Accumulate => BalanceIdentifier::Accumulate,
+        PurseIdentifier::URef(uref) => BalanceIdentifier::Purse(uref),
+        PurseIdentifier::PublicKey(pub_key) => BalanceIdentifier::Public(pub_key),
+        PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
+        PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
+    };
+    let holds_interval = effect_builder.get_balance_holds_interval().await;
+    let balance_handling = BalanceHandling::Available {
+        holds_epoch: HoldsEpoch::from_timestamp(timestamp, holds_interval),
+    };
+    let balance_req = BalanceRequest::new(
+        state_root_hash,
+        protocol_version,
+        balance_id,
+        balance_handling,
+    );
+    match effect_builder.get_balance(balance_req).await {
+        BalanceResult::RootNotFound => {
+            BinaryResponse::new_error(ErrorCode::RootNotFound, protocol_version)
+        }
+        BalanceResult::Success {
+            total_balance,
+            available_balance,
+            total_balance_proof,
+            balance_holds,
+            ..
+        } => {
+            let response = BalanceResponse {
+                total_balance,
+                available_balance,
+                total_balance_proof,
+                balance_holds,
+            };
+            BinaryResponse::from_value(response, protocol_version)
+        }
+        BalanceResult::Failure(_) => {
+            BinaryResponse::new_error(ErrorCode::FailedQuery, protocol_version)
+        }
+    }
+}
+
 async fn get_global_state_item<REv>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
@@ -561,12 +595,7 @@ where
 {
     match req {
         InformationRequest::BlockHeader(identifier) => {
-            let Some(height) = resolve_block_height(effect_builder, identifier).await else {
-                return BinaryResponse::new_empty(protocol_version);
-            };
-            let maybe_header = effect_builder
-                .get_block_header_at_height_from_storage(height, true)
-                .await;
+            let maybe_header = resolve_block_header(effect_builder, identifier).await;
             BinaryResponse::from_option(maybe_header, protocol_version)
         }
         InformationRequest::SignedBlock(identifier) => {
@@ -948,6 +977,32 @@ fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
     let io_builder = IoCoreBuilder::new(protocol_builder)
         .buffer_size(ChannelId::new(0), config.client_request_buffer_size);
     RpcBuilder::new(io_builder)
+}
+
+async fn resolve_block_header<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_identifier: Option<BlockIdentifier>,
+) -> Option<BlockHeader>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match block_identifier {
+        Some(BlockIdentifier::Hash(block_hash)) => {
+            effect_builder
+                .get_block_header_from_storage(block_hash, true)
+                .await
+        }
+        Some(BlockIdentifier::Height(block_height)) => {
+            effect_builder
+                .get_block_header_at_height_from_storage(block_height, true)
+                .await
+        }
+        None => {
+            effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+        }
+    }
 }
 
 async fn resolve_block_height<REv>(
