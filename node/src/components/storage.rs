@@ -107,6 +107,8 @@ use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt
 use metrics::Metrics;
 use object_pool::ObjectPool;
 
+use super::network::Ticket;
+
 const COMPONENT_NAME: &str = "storage";
 
 /// Filename for the LMDB database created by the Storage component.
@@ -310,13 +312,14 @@ where
     ) -> Effects<Self::Event> {
         let result = match event {
             Event::StorageRequest(req) => self.handle_storage_request(*req),
-            Event::NetRequestIncoming(ref incoming) => {
+            Event::NetRequestIncoming(incoming) => {
+                let sender = incoming.sender;
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
                     Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
                     Err(ref other_err) => {
                         warn!(
-                            sender=%incoming.sender,
+                            %sender,
                             err=display_error(other_err),
                             "error handling net request"
                         );
@@ -643,7 +646,7 @@ impl Storage {
     fn handle_net_request_incoming<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        incoming: &NetRequestIncoming,
+        incoming: Box<NetRequestIncoming>,
     ) -> Result<Effects<Event>, GetRequestError>
     where
         REv: From<NetworkRequest<Message>> + Send,
@@ -662,7 +665,9 @@ impl Storage {
                     incoming.message.tag(),
                     serialized_item,
                 );
-                return Ok(effect_builder.send_message(incoming.sender, found).ignore());
+                return Ok(effect_builder
+                    .send_message_and_drop_ticket(incoming.sender, found, incoming.ticket)
+                    .ignore());
             }
         }
 
@@ -677,6 +682,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::LegacyDeploy(ref serialized_id) => {
@@ -691,6 +697,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::Block(ref serialized_id) => {
@@ -703,6 +710,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::BlockHeader(ref serialized_id) => {
@@ -717,6 +725,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::FinalitySignature(ref serialized_id) => {
@@ -742,6 +751,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::SyncLeap(ref serialized_id) => {
@@ -753,6 +763,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::ApprovalsHashes(ref serialized_id) => {
@@ -765,6 +776,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
             NetRequest::BlockExecutionResults(ref serialized_id) => {
@@ -777,6 +789,7 @@ impl Storage {
                     incoming.sender,
                     serialized_id,
                     fetch_response,
+                    incoming.ticket,
                 )?)
             }
         }
@@ -2446,6 +2459,7 @@ impl Storage {
         sender: NodeId,
         serialized_id: &[u8],
         fetch_response: FetchResponse<T, T::Id>,
+        ticket: Ticket,
     ) -> Result<Effects<Event>, FatalStorageError>
     where
         REv: From<NetworkRequest<Message>> + Send,
@@ -2462,7 +2476,9 @@ impl Storage {
         }
 
         let message = Message::new_get_response_from_serialized(<T as FetchItem>::TAG, shared);
-        Ok(effect_builder.send_message(sender, message).ignore())
+        Ok(effect_builder
+            .send_message_and_drop_ticket(sender, message, ticket)
+            .ignore())
     }
 
     /// Returns `true` if the storage should attempt to return a block. Depending on the
