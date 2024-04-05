@@ -358,8 +358,12 @@ impl Display for Event {
             }) => {
                 write!(f, "delayed message from {:?}: {}", sender, message)
             }
-            Event::RequestMessageIncoming(demand) => {
-                write!(f, "demand from {:?}: {}", demand.sender, demand.message)
+            Event::RequestMessageIncoming(incoming) => {
+                write!(
+                    f,
+                    "request message from {:?}: {}",
+                    incoming.sender, incoming.message
+                )
             }
             Event::Timer {
                 era_id,

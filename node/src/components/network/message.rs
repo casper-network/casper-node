@@ -386,21 +386,6 @@ pub(crate) trait Payload:
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
     fn from_incoming(sender: NodeId, payload: P, ticket: Ticket) -> Self;
-
-    /// Tries to convert a payload into a demand.
-    ///
-    /// This function can optionally be called before `from_incoming` to attempt to convert an
-    /// incoming payload into a potential demand.
-    fn try_demand_from_incoming(
-        _sender: NodeId,
-        payload: P,
-        ticket: Ticket,
-    ) -> Result<Self, (P, Ticket)>
-    where
-        Self: Sized + Send,
-    {
-        Err((payload, ticket))
-    }
 }
 
 #[cfg(test)]

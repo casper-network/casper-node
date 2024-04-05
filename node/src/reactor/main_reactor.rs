@@ -432,10 +432,10 @@ impl reactor::Reactor for MainReactor {
                 self.consensus
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::ConsensusDemand(demand) => reactor::wrap_effects(
+            MainEvent::ConsensusRequestMessageIncoming(request_message) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus
-                    .handle_event(effect_builder, rng, demand.into()),
+                    .handle_event(effect_builder, rng, request_message.into()),
             ),
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {

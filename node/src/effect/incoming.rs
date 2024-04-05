@@ -18,8 +18,15 @@ use crate::{
 /// An envelope for an incoming message, attaching a sender address and a backpressure ticket.
 #[derive(DataSize, Debug, Serialize)]
 pub struct MessageIncoming<M> {
+    /// Sender of the incoming message.
     pub(crate) sender: NodeId,
+    /// Actual message, deserialized.
     pub(crate) message: Box<M>,
+    /// A ticket representing the "work" for processing the incoming message.
+    ///
+    /// Only drop this once no more resources are consumed, as doing so will signal the peer that it
+    /// is okay to send another message. If a response is generated, consider using
+    /// [`crate::effect::EffectBuilder::send_message_and_drop_ticket`].
     #[serde(skip)]
     pub(crate) ticket: Ticket,
 }
@@ -30,27 +37,6 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "incoming from {}: {}", self.sender, self.message)
-    }
-}
-
-/// An envelope for an incoming demand, attaching a sender address and responder.
-#[derive(DataSize, Debug, Serialize)]
-pub struct DemandIncoming<M> {
-    /// The sender from which the demand originated.
-    pub(crate) sender: NodeId,
-    /// The wrapped demand.
-    pub(crate) request_msg: Box<M>,
-    /// Ticket associated with the demand.
-    #[serde(skip)]
-    pub(crate) ticket: Ticket,
-}
-
-impl<M> Display for DemandIncoming<M>
-where
-    M: Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "demand from {}: {}", self.sender, self.request_msg)
     }
 }
 

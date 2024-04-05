@@ -31,7 +31,7 @@ pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
-    /// Consensus component demand.
+    /// Consensus component request.
     #[from]
     ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
@@ -419,19 +419,6 @@ where
                 ticket,
             }
             .into(),
-        }
-    }
-
-    fn try_demand_from_incoming(
-        sender: NodeId,
-        payload: Message,
-        ticket: Ticket,
-    ) -> Result<Self, (Message, Ticket)>
-    where
-        Self: Sized + Send,
-    {
-        match payload {
-            _ => Err((payload, ticket)),
         }
     }
 }

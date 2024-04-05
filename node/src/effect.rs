@@ -858,14 +858,7 @@ impl<REv> EffectBuilder<REv> {
         REv: FromIncoming<P> + From<NetworkRequest<P>> + Send,
         P: 'static + Send,
     {
-        // TODO: Remove demands entirely as they are no longer needed with tickets.
-        let reactor_event =
-            match <REv as FromIncoming<P>>::try_demand_from_incoming(sender, payload, ticket) {
-                Ok(rev) => rev,
-                Err((payload, ticket)) => {
-                    <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket)
-                }
-            };
+        let reactor_event = <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket);
 
         self.event_queue
             .schedule::<REv>(reactor_event, QueueKind::MessageIncoming)
