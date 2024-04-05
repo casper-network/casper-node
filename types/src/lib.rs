@@ -22,9 +22,6 @@ html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/bl
 extern crate alloc;
 
 extern crate core;
-extern crate core;
-extern crate core;
-extern crate core;
 
 mod access_rights;
 pub mod account;
@@ -91,7 +88,7 @@ pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter, EntryPointAddr,
+    EntryPointType, EntryPoints, Parameter, EntryPointAddr, Parameters, DEFAULT_ENTRY_POINT_NAME, EntryPointValue,
 };
 #[doc(inline)]
 pub use api_error::ApiError;

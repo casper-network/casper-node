@@ -9,18 +9,21 @@ use blake2::{
 use datasize::DataSize;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::from_str;
-use serde_map_to_array::{KeyValueJsonSchema, KeyValueLabels};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use serde_json::from_str;
 
 use crate::{BLAKE2B_DIGEST_LENGTH, bytesrepr, checksummed_hex, CLType, EntityAddr, Group, HashAddr, KEY_HASH_LENGTH};
-use crate::addressable_entity::{FromStrError, NamedKeyAddr};
+use crate::addressable_entity::{FromStrError};
 use crate::bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 const V1_ENTRY_POINT_TAG: u8 = 0;
@@ -535,6 +538,34 @@ pub struct EntryPointV2 {
     pub flags: u32,
 }
 
+impl ToBytes for EntryPointV2 {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.append(&mut self.selector.to_bytes()?);
+        buffer.append(&mut self.function_index.to_bytes()?);
+        buffer.append(&mut self.flags.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.selector.serialized_length() + self.function_index.serialized_length() + self.flags.serialized_length()
+    }
+}
+
+impl FromBytes for EntryPointV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (selector, remainder) = u32::from_bytes(bytes)?;
+        let (function_index, remainder) = u32::from_bytes(remainder)?;
+        let (flags, remainder) = u32::from_bytes(remainder)?;
+        Ok(EntryPointV2 {
+            selector,
+            function_index,
+            flags,
+        })
+    }
+}
+
+
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -569,7 +600,7 @@ impl EntryPointAddr {
     }
 
 
-    pub fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: u32) -> Self {
+    pub const fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: u32) -> Self {
         Self::VmCasperV2 {
             entity_addr,
             selector,
@@ -591,7 +622,7 @@ impl EntryPointAddr {
     }
 
 
-    pub fn from_formatted_string(input: &str) -> Result<Self, Error> {
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(entry_point_v1) = input.strip_prefix(V1_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, string_bytes_str)) = entry_point_v1.rsplit_once('-') {
                 let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
@@ -606,12 +637,12 @@ impl EntryPointAddr {
         if let Some(entry_point_v2) = input.strip_prefix(V2_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, selector_str)) = entry_point_v2.rsplit_once('-') {
                 let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
-                let selector: u32 = from_str(selector_str).map_err(|_| Error::Formatting)?;
+                let selector: u32 = from_str(selector_str).map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
                 return Ok(Self::VmCasperV2 { entity_addr, selector });
             }
         }
 
-        Err(Error::Formatting)
+        Err(FromStrError::InvalidPrefix)
     }
 }
 
@@ -701,6 +732,66 @@ impl Distribution<EntryPointAddr> for Standard {
             EntryPointAddr::VmCasperV1 { entity_addr: rng.gen(), name_bytes: rng.gen() }
         } else {
             EntryPointAddr::VmCasperV2 { entity_addr: rng.gen(), selector: rng.gen() }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub enum EntryPointValue {
+    V1CasperVm(EntryPoint),
+    V2CasperVm(EntryPointV2),
+}
+
+impl EntryPointValue {
+    pub fn new_v1_entry_point_value(entry_point: EntryPoint) -> Self {
+        Self::V1CasperVm(entry_point)
+    }
+
+    pub fn new_v2_entry_point_value(entry_point: EntryPointV2) -> Self {
+        Self::V2CasperVm(entry_point)
+    }
+}
+
+
+impl ToBytes for EntryPointValue {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            EntryPointValue::V1CasperVm(entry_point) => {
+                buffer.insert(0, V1_ENTRY_POINT_TAG);
+                buffer.append(&mut entry_point.to_bytes()?);
+            }
+            EntryPointValue::V2CasperVm(entry_point) => {
+                buffer.insert(0, V2_ENTRY_POINT_TAG);
+                buffer.append(&mut entry_point.to_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH + match self {
+            EntryPointValue::V1CasperVm(entry_point) => { entry_point.serialized_length() }
+            EntryPointValue::V2CasperVm(entry_point) => { entry_point.serialized_length() }
+        }
+    }
+}
+
+impl FromBytes for EntryPointValue {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            V1_ENTRY_POINT_TAG => {
+                let (entry_point, remainder) = EntryPoint::from_bytes(remainder)?;
+                Ok((Self::V1CasperVm(entry_point), remainder))
+            }
+            V2_ENTRY_POINT_TAG => {
+                let (entry_point, remainder) = EntryPointV2::from_bytes(remainder)?;
+                Ok((Self::V2CasperVm(entry_point), remainder))
+            }
+            _ => Err(Error::Formatting)
         }
     }
 }

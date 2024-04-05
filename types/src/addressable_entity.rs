@@ -26,8 +26,6 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
     iter,
 };
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
@@ -57,7 +55,7 @@ pub use self::{
     },
     named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
-    entry_points::{EntryPoint, EntryPointAccess, EntryPointType, EntryPointAddr, Parameter},
+    entry_points::{EntryPoint, EntryPoints, EntryPointAccess, EntryPointType, EntryPointAddr, Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME, EntryPointValue},
 };
 use crate::{
     account::{Account, AccountHash},
@@ -68,11 +66,10 @@ use crate::{
     contracts::{Contract, ContractHash},
     system::SystemEntityType,
     uref::{self, URef},
-    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
+    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights,
     HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
     KEY_HASH_LENGTH,
 };
-use crate::addressable_entity::entry_points::EntryPoints;
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;

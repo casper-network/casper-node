@@ -187,6 +187,7 @@ impl KeyTag {
             20 => KeyTag::NamedKey,
             21 => KeyTag::BlockMessageCount,
             22 => KeyTag::BalanceHold,
+            23 => KeyTag::EntryPoint,
             _ => panic!(),
         }
     }
@@ -218,6 +219,7 @@ impl Display for KeyTag {
             KeyTag::NamedKey => write!(f, "NamedKey"),
             KeyTag::BlockMessageCount => write!(f, "BlockMessageCount"),
             KeyTag::BalanceHold => write!(f, "BalanceHold"),
+            KeyTag::EntryPoint => write!(f, "EntryPoint"),
         }
     }
 }
@@ -266,6 +268,7 @@ impl FromBytes for KeyTag {
             tag if tag == KeyTag::NamedKey as u8 => KeyTag::NamedKey,
             tag if tag == KeyTag::BlockMessageCount as u8 => KeyTag::BlockMessageCount,
             tag if tag == KeyTag::BalanceHold as u8 => KeyTag::BalanceHold,
+            tag if tag == KeyTag::EntryPoint as u8 => KeyTag::EntryPoint,
             _ => return Err(Error::Formatting),
         };
         Ok((tag, rem))
@@ -852,8 +855,10 @@ impl Key {
             return Ok(Key::BlockMessageCount);
         }
 
-        if let Ok(entry_point_addr) = EntryPointAddr::from_formatted_string(input) {
-            return Ok(Key::EntryPoint(entry_point_addr));
+        match EntryPointAddr::from_formatted_str(input) {
+            Ok(entry_point_addr) => return Ok(Key::EntryPoint(entry_point_addr)),
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::EntryPoint(error.to_string())),
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1758,7 +1763,7 @@ mod serde_helpers {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
                 Key::EntryPoint(entry_point_addr) => {
-                    BinarySerHelper::EntryPoint(entry_point_addr),
+                    BinarySerHelper::EntryPoint(entry_point_addr)
                 }
             }
         }
@@ -1794,7 +1799,7 @@ mod serde_helpers {
                 BinaryDeserHelper::BalanceHold(balance_hold_addr) => {
                     Key::BalanceHold(balance_hold_addr)
                 }
-                BinarySerHelper::EntryPoint(entry_point_addr) => {
+                BinaryDeserHelper::EntryPoint(entry_point_addr) => {
                     Key::EntryPoint(entry_point_addr)
                 }
             }

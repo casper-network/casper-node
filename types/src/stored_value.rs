@@ -15,17 +15,7 @@ use schemars::JsonSchema;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
-use crate::{
-    account::Account,
-    addressable_entity::NamedKeyValue,
-    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contract_messages::{MessageChecksum, MessageTopicSummary},
-    contract_wasm::ContractWasm,
-    contracts::{Contract, ContractPackage},
-    package::Package,
-    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
-};
+use crate::{account::Account, addressable_entity::NamedKeyValue, bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, contract_messages::{MessageChecksum, MessageTopicSummary}, contract_wasm::ContractWasm, contracts::{Contract, ContractPackage}, package::Package, system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse}, AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1, EntryPointValue};
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
 
@@ -50,6 +40,7 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKey = 17,
+    EntryPoint = 18,
 }
 
 /// A value stored in Global State.
@@ -57,9 +48,9 @@ enum Tag {
 #[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(with = "serde_helpers::BinarySerHelper")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(with = "serde_helpers::BinarySerHelper")
 )]
 pub enum StoredValue {
     /// A CLValue.
@@ -98,6 +89,8 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
+    /// An entrypoint record.
+    EntryPoint(EntryPointValue),
 }
 
 impl StoredValue {
@@ -225,6 +218,13 @@ impl StoredValue {
         }
     }
 
+    pub fn as_entry_point_value(&self) -> Option<&EntryPointValue> {
+        match self {
+            StoredValue::EntryPoint(entry_point) => Some(entry_point),
+            _ => None,
+        }
+    }
+
     /// Returns the `CLValue` if this is a `CLValue` variant.
     pub fn into_cl_value(self) -> Option<CLValue> {
         match self {
@@ -337,6 +337,13 @@ impl StoredValue {
         }
     }
 
+    pub fn into_entry_point_value(self) -> Option<EntryPointValue> {
+        match self {
+            StoredValue::EntryPoint(value) => Some(value),
+            _ => None,
+        }
+    }
+
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
@@ -360,6 +367,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
+            StoredValue::EntryPoint(_) => "EntryPoint".to_string(),
         }
     }
 
@@ -383,6 +391,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
+            StoredValue::EntryPoint(_) => Tag::EntryPoint,
         }
     }
 }
@@ -392,6 +401,7 @@ impl From<CLValue> for StoredValue {
         StoredValue::CLValue(value)
     }
 }
+
 impl From<Account> for StoredValue {
     fn from(value: Account) -> StoredValue {
         StoredValue::Account(value)
@@ -421,6 +431,7 @@ impl From<AddressableEntity> for StoredValue {
         StoredValue::AddressableEntity(value)
     }
 }
+
 impl From<Package> for StoredValue {
     fn from(value: Package) -> StoredValue {
         StoredValue::Package(value)
@@ -443,6 +454,10 @@ impl From<ByteCode> for StoredValue {
     fn from(value: ByteCode) -> StoredValue {
         StoredValue::ByteCode(value)
     }
+}
+
+impl From<EntryPointValue> for StoredValue {
+    fn from(value: EntryPointValue) -> Self { StoredValue::EntryPoint(value) }
 }
 
 impl TryFrom<StoredValue> for CLValue {
@@ -642,29 +657,30 @@ impl ToBytes for StoredValue {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
-                StoredValue::Account(account) => account.serialized_length(),
-                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
-                StoredValue::Contract(contract_header) => contract_header.serialized_length(),
-                StoredValue::ContractPackage(contract_package) => {
-                    contract_package.serialized_length()
-                }
-                StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.serialized_length(),
-                StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
-                StoredValue::EraInfo(era_info) => era_info.serialized_length(),
-                StoredValue::Bid(bid) => bid.serialized_length(),
-                StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
-                StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
-                StoredValue::AddressableEntity(entity) => entity.serialized_length(),
-                StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
-                StoredValue::Package(package) => package.serialized_length(),
-                StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
-                StoredValue::MessageTopic(message_topic_summary) => {
-                    message_topic_summary.serialized_length()
-                }
-                StoredValue::Message(message_digest) => message_digest.serialized_length(),
-                StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+            StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
+            StoredValue::Account(account) => account.serialized_length(),
+            StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
+            StoredValue::Contract(contract_header) => contract_header.serialized_length(),
+            StoredValue::ContractPackage(contract_package) => {
+                contract_package.serialized_length()
             }
+            StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.serialized_length(),
+            StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
+            StoredValue::EraInfo(era_info) => era_info.serialized_length(),
+            StoredValue::Bid(bid) => bid.serialized_length(),
+            StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
+            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
+            StoredValue::AddressableEntity(entity) => entity.serialized_length(),
+            StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
+            StoredValue::Package(package) => package.serialized_length(),
+            StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
+            StoredValue::MessageTopic(message_topic_summary) => {
+                message_topic_summary.serialized_length()
+            }
+            StoredValue::Message(message_digest) => message_digest.serialized_length(),
+            StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+            StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length()
+        }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
@@ -690,6 +706,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
+            StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer)
         }
     }
 }
@@ -754,6 +771,11 @@ impl FromBytes for StoredValue {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
             }
+            tag if tag == Tag::EntryPoint as u8 => {
+                EntryPointValue::from_bytes(remainder).map(|(entry_point, remainder)| {
+                    (StoredValue::EntryPoint(entry_point), remainder)
+                })
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -782,6 +804,7 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
+        EntryPoint(&'a EntryPointValue),
     }
 
     #[derive(Deserialize)]
@@ -804,6 +827,7 @@ mod serde_helpers {
         MessageTopic(MessageTopicSummary),
         Message(MessageChecksum),
         NamedKey(NamedKeyValue),
+        EntryPoint(EntryPointValue),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -831,6 +855,7 @@ mod serde_helpers {
                 }
                 StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
                 StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
+                StoredValue::EntryPoint(payload) => BinarySerHelper::EntryPoint(payload),
             }
         }
     }
@@ -862,6 +887,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
                 BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                BinaryDeserHelper::EntryPoint(payload) => StoredValue::EntryPoint(payload),
             }
         }
     }
