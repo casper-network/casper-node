@@ -881,7 +881,10 @@ where
         Ok(wasm_v1_request) => execution_engine_v1.execute(state_provider, wasm_v1_request),
         Err(error) => WasmV1Result::invalid_executable_item(gas_limit, error),
     };
-    SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(wasm_v1_result))
+    SpeculativeExecutionResult::WasmV1(utils::spec_exec_from_wasm_v1_result(
+        wasm_v1_result,
+        block_header.block_hash(),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
