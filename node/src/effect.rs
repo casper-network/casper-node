@@ -885,16 +885,23 @@ impl<REv> EffectBuilder<REv> {
 
     /// Announces that a gossiper has received a full item, where the item's ID is NOT the complete
     /// item.
+    ///
+    /// The associated [`Ticket`] is the ticket from the message received containing the item.
     pub(crate) async fn announce_item_body_received_via_gossip<T: GossipItem>(
         self,
         item: Box<T>,
         sender: NodeId,
+        ticket: Ticket,
     ) where
         REv: From<GossiperAnnouncement<T>>,
     {
         self.event_queue
             .schedule(
-                GossiperAnnouncement::NewItemBody { item, sender },
+                GossiperAnnouncement::NewItemBody {
+                    item,
+                    sender,
+                    ticket,
+                },
                 QueueKind::Gossip,
             )
             .await;

@@ -269,6 +269,7 @@ impl reactor::Reactor for Reactor {
                     deploy,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    ticket: Ticket::create_dummy(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -290,6 +291,7 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket: _, // The fake deploy acceptor does not do any ticket handling
             }) => reactor::wrap_effects(
                 Event::DeployAcceptor,
                 self.fake_deploy_acceptor.handle_event(
@@ -299,6 +301,7 @@ impl reactor::Reactor for Reactor {
                         deploy: Arc::new(*item),
                         source: Source::Peer(sender),
                         maybe_responder: None,
+                        ticket: Ticket::create_dummy(),
                     },
                 ),
             ),

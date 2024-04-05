@@ -1585,6 +1585,7 @@ async fn block_accumulator_reactor_flow() {
                 let event = super::Event::ReceivedBlock {
                     block: Arc::new(block_1.clone()),
                     sender: peer_2,
+                    ticket: Ticket::create_dummy(),
                 };
                 effect_builder
                     .into_inner()
@@ -1625,6 +1626,7 @@ async fn block_accumulator_reactor_flow() {
         let event = super::Event::ReceivedBlock {
             block: Arc::new(block_2.clone()),
             sender: peer_2,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1827,6 +1829,7 @@ async fn block_accumulator_reactor_flow() {
         let event = super::Event::ReceivedBlock {
             block: Arc::new(older_block.clone()),
             sender: peer_1,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1998,6 +2001,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
                 let event = super::Event::ReceivedBlock {
                     block: Arc::new(block_1.clone()),
                     sender: peer_2,
+                    ticket: Ticket::create_dummy(),
                 };
                 effect_builder
                     .into_inner()

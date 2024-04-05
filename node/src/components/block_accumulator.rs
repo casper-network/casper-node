@@ -792,9 +792,19 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 self.upsert_acceptor(block_hash, era_id, Some(sender));
                 Effects::new()
             }
-            Event::ReceivedBlock { block, sender } => {
+            Event::ReceivedBlock {
+                block,
+                sender,
+                ticket,
+            } => {
                 let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
-                self.register_block(effect_builder, meta_block, Some(sender))
+                let rv = self.register_block(effect_builder, meta_block, Some(sender));
+
+                // We are considering the work complete once we have created the effects. It may be
+                // beneficial to pass the ticket through further to also include the IO work.
+                drop(ticket);
+
+                rv
             }
             Event::CreatedFinalitySignature { finality_signature } => {
                 debug!(%finality_signature, "BlockAccumulator: CreatedFinalitySignature");

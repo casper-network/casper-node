@@ -55,6 +55,8 @@ pub(crate) enum Event<T: GossipItem> {
         item_id: T::Id,
         requester: NodeId,
         maybe_item: Option<Box<T>>,
+        #[serde(skip)]
+        ticket: Ticket,
     },
 }
 

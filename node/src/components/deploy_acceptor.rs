@@ -46,6 +46,8 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::{Event, EventMetadata};
 
+use super::network::Ticket;
+
 const COMPONENT_NAME: &str = "deploy_acceptor";
 
 const ARG_TARGET: &str = "target";
@@ -242,6 +244,7 @@ impl DeployAcceptor {
         deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        _: Ticket, // We currently drop the ticket implicitly, see below.
     ) -> Effects<Event> {
         debug!(%source, %deploy, "checking acceptance");
         let verification_start_timestamp = Timestamp::now();
@@ -309,6 +312,9 @@ impl DeployAcceptor {
                 maybe_block_header: maybe_block_header.map(Box::new),
                 verification_start_timestamp,
             })
+
+        // Note: `ticket` is dropped implicitly -- it would be better to thread it through further
+        //       to capture the work of retrieving the data from storage/EE.
     }
 
     fn handle_get_block_header_result<REv: ReactorEventT>(
@@ -958,6 +964,7 @@ impl DeployAcceptor {
                     .ignore(),
             );
         }
+
         effects
     }
 
@@ -1047,7 +1054,8 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                 deploy,
                 source,
                 maybe_responder: responder,
-            } => self.accept(effect_builder, deploy, source, responder),
+                ticket,
+            } => self.accept(effect_builder, deploy, source, responder, ticket),
             Event::GetBlockHeaderResult {
                 event_metadata,
                 maybe_block_header,

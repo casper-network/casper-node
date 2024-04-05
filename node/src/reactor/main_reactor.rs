@@ -39,7 +39,7 @@ use crate::{
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
-        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
+        network::{self, GossipedAddress, Identity as NetworkIdentity, Network, Ticket},
         proposed_block_validator::{self, ProposedBlockValidator},
         rest_server::RestServer,
         rpc_server::RpcServer,
@@ -560,6 +560,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket,
             }) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
@@ -568,6 +569,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedBlock {
                         block: Arc::new(*item),
                         sender,
+                        ticket,
                     },
                 ),
             ),
@@ -583,6 +585,7 @@ impl reactor::Reactor for MainReactor {
                         block_accumulator::Event::ReceivedBlock {
                             block,
                             sender: peer,
+                            ticket: Ticket::create_dummy(),
                         },
                     ),
                 )
@@ -647,7 +650,11 @@ impl reactor::Reactor for MainReactor {
                 Effects::new()
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::NewItemBody { item, sender },
+                GossiperAnnouncement::NewItemBody {
+                    item,
+                    sender,
+                    ticket,
+                },
             ) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
@@ -656,6 +663,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature: item,
                         sender,
+                        ticket,
                     },
                 ),
             ),
@@ -679,6 +687,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature,
                         sender: peer,
+                        ticket: Ticket::create_dummy(),
                     },
                 ),
             ),
@@ -703,6 +712,7 @@ impl reactor::Reactor for MainReactor {
                     deploy,
                     source,
                     maybe_responder: Some(responder),
+                    ticket: Ticket::create_dummy(),
                 };
                 reactor::wrap_effects(
                     MainEvent::DeployAcceptor,
@@ -786,6 +796,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket,
             }) => reactor::wrap_effects(
                 MainEvent::DeployAcceptor,
                 self.deploy_acceptor.handle_event(
@@ -795,6 +806,7 @@ impl reactor::Reactor for MainReactor {
                         deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
+                        ticket,
                     },
                 ),
             ),
