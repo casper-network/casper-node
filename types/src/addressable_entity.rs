@@ -8,6 +8,7 @@ pub mod associated_keys;
 mod error;
 mod named_keys;
 mod weight;
+mod entry_points;
 
 use alloc::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -56,6 +57,7 @@ pub use self::{
     },
     named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
+    entry_points::{EntryPoint, EntryPointAccess, EntryPointType, EntryPointAddr, Parameter},
 };
 use crate::{
     account::{Account, AccountHash},
@@ -70,6 +72,7 @@ use crate::{
     HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
     KEY_HASH_LENGTH,
 };
+use crate::addressable_entity::entry_points::EntryPoints;
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
@@ -238,9 +241,9 @@ impl Display for FromStrError {
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "The hex-encoded address of the addressable entity.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "The hex-encoded address of the addressable entity.")
 )]
 pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
@@ -556,124 +559,6 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
-/// Collection of named entry points.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[serde(transparent, deny_unknown_fields)]
-pub struct EntryPoints(
-    #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
-    BTreeMap<String, EntryPoint>,
-);
-
-impl ToBytes for EntryPoints {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)
-    }
-}
-
-impl FromBytes for EntryPoints {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entry_points_map, remainder) = BTreeMap::<String, EntryPoint>::from_bytes(bytes)?;
-        Ok((EntryPoints(entry_points_map), remainder))
-    }
-}
-
-impl Default for EntryPoints {
-    fn default() -> Self {
-        let mut entry_points = EntryPoints::new();
-        let entry_point = EntryPoint::default();
-        entry_points.add_entry_point(entry_point);
-        entry_points
-    }
-}
-
-impl EntryPoints {
-    /// Constructs a new, empty `EntryPoints`.
-    pub const fn new() -> EntryPoints {
-        EntryPoints(BTreeMap::<String, EntryPoint>::new())
-    }
-
-    /// Constructs a new `EntryPoints` with a single entry for the default `EntryPoint`.
-    pub fn new_with_default_entry_point() -> Self {
-        let mut entry_points = EntryPoints::new();
-        let entry_point = EntryPoint::default();
-        entry_points.add_entry_point(entry_point);
-        entry_points
-    }
-
-    /// Adds new [`EntryPoint`].
-    pub fn add_entry_point(&mut self, entry_point: EntryPoint) {
-        self.0.insert(entry_point.name().to_string(), entry_point);
-    }
-
-    /// Checks if given [`EntryPoint`] exists.
-    pub fn has_entry_point(&self, entry_point_name: &str) -> bool {
-        self.0.contains_key(entry_point_name)
-    }
-
-    /// Gets an existing [`EntryPoint`] by its name.
-    pub fn get(&self, entry_point_name: &str) -> Option<&EntryPoint> {
-        self.0.get(entry_point_name)
-    }
-
-    /// Returns iterator for existing entry point names.
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
-    }
-
-    /// Takes all entry points.
-    pub fn take_entry_points(self) -> Vec<EntryPoint> {
-        self.0.into_values().collect()
-    }
-
-    /// Returns the length of the entry points
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Checks if the `EntryPoints` is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Checks if any of the entry points are of the type Session.
-    pub fn contains_stored_session(&self) -> bool {
-        self.0
-            .values()
-            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Caller)
-    }
-}
-
-impl From<Vec<EntryPoint>> for EntryPoints {
-    fn from(entry_points: Vec<EntryPoint>) -> EntryPoints {
-        let entries = entry_points
-            .into_iter()
-            .map(|entry_point| (String::from(entry_point.name()), entry_point))
-            .collect();
-        EntryPoints(entries)
-    }
-}
-
-struct EntryPointLabels;
-
-impl KeyValueLabels for EntryPointLabels {
-    const KEY: &'static str = "name";
-    const VALUE: &'static str = "entry_point";
-}
-
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for EntryPointLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
-}
 
 /// Tag for the variants of [`EntityKind`].
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -751,7 +636,7 @@ impl Distribution<EntityKindTag> for Standard {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -839,10 +724,10 @@ impl ToBytes for EntityKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                EntityKind::SmartContract => 0,
-                EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
-                EntityKind::Account(account_hash) => account_hash.serialized_length(),
-            }
+            EntityKind::SmartContract => 0,
+            EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
+            EntityKind::Account(account_hash) => account_hash.serialized_length(),
+        }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1129,7 +1014,6 @@ impl Distribution<EntityAddr> for Standard {
 }
 
 /// A NamedKey address.
-
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -1162,7 +1046,12 @@ impl NamedKeyAddr {
         entry: String,
     ) -> Result<Self, bytesrepr::Error> {
         let bytes = entry.to_bytes()?;
-        let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
+        let mut hasher = {
+            match VarBlake2b::new(BLAKE2B_DIGEST_LENGTH) {
+                Ok(hasher) => hasher,
+                Err(_) => return Err(bytesrepr::Error::Formatting)
+            }
+        };
         hasher.update(bytes);
         // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
         let mut string_bytes = HashAddr::default();
@@ -1403,7 +1292,7 @@ impl MessageTopics {
     }
 
     /// Returns an iterator over the topic name and its hash.
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
+    pub fn iter(&self) -> impl Iterator<Item=(&String, &TopicNameHash)> {
         self.0.iter()
     }
 }
@@ -1447,7 +1336,7 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     let main_purse = URef::from_formatted_str(
         "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
     )
-    .unwrap();
+        .unwrap();
     let weight = Weight::new(1);
     let associated_keys = AssociatedKeys::new(account_hash, weight);
     let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
@@ -1488,15 +1377,15 @@ pub struct AddressableEntity {
 }
 
 impl From<AddressableEntity>
-    for (
-        PackageHash,
-        ByteCodeHash,
-        EntryPoints,
-        ProtocolVersion,
-        URef,
-        AssociatedKeys,
-        ActionThresholds,
-    )
+for (
+    PackageHash,
+    ByteCodeHash,
+    EntryPoints,
+    ProtocolVersion,
+    URef,
+    AssociatedKeys,
+    ActionThresholds,
+)
 {
     fn from(entity: AddressableEntity) -> Self {
         (
@@ -1711,8 +1600,8 @@ impl AddressableEntity {
     pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
         !authorization_keys.is_empty()
             && authorization_keys
-                .iter()
-                .any(|e| self.associated_keys.contains_key(e))
+            .iter()
+            .any(|e| self.associated_keys.contains_key(e))
     }
 
     /// Checks whether the sum of the weights of all authorization keys is
@@ -1972,383 +1861,6 @@ impl From<Account> for AddressableEntity {
             MessageTopics::default(),
             EntityKind::Account(value.account_hash()),
         )
-    }
-}
-
-/// Context of method execution
-///
-/// Most significant bit represents version i.e.
-/// - 0b0 -> 0.x/1.x (session & contracts)
-/// - 0b1 -> 2.x and later (introduced installer, utility entry points)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, FromPrimitive)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum EntryPointType {
-    /// Runs using the calling entity's context.
-    /// In v1.x this was used for both "session" code run using the originating
-    /// Account's context, and also for "StoredSession" code that ran in the
-    /// caller's context. While this made systemic sense due to the way the runtime
-    /// context nesting works, this dual usage was very confusing to most human beings.
-    ///
-    /// In v2.x the renamed Caller variant is exclusively used for wasm run using the initiating
-    /// account entity's context. Previously installed 1.x stored session code should
-    /// continue to work as the binary value matches but we no longer allow such logic
-    /// to be upgraded, nor do we allow new stored session to be installed.
-    Caller = 0b00000000,
-    /// Runs using the called entity's context.
-    Called = 0b00000001,
-    /// Extract a subset of bytecode and installs it as a new smart contract.
-    /// Runs using the called entity's context.
-    Factory = 0b10000000,
-}
-
-impl EntryPointType {
-    /// Checks if entry point type is introduced before 2.0.
-    ///
-    /// This method checks if there is a bit pattern for entry point types introduced in 2.0.
-    ///
-    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
-    pub fn is_legacy_pattern(&self) -> bool {
-        (*self as u8) & 0b10000000 == 0
-    }
-
-    /// Get the bit pattern.
-    pub fn bits(self) -> u8 {
-        self as u8
-    }
-
-    /// Returns true if entry point type is invalid for the context.
-    pub fn is_invalid_context(&self) -> bool {
-        match self {
-            EntryPointType::Caller => true,
-            EntryPointType::Called | EntryPointType::Factory => false,
-        }
-    }
-}
-
-impl ToBytes for EntryPointType {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.bits().to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        1
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.bits());
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPointType {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (value, bytes) = u8::from_bytes(bytes)?;
-        let entry_point_type =
-            EntryPointType::from_u8(value).ok_or(bytesrepr::Error::Formatting)?;
-        Ok((entry_point_type, bytes))
-    }
-}
-
-/// Default name for an entry point.
-pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
-
-/// Name for an installer entry point.
-pub const INSTALL_ENTRY_POINT_NAME: &str = "install";
-
-/// Name for an upgrade entry point.
-pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
-
-/// Collection of entry point parameters.
-pub type Parameters = Vec<Parameter>;
-
-/// Type signature of a method. Order of arguments matter since can be
-/// referenced by index as well as name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct EntryPoint {
-    name: String,
-    args: Parameters,
-    ret: CLType,
-    access: EntryPointAccess,
-    entry_point_type: EntryPointType,
-}
-
-impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPointType) {
-    fn from(entry_point: EntryPoint) -> Self {
-        (
-            entry_point.name,
-            entry_point.args,
-            entry_point.ret,
-            entry_point.access,
-            entry_point.entry_point_type,
-        )
-    }
-}
-
-impl EntryPoint {
-    /// `EntryPoint` constructor.
-    pub fn new<T: Into<String>>(
-        name: T,
-        args: Parameters,
-        ret: CLType,
-        access: EntryPointAccess,
-        entry_point_type: EntryPointType,
-    ) -> Self {
-        EntryPoint {
-            name: name.into(),
-            args,
-            ret,
-            access,
-            entry_point_type,
-        }
-    }
-
-    /// Create a default [`EntryPoint`] with specified name.
-    pub fn default_with_name<T: Into<String>>(name: T) -> Self {
-        EntryPoint {
-            name: name.into(),
-            ..Default::default()
-        }
-    }
-
-    /// Get name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Get access enum.
-    pub fn access(&self) -> &EntryPointAccess {
-        &self.access
-    }
-
-    /// Get the arguments for this method.
-    pub fn args(&self) -> &[Parameter] {
-        self.args.as_slice()
-    }
-
-    /// Get the return type.
-    pub fn ret(&self) -> &CLType {
-        &self.ret
-    }
-
-    /// Obtains entry point
-    pub fn entry_point_type(&self) -> EntryPointType {
-        self.entry_point_type
-    }
-}
-
-impl Default for EntryPoint {
-    /// constructor for a public session `EntryPoint` that takes no args and returns `Unit`
-    fn default() -> Self {
-        EntryPoint {
-            name: DEFAULT_ENTRY_POINT_NAME.to_string(),
-            args: Vec::new(),
-            ret: CLType::Unit,
-            access: EntryPointAccess::Public,
-            entry_point_type: EntryPointType::Caller,
-        }
-    }
-}
-
-impl ToBytes for EntryPoint {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.name.serialized_length()
-            + self.args.serialized_length()
-            + self.ret.serialized_length()
-            + self.access.serialized_length()
-            + self.entry_point_type.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name.write_bytes(writer)?;
-        self.args.write_bytes(writer)?;
-        self.ret.append_bytes(writer)?;
-        self.access.write_bytes(writer)?;
-        self.entry_point_type.write_bytes(writer)?;
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPoint {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (name, bytes) = String::from_bytes(bytes)?;
-        let (args, bytes) = Vec::<Parameter>::from_bytes(bytes)?;
-        let (ret, bytes) = CLType::from_bytes(bytes)?;
-        let (access, bytes) = EntryPointAccess::from_bytes(bytes)?;
-        let (entry_point_type, bytes) = EntryPointType::from_bytes(bytes)?;
-
-        Ok((
-            EntryPoint {
-                name,
-                args,
-                ret,
-                access,
-                entry_point_type,
-            },
-            bytes,
-        ))
-    }
-}
-
-/// Enum describing the possible access control options for a contract entry
-/// point (method).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum EntryPointAccess {
-    /// Anyone can call this method (no access controls).
-    Public,
-    /// Only users from the listed groups may call this method. Note: if the
-    /// list is empty then this method is not callable from outside the
-    /// contract.
-    Groups(Vec<Group>),
-    /// Can't be accessed directly but are kept in the derived wasm bytes.
-    Template,
-}
-
-const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
-const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
-const ENTRYPOINTACCESS_ABSTRACT_TAG: u8 = 3;
-
-impl EntryPointAccess {
-    /// Constructor for access granted to only listed groups.
-    pub fn groups(labels: &[&str]) -> Self {
-        let list: Vec<Group> = labels
-            .iter()
-            .map(|s| Group::new(String::from(*s)))
-            .collect();
-        EntryPointAccess::Groups(list)
-    }
-}
-
-impl ToBytes for EntryPointAccess {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-
-        match self {
-            EntryPointAccess::Public => {
-                result.push(ENTRYPOINTACCESS_PUBLIC_TAG);
-            }
-            EntryPointAccess::Groups(groups) => {
-                result.push(ENTRYPOINTACCESS_GROUPS_TAG);
-                result.append(&mut groups.to_bytes()?);
-            }
-            EntryPointAccess::Template => {
-                result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
-            }
-        }
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        match self {
-            EntryPointAccess::Public => 1,
-            EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
-            EntryPointAccess::Template => 1,
-        }
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            EntryPointAccess::Public => {
-                writer.push(ENTRYPOINTACCESS_PUBLIC_TAG);
-            }
-            EntryPointAccess::Groups(groups) => {
-                writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
-                groups.write_bytes(writer)?;
-            }
-            EntryPointAccess::Template => {
-                writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
-            }
-        }
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPointAccess {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, bytes) = u8::from_bytes(bytes)?;
-
-        match tag {
-            ENTRYPOINTACCESS_PUBLIC_TAG => Ok((EntryPointAccess::Public, bytes)),
-            ENTRYPOINTACCESS_GROUPS_TAG => {
-                let (groups, bytes) = Vec::<Group>::from_bytes(bytes)?;
-                let result = EntryPointAccess::Groups(groups);
-                Ok((result, bytes))
-            }
-            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Template, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-/// Parameter to a method
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct Parameter {
-    name: String,
-    cl_type: CLType,
-}
-
-impl Parameter {
-    /// `Parameter` constructor.
-    pub fn new<T: Into<String>>(name: T, cl_type: CLType) -> Self {
-        Parameter {
-            name: name.into(),
-            cl_type,
-        }
-    }
-
-    /// Get the type of this argument.
-    pub fn cl_type(&self) -> &CLType {
-        &self.cl_type
-    }
-
-    /// Get a reference to the parameter's name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl From<Parameter> for (String, CLType) {
-    fn from(parameter: Parameter) -> Self {
-        (parameter.name, parameter.cl_type)
-    }
-}
-
-impl ToBytes for Parameter {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = ToBytes::to_bytes(&self.name)?;
-        self.cl_type.append_bytes(&mut result)?;
-
-        Ok(result)
-    }
-
-    fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.name) + self.cl_type.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name.write_bytes(writer)?;
-        self.cl_type.append_bytes(writer)
-    }
-}
-
-impl FromBytes for Parameter {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (name, bytes) = String::from_bytes(bytes)?;
-        let (cl_type, bytes) = CLType::from_bytes(bytes)?;
-
-        Ok((Parameter { name, cl_type }, bytes))
     }
 }
 
