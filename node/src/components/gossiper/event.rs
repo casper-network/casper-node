@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use super::GossipItem;
 use crate::{
+    components::network::Ticket,
     effect::{incoming::GossiperIncoming, requests::BeginGossipRequest, GossipTarget},
     types::NodeId,
     utils::{DisplayIter, Source},
@@ -45,6 +46,8 @@ pub(crate) enum Event<T: GossipItem> {
         item_id: T::Id,
         sender: NodeId,
         result: bool,
+        #[serde(skip)]
+        ticket: Ticket,
     },
     /// The result of the gossiper getting an item from storage. If the result is `Some`, the item
     /// should be sent to the requesting peer.
@@ -98,6 +101,7 @@ impl<T: GossipItem> Display for Event<T> {
                 item_id,
                 sender,
                 result,
+                ticket: _,
             } => {
                 write!(
                     formatter,
