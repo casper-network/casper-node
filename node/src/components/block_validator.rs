@@ -464,7 +464,7 @@ impl BlockValidator {
                     response_to_send,
                 } => {
                     debug!(%response_to_send, "proposed block validation already completed");
-                    return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
+                    return responder.respond(response_to_send).ignore();
                 }
             }
             old_state.add_holder(sender);
