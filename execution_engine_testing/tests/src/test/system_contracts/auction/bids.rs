@@ -748,7 +748,7 @@ fn should_forcibly_undelegate_after_setting_validator_limits() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    // builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
