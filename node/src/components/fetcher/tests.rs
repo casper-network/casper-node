@@ -26,7 +26,7 @@ use crate::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement},
         incoming::{
             ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{AcceptDeployRequest, MarkBlockCompletedRequest},
@@ -117,8 +117,6 @@ enum Event {
     BlocklistAnnouncement(PeerBehaviorAnnouncement),
     #[from]
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
-    #[from]
-    TrieDemand(TrieDemand),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
@@ -250,8 +248,7 @@ impl ReactorTrait for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::TrieDemand(_)
-            | Event::ContractRuntimeRequest(_)
+            Event::ContractRuntimeRequest(_)
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)

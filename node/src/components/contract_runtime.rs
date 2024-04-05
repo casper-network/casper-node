@@ -51,7 +51,7 @@ use crate::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             UnexecutedBlockAnnouncement,
         },
-        incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
+        incoming::{TrieRequest, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -180,9 +180,6 @@ pub(crate) enum Event {
 
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
-
-    #[from]
-    TrieDemand(TrieDemand),
 }
 
 impl Display for Event {
@@ -192,7 +189,6 @@ impl Display for Event {
                 write!(f, "contract runtime request: {}", req)
             }
             Event::TrieRequestIncoming(req) => write!(f, "trie request incoming: {}", req),
-            Event::TrieDemand(demand) => write!(f, "trie demand: {}", demand),
         }
     }
 }
@@ -246,7 +242,6 @@ where
             Event::TrieRequestIncoming(request) => {
                 self.handle_trie_request(effect_builder, request)
             }
-            Event::TrieDemand(demand) => self.handle_trie_demand(effect_builder, demand),
         }
     }
 
@@ -266,52 +261,20 @@ impl ContractRuntime {
             .len()
     }
 
-    /// Handles an incoming request to get a trie.
+    /// Handles an incoming request for a trie.
     fn handle_trie_request<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
         TrieRequestIncoming {
-            sender,
             message,
+            sender,
             ticket,
         }: TrieRequestIncoming,
     ) -> Effects<Event>
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
-        drop(ticket); // TODO: Properly handle ticket.
         let TrieRequest(ref serialized_id) = *message;
-        let fetch_response = match self.get_trie(serialized_id) {
-            Ok(fetch_response) => fetch_response,
-            Err(error) => {
-                debug!("failed to get trie: {}", error);
-                return Effects::new();
-            }
-        };
-
-        match Message::new_get_response(&fetch_response) {
-            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
-    }
-
-    /// Handles an incoming demand for a trie.
-    fn handle_trie_demand<REv>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        TrieDemand {
-            request_msg,
-            sender,
-            ticket,
-        }: TrieDemand,
-    ) -> Effects<Event>
-    where
-        REv: From<NetworkRequest<Message>> + Send,
-    {
-        let TrieRequest(ref serialized_id) = *request_msg;
         let fetch_response = match self.get_trie(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {

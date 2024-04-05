@@ -21,7 +21,7 @@ pub struct MessageIncoming<M> {
     pub(crate) sender: NodeId,
     pub(crate) message: Box<M>,
     #[serde(skip)]
-    pub(crate) ticket: Arc<Ticket>,
+    pub(crate) ticket: Ticket,
 }
 
 impl<M> Display for MessageIncoming<M>
@@ -68,9 +68,6 @@ pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
-
-/// A demand for a trie that should be answered.
-pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
 
 /// A demand for consensus protocol data that should be answered.
 pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMessage>;

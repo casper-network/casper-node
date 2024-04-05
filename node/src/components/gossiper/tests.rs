@@ -34,8 +34,7 @@ use crate::{
         },
         incoming::{
             ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::AcceptDeployRequest,
     },
@@ -115,7 +114,6 @@ impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
 impl Unhandled for TrieRequestIncoming {}
-impl Unhandled for TrieDemand {}
 impl Unhandled for TrieResponseIncoming {}
 impl Unhandled for FinalitySignatureIncoming {}
 
@@ -632,7 +630,7 @@ async fn should_not_gossip_old_stored_item_again() {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Box::new(Message::Gossip(deploy.gossip_id())),
-                ticket: Arc::new(Ticket::create_dummy()),
+                ticket: Ticket::create_dummy(),
             });
             effect_builder
                 .into_inner()
@@ -705,7 +703,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Box::new(message),
-                ticket: Arc::new(Ticket::create_dummy()),
+                ticket: Ticket::create_dummy(),
             });
             effect_builder
                 .into_inner()

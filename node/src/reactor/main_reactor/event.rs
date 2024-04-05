@@ -30,8 +30,7 @@ use crate::{
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
             ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{
             AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
@@ -230,8 +229,6 @@ pub(crate) enum MainEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
-    TrieDemand(TrieDemand),
-    #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
     Storage(storage::Event),
@@ -337,7 +334,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
             MainEvent::NetworkPeerProvidingData(_) => "NetResponseIncoming",
             MainEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
-            MainEvent::TrieDemand(_) => "TrieDemand",
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
@@ -527,7 +523,6 @@ impl Display for MainEvent {
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerProvidingData(inner) => Display::fmt(inner, f),
             MainEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::TrieDemand(inner) => Display::fmt(inner, f),
             MainEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ContractRuntime(inner) => Display::fmt(inner, f),

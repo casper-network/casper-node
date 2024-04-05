@@ -864,11 +864,6 @@ impl reactor::Reactor for MainReactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::TrieDemand(demand) => reactor::wrap_effects(
-                MainEvent::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, demand.into()),
-            ),
             MainEvent::TrieResponseIncoming(TrieResponseIncoming {
                 sender,
                 message,

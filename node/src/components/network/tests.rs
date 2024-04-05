@@ -128,7 +128,7 @@ impl FromIncoming<Message> for Event {
             Message::AddressGossiper(message) => Event::AddressGossiperIncoming(GossiperIncoming {
                 sender,
                 message: Box::new(message),
-                ticket: Arc::new(ticket),
+                ticket,
             }),
         }
     }

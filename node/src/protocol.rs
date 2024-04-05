@@ -19,7 +19,7 @@ use crate::{
     },
     effect::incoming::{
         ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-        NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
+        NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest,
         TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
     },
     types::{Block, Deploy, FinalitySignature, NodeId},
@@ -247,12 +247,10 @@ where
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
         + From<TrieRequestIncoming>
-        + From<TrieDemand>
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
     fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
-        let ticket = Arc::new(ticket);
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming {
                 sender,
@@ -431,15 +429,6 @@ where
         Self: Sized + Send,
     {
         match payload {
-            Message::GetRequest {
-                tag: Tag::TrieOrChunk,
-                serialized_id,
-            } => Ok(TrieDemand {
-                sender,
-                request_msg: Box::new(TrieRequest(serialized_id)),
-                ticket,
-            }
-            .into()),
             Message::ConsensusRequest(request_msg) => Ok(ConsensusDemand {
                 sender,
                 request_msg: Box::new(request_msg),
