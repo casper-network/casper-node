@@ -18,7 +18,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{DeployConfigFailure, TransactionConfig};
+use crate::{InvalidDeploy, TransactionConfig};
 
 /// The header portion of a [`Deploy`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -83,8 +83,25 @@ impl DeployHeader {
         self.expires() < current_instant
     }
 
-    /// Returns the price per gas unit for the `Deploy`.
+    /// Returns the sender's gas price tolerance for block inclusion.
     pub fn gas_price(&self) -> u64 {
+        // in the original implementation, we did not have dynamic gas pricing
+        // but the sender of the deploy could specify a higher gas price,
+        // and the payment amount would be multiplied by that number
+        // for settlement purposes. This did not increase their computation limit,
+        // only how much they were charged. The intent was, the total cost
+        // would be a consideration for block proposal but in the end we shipped
+        // with an egalitarian subjective fifo proposer. Thus, there was no
+        // functional reason / no benefit to a sender setting gas price to
+        // anything higher than 1.
+        //
+        // As of 2.0 we have dynamic gas prices, this vestigial field has been
+        // repurposed, interpreted to indicate a gas price tolerance.
+        // If this deploy is buffered and the current gas price is higher than this
+        // value, it will not be included in a proposed block.
+        //
+        // This allowing the sender to opt out of block inclusion if the gas price is
+        // higher than they want to pay for.
         self.gas_price
     }
 
@@ -112,7 +129,7 @@ impl DeployHeader {
         timestamp_leeway: TimeDiff,
         at: Timestamp,
         deploy_hash: &DeployHash,
-    ) -> Result<(), DeployConfigFailure> {
+    ) -> Result<(), InvalidDeploy> {
         // as of 2.0.0 deploy dependencies are not supported.
         // a legacy deploy citing dependencies should be rejected
         if !self.dependencies.is_empty() {
@@ -120,7 +137,7 @@ impl DeployHeader {
                 %deploy_hash,
                 "deploy dependencies no longer supported"
             );
-            return Err(DeployConfigFailure::DependenciesNoLongerSupported);
+            return Err(InvalidDeploy::DependenciesNoLongerSupported);
         }
 
         if self.ttl() > config.max_ttl {
@@ -130,7 +147,7 @@ impl DeployHeader {
                 max_ttl = %config.max_ttl,
                 "deploy ttl excessive"
             );
-            return Err(DeployConfigFailure::ExcessiveTimeToLive {
+            return Err(InvalidDeploy::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: self.ttl(),
             });
@@ -138,7 +155,7 @@ impl DeployHeader {
 
         if self.timestamp() > at + timestamp_leeway {
             debug!(%deploy_hash, deploy_header = %self, %at, "deploy timestamp in the future");
-            return Err(DeployConfigFailure::TimestampInFuture {
+            return Err(InvalidDeploy::TimestampInFuture {
                 validation_timestamp: at,
                 timestamp_leeway,
                 got: self.timestamp(),

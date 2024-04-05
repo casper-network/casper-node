@@ -152,10 +152,10 @@ where
 
     /// Calculate gas cost for a host function
     pub fn calculate_gas_cost(&self, weights: T) -> Gas {
-        let mut gas = Gas::new(self.cost.into());
+        let mut gas = Gas::new(self.cost);
         for (argument, weight) in self.arguments.as_ref().iter().zip(weights.as_ref()) {
-            let lhs = Gas::new((*argument).into());
-            let rhs = Gas::new((*weight).into());
+            let lhs = Gas::new(*argument);
+            let rhs = Gas::new(*weight);
             gas += lhs * rhs;
         }
         gas
@@ -1022,7 +1022,7 @@ mod tests {
             + (ARGUMENT_COSTS[2] * WEIGHTS[2]);
         assert_eq!(
             host_function.calculate_gas_cost(WEIGHTS),
-            Gas::new(expected_cost.into())
+            Gas::new(expected_cost)
         );
     }
 

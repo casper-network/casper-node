@@ -11,15 +11,18 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
     },
-    package::{EntityVersions, Groups, Package, PackageStatus},
-    system::auction::{
-        Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
-        ValidatorBid, WithdrawPurse,
+    system::{
+        auction::{
+            Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
+            ValidatorBid, WithdrawPurse,
+        },
+        mint::BalanceHoldAddr,
     },
-    AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped,
-    CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
+    CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Groups, Key, Package, PackageHash,
+    PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferAddr,
+    TransferV1, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -66,7 +69,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         }
     };
 
-    let transfer = Transfer::new(
+    let legacy_transfer = TransferV1::new(
         DeployHash::from_raw([44; 32]),
         AccountHash::new([100; 32]),
         Some(AccountHash::new([101; 32])),
@@ -208,9 +211,13 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
+        const BALANCE_HOLD_KEY: Key = Key::BalanceHold(BalanceHoldAddr::Gas {
+            purse_addr: [42; 32],
+            block_time: BlockTime::new(0),
+        });
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
+        const SYSTEM_ENTITY_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
         const ERA_SUMMARY_KEY: Key = Key::EraSummary;
         const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
         const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
@@ -230,7 +237,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![UREF_KEY.into()])?,
         );
         keys.insert(
-            "Transfer".to_string(),
+            "LegacyTransfer".to_string(),
             ABITestCase::from_inputs(vec![TRANSFER_KEY.into()])?,
         );
         keys.insert(
@@ -244,6 +251,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         keys.insert(
             "Balance".to_string(),
             ABITestCase::from_inputs(vec![BALANCE_KEY.into()])?,
+        );
+        keys.insert(
+            "BalanceHold".to_string(),
+            ABITestCase::from_inputs(vec![BALANCE_HOLD_KEY.into()])?,
         );
         keys.insert(
             "WriteBid".to_string(),
@@ -271,8 +282,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![DICTIONARY_KEY.into()])?,
         );
         keys.insert(
-            "SystemContractRegistry".to_string(),
-            ABITestCase::from_inputs(vec![SYSTEM_CONTRACT_REGISTRY_KEY.into()])?,
+            "SystemEntityRegistry".to_string(),
+            ABITestCase::from_inputs(vec![SYSTEM_ENTITY_REGISTRY_KEY.into()])?,
         );
         keys.insert(
             "EraSummary".to_string(),
@@ -353,7 +364,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 ],
                 CLType::Unit,
                 EntryPointAccess::Public,
-                EntryPointType::AddressableEntity,
+                EntryPointType::Called,
             );
 
             entry_points.add_entry_point(public_contract_entry_point);
@@ -409,8 +420,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         stored_value.insert(
-            "Transfer".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Transfer(transfer).into()])?,
+            "LegacyTransfer".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::LegacyTransfer(legacy_transfer).into()])?,
         );
         stored_value.insert(
             "DeployInfo".to_string(),

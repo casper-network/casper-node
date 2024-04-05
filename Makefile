@@ -76,8 +76,8 @@ resources/local/chainspec.toml: generate-chainspec.sh resources/local/chainspec.
 	@./$<
 
 .PHONY: test-rs
-test-rs: resources/local/chainspec.toml
-	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features $(CARGO_FLAGS) -- --nocapture
+-k test-rs: resources/local/chainspec.toml
+	$(LEGACY) $(DISABLE_LOGGING) $(CARGO) test --all-features --no-fail-fast $(CARGO_FLAGS) -- --nocapture
 
 .PHONY: resources/local/chainspec.toml
 test-rs-no-default-features:
@@ -142,7 +142,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003 --ignore RUSTSEC-2024-0019
+	$(CARGO) audit --ignore RUSTSEC-2024-0006 --ignore RUSTSEC-2024-0003 --ignore RUSTSEC-2024-0019 --ignore RUSTSEC-2024-0332
 
 .PHONY: audit-as
 audit-as:

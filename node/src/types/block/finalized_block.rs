@@ -149,8 +149,8 @@ impl FinalizedBlock {
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
-            mint: block.transfer().copied().collect(),
-            auction: block.staking().copied().collect(),
+            mint: block.mint().copied().collect(),
+            auction: block.auction().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             timestamp: block.timestamp(),

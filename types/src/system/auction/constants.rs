@@ -36,10 +36,6 @@ pub const ARG_VALIDATOR_PUBLIC_KEYS: &str = "validator_public_keys";
 pub const ARG_NEW_VALIDATOR: &str = "new_validator";
 /// Named constant for `era_id`.
 pub const ARG_ERA_ID: &str = "era_id";
-/// Named constant for `validator_public_key`.
-pub const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
-/// Named constant for `delegator_public_key`.
-pub const ARG_DELEGATOR_PUBLIC_KEY: &str = "delegator_public_key";
 /// Named constant for `validator_slots` argument.
 pub const ARG_VALIDATOR_SLOTS: &str = VALIDATOR_SLOTS_KEY;
 /// Named constant for `mint_contract_package_hash`

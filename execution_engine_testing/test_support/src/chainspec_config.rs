@@ -12,8 +12,8 @@ use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, CoreConfig, FeeHandling, GenesisAccount,
-    GenesisConfig, GenesisConfigBuilder, MintCosts, ProtocolVersion, RefundHandling, SystemConfig,
-    TimeDiff, WasmConfig,
+    GenesisConfig, GenesisConfigBuilder, MintCosts, PricingHandling, ProtocolVersion,
+    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -24,8 +24,8 @@ use crate::{
 /// The name of the chainspec file on disk.
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
-/// Path to the production chainspec used in the Casper mainnet.
-pub static PRODUCTION_PATH: Lazy<PathBuf> = Lazy::new(|| {
+/// Symlink to chainspec.
+pub static CHAINSPEC_SYMLINK: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources/")
         .join(CHAINSPEC_NAME)
@@ -47,7 +47,7 @@ pub enum Error {
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
 /// chainspec format changes over versions, as long as we maintain the core config in this form
 /// in the chainspec file, it can continue to be parsed as an `ChainspecConfig`.
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Clone, Default, Debug)]
 pub struct ChainspecConfig {
     /// CoreConfig
     #[serde(rename = "core")]
@@ -81,7 +81,8 @@ impl ChainspecConfig {
         ChainspecConfig::from_bytes(&bytes)
     }
 
-    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
+    /// Load from path.
+    pub fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
         Self::from_path(filename)
     }
 
@@ -105,14 +106,22 @@ impl ChainspecConfig {
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<GenesisRequest, Error> {
-        let chainspec_config = ChainspecConfig::from_path(filename)?;
+        ChainspecConfig::from_path(filename)?
+            .create_genesis_request(genesis_accounts, protocol_version)
+    }
 
+    /// Create genesis request from self.
+    pub fn create_genesis_request(
+        &self,
+        genesis_accounts: Vec<GenesisAccount>,
+        protocol_version: ProtocolVersion,
+    ) -> Result<GenesisRequest, Error> {
         // if you get a compilation error here, make sure to update the builder below accordingly
         let ChainspecConfig {
             core_config,
             wasm_config,
             system_costs_config,
-        } = chainspec_config;
+        } = self;
         let CoreConfig {
             validator_slots,
             auction_delay,
@@ -124,31 +133,31 @@ impl ChainspecConfig {
 
         let genesis_config = GenesisConfigBuilder::new()
             .with_accounts(genesis_accounts)
-            .with_wasm_config(wasm_config)
-            .with_system_config(system_costs_config)
-            .with_validator_slots(validator_slots)
-            .with_auction_delay(auction_delay)
+            .with_wasm_config(*wasm_config)
+            .with_system_config(*system_costs_config)
+            .with_validator_slots(*validator_slots)
+            .with_auction_delay(*auction_delay)
             .with_locked_funds_period_millis(locked_funds_period.millis())
-            .with_round_seigniorage_rate(round_seigniorage_rate)
-            .with_unbonding_delay(unbonding_delay)
+            .with_round_seigniorage_rate(*round_seigniorage_rate)
+            .with_unbonding_delay(*unbonding_delay)
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .build();
 
         Ok(GenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
+            DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
             genesis_config,
             DEFAULT_CHAINSPEC_REGISTRY.clone(),
         ))
     }
 
-    /// Create a `RunGenesisRequest` using values from the production `chainspec.toml`.
-    pub fn create_genesis_request_from_production_chainspec(
+    /// Create a `RunGenesisRequest` using values from the local `chainspec.toml`.
+    pub fn create_genesis_request_from_local_chainspec(
         genesis_accounts: Vec<GenesisAccount>,
         protocol_version: ProtocolVersion,
     ) -> Result<GenesisRequest, Error> {
         Self::create_genesis_request_from_chainspec(
-            &*PRODUCTION_PATH,
+            &*CHAINSPEC_SYMLINK,
             genesis_accounts,
             protocol_version,
         )
@@ -205,6 +214,12 @@ impl ChainspecConfig {
     /// Sets refund handling config option.
     pub fn with_refund_handling(mut self, refund_handling: RefundHandling) -> Self {
         self.core_config.refund_handling = refund_handling;
+        self
+    }
+
+    /// Sets pricing handling config option.
+    pub fn with_pricing_handling(mut self, pricing_handling: PricingHandling) -> Self {
+        self.core_config.pricing_handling = pricing_handling;
         self
     }
 

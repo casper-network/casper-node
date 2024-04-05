@@ -11,6 +11,7 @@ mod global_state_update;
 mod highway_config;
 mod network_config;
 mod next_upgrade;
+mod pricing_handling;
 mod protocol_config;
 mod refund_handling;
 mod transaction_config;
@@ -18,6 +19,7 @@ mod upgrade_config;
 mod vacancy_config;
 mod vm_config;
 
+#[cfg(any(feature = "std", test))]
 use std::{fmt::Debug, sync::Arc};
 
 #[cfg(feature = "datasize")]
@@ -31,7 +33,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ChainNameDigest, Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion, Timestamp,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -39,16 +41,23 @@ pub use accounts_config::{
 };
 pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
-pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
+#[cfg(any(feature = "testing", test))]
+pub use core_config::DEFAULT_FEE_HANDLING;
+#[cfg(any(feature = "std", test))]
+pub use core_config::DEFAULT_REFUND_HANDLING;
+pub use core_config::{
+    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_BALANCE_HOLD_INTERVAL,
+};
 pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::DEFAULT_AUCTION_DELAY;
 #[cfg(any(feature = "std", test))]
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
-#[cfg(any(feature = "testing", test))]
-pub use genesis_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
+pub use pricing_handling::PricingHandling;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
@@ -190,6 +199,14 @@ impl Chainspec {
             fee_handling,
         ))
     }
+
+    /// Returns balance hold epoch based upon configured hold interval, calculated from the imputed
+    /// timestamp.
+    pub fn balance_holds_epoch(&self, timestamp: Timestamp) -> u64 {
+        timestamp
+            .millis()
+            .saturating_sub(self.core_config.balance_hold_interval.millis())
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -202,7 +219,7 @@ impl Chainspec {
         let highway_config = HighwayConfig::random(rng);
         let transaction_config = TransactionConfig::random(rng);
         let wasm_config = rng.gen();
-        let system_costs_config = rng.gen();
+        let system_costs_config = SystemConfig::random(rng);
         let vacancy_config = VacancyConfig::random(rng);
 
         Chainspec {
@@ -215,6 +232,30 @@ impl Chainspec {
             system_costs_config,
             vacancy_config,
         }
+    }
+
+    /// Set the chain name;
+    pub fn with_chain_name(&mut self, chain_name: String) -> &mut Self {
+        self.network_config.name = chain_name;
+        self
+    }
+
+    /// Set max associated keys.
+    pub fn with_max_associated_keys(&mut self, max_associated_keys: u32) -> &mut Self {
+        self.core_config.max_associated_keys = max_associated_keys;
+        self
+    }
+
+    /// Set pricing handling.
+    pub fn with_pricing_handling(&mut self, pricing_handling: PricingHandling) -> &mut Self {
+        self.core_config.pricing_handling = pricing_handling;
+        self
+    }
+
+    /// Set allow reservations.
+    pub fn with_allow_reservations(&mut self, allow_reservations: bool) -> &mut Self {
+        self.core_config.allow_reservations = allow_reservations;
+        self
     }
 }
 

@@ -35,7 +35,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
 
         entry_points.add_entry_point(entry_point);

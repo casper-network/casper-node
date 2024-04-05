@@ -1,8 +1,6 @@
-use once_cell::sync::Lazy;
-
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::Error,
@@ -17,19 +15,16 @@ const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const I32_WAT_TYPE: &str = "i64";
 const NEW_WASM_STACK_HEIGHT: u32 = 16;
-
-static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
-static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
-    ProtocolVersion::from_parts(
-        OLD_PROTOCOL_VERSION.value().major,
-        OLD_PROTOCOL_VERSION.value().minor,
-        OLD_PROTOCOL_VERSION.value().patch + 1,
-    )
-});
+const OLD_PROTOCOL_VERSION: ProtocolVersion = DEFAULT_PROTOCOL_VERSION;
+const NEW_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::from_parts(
+    OLD_PROTOCOL_VERSION.value().major,
+    OLD_PROTOCOL_VERSION.value().minor,
+    OLD_PROTOCOL_VERSION.value().patch + 1,
+);
 
 fn initialize_builder() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
     builder
 }
 
@@ -111,8 +106,8 @@ fn should_observe_stack_height_limit() {
         builder.with_chainspec(updated_chainspec);
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
-            .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
-            .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
+            .with_current_protocol_version(OLD_PROTOCOL_VERSION)
+            .with_new_protocol_version(NEW_PROTOCOL_VERSION)
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
@@ -132,7 +127,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 
@@ -156,7 +150,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 

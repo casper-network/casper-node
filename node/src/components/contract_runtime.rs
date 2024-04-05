@@ -26,8 +26,7 @@ use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, ExecutionEngineV1};
-
+use casper_execution_engine::engine_state::{EngineConfigBuilder, ExecutionEngineV1};
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
@@ -44,7 +43,6 @@ use casper_storage::{
 };
 use casper_types::{
     ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
-    Transaction,
 };
 
 use crate::{
@@ -74,8 +72,8 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
 pub(crate) use types::{
-    BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionState,
-    StepEffectsAndUpcomingEraValidators,
+    BlockAndExecutionArtifacts, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionResult,
+    StepOutcome,
 };
 use utils::{exec_or_requeue, run_intensive_task};
 
@@ -144,6 +142,7 @@ impl ContractRuntime {
             .with_allow_unrestricted_transfers(chainspec.core_config.allow_unrestricted_transfers)
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
+            .with_protocol_version(chainspec.protocol_version())
             .build();
 
         let data_access_layer = Arc::new(
@@ -573,30 +572,27 @@ impl ContractRuntime {
                 effects
             }
             ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
+                block_header,
                 transaction,
                 responder,
             } => {
-                if let Transaction::Deploy(deploy) = *transaction {
-                    let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
-                    let data_access_layer = Arc::clone(&self.data_access_layer);
-                    async move {
-                        let result = run_intensive_task(move || {
-                            speculatively_execute(
-                                data_access_layer.as_ref(),
-                                execution_engine_v1.as_ref(),
-                                execution_prestate,
-                                DeployItem::from(deploy.clone()),
-                            )
-                        })
-                        .await;
-                        responder.respond(result).await
-                    }
-                    .ignore()
-                } else {
-                    unreachable!()
-                    //async move { responder.respond(Ok(None)).await }.ignore()
+                let chainspec = Arc::clone(&self.chainspec);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                let execution_engine_v1 = Arc::clone(&self.execution_engine_v1);
+                async move {
+                    let result = run_intensive_task(move || {
+                        speculatively_execute(
+                            data_access_layer.as_ref(),
+                            chainspec.as_ref(),
+                            execution_engine_v1.as_ref(),
+                            *block_header,
+                            *transaction,
+                        )
+                    })
+                    .await;
+                    responder.respond(result).await
                 }
+                .ignore()
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder
                 .respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id))

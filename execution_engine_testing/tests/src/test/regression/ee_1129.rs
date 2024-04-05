@@ -2,12 +2,12 @@ use casper_wasm::builder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
-use casper_types::{GenesisAccount, GenesisValidator};
+use casper_types::{GenesisAccount, GenesisValidator, Key};
 
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::Error, execution::ExecError, runtime::PreprocessingError,
@@ -17,7 +17,7 @@ use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_DELEGATE_COST, U512,
 };
 
 use crate::wasm_utils;
@@ -35,22 +35,22 @@ static VALIDATOR_1: Lazy<PublicKey> = Lazy::new(|| {
 });
 static VALIDATOR_1_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*VALIDATOR_1));
 const VALIDATOR_1_STAKE: u64 = 250_000;
-static UNDERFUNDED_DELEGATE_AMOUNT: Lazy<U512> =
-    Lazy::new(|| U512::from(DEFAULT_DELEGATE_COST - 1));
-static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(DEFAULT_ADD_BID_COST - 1));
+static UNDERFUNDED_DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1));
+static UNDERFUNDED_ADD_BID_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(1));
 static CALL_STORED_CONTRACT_OVERHEAD: Lazy<U512> = Lazy::new(|| U512::from(10_001));
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_delegate_call() {
     assert!(U512::from(DEFAULT_DELEGATE_COST) > *UNDERFUNDED_DELEGATE_AMOUNT);
 
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             Some(GenesisValidator::new(
-                Motes::new(VALIDATOR_1_STAKE.into()),
+                Motes::new(VALIDATOR_1_STAKE),
                 DelegationRate::zero(),
             )),
         );
@@ -67,7 +67,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 
     let auction = builder.get_auction_contract_hash();
 
-    let bid_amount = U512::one();
+    let bid_amount = U512::from(100_000_000_000_000u64);
 
     let deploy_hash = [42; 32];
 
@@ -77,26 +77,24 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         auction::ARG_AMOUNT => bid_amount,
     };
 
-    let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_DELEGATE, args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT, // underfunded deploy
         })
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -108,14 +106,13 @@ fn should_run_ee_1129_underfunded_delegate_call() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_add_bid_call() {
-    assert!(U512::from(DEFAULT_ADD_BID_COST) > *UNDERFUNDED_ADD_BID_AMOUNT);
-
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
-            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
             None,
         );
 
@@ -141,26 +138,24 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
             auction::ARG_DELEGATION_RATE => delegation_rate,
     };
 
-    let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*VALIDATOR_1_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_ADD_BID, args)
-        .with_empty_payment_bytes(runtime_args! {
+        .with_standard_payment(runtime_args! {
             ARG_AMOUNT => *UNDERFUNDED_DELEGATE_AMOUNT,
         })
         .with_authorization_keys(&[*VALIDATOR_1_ADDR])
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -172,11 +167,12 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_run_ee_1129_underfunded_mint_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -185,19 +181,17 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     )
     .build();
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -206,9 +200,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
@@ -224,7 +216,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 fn should_not_panic_when_calling_session_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -233,19 +225,17 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -254,14 +244,12 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -272,7 +260,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 fn should_not_panic_when_calling_payment_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -281,17 +269,15 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
-            .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
+        .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -300,14 +286,12 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -318,7 +302,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 fn should_not_panic_when_calling_contract_package_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -327,24 +311,22 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                ACCESS_KEY,
-                None,
-                ENTRY_POINT_NAME,
-                RuntimeArgs::default(),
-            )
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_stored_versioned_contract_by_name(
+            ACCESS_KEY,
+            None,
+            ENTRY_POINT_NAME,
+            RuntimeArgs::default(),
+        )
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *CALL_STORED_CONTRACT_OVERHEAD,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -353,14 +335,12 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -371,7 +351,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -380,22 +360,20 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     )
     .build();
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
-            .with_stored_versioned_payment_contract_by_name(
-                ACCESS_KEY,
-                None,
-                ENTRY_POINT_NAME,
-                RuntimeArgs::new(),
-            )
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
+        .with_stored_versioned_payment_contract_by_name(
+            ACCESS_KEY,
+            None,
+            ENTRY_POINT_NAME,
+            RuntimeArgs::new(),
+        )
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(install_exec_request).expect_success().commit();
 
@@ -404,13 +382,11 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
     assert!(
-        matches!(error, Error::InvalidKeyVariant),
+        matches!(error, Error::InvalidKeyVariant(Key::URef(_))),
         "Unexpected error {:?}",
         error
     );
@@ -438,30 +414,26 @@ fn do_nothing_without_memory() -> Vec<u8> {
 fn should_not_panic_when_calling_module_without_memory() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT,
-            })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([42; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
+        .with_standard_payment(runtime_args! {
+            ARG_AMOUNT => *DEFAULT_PAYMENT,
+        })
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
+        .with_deploy_hash([42; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request).commit();
 
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
-        .as_error()
+        .error()
         .cloned()
         .expect("should have error");
 

@@ -7,8 +7,8 @@ use num_rational::Ratio;
 use num_traits::One;
 
 use casper_types::{
-    account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, WasmConfig,
-    DEFAULT_REFUND_HANDLING,
+    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
+    TimeDiff, WasmConfig, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -42,17 +42,18 @@ pub const DEFAULT_MAX_DELEGATORS_PER_VALIDATOR: u32 = 1200;
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-
-/// Default fee handling.
-pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
+/// Default protocol version.
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
+/// Default period for balance holds to decay (currently 24 hours).
+pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     /// Maximum number of associated keys (i.e. map of
-    /// [`AccountHash`](casper_types::account::AccountHash)s to
+    /// [`AccountHash`](AccountHash)s to
     /// [`Weight`](casper_types::account::Weight)s) for a single account.
     max_associated_keys: u32,
     max_runtime_call_stack_height: u32,
@@ -65,6 +66,7 @@ pub struct EngineConfig {
     max_delegators_per_validator: u32,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+    protocol_version: ProtocolVersion,
     /// A private network specifies a list of administrative accounts.
     pub(crate) administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
@@ -82,6 +84,8 @@ pub struct EngineConfig {
     pub(crate) fee_handling: FeeHandling,
     /// Compute auction rewards.
     pub(crate) compute_rewards: bool,
+    /// The period over which balance holds decay.
+    pub(crate) balance_hold_interval: TimeDiff,
 }
 
 impl Default for EngineConfig {
@@ -102,6 +106,8 @@ impl Default for EngineConfig {
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
+            protocol_version: DEFAULT_PROTOCOL_VERSION,
+            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
         }
     }
 }
@@ -125,6 +131,11 @@ impl EngineConfig {
     /// Returns the current system config.
     pub fn system_config(&self) -> &SystemConfig {
         &self.system_config
+    }
+
+    /// Returns the current protocol version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
     }
 
     /// Returns the minimum delegation amount in motes.
@@ -173,8 +184,8 @@ impl EngineConfig {
     }
 
     /// Returns the engine config's refund ratio.
-    pub fn refund_handling(&self) -> &RefundHandling {
-        &self.refund_handling
+    pub fn refund_handling(&self) -> RefundHandling {
+        self.refund_handling
     }
 
     /// Returns the engine config's fee handling strategy.
@@ -185,6 +196,15 @@ impl EngineConfig {
     /// Returns the engine config's compute rewards flag.
     pub fn compute_rewards(&self) -> bool {
         self.compute_rewards
+    }
+
+    /// Sets the protocol version of the config.
+    ///
+    /// NOTE: This is only useful to the WasmTestBuilder for emulating a network upgrade, and hence
+    /// is subject to change or deletion without notice.
+    #[doc(hidden)]
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
     }
 }
 
@@ -204,12 +224,14 @@ pub struct EngineConfigBuilder {
     max_delegators_per_validator: Option<u32>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
+    protocol_version: Option<ProtocolVersion>,
     administrative_accounts: Option<BTreeSet<PublicKey>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
     fee_handling: Option<FeeHandling>,
     compute_rewards: Option<bool>,
+    balance_hold_interval: Option<TimeDiff>,
 }
 
 impl EngineConfigBuilder {
@@ -269,6 +291,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets the protocol version.
+    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.protocol_version = Some(protocol_version);
+        self
+    }
+
     /// Sets the maximum wasm stack height config option.
     pub fn with_wasm_max_stack_height(mut self, wasm_stack_height: u32) -> Self {
         let wasm_config = self.wasm_config.get_or_insert_with(WasmConfig::default);
@@ -318,7 +346,7 @@ impl EngineConfigBuilder {
                     "refund ratio should be in the range of [0, 1]"
                 );
             }
-            RefundHandling::None => {
+            RefundHandling::NoRefund => {
                 //noop
             }
         }
@@ -339,6 +367,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets balance hold interval config option.
+    pub fn balance_hold_interval(mut self, balance_hold_interval: TimeDiff) -> Self {
+        self.balance_hold_interval = Some(balance_hold_interval);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_associated_keys = self
@@ -355,6 +389,7 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_MAXIMUM_DELEGATION_AMOUNT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
+        let protocol_version = self.protocol_version.unwrap_or(DEFAULT_PROTOCOL_VERSION);
         let administrative_accounts = {
             self.administrative_accounts
                 .unwrap_or_default()
@@ -381,6 +416,9 @@ impl EngineConfigBuilder {
             .max_delegators_per_validator
             .unwrap_or(DEFAULT_MAX_DELEGATORS_PER_VALIDATOR);
         let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
+        let balance_hold_interval = self
+            .balance_hold_interval
+            .unwrap_or(DEFAULT_BALANCE_HOLD_INTERVAL);
 
         EngineConfig {
             max_associated_keys,
@@ -389,6 +427,7 @@ impl EngineConfigBuilder {
             maximum_delegation_amount,
             wasm_config,
             system_config,
+            protocol_version,
             administrative_accounts,
             allow_auction_bids,
             allow_unrestricted_transfers,
@@ -398,6 +437,7 @@ impl EngineConfigBuilder {
             vesting_schedule_period_millis,
             max_delegators_per_validator,
             compute_rewards,
+            balance_hold_interval,
         }
     }
 }

@@ -11,6 +11,7 @@ repository = "https://github.com/CasperLabs/casper-node/tree/master/execution_en
 license = "Apache-2.0"
 
 [dependencies]
+blake2 = "0.9.0"
 casper-execution-engine = { version = "6.0.0", path = "../../execution_engine", features = ["test-support"] }
 casper-storage = { version = "1.4.3", path = "../../storage" }
 casper-types = { version = "3.0.0", path = "../../types" }

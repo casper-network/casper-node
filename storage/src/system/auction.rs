@@ -18,7 +18,7 @@ use casper_types::{
         BidAddr, BidKind, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
         UnbondingPurse, ValidatorBid, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
-    ApiError, EraId, PublicKey, U512,
+    ApiError, EraId, HoldsEpoch, PublicKey, U512,
 };
 
 use self::providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider};
@@ -71,14 +71,13 @@ pub trait Auction:
         amount: U512,
         minimum_delegation_amount: u64,
         maximum_delegation_amount: u64,
+        holds_epoch: HoldsEpoch,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
-            // Validation set rotation might be disabled on some private chains and we should not
-            // allow new bids to come in.
+            // The validator set may be closed on some side chains,
+            // which is configured by disabling bids.
             return Err(Error::AuctionBidsDisabled.into());
         }
-
-        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
 
         if amount.is_zero() {
             return Err(Error::BondTooSmall.into());
@@ -88,6 +87,8 @@ pub trait Auction:
             return Err(Error::DelegationRateTooLarge.into());
         }
 
+        let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));
+
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());
         }
@@ -96,6 +97,9 @@ pub trait Auction:
         let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
             self.read_bid(&validator_bid_key)?
         {
+            if validator_bid.inactive() {
+                validator_bid.activate();
+            }
             validator_bid.increase_stake(amount)?;
             validator_bid.with_delegation_rate(delegation_rate);
             validator_bid.set_delegation_amount_boundaries(
@@ -123,6 +127,7 @@ pub trait Auction:
             target,
             amount,
             None,
+            holds_epoch,
         )
         .map_err(|_| Error::TransferToBidPurse)?
         .map_err(|mint_error| {
@@ -219,6 +224,7 @@ pub trait Auction:
         validator_public_key: PublicKey,
         amount: U512,
         max_delegators_per_validator: u32,
+        holds_epoch: HoldsEpoch,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // Validation set rotation might be disabled on some private chains and we should not
@@ -239,6 +245,7 @@ pub trait Auction:
             source,
             amount,
             max_delegators_per_validator,
+            holds_epoch,
         )
     }
 
@@ -733,15 +740,14 @@ pub trait Auction:
 
     /// Activates a given validator's bid.  To be used when a validator has been marked as inactive
     /// by consensus (aka "evicted").
-    fn activate_bid(&mut self, validator_public_key: PublicKey) -> Result<(), Error> {
-        let provided_account_hash =
-            AccountHash::from_public_key(&validator_public_key, |x| self.blake2b(x));
+    fn activate_bid(&mut self, validator: PublicKey) -> Result<(), Error> {
+        let provided_account_hash = AccountHash::from_public_key(&validator, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext);
         }
 
-        let key = BidAddr::from(validator_public_key).into();
+        let key = BidAddr::from(validator).into();
         if let Some(BidKind::Validator(mut validator_bid)) = self.read_bid(&key)? {
             validator_bid.activate();
             self.write_bid(key, BidKind::Validator(validator_bid))?;

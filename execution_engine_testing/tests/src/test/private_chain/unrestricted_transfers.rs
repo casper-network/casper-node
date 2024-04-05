@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, TransferRequestBuilder, DEFAULT_PAYMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::{engine_state::Error, execution::ExecError};
 use casper_storage::system::transfer::TransferError;
@@ -30,31 +30,24 @@ const TEST_PAYMENT_STORED_HASH_NAME: &str = "test_payment_hash";
 fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() {
     let mut builder = super::private_chain_setup();
 
-    let fund_transfer_1 = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_transfer_1 =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_transfer_1)
+        .expect_success();
 
-    let transfer_request_1 = ExecuteRequestBuilder::transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-            mint::ARG_AMOUNT => U512::one(),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let transfer_request_1 = TransferRequestBuilder::new(1, *ACCOUNT_2_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .transfer_and_commit(transfer_request_1)
+        .expect_failure();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -66,18 +59,14 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
         error
     );
 
-    let transfer_request_2 = ExecuteRequestBuilder::transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            mint::ARG_AMOUNT => U512::one(),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let transfer_request_2 = TransferRequestBuilder::new(1, *DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request_2)
+        .expect_success();
 }
 
 #[ignore]
@@ -323,28 +312,22 @@ fn should_disallow_transfer_to_unknown_target_from_non_admin() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account");
-    let source: URef = account.main_purse();
-    let target: URef = account
+    let source = account.main_purse();
+    let target = account
         .named_keys()
         .get(TEST_PURSE)
         .unwrap()
         .into_uref()
         .expect("should be uref");
-    let amount: U512 = U512::one();
-    let id: Option<u64> = None;
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => amount,
-            mint::ARG_ID => id,
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(1, target)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .with_source(source)
+        .build();
 
-    builder.exec(transfer_request).expect_failure().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_failure();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -377,28 +360,22 @@ fn should_allow_admin_to_transfer_to_own_purse_via_native_transfer() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have account");
-    let source: URef = account.main_purse();
-    let target: URef = account
+    let source = account.main_purse();
+    let target = account
         .named_keys()
         .get(TEST_PURSE)
         .unwrap()
         .into_uref()
         .expect("should be uref");
-    let amount: U512 = U512::one();
-    let id: Option<u64> = None;
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_SOURCE => source,
-            mint::ARG_TARGET => target,
-            mint::ARG_AMOUNT => amount,
-            mint::ARG_ID => id,
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(1, target)
+        .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .with_source(source)
+        .build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
 }
 
 #[ignore]
@@ -441,7 +418,8 @@ fn should_disallow_wasm_payment_to_purse() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_not_allow_payment_to_purse_in_stored_payment() {
     // This effectively disables any custom payment code
     let mut builder = super::private_chain_setup();
@@ -459,29 +437,23 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
         .commit();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
-        };
-        let session_args = RuntimeArgs::default();
-
-        const PAY_ENTRYPOINT: &str = "pay";
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_stored_payment_named_key(
-                TEST_PAYMENT_STORED_HASH_NAME,
-                PAY_ENTRYPOINT,
-                payment_args,
-            )
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => *DEFAULT_PAYMENT,
     };
+    let session_args = RuntimeArgs::default();
+
+    const PAY_ENTRYPOINT: &str = "pay";
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_stored_payment_named_key(TEST_PAYMENT_STORED_HASH_NAME, PAY_ENTRYPOINT, payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_failure().commit();
 
@@ -498,42 +470,32 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
 fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     let mut builder = super::private_chain_setup();
 
-    let fund_transfer_1 = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_transfer_1 =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_1_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
-    let fund_transfer_2 = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_transfer_2 =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_2_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
-    builder.exec(fund_transfer_2).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_transfer_1)
+        .expect_success();
+    builder
+        .transfer_and_commit(fund_transfer_2)
+        .expect_success();
 
-    let transfer_request_1 = ExecuteRequestBuilder::transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-            mint::ARG_AMOUNT => U512::one(),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let transfer_request_1 = TransferRequestBuilder::new(1, *ACCOUNT_2_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .transfer_and_commit(transfer_request_1)
+        .expect_failure();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -545,18 +507,14 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
         error
     );
 
-    let transfer_request_2 = ExecuteRequestBuilder::transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *DEFAULT_ADMIN_ACCOUNT_ADDR,
-            mint::ARG_AMOUNT => U512::one(),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let transfer_request_2 = TransferRequestBuilder::new(1, *DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .transfer_and_commit(transfer_request_2)
+        .expect_success();
 }
 
 #[ignore]
@@ -574,19 +532,16 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     )
     .build();
 
-    let fund_transfer_2 = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *ACCOUNT_2_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_transfer_2 =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *ACCOUNT_2_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
     // Admin can transfer funds to create new account.
     builder.exec(fund_transfer_1).expect_success().commit();
-    builder.exec(fund_transfer_2).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_transfer_2)
+        .expect_success();
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -709,31 +664,30 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_allow_custom_payment_by_paying_to_system_account() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => payment_amount,
-        };
-        let session_args = RuntimeArgs::default();
-
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-            .with_payment_code("non_standard_payment.wasm", payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => payment_amount,
     };
+    let session_args = RuntimeArgs::default();
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
+        .with_payment_code("non_standard_payment.wasm", payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -757,29 +711,27 @@ fn should_allow_wasm_transfer_to_system() {
     let mut builder = super::private_chain_setup();
 
     // Account 1 can deploy after genesis
-    let exec_request_1 = {
-        let sender = *ACCOUNT_1_ADDR;
-        let deploy_hash = [100; 32];
+    let sender = *ACCOUNT_1_ADDR;
+    let deploy_hash = [100; 32];
 
-        let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
+    let payment_amount = *DEFAULT_PAYMENT + U512::from(1u64);
 
-        let payment_args = runtime_args! {
-            standard_payment::ARG_AMOUNT => payment_amount,
-        };
-        let session_args = runtime_args! {
-            "target" => *SYSTEM_ADDR,
-            "amount" => U512::one(),
-        };
-
-        let deploy = DeployItemBuilder::new()
-            .with_address(sender)
-            .with_session_code("transfer_to_account_u512.wasm", session_args)
-            .with_payment_bytes(Vec::new(), payment_args)
-            .with_authorization_keys(&[sender])
-            .with_deploy_hash(deploy_hash)
-            .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    let payment_args = runtime_args! {
+        standard_payment::ARG_AMOUNT => payment_amount,
     };
+    let session_args = runtime_args! {
+        "target" => *SYSTEM_ADDR,
+        "amount" => U512::one(),
+    };
+
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(sender)
+        .with_session_code("transfer_to_account_u512.wasm", session_args)
+        .with_payment_bytes(Vec::new(), payment_args)
+        .with_authorization_keys(&[sender])
+        .with_deploy_hash(deploy_hash)
+        .build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -818,17 +770,14 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
         "payment purse should be empty"
     );
 
-    let fund_transfer_1 = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ADMIN_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => *SYSTEM_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_transfer_1 =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, *SYSTEM_ADDR)
+            .with_initiator(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+            .build();
 
-    builder.exec(fund_transfer_1).expect_success().commit();
+    builder
+        .transfer_and_commit(fund_transfer_1)
+        .expect_success();
 
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),

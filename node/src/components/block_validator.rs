@@ -39,7 +39,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{BlockWithMetadata, NodeId, TransactionExt, ValidatorMatrix},
+    types::{BlockWithMetadata, NodeId, TransactionFootprint, ValidatorMatrix},
     NodeRng,
 };
 pub use config::Config;
@@ -554,11 +554,12 @@ impl BlockValidator {
                         .flat_map(|state| state.try_mark_invalid(&transaction_hash));
                     return respond(false, responders);
                 }
-                let transaction_footprint = match item.footprint(&self.chainspec) {
-                    Some(footprint) => footprint,
-                    None => {
+                let transaction_footprint = match TransactionFootprint::new(&self.chainspec, &item)
+                {
+                    Ok(footprint) => footprint,
+                    Err(invalid_transaction_error) => {
                         warn!(
-                            %transaction_hash,
+                            %transaction_hash, ?invalid_transaction_error,
                             "could not convert transaction",
                         );
                         // Hard failure - change state to Invalid.

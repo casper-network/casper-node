@@ -1,9 +1,11 @@
-use casper_types::{
-    execution::Effects, system::auction::Error as AuctionError, Digest, ProtocolVersion, PublicKey,
-    U512,
-};
 use std::collections::BTreeMap;
+
 use thiserror::Error;
+
+use casper_types::{
+    execution::Effects, system::auction::Error as AuctionError, BlockTime, Digest, ProtocolVersion,
+    PublicKey, U512,
+};
 
 use crate::{
     system::{runtime_native::Config, transfer::TransferError},
@@ -16,7 +18,7 @@ pub struct BlockRewardsRequest {
     state_hash: Digest,
     protocol_version: ProtocolVersion,
     rewards: BTreeMap<PublicKey, U512>,
-    block_time: u64,
+    block_time: BlockTime,
 }
 
 impl BlockRewardsRequest {
@@ -24,7 +26,7 @@ impl BlockRewardsRequest {
         config: Config,
         state_hash: Digest,
         protocol_version: ProtocolVersion,
-        block_time: u64,
+        block_time: BlockTime,
         rewards: BTreeMap<PublicKey, U512>,
     ) -> Self {
         BlockRewardsRequest {
@@ -57,7 +59,7 @@ impl BlockRewardsRequest {
     }
 
     /// Returns block time.
-    pub fn block_time(&self) -> u64 {
+    pub fn block_time(&self) -> BlockTime {
         self.block_time
     }
 }

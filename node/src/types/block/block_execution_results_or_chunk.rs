@@ -2,8 +2,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use once_cell::sync::OnceCell;
-#[cfg(test)]
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
@@ -181,7 +179,7 @@ impl BlockExecutionResultsOrChunk {
     ) -> Self {
         let execution_results: Vec<ExecutionResult> = (0..num_results)
             .into_iter()
-            .map(|_| rng.gen::<ExecutionResultV2>().into())
+            .map(|_| ExecutionResultV2::random(rng).into())
             .collect();
 
         Self {

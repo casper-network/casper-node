@@ -1,4 +1,3 @@
-mod bulk_update_with_scratch_trie;
 mod chainspec_registry;
 mod check_transfer_success;
 mod contract_api;

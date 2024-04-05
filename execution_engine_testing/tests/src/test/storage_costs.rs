@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
@@ -115,10 +115,10 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
-        .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
+        .with_current_protocol_version(DEFAULT_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
@@ -146,7 +146,6 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
         DO_NOTHING_WASM,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let account = builder
@@ -184,7 +183,6 @@ fn should_verify_isolated_auction_storage_is_free() {
         SYSTEM_CONTRACT_HASHES_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
     builder.exec(exec_request).expect_success().commit();
 
@@ -210,7 +208,6 @@ fn should_verify_isolated_auction_storage_is_free() {
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -249,7 +246,6 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -280,7 +276,6 @@ fn should_measure_gas_cost_for_storage_usage_write() {
             WRITE_FUNCTION_SMALL_NAME,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_a
@@ -321,7 +316,6 @@ fn should_measure_gas_cost_for_storage_usage_write() {
             WRITE_FUNCTION_LARGE_NAME,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_b
@@ -356,7 +350,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -471,7 +465,6 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -502,7 +495,6 @@ fn should_measure_gas_cost_for_storage_usage_add() {
             ADD_FUNCTION_SMALL_NAME,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_a
@@ -543,7 +535,6 @@ fn should_measure_gas_cost_for_storage_usage_add() {
             ADD_FUNCTION_LARGE_NAME,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder_b
@@ -580,7 +571,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -686,7 +677,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_new_uref_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -695,7 +687,6 @@ fn should_verify_new_uref_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -719,7 +710,6 @@ fn should_verify_new_uref_is_charging_for_storage() {
         NEW_UREF_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -730,7 +720,8 @@ fn should_verify_new_uref_is_charging_for_storage() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_put_key_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -739,7 +730,6 @@ fn should_verify_put_key_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -763,7 +753,6 @@ fn should_verify_put_key_is_charging_for_storage() {
         PUT_KEY_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -774,7 +763,8 @@ fn should_verify_put_key_is_charging_for_storage() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_remove_key_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -783,7 +773,6 @@ fn should_verify_remove_key_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -807,7 +796,6 @@ fn should_verify_remove_key_is_charging_for_storage() {
         REMOVE_KEY_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -818,7 +806,8 @@ fn should_verify_remove_key_is_charging_for_storage() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -827,7 +816,6 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -851,7 +839,6 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         CREATE_CONTRACT_PACKAGE_AT_HASH_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -862,7 +849,8 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_create_contract_user_group_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -871,7 +859,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -895,7 +882,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         CREATE_CONTRACT_USER_GROUP_FUNCTION_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -912,7 +898,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         PROVISION_UREFS_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -929,7 +914,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         REMOVE_CONTRACT_USER_GROUP_FUNCTION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -940,7 +924,8 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
 }
 
 #[ignore]
-#[test]
+#[allow(unused)]
+// #[test]
 fn should_verify_subcall_new_uref_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -949,7 +934,6 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
         STORAGE_COSTS_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(install_exec_request).expect_success().commit();

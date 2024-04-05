@@ -1,7 +1,7 @@
 mod admins;
 mod balances;
 mod generic;
-mod system_contract_registry;
+mod system_entity_registry;
 mod utils;
 mod validators;
 
@@ -10,7 +10,7 @@ use clap::{crate_version, App, Arg, SubCommand};
 
 use crate::{
     balances::generate_balances_update, generic::generate_generic_update,
-    system_contract_registry::generate_system_contract_registry,
+    system_entity_registry::generate_system_entity_registry,
     validators::generate_validators_update,
 };
 
@@ -102,7 +102,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("migrate-into-system-contract-registry")
-                .about("Generates an update creating the system contract registry")
+                .about("Generates an update creating the system entity registry")
                 .arg(
                     Arg::with_name("data_dir")
                         .short("d")
@@ -190,7 +190,7 @@ fn main() {
         ("change-validators", Some(sub_matches)) => generate_validators_update(sub_matches),
         ("balances", Some(sub_matches)) => generate_balances_update(sub_matches),
         ("migrate-into-system-contract-registry", Some(sub_matches)) => {
-            generate_system_contract_registry(sub_matches)
+            generate_system_entity_registry(sub_matches)
         }
         ("generic", Some(sub_matches)) => generate_generic_update(sub_matches),
         ("generate-admins", Some(sub_matches)) => generate_admins(sub_matches),

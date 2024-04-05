@@ -25,8 +25,8 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
+use casper_binary_port::{LastProgress, NetworkName, Uptime};
 use casper_types::{
-    binary_port::{LastProgress, NetworkName, Uptime},
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
     FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, U512,
 };
@@ -722,11 +722,11 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             }) => {
-                let source = if let Some(block) = speculative_exec_at_block {
-                    Source::SpeculativeExec(block)
+                let source = if is_speculative {
+                    Source::SpeculativeExec
                 } else {
                     Source::Client
                 };
@@ -786,7 +786,7 @@ impl reactor::Reactor for MainReactor {
                             ),
                         ));
                     }
-                    Source::SpeculativeExec(_) => {
+                    Source::SpeculativeExec => {
                         error!(
                             %transaction,
                             "transaction acceptor should not announce speculative exec transactions"
@@ -1111,6 +1111,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
+            chainspec.transaction_config,
         )?;
 
         let contract_runtime = ContractRuntime::new(
@@ -1205,8 +1206,11 @@ impl reactor::Reactor for MainReactor {
         );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let transaction_acceptor =
-            TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
+        let transaction_acceptor = TransactionAcceptor::new(
+            config.transaction_acceptor,
+            Arc::clone(&chainspec),
+            registry,
+        )?;
         let transaction_buffer =
             TransactionBuffer::new(Arc::clone(&chainspec), config.transaction_buffer, registry)?;
 
@@ -1672,7 +1676,7 @@ impl MainReactor {
                 for exec_artifact in fwd_meta_block.execution_results.iter() {
                     let event = event_stream_server::Event::TransactionProcessed {
                         transaction_hash: exec_artifact.transaction_hash,
-                        transaction_header: Box::new(exec_artifact.header.clone()),
+                        transaction_header: Box::new(exec_artifact.transaction_header.clone()),
                         block_hash: *fwd_meta_block.block.hash(),
                         execution_result: Box::new(exec_artifact.execution_result.clone()),
                         messages: exec_artifact.messages.clone(),

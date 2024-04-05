@@ -439,10 +439,17 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(47), ApiError::MaxMessagesPerBlockExceeded);
     /// ```
     MaxMessagesPerBlockExceeded,
+    /// Attempt to call FFI function `casper_add_contract_version()` from a transaction not defined
+    /// as an installer/upgrader.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(48), ApiError::NotAllowedToAddContractVersion);
+    /// ```
+    NotAllowedToAddContractVersion,
     /// Invalid delegation amount limits.
     /// ```
     /// # use casper_types::ApiError;
-    /// assert_eq!(ApiError::from(48), ApiError::InvalidDelegationAmountLimits);
+    /// assert_eq!(ApiError::from(49), ApiError::InvalidDelegationAmountLimits);
     /// ```
     InvalidDelegationAmountLimits,
 }
@@ -608,7 +615,8 @@ impl From<ApiError> for u32 {
             ApiError::MessageTopicFull => 45,
             ApiError::MessageTooLarge => 46,
             ApiError::MaxMessagesPerBlockExceeded => 47,
-            ApiError::InvalidDelegationAmountLimits => 48,
+            ApiError::NotAllowedToAddContractVersion => 48,
+            ApiError::InvalidDelegationAmountLimits => 49,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -668,7 +676,8 @@ impl From<u32> for ApiError {
             45 => ApiError::MessageTopicFull,
             46 => ApiError::MessageTooLarge,
             47 => ApiError::MaxMessagesPerBlockExceeded,
-            48 => ApiError::InvalidDelegationAmountLimits,
+            48 => ApiError::NotAllowedToAddContractVersion,
+            49 => ApiError::InvalidDelegationAmountLimits,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -739,6 +748,9 @@ impl Debug for ApiError {
             ApiError::MessageTooLarge => write!(f, "ApiError::MessageTooLarge")?,
             ApiError::MaxMessagesPerBlockExceeded => {
                 write!(f, "ApiError::MaxMessagesPerBlockExceeded")?
+            }
+            ApiError::NotAllowedToAddContractVersion => {
+                write!(f, "ApiError::NotAllowedToAddContractVersion")?
             }
             ApiError::InvalidDelegationAmountLimits => {
                 write!(f, "ApiError::InvalidDelegationAmountLimits")?
@@ -968,6 +980,7 @@ mod tests {
         round_trip(Err(ApiError::MessageTopicNotRegistered));
         round_trip(Err(ApiError::MessageTopicFull));
         round_trip(Err(ApiError::MessageTooLarge));
+        round_trip(Err(ApiError::NotAllowedToAddContractVersion));
         round_trip(Err(ApiError::InvalidDelegationAmountLimits));
     }
 }

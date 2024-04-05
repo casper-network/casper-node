@@ -51,7 +51,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entrypoints.add_entry_point(add_associated_key_entry_point);
         let manage_action_threshold_entrypoint = EntryPoint::new(
@@ -59,7 +59,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_NEW_UPGRADE_THRESHOLD, CLType::U8)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::AddressableEntity,
+            EntryPointType::Called,
         );
         entrypoints.add_entry_point(manage_action_threshold_entrypoint);
         entrypoints

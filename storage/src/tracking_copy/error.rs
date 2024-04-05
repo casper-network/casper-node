@@ -2,8 +2,7 @@ use thiserror::Error;
 
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, Key, StoredValueTypeMismatch,
-    URef,
+    bytesrepr, system, ApiError, CLType, CLValueError, Key, StoredValueTypeMismatch,
 };
 
 /// Possible tracking copy errors.
@@ -28,21 +27,6 @@ pub enum Error {
     /// Type mismatch error.
     #[error("{}", _0)]
     TypeMismatch(StoredValueTypeMismatch),
-    /// Invalid access.
-    #[error("Invalid access rights: {}", required)]
-    InvalidAccess {
-        /// Required access rights of the operation.
-        required: AccessRights,
-    },
-    /// Forged reference error.
-    #[error("Forged reference: {}", _0)]
-    ForgedReference(URef),
-    /// Unable to find a [`URef`].
-    #[error("URef not found: {}", _0)]
-    URefNotFound(URef),
-    /// Execution exceeded the gas limit.
-    #[error("Out of gas error")]
-    GasLimit,
     /// ApiError.
     #[error("{}", _0)]
     Api(ApiError),
@@ -91,6 +75,9 @@ pub enum Error {
     /// Not authorized.
     #[error("Authorization error")]
     Authorization,
+    /// The value wasn't found.
+    #[error("Value not found")]
+    ValueNotFound(String),
 }
 
 impl Error {

@@ -11,7 +11,7 @@ use casper_types::{
         ValidatorBids, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
+    ApiError, CLTyped, EraId, HoldsEpoch, Key, KeyTag, PublicKey, URef, U512,
 };
 use tracing::{error, warn};
 
@@ -24,7 +24,13 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
     T: FromBytes + CLTyped,
 {
-    let key = provider.named_keys_get(name).ok_or(Error::MissingKey)?;
+    let key = match provider.named_keys_get(name) {
+        None => {
+            error!("auction missing named key {:?}", name);
+            return Err(Error::MissingKey);
+        }
+        Some(key) => key,
+    };
     let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
     let value: T = provider.read(uref)?.ok_or(Error::MissingValue)?;
     Ok(value)
@@ -266,7 +272,11 @@ pub fn create_unbonding_purse<P: Auction + ?Sized>(
     amount: U512,
     new_validator: Option<PublicKey>,
 ) -> Result<(), Error> {
-    if provider.get_balance(bonding_purse)?.unwrap_or_default() < amount {
+    if provider
+        .available_balance(bonding_purse, HoldsEpoch::NOT_APPLICABLE)?
+        .unwrap_or_default()
+        < amount
+    {
         return Err(Error::UnbondTooLarge);
     }
 
@@ -448,6 +458,7 @@ where
         *unbonding_purse.bonding_purse(),
         *unbonding_purse.amount(),
         max_delegators_per_validator,
+        HoldsEpoch::NOT_APPLICABLE,
     );
     match redelegation {
         Ok(_) => Ok(UnbondRedelegationOutcome::SuccessfullyRedelegated),
@@ -473,6 +484,7 @@ where
 /// If specified validator exists, and if validator is not yet at max delegators count, processes
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
+#[allow(clippy::too_many_arguments)]
 pub fn handle_delegation<P>(
     provider: &mut P,
     delegator_public_key: PublicKey,
@@ -480,6 +492,7 @@ pub fn handle_delegation<P>(
     source: URef,
     amount: U512,
     max_delegators_per_validator: u32,
+    holds_epoch: HoldsEpoch,
 ) -> Result<U512, ApiError>
 where
     P: StorageProvider + MintProvider + RuntimeProvider,
@@ -537,6 +550,7 @@ where
             target,
             amount,
             None,
+            holds_epoch,
         )
         .map_err(|_| Error::TransferToDelegatorPurse)?
         .map_err(|mint_error| {

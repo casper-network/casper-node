@@ -9,17 +9,19 @@ use serde::Serialize;
 use std::{collections::BTreeSet, marker::PhantomData};
 
 use casper_types::{
-    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     Approval, BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, BlockSignatures,
-    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash,
+    BlockSignaturesV1, Deploy, DeployHash, Digest, Transaction, TransactionHash, TransferV1,
 };
 
-use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
-use crate::block_store::{
-    error::BlockStoreError,
-    types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
+use super::{
+    super::{
+        error::BlockStoreError,
+        types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes, Transfers},
+        DbRawBytesSpec,
+    },
+    lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
 };
 
 pub(crate) trait VersionedKey: ToBytes {
@@ -85,6 +87,10 @@ impl VersionedValue for BTreeSet<Approval> {
 
 impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
+}
+
+impl VersionedValue for Transfers {
+    type Legacy = Vec<TransferV1>;
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the
