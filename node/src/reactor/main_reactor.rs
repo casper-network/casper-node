@@ -392,8 +392,8 @@ impl reactor::Reactor for MainReactor {
             MainEvent::NetworkPeerProvidingData(NetResponseIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: Properly handle ticket.
-            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message),
+                ticket,
+            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message, ticket),
             MainEvent::AddressGossiper(event) => reactor::wrap_effects(
                 MainEvent::AddressGossiper,
                 self.address_gossiper
@@ -867,13 +867,14 @@ impl reactor::Reactor for MainReactor {
             MainEvent::TrieResponseIncoming(TrieResponseIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: Sensibly process ticket.
+                ticket,
             }) => reactor::handle_fetch_response::<Self, TrieOrChunk>(
                 self,
                 effect_builder,
                 rng,
                 sender,
                 &message.0,
+                ticket,
             ),
 
             // STORAGE
