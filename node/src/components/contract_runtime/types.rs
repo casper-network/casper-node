@@ -11,7 +11,7 @@ use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
         auction::AuctionMethodError, BalanceHoldResult, BiddingResult, EraValidatorsRequest,
-        HandlePaymentResult, TransferResult,
+        HandleFeeResult, HandleRefundResult, TransferResult,
     },
 };
 use casper_types::{
@@ -127,23 +127,58 @@ impl ExecutionArtifactBuilder {
         Ok(self)
     }
 
-    pub fn with_handle_payment_result(
+    pub fn with_set_refund_purse_result(
         &mut self,
-        handle_payment_result: &HandlePaymentResult,
-    ) -> Result<&mut Self, ()> {
-        if let HandlePaymentResult::RootNotFound = handle_payment_result {
-            return Err(());
+        handle_refund_result: &HandleRefundResult,
+    ) -> Result<&mut Self, bool> {
+        if let HandleRefundResult::RootNotFound = handle_refund_result {
+            return Err(true);
         }
-        if let (None, HandlePaymentResult::Failure(err)) =
-            (&self.error_message, handle_payment_result)
+        self.with_appended_effects(handle_refund_result.effects());
+        if let (None, HandleRefundResult::Failure(err)) =
+            (&self.error_message, handle_refund_result)
         {
             self.error_message = Some(format!("{}", err));
-            // NOTE: if handle payment fails, we revert any prior effects.
-            // and only commit effects produced by handle payment (if any).
-            self.effects = handle_payment_result.effects();
+            return Err(false);
+        }
+        Ok(self)
+    }
+
+    pub fn with_handle_refund_result(
+        &mut self,
+        handle_refund_result: &HandleRefundResult,
+    ) -> Result<&mut Self, ()> {
+        if let HandleRefundResult::RootNotFound = handle_refund_result {
+            return Err(());
+        }
+        if let (None, HandleRefundResult::Failure(err)) =
+            (&self.error_message, handle_refund_result)
+        {
+            self.error_message = Some(format!("{}", err));
+            // NOTE: if handle refund fails, we revert any prior effects.
+            // and only commit effects produced by refund payment (if any).
+            self.effects = handle_refund_result.effects();
             return Ok(self);
         }
-        self.with_appended_effects(handle_payment_result.effects());
+        self.with_appended_effects(handle_refund_result.effects());
+        Ok(self)
+    }
+
+    pub fn with_handle_fee_result(
+        &mut self,
+        handle_fee_result: &HandleFeeResult,
+    ) -> Result<&mut Self, ()> {
+        if let HandleFeeResult::RootNotFound = handle_fee_result {
+            return Err(());
+        }
+        if let (None, HandleFeeResult::Failure(err)) = (&self.error_message, handle_fee_result) {
+            self.error_message = Some(format!("{}", err));
+            // NOTE: if handle fee fails, we revert any prior effects.
+            // and only commit effects produced by handle fee (if any).
+            self.effects = handle_fee_result.effects();
+            return Ok(self);
+        }
+        self.with_appended_effects(handle_fee_result.effects());
         Ok(self)
     }
 

@@ -1985,7 +1985,7 @@ const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 20000;
 //milliseconds
 const MIN_HEIGHT: u64 = 6;
-const BLOCK_TIME: u64 = 2000;
+const BLOCK_TIME: u64 = 1750;
 //milliseconds
 const TIME_OUT: u64 = 600;
 //seconds
