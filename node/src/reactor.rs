@@ -72,7 +72,7 @@ use crate::{
     components::{
         block_accumulator, deploy_acceptor,
         fetcher::{self, FetchItem},
-        network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        network::{blocklist::BlocklistJustification, Identity as NetworkIdentity, Ticket},
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},

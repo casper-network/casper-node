@@ -602,6 +602,7 @@ impl reactor::Reactor for MainReactor {
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
                     finality_signature,
                     sender,
+                    ticket: incoming.ticket,
                 };
                 reactor::wrap_effects(
                     MainEvent::BlockAccumulator,

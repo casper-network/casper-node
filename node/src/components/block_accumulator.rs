@@ -803,8 +803,18 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
             Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
+                ticket,
             } => {
-                self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
+                let rv = self.register_finality_signature(
+                    effect_builder,
+                    *finality_signature,
+                    Some(sender),
+                );
+
+                // After registering the signature, we consider the work complete.
+                drop(ticket);
+
+                rv
             }
             Event::ExecutedBlock { meta_block } => {
                 let height = meta_block.block.header().height();
