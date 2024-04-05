@@ -33,7 +33,7 @@ use crate::{
             GossiperAnnouncement,
         },
         incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
             NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::AcceptDeployRequest,
@@ -104,7 +104,7 @@ impl<T: Unhandled> From<T> for Event {
     }
 }
 
-impl Unhandled for ConsensusDemand {}
+impl Unhandled for ConsensusRequestMessageIncoming {}
 impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}

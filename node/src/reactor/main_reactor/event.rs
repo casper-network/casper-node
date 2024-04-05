@@ -29,8 +29,9 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming,
+            TrieResponseIncoming,
         },
         requests::{
             AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
@@ -121,7 +122,7 @@ pub(crate) enum MainEvent {
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
-    ConsensusDemand(ConsensusDemand),
+    ConsensusDemand(ConsensusRequestMessageIncoming),
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     #[from]

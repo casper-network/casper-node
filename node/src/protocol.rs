@@ -18,9 +18,9 @@ use crate::{
         network::{Channel, FromIncoming, GossipedAddress, MessageKind, Payload, Ticket},
     },
     effect::incoming::{
-        ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-        NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequest,
-        TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
+        ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+        GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
+        TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
     },
     types::{Block, Deploy, FinalitySignature, NodeId},
 };
@@ -239,7 +239,7 @@ impl Display for Message {
 impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
-        + From<ConsensusDemand>
+        + From<ConsensusRequestMessageIncoming>
         + From<GossiperIncoming<Block>>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<FinalitySignature>>
@@ -258,10 +258,12 @@ where
                 ticket,
             }
             .into(),
-            Message::ConsensusRequest(_message) => {
-                // TODO: Remove this once from_incoming and try_demand_from_incoming are unified.
-                unreachable!("called from_incoming with a consensus request")
+            Message::ConsensusRequest(message) => ConsensusRequestMessageIncoming {
+                sender,
+                message: Box::new(message),
+                ticket,
             }
+            .into(),
             Message::BlockGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
@@ -429,12 +431,6 @@ where
         Self: Sized + Send,
     {
         match payload {
-            Message::ConsensusRequest(request_msg) => Ok(ConsensusDemand {
-                sender,
-                request_msg: Box::new(request_msg),
-                ticket,
-            }
-            .into()),
             _ => Err((payload, ticket)),
         }
     }

@@ -728,15 +728,15 @@ impl EraSupervisor {
         }
     }
 
-    pub(super) fn handle_demand<REv: ReactorEventT>(
+    pub(super) fn handle_request_message<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         sender: NodeId,
-        request: Box<ConsensusRequestMessage>,
+        message: Box<ConsensusRequestMessage>,
         ticket: Ticket,
     ) -> Effects<Event> {
-        let ConsensusRequestMessage { era_id, payload } = *request;
+        let ConsensusRequestMessage { era_id, payload } = *message;
 
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {

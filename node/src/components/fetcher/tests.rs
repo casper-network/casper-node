@@ -16,7 +16,6 @@ use casper_types::testing::TestRng;
 use super::*;
 use crate::{
     components::{
-        consensus::ConsensusRequestMessage,
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         network::{GossipedAddress, Identity as NetworkIdentity},
@@ -25,9 +24,9 @@ use crate::{
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement},
         incoming::{
-            ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieRequestIncoming,
-            TrieResponseIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
+            TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{AcceptDeployRequest, MarkBlockCompletedRequest},
     },
@@ -134,7 +133,7 @@ enum Event {
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
-    ConsensusDemandIncoming(DemandIncoming<ConsensusRequestMessage>),
+    ConsensusRequestMessageIncoming(ConsensusRequestMessageIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -258,7 +257,7 @@ impl ReactorTrait for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
-            | Event::ConsensusDemandIncoming(_)
+            | Event::ConsensusRequestMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::FetchedNewBlockAnnouncement(_)
             | Event::FetchedNewFinalitySignatureAnnouncement(_)
