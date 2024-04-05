@@ -698,14 +698,22 @@ impl EraSupervisor {
         rng: &mut NodeRng,
         sender: NodeId,
         msg: ConsensusMessage,
+        ticket: Ticket,
     ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 trace!(era = era_id.value(), "received a consensus message");
 
-                self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
-                    consensus.handle_message(rng, sender, payload, Timestamp::now())
-                })
+                let rv =
+                    self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
+                        consensus.handle_message(rng, sender, payload, Timestamp::now())
+                    });
+
+                // TODO: This is suboptimal, but best effort, until more fine-grained threading of
+                //       tickets through consensus is implemented.
+                drop(ticket);
+
+                rv
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => match self.current_era() {
                 None => Effects::new(),
@@ -714,15 +722,23 @@ impl EraSupervisor {
                         || !self.open_eras.contains_key(&era_id)
                     {
                         trace!(era = era_id.value(), "not handling message; era too old");
+                        drop(ticket);
                         return Effects::new();
                     }
-                    self.iter_past(era_id, PAST_EVIDENCE_ERAS)
+
+                    let rv = self
+                        .iter_past(era_id, PAST_EVIDENCE_ERAS)
                         .flat_map(|e_id| {
                             self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
                                 consensus.send_evidence(sender, &pub_key)
                             })
                         })
-                        .collect()
+                        .collect();
+
+                    // TODO: As above, requires more fine-grained threading of tickets.
+                    drop(ticket);
+
+                    rv
                 }
             },
         }

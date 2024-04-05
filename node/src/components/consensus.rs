@@ -512,16 +512,14 @@ where
                             })
                         })
                 } else {
-                    let rv = self.handle_message(effect_builder, rng, sender, *message);
-                    drop(ticket); // TODO: drop ticket in `handle_message` effect instead
-                    rv
+                    self.handle_message(effect_builder, rng, sender, *message, ticket)
                 }
             }
             Event::DelayedIncoming(ConsensusMessageIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: drop ticket in `handle_message` effect instead
-            }) => self.handle_message(effect_builder, rng, sender, *message),
+                ticket,
+            }) => self.handle_message(effect_builder, rng, sender, *message, ticket),
             Event::RequestMessageIncoming(ConsensusRequestMessageIncoming {
                 sender,
                 message,
