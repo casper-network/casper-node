@@ -24,7 +24,7 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
         BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
         QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
         StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
@@ -1229,6 +1229,7 @@ where
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
         let balance_handling = BalanceHandling::Available { holds_epoch };
+        let proof_handling = ProofHandling::NoProofs;
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
@@ -1236,6 +1237,7 @@ where
             protocol_version,
             balance_identifier,
             balance_handling,
+            proof_handling,
         );
         self.data_access_layer.balance(request)
     }
@@ -1251,11 +1253,13 @@ where
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
         let balance_handling = BalanceHandling::Available { holds_epoch };
+        let proof_handling = ProofHandling::NoProofs;
         let request = BalanceRequest::from_public_key(
             state_root_hash,
             protocol_version,
             public_key,
             balance_handling,
+            proof_handling,
         );
         self.data_access_layer.balance(request)
     }

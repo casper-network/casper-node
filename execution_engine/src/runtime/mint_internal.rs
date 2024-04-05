@@ -141,6 +141,11 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
+        Runtime::total_balance(self, purse)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
     fn available_balance(
         &mut self,
         purse: URef,

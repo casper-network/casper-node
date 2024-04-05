@@ -94,6 +94,10 @@ impl ExecutionArtifactBuilder {
         }
     }
 
+    pub fn error_message(&self) -> Option<String> {
+        self.error_message.clone()
+    }
+
     pub fn consumed(&self) -> U512 {
         self.consumed.value()
     }
@@ -135,10 +139,25 @@ impl ExecutionArtifactBuilder {
             return Err(true);
         }
         self.with_appended_effects(handle_refund_result.effects());
-        if let (None, HandleRefundResult::Failure(err)) =
-            (&self.error_message, handle_refund_result)
+        if let (None, HandleRefundResult::Failure(_)) = (&self.error_message, handle_refund_result)
         {
-            self.error_message = Some(format!("{}", err));
+            self.error_message = handle_refund_result.error_message();
+            return Err(false);
+        }
+        Ok(self)
+    }
+
+    pub fn with_clear_refund_purse_result(
+        &mut self,
+        handle_refund_result: &HandleRefundResult,
+    ) -> Result<&mut Self, bool> {
+        if let HandleRefundResult::RootNotFound = handle_refund_result {
+            return Err(true);
+        }
+        self.with_appended_effects(handle_refund_result.effects());
+        if let (None, HandleRefundResult::Failure(_)) = (&self.error_message, handle_refund_result)
+        {
+            self.error_message = handle_refund_result.error_message();
             return Err(false);
         }
         Ok(self)
@@ -151,13 +170,9 @@ impl ExecutionArtifactBuilder {
         if let HandleRefundResult::RootNotFound = handle_refund_result {
             return Err(());
         }
-        if let (None, HandleRefundResult::Failure(err)) =
-            (&self.error_message, handle_refund_result)
+        if let (None, HandleRefundResult::Failure(_)) = (&self.error_message, handle_refund_result)
         {
-            self.error_message = Some(format!("{}", err));
-            // NOTE: if handle refund fails, we revert any prior effects.
-            // and only commit effects produced by refund payment (if any).
-            self.effects = handle_refund_result.effects();
+            self.error_message = handle_refund_result.error_message();
             return Ok(self);
         }
         self.with_appended_effects(handle_refund_result.effects());
@@ -173,9 +188,6 @@ impl ExecutionArtifactBuilder {
         }
         if let (None, HandleFeeResult::Failure(err)) = (&self.error_message, handle_fee_result) {
             self.error_message = Some(format!("{}", err));
-            // NOTE: if handle fee fails, we revert any prior effects.
-            // and only commit effects produced by handle fee (if any).
-            self.effects = handle_fee_result.effects();
             return Ok(self);
         }
         self.with_appended_effects(handle_fee_result.effects());
@@ -191,9 +203,6 @@ impl ExecutionArtifactBuilder {
         }
         if let (None, BalanceHoldResult::Failure(err)) = (&self.error_message, hold_result) {
             self.error_message = Some(format!("{}", err));
-            // NOTE: if holding balance fails, we revert any prior effects.
-            // and only commit effects produced by balance hold (if any).
-            self.effects = hold_result.effects();
             return Ok(self);
         }
         self.with_appended_effects(hold_result.effects());

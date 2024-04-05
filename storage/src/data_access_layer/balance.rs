@@ -1,5 +1,4 @@
 //! Types for balance queries.
-use crate::data_access_layer::BalanceHoldRequest;
 use casper_types::{
     account::AccountHash,
     global_state::TrieMerkleProof,
@@ -11,6 +10,7 @@ use casper_types::{
     AccessRights, BlockTime, Digest, EntityAddr, HoldsEpoch, InitiatorAddr, Key, ProtocolVersion,
     PublicKey, StoredValue, URef, URefAddr, U512,
 };
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use tracing::error;
 
@@ -28,6 +28,16 @@ pub enum BalanceHandling {
     Total,
     /// Adjust for balance holds (if any).
     Available { holds_epoch: HoldsEpoch },
+}
+
+/// Merkle proof handling options.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub enum ProofHandling {
+    /// Do not attempt to provide proofs.
+    #[default]
+    NoProofs,
+    /// Provide proofs.
+    Proofs,
 }
 
 /// Represents a way to make a balance inquiry.
@@ -165,6 +175,7 @@ pub struct BalanceRequest {
     protocol_version: ProtocolVersion,
     identifier: BalanceIdentifier,
     balance_handling: BalanceHandling,
+    proof_handling: ProofHandling,
 }
 
 impl BalanceRequest {
@@ -174,12 +185,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier,
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -189,12 +202,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         purse_uref: URef,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Purse(purse_uref),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -204,12 +219,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Public(public_key),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -219,12 +236,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Account(account_hash),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -234,12 +253,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         entity_addr: EntityAddr,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Entity(entity_addr),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -249,12 +270,14 @@ impl BalanceRequest {
         protocol_version: ProtocolVersion,
         balance_addr: URefAddr,
         balance_handling: BalanceHandling,
+        proof_handling: ProofHandling,
     ) -> Self {
         BalanceRequest {
             state_hash,
             protocol_version,
             identifier: BalanceIdentifier::Internal(balance_addr),
             balance_handling,
+            proof_handling,
         }
     }
 
@@ -277,28 +300,83 @@ impl BalanceRequest {
     pub fn balance_handling(&self) -> BalanceHandling {
         self.balance_handling
     }
-}
 
-impl From<BalanceHoldRequest> for BalanceRequest {
-    fn from(request: BalanceHoldRequest) -> Self {
-        let balance_handling = BalanceHandling::Available {
-            holds_epoch: request.holds_epoch(),
-        };
-        BalanceRequest::new(
-            request.state_hash(),
-            request.protocol_version(),
-            request.identifier().clone(),
-            balance_handling,
-        )
+    /// Returns proof handling.
+    pub fn proof_handling(&self) -> ProofHandling {
+        self.proof_handling
     }
 }
+
+/// Balance holds with Merkle proofs.
+pub type BalanceHolds = BTreeMap<BalanceHoldAddrTag, U512>;
 
 /// Balance holds with Merkle proofs.
 pub type BalanceHoldsWithProof =
     BTreeMap<BalanceHoldAddrTag, (U512, TrieMerkleProof<Key, StoredValue>)>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProofsResult {
+    NotRequested {
+        /// Any time-relevant active holds on the balance, without proofs.
+        balance_holds: BTreeMap<BlockTime, BalanceHolds>,
+    },
+    Proofs {
+        /// A proof that the given value is present in the Merkle trie.
+        total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
+        /// Any time-relevant active holds on the balance, with proofs..
+        balance_holds: BTreeMap<BlockTime, BalanceHoldsWithProof>,
+    },
+}
+
+impl ProofsResult {
+    /// Returns total balance proof, if any.
+    pub fn total_balance_proof(&self) -> Option<&TrieMerkleProof<Key, StoredValue>> {
+        match self {
+            ProofsResult::NotRequested { .. } => None,
+            ProofsResult::Proofs {
+                total_balance_proof,
+                ..
+            } => Some(total_balance_proof),
+        }
+    }
+
+    /// Returns balance holds, if any.
+    pub fn balance_holds_with_proof(&self) -> Option<&BTreeMap<BlockTime, BalanceHoldsWithProof>> {
+        match self {
+            ProofsResult::NotRequested { .. } => None,
+            ProofsResult::Proofs { balance_holds, .. } => Some(balance_holds),
+        }
+    }
+
+    /// Returns balance holds, if any.
+    pub fn balance_holds(&self) -> Option<&BTreeMap<BlockTime, BalanceHolds>> {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => Some(balance_holds),
+            ProofsResult::Proofs { .. } => None,
+        }
+    }
+
+    /// Returns the total held amount.
+    pub fn total_held_amount(&self) -> U512 {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => balance_holds
+                .values()
+                .flat_map(|holds| holds.values().copied())
+                .collect_vec()
+                .into_iter()
+                .sum(),
+            ProofsResult::Proofs { balance_holds, .. } => balance_holds
+                .values()
+                .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                .collect_vec()
+                .into_iter()
+                .sum(),
+        }
+    }
+}
+
 /// Result enum that represents all possible outcomes of a balance request.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BalanceResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,
@@ -310,33 +388,43 @@ pub enum BalanceResult {
         total_balance: U512,
         /// The available balance (total balance - sum of all active holds).
         available_balance: U512,
-        /// A proof that the given value is present in the Merkle trie.
-        total_balance_proof: Box<TrieMerkleProof<Key, StoredValue>>,
-        /// Any time-relevant active holds on the balance.
-        balance_holds: BTreeMap<BlockTime, BalanceHoldsWithProof>,
+        /// Proofs result.
+        proofs_result: ProofsResult,
     },
     Failure(TrackingCopyError),
 }
 
 impl BalanceResult {
-    /// Returns the amount of motes for a [`BalanceResult::Success`] variant.
-    pub fn motes(&self) -> Option<&U512> {
+    /// Returns the purse address for a [`BalanceResult::Success`] variant.
+    pub fn purse_addr(&self) -> Option<URefAddr> {
         match self {
-            BalanceResult::Success {
-                available_balance: motes,
-                ..
-            } => Some(motes),
+            BalanceResult::Success { purse_addr, .. } => Some(*purse_addr),
             _ => None,
         }
     }
 
-    /// Returns the Merkle proof for a given [`BalanceResult::Success`] variant.
-    pub fn proof(self) -> Option<TrieMerkleProof<Key, StoredValue>> {
+    /// Returns the total balance for a [`BalanceResult::Success`] variant.
+    pub fn total_balance(&self) -> Option<&U512> {
+        match self {
+            BalanceResult::Success { total_balance, .. } => Some(total_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the available balance for a [`BalanceResult::Success`] variant.
+    pub fn available_balance(&self) -> Option<&U512> {
         match self {
             BalanceResult::Success {
-                total_balance_proof: proof,
-                ..
-            } => Some(*proof),
+                available_balance, ..
+            } => Some(available_balance),
+            _ => None,
+        }
+    }
+
+    /// Returns the Merkle proofs, if any.
+    pub fn proofs_result(self) -> Option<ProofsResult> {
+        match self {
+            BalanceResult::Success { proofs_result, .. } => Some(proofs_result),
             _ => None,
         }
     }

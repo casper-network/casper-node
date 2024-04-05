@@ -9,6 +9,7 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
+    bytesrepr::ToBytes,
     execution::{Effects, TransformInstruction, TransformKindV2, TransformV2},
     global_state::TrieMerkleProof,
     Digest, Key, StoredValue,
@@ -49,6 +50,11 @@ impl Cache {
             cached_values: HashMap::new(),
             pruned: HashSet::new(),
         }
+    }
+
+    /// Returns true if the pruned and cached values are both empty.
+    pub fn is_empty(&self) -> bool {
+        self.cached_values.is_empty() && self.pruned.is_empty()
     }
 
     fn insert_write(&mut self, key: Key, value: StoredValue) {
@@ -116,6 +122,13 @@ pub struct ScratchGlobalStateView {
     pub(crate) root_hash: Digest,
 }
 
+impl ScratchGlobalStateView {
+    /// Returns true if the pruned and cached values are both empty.
+    pub fn is_empty(&self) -> bool {
+        self.cache.read().unwrap().is_empty()
+    }
+}
+
 impl ScratchGlobalState {
     /// Creates a state from an existing environment, store, and root_hash.
     /// Intended to be used for testing.
@@ -176,9 +189,11 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         &self,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        if self.cache.read().unwrap().pruned.contains(key) {
-            return Ok(None);
+        // if self.cache.is_empty() proceed else error
+        if !self.is_empty() {
+            return Err(Self::Error::CannotProvideProofsOverCachedData);
         }
+
         let txn = self.environment.create_read_txn()?;
         let ret = match read_with_proof::<
             Key,
@@ -197,6 +212,15 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     }
 
     fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
+        let mut ret = Vec::new();
+        let cache = self.cache.read().unwrap();
+        for cached_key in cache.cached_values.keys() {
+            let serialized_key = cached_key.to_bytes()?;
+            if serialized_key.starts_with(prefix) && !cache.pruned.contains(cached_key) {
+                ret.push(*cached_key)
+            }
+        }
+
         let txn = self.environment.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
             &txn,
@@ -204,8 +228,6 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             &self.root_hash,
             prefix,
         );
-        let mut ret = Vec::new();
-        let cache = self.cache.read().unwrap();
         for result in keys_iter {
             match result {
                 Ok(key) => {
@@ -228,6 +250,15 @@ impl CommitProvider for ScratchGlobalState {
         for (key, kind) in effects.value().into_iter().map(TransformV2::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
+                (_, TransformKindV2::Identity) => {
+                    // effectively a noop.
+                    debug!(
+                        ?state_hash,
+                        ?key,
+                        "scratch commit: attempt to commit a read."
+                    );
+                    continue;
+                }
                 (None, TransformKindV2::Write(new_value)) => TransformInstruction::store(new_value),
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous

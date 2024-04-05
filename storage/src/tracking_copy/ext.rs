@@ -4,17 +4,19 @@ use std::{
 };
 
 use crate::{
-    data_access_layer::balance::BalanceHoldsWithProof,
+    data_access_layer::balance::{BalanceHolds, BalanceHoldsWithProof},
     global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyError},
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof,
-    system::mint::BalanceHoldAddrTag, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue,
-    ChecksumRegistry, EntityAddr, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash,
-    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512,
+    account::AccountHash,
+    addressable_entity::NamedKeys,
+    global_state::TrieMerkleProof,
+    system::mint::{BalanceHoldAddr, BalanceHoldAddrTag},
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr,
+    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, URef, URefAddr, U512,
 };
-
-use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
 
 /// Higher-level operations on the state via a `TrackingCopy`.
 pub trait TrackingCopyExt<R> {
@@ -26,6 +28,15 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets the purse balance key for a given purse.
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error>;
+
+    /// Gets the balance hold keys for the imputed purse (if any).
+    fn get_balance_hold_addresses(
+        &self,
+        purse_addr: URefAddr,
+    ) -> Result<Vec<BalanceHoldAddr>, Self::Error>;
+
+    /// Returns total balance.
+    fn get_total_balance(&self, key: Key) -> Result<Motes, Self::Error>;
 
     /// Returns the available balance, considering any holds from holds_epoch to now.
     /// If holds_epoch is none, available balance == total balance.
@@ -51,9 +62,15 @@ pub trait TrackingCopyExt<R> {
     fn clear_expired_balance_holds(
         &mut self,
         purse_addr: URefAddr,
-        tag: BalanceHoldAddrTag,
-        holds_epoch: HoldsEpoch,
+        filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
     ) -> Result<(), Self::Error>;
+
+    /// Gets the balance holds for a given balance, without Merkle proofs.
+    fn get_balance_holds(
+        &self,
+        purse_addr: URefAddr,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<BTreeMap<BlockTime, BalanceHolds>, Self::Error>;
 
     /// Gets the balance holds for a given balance, with Merkle proofs.
     fn get_balance_holds_with_proof(
@@ -102,63 +119,6 @@ where
         Ok(Key::Balance(balance_key.addr()))
     }
 
-    fn get_available_balance(
-        &self,
-        key: Key,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Motes, Self::Error> {
-        let key = {
-            if let Key::URef(uref) = key {
-                Key::Balance(uref.addr())
-            } else {
-                key
-            }
-        };
-
-        if let Key::Balance(purse_addr) = key {
-            let stored_value: StoredValue = self
-                .read(&key)?
-                .ok_or(TrackingCopyError::KeyNotFound(key))?;
-            let cl_value: CLValue = stored_value
-                .try_into()
-                .map_err(TrackingCopyError::TypeMismatch)?;
-            let total_balance = cl_value.into_t::<U512>()?;
-            match holds_epoch.value() {
-                None => Ok(Motes::new(total_balance)),
-                Some(epoch) => {
-                    let mut total_holds = U512::zero();
-                    let tag = BalanceHoldAddrTag::Gas;
-                    let prefix = tag.purse_prefix_by_tag(purse_addr)?;
-                    let gas_hold_keys = self.keys_with_prefix(&prefix)?;
-                    for gas_hold_key in gas_hold_keys {
-                        if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
-                            let block_time = balance_hold_addr.block_time();
-                            if block_time.value() < epoch {
-                                // ignore holds from prior to imputed epoch
-                                continue;
-                            }
-                            let stored_value: StoredValue = self
-                                .read(&gas_hold_key)?
-                                .ok_or(TrackingCopyError::KeyNotFound(key))?;
-                            let cl_value: CLValue = stored_value
-                                .try_into()
-                                .map_err(TrackingCopyError::TypeMismatch)?;
-                            let hold_amount = cl_value.into_t()?;
-                            total_holds =
-                                total_holds.checked_add(hold_amount).unwrap_or(U512::zero());
-                        }
-                    }
-                    let available = total_balance
-                        .checked_sub(total_holds)
-                        .unwrap_or(U512::zero());
-                    Ok(Motes::new(available))
-                }
-            }
-        } else {
-            Err(Self::Error::UnexpectedKeyVariant(key))
-        }
-    }
-
     fn get_purse_balance_key_with_proof(
         &self,
         purse_key: Key,
@@ -178,10 +138,87 @@ where
         Ok((balance_key, proof))
     }
 
+    fn get_available_balance(
+        &self,
+        key: Key,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<Motes, Self::Error> {
+        let key = {
+            if let Key::URef(uref) = key {
+                Key::Balance(uref.addr())
+            } else {
+                key
+            }
+        };
+
+        if let Key::Balance(purse_addr) = key {
+            let total_balance = self.get_total_balance(key)?;
+            match holds_epoch.value() {
+                None => Ok(total_balance),
+                Some(epoch) => {
+                    let holds = self.get_balance_hold_addresses(purse_addr)?;
+                    let mut total_holds = U512::zero();
+                    for balance_hold_addr in holds {
+                        let block_time = balance_hold_addr.block_time();
+                        if block_time.value() < epoch {
+                            // skip holds older than imputed epoch
+                            //  don't skip holds with a timestamp >= epoch timestamp
+                            continue;
+                        }
+                        let stored_value: StoredValue = self
+                            .read(&balance_hold_addr.into())?
+                            .ok_or(TrackingCopyError::KeyNotFound(key))?;
+                        let cl_value: CLValue = stored_value
+                            .try_into()
+                            .map_err(TrackingCopyError::TypeMismatch)?;
+                        let hold_amount = cl_value.into_t()?;
+                        total_holds = total_holds.checked_add(hold_amount).unwrap_or(U512::zero());
+                    }
+                    let available = total_balance
+                        .value()
+                        .checked_sub(total_holds)
+                        .unwrap_or(U512::zero());
+                    Ok(Motes::new(available))
+                }
+            }
+        } else {
+            Err(Self::Error::UnexpectedKeyVariant(key))
+        }
+    }
+
+    fn get_total_balance(&self, key: Key) -> Result<Motes, Self::Error> {
+        let key = {
+            if let Key::URef(uref) = key {
+                Key::Balance(uref.addr())
+            } else {
+                key
+            }
+        };
+        if let Key::Balance(_) = key {
+            let stored_value: StoredValue = self
+                .read(&key)?
+                .ok_or(TrackingCopyError::KeyNotFound(key))?;
+            let cl_value: CLValue = stored_value
+                .try_into()
+                .map_err(TrackingCopyError::TypeMismatch)?;
+            let total_balance = cl_value.into_t::<U512>()?;
+            Ok(Motes::new(total_balance))
+        } else {
+            Err(Self::Error::UnexpectedKeyVariant(key))
+        }
+    }
+
     fn get_total_balance_with_proof(
         &self,
         key: Key,
     ) -> Result<(U512, TrieMerkleProof<Key, StoredValue>), Self::Error> {
+        let key = {
+            if let Key::URef(uref) = key {
+                Key::Balance(uref.addr())
+            } else {
+                key
+            }
+        };
         if let Key::Balance(_) = key {
             let proof: TrieMerkleProof<Key, StoredValue> = self
                 .read_with_proof(&key.normalize())?
@@ -198,29 +235,81 @@ where
         }
     }
 
-    fn clear_expired_balance_holds(
-        &mut self,
+    fn get_balance_hold_addresses(
+        &self,
         purse_addr: URefAddr,
-        tag: BalanceHoldAddrTag,
+    ) -> Result<Vec<BalanceHoldAddr>, Self::Error> {
+        let tagged_keys = {
+            let mut ret: Vec<BalanceHoldAddr> = vec![];
+            let tag = BalanceHoldAddrTag::Gas;
+            let gas_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            for key in self.keys_with_prefix(&gas_prefix)? {
+                let addr = key
+                    .as_balance_hold()
+                    .ok_or(Self::Error::UnexpectedKeyVariant(key))?;
+                ret.push(*addr);
+            }
+            let tag = BalanceHoldAddrTag::Processing;
+            let processing_prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            for key in self.keys_with_prefix(&processing_prefix)? {
+                let addr = key
+                    .as_balance_hold()
+                    .ok_or(Self::Error::UnexpectedKeyVariant(key))?;
+                ret.push(*addr);
+            }
+            ret
+        };
+        Ok(tagged_keys)
+    }
+
+    fn get_balance_holds(
+        &self,
+        purse_addr: URefAddr,
         holds_epoch: HoldsEpoch,
-    ) -> Result<(), Self::Error> {
-        let prefix = tag.purse_prefix_by_tag(purse_addr)?;
-        let immut: &_ = self;
-        let gas_hold_keys = immut.keys_with_prefix(&prefix)?;
-        for gas_hold_key in gas_hold_keys {
-            if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
-                let block_time = balance_hold_addr.block_time();
-                if let Some(timestamp) = holds_epoch.value() {
-                    if block_time.value() >= timestamp {
-                        // skip still current holds
-                        continue;
+    ) -> Result<BTreeMap<BlockTime, BalanceHolds>, Self::Error> {
+        let holds = self.get_balance_hold_addresses(purse_addr)?;
+        let mut ret: BTreeMap<BlockTime, BalanceHolds> = BTreeMap::new();
+        for balance_hold_addr in holds {
+            let block_time = balance_hold_addr.block_time();
+            if let Some(timestamp) = holds_epoch.value() {
+                if block_time.value() < timestamp {
+                    // skip holds older than the interval
+                    //  don't skip holds with a timestamp >= epoch timestamp
+                    continue;
+                }
+            }
+            let hold_key: Key = balance_hold_addr.into();
+            let hold_amount = match self.read(&hold_key) {
+                Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
+                    Ok(val) => val,
+                    Err(cve) => return Err(Self::Error::CLValue(cve)),
+                },
+                Ok(Some(_)) => return Err(Self::Error::UnexpectedStoredValueVariant),
+                Ok(None) => return Err(Self::Error::KeyNotFound(hold_key)),
+                Err(gse) => return Err(Self::Error::Storage(gse)),
+            };
+            match ret.entry(block_time) {
+                Entry::Vacant(entry) => {
+                    let mut inner = BTreeMap::new();
+                    inner.insert(balance_hold_addr.tag(), hold_amount);
+                    entry.insert(inner);
+                }
+                Entry::Occupied(mut occupied_entry) => {
+                    let inner = occupied_entry.get_mut();
+                    match inner.entry(balance_hold_addr.tag()) {
+                        Entry::Vacant(entry) => {
+                            entry.insert(hold_amount);
+                        }
+                        Entry::Occupied(_) => {
+                            unreachable!(
+                                "there should be only one entry per (block_time, hold kind)"
+                            );
+                        }
                     }
                 }
-                // prune outdated holds
-                self.prune(gas_hold_key)
             }
         }
-        Ok(())
+        Ok(ret)
     }
 
     fn get_balance_holds_with_proof(
@@ -228,52 +317,81 @@ where
         purse_addr: URefAddr,
         holds_epoch: HoldsEpoch,
     ) -> Result<BTreeMap<BlockTime, BalanceHoldsWithProof>, Self::Error> {
+        let holds = self.get_balance_hold_addresses(purse_addr)?;
         let mut ret: BTreeMap<BlockTime, BalanceHoldsWithProof> = BTreeMap::new();
-        let tag = BalanceHoldAddrTag::Gas;
-        let prefix = tag.purse_prefix_by_tag(purse_addr)?;
-        let gas_hold_keys = self.keys_with_prefix(&prefix)?;
-        // if more hold kinds are added, chain them here and loop once.
-        for gas_hold_key in gas_hold_keys {
-            if let Some(balance_hold_addr) = gas_hold_key.as_balance_hold() {
-                let block_time = balance_hold_addr.block_time();
-                if let Some(timestamp) = holds_epoch.value() {
-                    if block_time.value() < timestamp {
-                        // ignore holds older than the interval
-                        continue;
-                    }
+        for balance_hold_addr in holds {
+            let block_time = balance_hold_addr.block_time();
+            if let Some(timestamp) = holds_epoch.value() {
+                if block_time.value() < timestamp {
+                    // skip holds older than the interval
+                    //  don't skip holds with a timestamp >= epoch timestamp
+                    continue;
                 }
-                let proof: TrieMerkleProof<Key, StoredValue> = self
-                    .read_with_proof(&gas_hold_key.normalize())?
-                    .ok_or(TrackingCopyError::KeyNotFound(gas_hold_key))?;
-                let cl_value: CLValue = proof
-                    .value()
-                    .to_owned()
-                    .try_into()
-                    .map_err(TrackingCopyError::TypeMismatch)?;
-                let hold_amount = cl_value.into_t()?;
-                match ret.entry(block_time) {
-                    Entry::Vacant(entry) => {
-                        let mut inner = BTreeMap::new();
-                        inner.insert(tag, (hold_amount, proof));
-                        entry.insert(inner);
-                    }
-                    Entry::Occupied(mut occupied_entry) => {
-                        let inner = occupied_entry.get_mut();
-                        match inner.entry(tag) {
-                            Entry::Vacant(entry) => {
-                                entry.insert((hold_amount, proof));
-                            }
-                            Entry::Occupied(_) => {
-                                unreachable!(
-                                    "there should be only one entry per (block_time, hold kind)"
-                                );
-                            }
+            }
+            let hold_key: Key = balance_hold_addr.into();
+            let proof: TrieMerkleProof<Key, StoredValue> = self
+                .read_with_proof(&hold_key.normalize())?
+                .ok_or(TrackingCopyError::KeyNotFound(hold_key))?;
+            let cl_value: CLValue = proof
+                .value()
+                .to_owned()
+                .try_into()
+                .map_err(TrackingCopyError::TypeMismatch)?;
+            let hold_amount = cl_value.into_t()?;
+            match ret.entry(block_time) {
+                Entry::Vacant(entry) => {
+                    let mut inner = BTreeMap::new();
+                    inner.insert(balance_hold_addr.tag(), (hold_amount, proof));
+                    entry.insert(inner);
+                }
+                Entry::Occupied(mut occupied_entry) => {
+                    let inner = occupied_entry.get_mut();
+                    match inner.entry(balance_hold_addr.tag()) {
+                        Entry::Vacant(entry) => {
+                            entry.insert((hold_amount, proof));
+                        }
+                        Entry::Occupied(_) => {
+                            unreachable!(
+                                "there should be only one entry per (block_time, hold kind)"
+                            );
                         }
                     }
                 }
             }
         }
         Ok(ret)
+    }
+
+    fn clear_expired_balance_holds(
+        &mut self,
+        purse_addr: URefAddr,
+        filter: Vec<(BalanceHoldAddrTag, HoldsEpoch)>,
+    ) -> Result<(), Self::Error> {
+        for (tag, holds_epoch) in filter {
+            let prefix = tag.purse_prefix_by_tag(purse_addr)?;
+            let immut: &_ = self;
+            let hold_keys = immut.keys_with_prefix(&prefix)?;
+            for hold_key in hold_keys {
+                let balance_hold_addr = hold_key
+                    .as_balance_hold()
+                    .ok_or(Self::Error::UnexpectedKeyVariant(hold_key))?;
+                let hold_block_time = balance_hold_addr.block_time();
+                if let Some(earliest_relevant_timestamp) = holds_epoch.value() {
+                    if hold_block_time.value() > earliest_relevant_timestamp {
+                        // skip still relevant holds
+                        //  the expectation is that holds are cleared after balance checks,
+                        //  and before payment settlement; if that ordering changes in the
+                        //  future this strategy should be reevaluated to determine if it
+                        //  remains correct.
+                        continue;
+                    }
+                }
+                // prune away holds with a timestamp newer than epoch timestamp
+                //  including holds with a timestamp == epoch timestamp
+                self.prune(hold_key)
+            }
+        }
+        Ok(())
     }
 
     fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error> {

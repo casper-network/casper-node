@@ -4,7 +4,10 @@ pub mod mint_provider;
 pub mod runtime_provider;
 pub mod storage_provider;
 
-use casper_types::{system::handle_payment::Error, AccessRights, HoldsEpoch, URef, U512};
+use casper_types::{
+    system::handle_payment::{Error, REFUND_PURSE_KEY},
+    AccessRights, HoldsEpoch, URef, U512,
+};
 use num_rational::Ratio;
 
 use crate::system::handle_payment::{
@@ -23,6 +26,9 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
 
     /// Set refund purse.
     fn set_refund_purse(&mut self, purse: URef) -> Result<(), Error> {
+        // make sure the passed uref is actually a purse...
+        // if it has a balance it is a purse and if not it isn't
+        let _balance = self.available_balance(purse, HoldsEpoch::NOT_APPLICABLE)?;
         internal::set_refund(self, purse)
     }
 
@@ -33,6 +39,11 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
         // supposed to have it.
         let maybe_purse = internal::get_refund_purse(self)?;
         Ok(maybe_purse.map(|p| p.remove_access_rights()))
+    }
+
+    /// Clear refund purse.
+    fn clear_refund_purse(&mut self) -> Result<(), Error> {
+        self.remove_key(REFUND_PURSE_KEY)
     }
 
     /// Calculate overpayment and fees (if any) for payment finalization.

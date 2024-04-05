@@ -49,7 +49,7 @@ fn get_balance_should_work() {
     );
 
     let alice_balance = alice_balance_result
-        .motes()
+        .available_balance()
         .cloned()
         .expect("should have motes");
 
@@ -57,7 +57,13 @@ fn get_balance_should_work() {
 
     let state_root_hash = builder.get_post_state_hash();
 
-    let balance_proof = alice_balance_result.proof().expect("should have proofs");
+    let proofs_result = alice_balance_result
+        .proofs_result()
+        .expect("should have proofs result");
+    let balance_proof = proofs_result
+        .total_balance_proof()
+        .expect("should have proofs")
+        .clone();
 
     assert!(tracking_copy::validate_balance_proof(
         &state_root_hash,
@@ -138,7 +144,7 @@ fn get_balance_using_public_key_should_work() {
         builder.get_public_key_balance_result(protocol_version, ALICE_KEY.clone(), block_time);
 
     let alice_balance = alice_balance_result
-        .motes()
+        .available_balance()
         .cloned()
         .expect("should have motes");
 
@@ -146,7 +152,13 @@ fn get_balance_using_public_key_should_work() {
 
     let state_root_hash = builder.get_post_state_hash();
 
-    let balance_proof = alice_balance_result.proof().expect("should have proofs");
+    let proofs_result = alice_balance_result
+        .proofs_result()
+        .expect("should have proofs result");
+    let balance_proof = proofs_result
+        .total_balance_proof()
+        .expect("should have proofs")
+        .clone();
 
     assert!(tracking_copy::validate_balance_proof(
         &state_root_hash,

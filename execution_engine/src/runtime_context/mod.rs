@@ -422,7 +422,20 @@ where
         self.entity.clone()
     }
 
-    /// Reads the balance of a purse [`URef`].
+    /// Reads the total balance of a purse [`URef`].
+    ///
+    /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
+    pub(crate) fn total_balance(&mut self, purse_uref: &URef) -> Result<Motes, ExecError> {
+        let key = Key::URef(*purse_uref);
+        let (total, _) = self
+            .tracking_copy
+            .borrow_mut()
+            .get_total_balance_with_proof(key)
+            .map_err(ExecError::TrackingCopy)?;
+        Ok(Motes::new(total))
+    }
+
+    /// Reads the available balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     pub(crate) fn available_balance(

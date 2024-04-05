@@ -114,7 +114,7 @@ fn should_charge_non_main_purse() {
     );
 
     let paid_amount = *payment_purse_balance
-        .motes()
+        .available_balance()
         .expect("should have payment amount");
 
     assert_eq!(

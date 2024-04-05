@@ -169,15 +169,29 @@ where
         Ok(())
     }
 
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
+        match self
+            .tracking_copy()
+            .borrow_mut()
+            .get_total_balance(purse.into())
+        {
+            Ok(total) => Ok(total.value()),
+            Err(err) => {
+                error!(?err, "mint native total_balance");
+                Err(Error::Storage)
+            }
+        }
+    }
+
     fn available_balance(
         &mut self,
-        uref: URef,
+        purse: URef,
         holds_epoch: HoldsEpoch,
     ) -> Result<Option<U512>, Error> {
         match self
             .tracking_copy()
             .borrow_mut()
-            .get_available_balance(Key::Balance(uref.addr()), holds_epoch)
+            .get_available_balance(Key::Balance(purse.addr()), holds_epoch)
         {
             Ok(motes) => Ok(Some(motes.value())),
             Err(_) => Err(Error::Storage),
