@@ -860,16 +860,8 @@ impl<REv> EffectBuilder<REv> {
     {
         // TODO: Remove demands entirely as they are no longer needed with tickets.
         let reactor_event =
-            match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload, ticket)
-            {
-                Ok((rev, demand_has_been_satisfied)) => {
-                    tokio::spawn(async move {
-                        if let Some(answer) = demand_has_been_satisfied.await {
-                            self.send_message(sender, answer).await;
-                        }
-                    });
-                    rev
-                }
+            match <REv as FromIncoming<P>>::try_demand_from_incoming(sender, payload, ticket) {
+                Ok(rev) => rev,
                 Err((payload, ticket)) => {
                     <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket)
                 }

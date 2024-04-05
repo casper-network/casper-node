@@ -7,7 +7,6 @@ use std::{
 
 use derive_more::From;
 use fmt::Debug;
-use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
@@ -18,13 +17,10 @@ use crate::{
         gossiper,
         network::{Channel, FromIncoming, GossipedAddress, MessageKind, Payload, Ticket},
     },
-    effect::{
-        incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand,
-            TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
-        },
-        EffectBuilder,
+    effect::incoming::{
+        ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
+        NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequest,
+        TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
     },
     types::{Block, Deploy, FinalitySignature, NodeId},
 };
@@ -427,11 +423,10 @@ where
     }
 
     fn try_demand_from_incoming(
-        effect_builder: EffectBuilder<REv>,
         sender: NodeId,
         payload: Message,
         ticket: Ticket,
-    ) -> Result<(Self, BoxFuture<'static, Option<Message>>), (Message, Ticket)>
+    ) -> Result<Self, (Message, Ticket)>
     where
         Self: Sized + Send,
     {
@@ -439,26 +434,18 @@ where
             Message::GetRequest {
                 tag: Tag::TrieOrChunk,
                 serialized_id,
-            } => {
-                // TODO: Do not create a responder anymore here.
-                let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
-                    sender,
-                    request_msg: Box::new(TrieRequest(serialized_id)),
-                    ticket,
-                });
-
-                Ok((ev, fut.boxed()))
+            } => Ok(TrieDemand {
+                sender,
+                request_msg: Box::new(TrieRequest(serialized_id)),
+                ticket,
             }
-            Message::ConsensusRequest(request_msg) => {
-                let (ev, fut) =
-                    effect_builder.create_request_parts(move |responder| ConsensusDemand {
-                        sender,
-                        request_msg: Box::new(request_msg),
-                        ticket,
-                    });
-
-                Ok((ev, fut.boxed()))
+            .into()),
+            Message::ConsensusRequest(request_msg) => Ok(ConsensusDemand {
+                sender,
+                request_msg: Box::new(request_msg),
+                ticket,
             }
+            .into()),
             _ => Err((payload, ticket)),
         }
     }
