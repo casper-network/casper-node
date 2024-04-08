@@ -1323,7 +1323,7 @@ pub trait StateProvider {
             QueryResult::Failure(tce) => { EntryPointsResult::Failure(tce) }
             QueryResult::Success { value, .. } => {
                 if let StoredValue::EntryPoint(entry_point_value) = *value {
-                    EntryPointsResult::Success { entry_points: entry_point_value }
+                    EntryPointsResult::Success { entry_point: entry_point_value }
                 } else {
                     error!("Expected to get entry point value received other variant");
                     EntryPointsResult::Failure(

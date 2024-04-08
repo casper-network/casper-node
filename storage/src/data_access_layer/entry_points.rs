@@ -35,7 +35,7 @@ pub enum EntryPointsResult {
     /// Contains an addressable entity from global state.
     Success {
         /// An addressable entity.
-        entry_points: EntryPointValue,
+        entry_point: EntryPointValue,
     },
     Failure(TrackingCopyError),
 }
@@ -43,8 +43,8 @@ pub enum EntryPointsResult {
 impl EntryPointsResult {
     /// Returns the result based on a particular variant of entrypoint
     pub fn into_v1_entry_point(self) -> Option<EntryPoint> {
-        if let Self::Success { entry_points } = self {
-            match entry_points {
+        if let Self::Success { entry_point } = self {
+            match entry_point {
                 EntryPointValue::V1CasperVm(entry_point) => { Some(entry_point) }
                 EntryPointValue::V2CasperVm(_) => None,
             }
