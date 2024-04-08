@@ -614,7 +614,7 @@ pub trait Auction:
             // fetch most recent validator public key if public key was changed
             // or the validator withdrew their bid completely
             let validator_public_key =
-                match detail::get_most_recent_validator_public_key(self, proposer) {
+                match detail::get_most_recent_validator_public_key(self, proposer.clone()) {
                     Ok(pubkey) => pubkey,
                     Err(Error::BridgeRecordChainTooLong) => {
                         // Validator bid's public key has been changed too many times,
