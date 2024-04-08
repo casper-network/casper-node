@@ -1743,9 +1743,9 @@ impl<'a, R> Runtime<'a, R>
             return Ok(Err(ApiError::NotAllowedToAddContractVersion));
         }
 
-        if entry_points.contains_stored_session() {
-            return Err(ExecError::InvalidEntryPointType);
-        }
+        // if entry_points.contains_stored_session() {
+        //     return Err(ExecError::InvalidEntryPointType);
+        // }
 
         let mut package = self.context.get_package(package_hash)?;
 
