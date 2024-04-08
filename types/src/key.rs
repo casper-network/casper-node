@@ -726,7 +726,7 @@ impl Key {
             let validator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                 bytes[1..BidAddr::VALIDATOR_BID_ADDR_LENGTH].as_ref(),
             )
-                .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+            .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
 
             let bid_addr = {
                 if tag == BidAddrTag::Unified {
@@ -737,7 +737,7 @@ impl Key {
                     let delegator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                         bytes[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
                     )
-                        .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                    .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
                     BidAddr::new_delegator_addr((validator_bytes, delegator_bytes))
                 } else {
                     return Err(FromStrError::BidAddr("invalid tag".to_string()));

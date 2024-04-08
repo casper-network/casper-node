@@ -299,8 +299,8 @@ impl From<CLValueError> for AddResult {
 }
 
 impl<R: StateReader<Key, StoredValue>> TrackingCopy<R>
-    where
-        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
     pub fn new(reader: R, max_query_depth: u64) -> TrackingCopy<R> {
@@ -936,7 +936,7 @@ use tempfile::TempDir;
 
 /// Creates a temp global state with initial state and checks out a tracking copy on it.
 pub fn new_temporary_tracking_copy(
-    initial_data: impl IntoIterator<Item=(Key, StoredValue)>,
+    initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
     max_query_depth: Option<u64>,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) = make_temporary_global_state(initial_data);

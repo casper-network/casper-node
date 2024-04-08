@@ -1,5 +1,5 @@
 use crate::tracking_copy::TrackingCopyError;
-use casper_types::{Digest, Key, EntryPointValue, EntryPoint};
+use casper_types::{Digest, EntryPoint, EntryPointValue, Key};
 
 /// Represents a request to obtain entry points.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl EntryPointsResult {
     pub fn into_v1_entry_point(self) -> Option<EntryPoint> {
         if let Self::Success { entry_point } = self {
             match entry_point {
-                EntryPointValue::V1CasperVm(entry_point) => { Some(entry_point) }
+                EntryPointValue::V1CasperVm(entry_point) => Some(entry_point),
                 EntryPointValue::V2CasperVm(_) => None,
             }
         } else {

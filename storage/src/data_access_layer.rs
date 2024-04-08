@@ -12,6 +12,7 @@ pub mod balance;
 mod balance_hold;
 pub mod bids;
 pub mod block_rewards;
+mod entry_points;
 pub mod era_validators;
 mod execution_results_checksum;
 mod fee;
@@ -29,7 +30,6 @@ mod system_entity_registry;
 pub mod tagged_values;
 mod total_supply;
 mod trie;
-mod entry_points;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
@@ -39,12 +39,12 @@ pub use balance_hold::{
 };
 pub use bids::{BidsRequest, BidsResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
+pub use entry_points::{EntryPointsRequest, EntryPointsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
-pub use entry_points::{EntryPointsResult, EntryPointsRequest};
 pub use fee::{FeeError, FeeRequest, FeeResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
@@ -100,8 +100,8 @@ impl<S> DataAccessLayer<S> {
 }
 
 impl<S> CommitProvider for DataAccessLayer<S>
-    where
-        S: CommitProvider,
+where
+    S: CommitProvider,
 {
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
         self.state.commit(state_hash, effects)
@@ -109,8 +109,8 @@ impl<S> CommitProvider for DataAccessLayer<S>
 }
 
 impl<S> StateProvider for DataAccessLayer<S>
-    where
-        S: StateProvider,
+where
+    S: StateProvider,
 {
     type Reader = S::Reader;
 

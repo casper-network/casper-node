@@ -2,7 +2,10 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::Serialize;
 
-use casper_types::{AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, EntryPoint, Package, PackageHash, Timestamp, Transaction, U512};
+use casper_types::{
+    AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, EntryPoint, Package,
+    PackageHash, Timestamp, Transaction, U512,
+};
 
 use super::{Error, Source};
 use crate::effect::Responder;
@@ -191,10 +194,15 @@ impl Display for Event {
                     block_header.state_root_hash()
                 )
             }
-            Event::GetEntryPointResult { event_metadata, block_header, .. } => {
+            Event::GetEntryPointResult {
+                event_metadata,
+                block_header,
+                ..
+            } => {
                 write!(
                     formatter,
-                    "verifying entry point to validate transaction with hash {} with state hash {}", event_metadata.transaction.hash(),
+                    "verifying entry point to validate transaction with hash {} with state hash {}",
+                    event_metadata.transaction.hash(),
                     block_header.state_root_hash(),
                 )
             }

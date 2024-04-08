@@ -228,6 +228,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns a reference to the wrapped `EntryPointValue` if this is a `EntryPointValue` variant.
     pub fn as_entry_point_value(&self) -> Option<&EntryPointValue> {
         match self {
             StoredValue::EntryPoint(entry_point) => Some(entry_point),
@@ -347,6 +348,7 @@ impl StoredValue {
         }
     }
 
+    /// Returns the `EntryPointValue` if this is a `EntryPointValue` variant.
     pub fn into_entry_point_value(self) -> Option<EntryPointValue> {
         match self {
             StoredValue::EntryPoint(value) => Some(value),

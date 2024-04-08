@@ -7,7 +7,13 @@ use crate::{
     data_access_layer::balance::BalanceHoldsWithProof,
     global_state::{error::Error as GlobalStateError, state::StateReader},
 };
-use casper_types::{account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof, system::mint::BalanceHoldAddrTag, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue, ChecksumRegistry, EntityAddr, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef, URefAddr, U512, EntryPoints, EntryPointAddr, EntryPointValue};
+use casper_types::{
+    account::AccountHash, addressable_entity::NamedKeys, global_state::TrieMerkleProof,
+    system::mint::BalanceHoldAddrTag, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLValue,
+    ChecksumRegistry, EntityAddr, EntryPointAddr, EntryPointValue, EntryPoints, HoldsEpoch, Key,
+    KeyTag, Motes, Package, PackageHash, StoredValue, StoredValueTypeMismatch,
+    SystemEntityRegistry, URef, URefAddr, U512,
+};
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
 
@@ -77,8 +83,8 @@ pub trait TrackingCopyExt<R> {
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
-    where
-        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -375,16 +381,16 @@ impl<R> TrackingCopyExt<R> for TrackingCopy<R>
                 }
                 if let Key::EntryPoint(entry_point_addr) = key {
                     match entry_point_addr {
-                        EntryPointAddr::VmCasperV1 { .. } => { ret.insert(key); }
-                        EntryPointAddr::VmCasperV2 { .. } => continue
+                        EntryPointAddr::VmCasperV1 { .. } => {
+                            ret.insert(key);
+                        }
+                        EntryPointAddr::VmCasperV2 { .. } => continue,
                     }
                 }
             }
         };
 
-
         let mut entry_points_v1 = EntryPoints::new();
-
 
         for entry_point_key in ret.iter() {
             match self.read(entry_point_key)? {
@@ -393,27 +399,30 @@ impl<R> TrackingCopyExt<R> for TrackingCopy<R>
                 }
                 Some(other) => {
                     return Err(TrackingCopyError::TypeMismatch(
-                        StoredValueTypeMismatch::new("EntryPointsV1".to_string(), other.type_name())
+                        StoredValueTypeMismatch::new(
+                            "EntryPointsV1".to_string(),
+                            other.type_name(),
+                        ),
                     ));
                 }
-                None => {
-                    match self.cache.reads_cached.get(entry_point_key) {
-                        Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
-                            entry_points_v1.add_entry_point(entry_point.to_owned())
-                        }
-                        Some(other) => {
-                            return Err(TrackingCopyError::TypeMismatch(
-                                StoredValueTypeMismatch::new("EntryPointsV1".to_string(), other.type_name())
-                            ));
-                        }
-                        None => {
-                            return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
-                        }
+                None => match self.cache.reads_cached.get(entry_point_key) {
+                    Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => {
+                        entry_points_v1.add_entry_point(entry_point.to_owned())
                     }
-                }
+                    Some(other) => {
+                        return Err(TrackingCopyError::TypeMismatch(
+                            StoredValueTypeMismatch::new(
+                                "EntryPointsV1".to_string(),
+                                other.type_name(),
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(TrackingCopyError::KeyNotFound(*entry_point_key));
+                    }
+                },
             }
         }
-
 
         Ok(entry_points_v1)
     }

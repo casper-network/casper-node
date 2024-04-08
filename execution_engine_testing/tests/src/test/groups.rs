@@ -67,7 +67,7 @@ fn should_call_group_restricted_session() {
         RESTRICTED_SESSION,
         runtime_args! {},
     )
-        .build();
+    .build();
 
     builder.exec(exec_request_2).expect_failure();
 
@@ -104,7 +104,7 @@ fn should_call_group_restricted_session_caller() {
             PACKAGE_HASH_ARG => package_hash.into_package_hash()
         },
     )
-        .build();
+    .build();
 
     builder.exec(exec_request_2).expect_failure();
 
@@ -119,7 +119,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
 
@@ -177,7 +177,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
 
@@ -290,7 +290,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
@@ -393,7 +393,7 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
@@ -420,7 +420,7 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
             PACKAGE_HASH_ARG => *package_hash,
         },
     )
-        .build();
+    .build();
 
     builder.exec(exec_request_2).expect_success().commit();
 }
@@ -433,7 +433,7 @@ fn should_call_group_restricted_contract_as_session() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
@@ -465,7 +465,7 @@ fn should_call_group_restricted_contract_as_session() {
             PACKAGE_HASH_ARG => *package_hash,
         },
     )
-        .build();
+    .build();
 
     builder.exec(exec_request_3).expect_failure();
 
@@ -480,7 +480,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
@@ -512,7 +512,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
             PACKAGE_HASH_ARG => *package_hash,
         },
     )
-        .build();
+    .build();
 
     builder.exec(exec_request_3).commit();
 
@@ -662,7 +662,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
     let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
@@ -728,7 +728,7 @@ fn should_call_group_restricted_stored_payment_code() {
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
-        .build();
+    .build();
 
     let mut builder = setup_from_lmdb_fixture();
 

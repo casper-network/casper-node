@@ -17,21 +17,32 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::{addressable_entity::{
-    ActionThresholds, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
-    NamedKeys,
-}, bytesrepr, execution::Effects, system::{
-    auction::{
-        self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
-        AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-        ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+use casper_types::{
+    addressable_entity::{
+        ActionThresholds, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
+        NamedKeys,
     },
-    handle_payment::{self, ACCUMULATION_PURSE_KEY},
-    mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-    SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-}, AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, URef, WasmConfig, U512, EntryPointAddr, EntryPointValue};
+    bytesrepr,
+    execution::Effects,
+    system::{
+        auction::{
+            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
+            AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
+            ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
+        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+    },
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
+    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
+    EntityAddr, EntityVersions, EntryPointAddr, EntryPointValue, EntryPoints, EraId, FeeHandling,
+    GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash,
+    PackageStatus, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig,
+    SystemEntityRegistry, Tagged, URef, WasmConfig, U512,
+};
 
 use crate::{
     global_state::state::StateProvider,
@@ -121,8 +132,8 @@ impl fmt::Display for GenesisError {
 }
 
 pub struct GenesisInstaller<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     protocol_version: ProtocolVersion,
     config: GenesisConfig,
@@ -131,8 +142,8 @@ pub struct GenesisInstaller<S>
 }
 
 impl<S> GenesisInstaller<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     pub fn new(
         genesis_config_hash: Digest,
@@ -297,20 +308,20 @@ impl<S> GenesisInstaller<S>
                 validators: genesis_validators.len(),
                 validator_slots: self.config.validator_slots(),
             }
-                .into());
+            .into());
         }
 
         let genesis_delegators: Vec<_> = self.config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
         for (validator_public_key, delegator_public_key, _, delegated_amount) in
-        genesis_delegators.iter()
+            genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
                 }
-                    .into());
+                .into());
             }
 
             let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
@@ -322,7 +333,7 @@ impl<S> GenesisInstaller<S>
                     validator_public_key: (*validator_public_key).clone(),
                     delegator_public_key: (*delegator_public_key).clone(),
                 }
-                    .into());
+                .into());
             }
         }
 
@@ -346,7 +357,7 @@ impl<S> GenesisInstaller<S>
                         public_key,
                         delegation_rate,
                     }
-                        .into());
+                    .into());
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
@@ -392,7 +403,7 @@ impl<S> GenesisInstaller<S>
                                     validator_public_key: (*validator_public_key).clone(),
                                     delegator_public_key: (*delegator_public_key).clone(),
                                 }
-                                    .into());
+                                .into());
                             }
                         }
                     }
@@ -561,9 +572,9 @@ impl<S> GenesisInstaller<S>
 
         if administrative_accounts.peek().is_some()
             && administrative_accounts
-            .duplicates_by(|admin| admin.public_key())
-            .next()
-            .is_some()
+                .duplicates_by(|admin| admin.public_key())
+                .next()
+                .is_some()
         {
             // Ensure no duplicate administrator accounts are specified as this might raise errors
             // during genesis process when administrator accounts are added to associated keys.
@@ -790,10 +801,13 @@ impl<S> GenesisInstaller<S>
         let entity_addr = EntityAddr::new_system(contract_hash.value());
 
         for entry_point in entry_points.take_entry_points() {
-            let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
-                .map_err(GenesisError::Bytesrepr)?;
-            self.tracking_copy.borrow_mut()
-                .write(Key::EntryPoint(entry_point_addr), StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)))
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                    .map_err(GenesisError::Bytesrepr)?;
+            self.tracking_copy.borrow_mut().write(
+                Key::EntryPoint(entry_point_addr),
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+            )
         }
 
         Ok(())

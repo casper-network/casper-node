@@ -49,9 +49,10 @@ use crate::{
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier, BalanceRequest, BalanceResult,
         BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
-        EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
-        FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        HandleRefundMode, HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling,
+        EntryPointsRequest, EntryPointsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
         PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
         RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
@@ -81,7 +82,6 @@ use crate::{
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
-use crate::data_access_layer::{EntryPointsRequest, EntryPointsResult};
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -509,7 +509,7 @@ pub trait CommitProvider: StateProvider {
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
-    type Reader: StateReader<Key, StoredValue, Error=GlobalStateError>;
+    type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
     /// Flush the state provider.
     fn flush(&self, request: FlushRequest) -> FlushResult;
@@ -768,7 +768,9 @@ pub trait StateProvider {
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant);
+                        return BidsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
                     }
                     None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
@@ -1318,17 +1320,17 @@ pub trait StateProvider {
         let query_request = QueryRequest::new(state_hash, request.key(), vec![]);
 
         match self.query(query_request) {
-            QueryResult::RootNotFound => { EntryPointsResult::RootNotFound }
-            QueryResult::ValueNotFound(msg) => { EntryPointsResult::ValueNotFound(msg) }
-            QueryResult::Failure(tce) => { EntryPointsResult::Failure(tce) }
+            QueryResult::RootNotFound => EntryPointsResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => EntryPointsResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => EntryPointsResult::Failure(tce),
             QueryResult::Success { value, .. } => {
                 if let StoredValue::EntryPoint(entry_point_value) = *value {
-                    EntryPointsResult::Success { entry_point: entry_point_value }
+                    EntryPointsResult::Success {
+                        entry_point: entry_point_value,
+                    }
                 } else {
                     error!("Expected to get entry point value received other variant");
-                    EntryPointsResult::Failure(
-                        TrackingCopyError::UnexpectedStoredValueVariant
-                    )
+                    EntryPointsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
                 }
             }
         }
@@ -1654,11 +1656,11 @@ pub fn put_stored_values<'a, R, S, E>(
     prestate_hash: Digest,
     stored_values: HashMap<Key, StoredValue>,
 ) -> Result<Digest, E>
-    where
-        R: TransactionSource<'a, Handle=S::Handle>,
-        S: TrieStore<Key, StoredValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+where
+    R: TransactionSource<'a, Handle = S::Handle>,
+    S: TrieStore<Key, StoredValue>,
+    S::Error: From<R::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -1690,11 +1692,11 @@ pub fn commit<'a, R, S, E>(
     prestate_hash: Digest,
     effects: Effects,
 ) -> Result<Digest, E>
-    where
-        R: TransactionSource<'a, Handle=S::Handle>,
-        S: TrieStore<Key, StoredValue>,
-        S::Error: From<R::Error>,
-        E: From<R::Error>
+where
+    R: TransactionSource<'a, Handle = S::Handle>,
+    S: TrieStore<Key, StoredValue>,
+    S::Error: From<R::Error>,
+    E: From<R::Error>
         + From<S::Error>
         + From<bytesrepr::Error>
         + From<CommitError>

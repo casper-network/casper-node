@@ -12,7 +12,14 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest};
-use casper_types::{account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash, system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr, PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512, EntryPointAddr, EntryPoint};
+use casper_types::{
+    account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
+    system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
+    Chainspec, EntityAddr, EntityVersion, EntityVersionKey, EntryPoint, EntryPointAddr,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package,
+    PackageAddr, PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionTarget, U512,
+};
 
 use crate::{
     components::Component,
@@ -36,22 +43,24 @@ const ARG_TARGET: &str = "target";
 
 /// A helper trait constraining `TransactionAcceptor` compatible reactor events.
 pub(crate) trait ReactorEventT:
-From<Event>
-+ From<TransactionAcceptorAnnouncement>
-+ From<StorageRequest>
-+ From<ContractRuntimeRequest>
-+ From<FatalAnnouncement>
-+ Send
-{}
-
-impl<REv> ReactorEventT for REv where
-    REv: From<Event>
+    From<Event>
     + From<TransactionAcceptorAnnouncement>
     + From<StorageRequest>
     + From<ContractRuntimeRequest>
     + From<FatalAnnouncement>
     + Send
-{}
+{
+}
+
+impl<REv> ReactorEventT for REv where
+    REv: From<Event>
+        + From<TransactionAcceptorAnnouncement>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<FatalAnnouncement>
+        + Send
+{
+}
 
 /// The `TransactionAcceptor` is the component which handles all new `Transaction`s immediately
 /// after they're received by this node, regardless of whether they were provided by a peer or a
@@ -243,7 +252,7 @@ impl TransactionAcceptor {
                 effect_builder,
                 "Balance checks for transactions received from peers should never occur."
             )
-                .ignore();
+            .ignore();
         }
         match maybe_balance {
             None => {
@@ -558,7 +567,9 @@ impl TransactionAcceptor {
         }
 
         let maybe_entry_point_name = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) if is_payment => Some(deploy.payment().entry_point_name().to_string()),
+            Transaction::Deploy(deploy) if is_payment => {
+                Some(deploy.payment().entry_point_name().to_string())
+            }
             Transaction::Deploy(deploy) => Some(deploy.session().entry_point_name().to_string()),
             Transaction::V1(_) if is_payment => {
                 error!("should not fetch a contract to validate payment logic for transaction v1s");
@@ -578,22 +589,26 @@ impl TransactionAcceptor {
 
         match maybe_entry_point_name {
             Some(entry_point_name) => {
-                match EntryPointAddr::new_v1_entry_point_addr(EntityAddr::SmartContract(contract_hash.value()), &entry_point_name) {
-                    Ok(entry_point_addr) => {
-                        effect_builder
-                            .get_entry_point_value(*block_header.state_root_hash(), Key::EntryPoint(entry_point_addr))
-                            .event(move |entry_point_result| Event::GetEntryPointResult {
-                                event_metadata,
-                                block_header,
-                                is_payment,
-                                entry_point_name: entry_point_name.to_string(),
-                                maybe_entry_point: entry_point_result.into_v1_entry_point(),
-                            })
-                    }
+                match EntryPointAddr::new_v1_entry_point_addr(
+                    EntityAddr::SmartContract(contract_hash.value()),
+                    &entry_point_name,
+                ) {
+                    Ok(entry_point_addr) => effect_builder
+                        .get_entry_point_value(
+                            *block_header.state_root_hash(),
+                            Key::EntryPoint(entry_point_addr),
+                        )
+                        .event(move |entry_point_result| Event::GetEntryPointResult {
+                            event_metadata,
+                            block_header,
+                            is_payment,
+                            entry_point_name,
+                            maybe_entry_point: entry_point_result.into_v1_entry_point(),
+                        }),
                     Err(_) => {
                         let error = Error::parameter_failure(
                             &block_header,
-                            ParameterFailure::NoSuchEntryPoint { entry_point_name: entry_point_name.to_string() },
+                            ParameterFailure::NoSuchEntryPoint { entry_point_name },
                         );
                         return self.reject_transaction(effect_builder, *event_metadata, error);
                     }
@@ -622,16 +637,16 @@ impl TransactionAcceptor {
             None => {
                 let error = Error::parameter_failure(
                     &block_header,
-                    ParameterFailure::NoSuchEntryPoint { entry_point_name: entry_point_name.to_string() },
+                    ParameterFailure::NoSuchEntryPoint { entry_point_name },
                 );
                 return self.reject_transaction(effect_builder, *event_metadata, error);
             }
         };
 
-        if entry_point_name != entry_point.name().to_string() {
+        if entry_point_name != *entry_point.name() {
             let error = Error::parameter_failure(
                 &block_header,
-                ParameterFailure::NoSuchEntryPoint { entry_point_name: entry_point_name.to_string() },
+                ParameterFailure::NoSuchEntryPoint { entry_point_name },
             );
             return self.reject_transaction(effect_builder, *event_metadata, error);
         };
@@ -937,12 +952,19 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 maybe_package,
             ),
             Event::GetEntryPointResult {
-                event_metadata, block_header, is_payment, entry_point_name, maybe_entry_point
-            } => {
-                self.handle_get_entry_point_result(
-                    effect_builder, event_metadata, block_header, is_payment, entry_point_name, maybe_entry_point,
-                )
-            }
+                event_metadata,
+                block_header,
+                is_payment,
+                entry_point_name,
+                maybe_entry_point,
+            } => self.handle_get_entry_point_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                is_payment,
+                entry_point_name,
+                maybe_entry_point,
+            ),
             Event::PutToStorageResult {
                 event_metadata,
                 is_new,

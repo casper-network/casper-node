@@ -1,7 +1,7 @@
 use core::fmt::{Debug, Display, Formatter};
 
 use alloc::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::BTreeMap,
     format,
     string::{String, ToString},
     vec::Vec,
@@ -119,12 +119,6 @@ impl FromBytes for EntryPointType {
 
 /// Default name for an entry point.
 pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
-
-/// Name for an installer entry point.
-pub const INSTALL_ENTRY_POINT_NAME: &str = "install";
-
-/// Name for an upgrade entry point.
-pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 /// Collection of entry point parameters.
 pub type Parameters = Vec<Parameter>;
@@ -489,7 +483,7 @@ impl EntryPoints {
     }
 
     /// Returns iterator for existing entry point names.
-    pub fn keys(&self) -> impl Iterator<Item=&String> {
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
     }
 
@@ -579,21 +573,29 @@ impl FromBytes for EntryPointV2 {
     }
 }
 
+/// The entry point address.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointAddr {
+    /// The address for a V1 Entrypoint.
     VmCasperV1 {
+        /// The addr of the entity.
         entity_addr: EntityAddr,
+        /// The 32 byte hash of the name of the entry point
         name_bytes: [u8; KEY_HASH_LENGTH],
     },
+    /// The address for a V2 entrypoint
     VmCasperV2 {
+        /// The addr of the entity.
         entity_addr: EntityAddr,
+        /// The selector.
         selector: u32,
     },
 }
 
 impl EntryPointAddr {
+    /// Returns a `VmCasperV1` variant of the entry point address.
     pub fn new_v1_entry_point_addr(
         entity_addr: EntityAddr,
         name: &str,
@@ -615,6 +617,7 @@ impl EntryPointAddr {
         })
     }
 
+    /// Returns a `VmCasperV2` variant of the entry point address.
     pub const fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: u32) -> Self {
         Self::VmCasperV2 {
             entity_addr,
@@ -635,6 +638,7 @@ impl EntryPointAddr {
         format!("{}", self)
     }
 
+    /// Returns the address from the formatted string.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(entry_point_v1) = input.strip_prefix(V1_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, string_bytes_str)) = entry_point_v1.rsplit_once('-') {
@@ -693,15 +697,15 @@ impl ToBytes for EntryPointAddr {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntryPointAddr::VmCasperV1 {
-                entity_addr,
-                name_bytes: named_bytes,
-            } => entity_addr.serialized_length() + named_bytes.serialized_length(),
-            EntryPointAddr::VmCasperV2 {
-                entity_addr,
-                selector,
-            } => entity_addr.serialized_length() + selector.serialized_length(),
-        }
+                EntryPointAddr::VmCasperV1 {
+                    entity_addr,
+                    name_bytes: named_bytes,
+                } => entity_addr.serialized_length() + named_bytes.serialized_length(),
+                EntryPointAddr::VmCasperV2 {
+                    entity_addr,
+                    selector,
+                } => entity_addr.serialized_length() + selector.serialized_length(),
+            }
     }
 }
 
@@ -797,19 +801,24 @@ impl Distribution<EntryPointAddr> for Standard {
     }
 }
 
+/// The encaspulated representation of entrypoints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointValue {
+    /// Entrypoints to be executed against the V1 Casper VM.
     V1CasperVm(EntryPoint),
+    /// Entrypoints to be executed against the V2 Casper VM.
     V2CasperVm(EntryPointV2),
 }
 
 impl EntryPointValue {
+    /// Returns [`EntryPointValue::V1CasperVm`] variant.
     pub fn new_v1_entry_point_value(entry_point: EntryPoint) -> Self {
         Self::V1CasperVm(entry_point)
     }
 
+    /// Returns [`EntryPointValue::V2CasperVm`] variant.
     pub fn new_v2_entry_point_value(entry_point: EntryPointV2) -> Self {
         Self::V2CasperVm(entry_point)
     }
@@ -834,9 +843,9 @@ impl ToBytes for EntryPointValue {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
-            EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
-        }
+                EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
+                EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
+            }
     }
 }
 

@@ -241,9 +241,9 @@ impl Display for FromStrError {
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(description = "The hex-encoded address of the addressable entity.")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded address of the addressable entity.")
 )]
 pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
@@ -635,7 +635,7 @@ impl Distribution<EntityKindTag> for Standard {
 }
 
 #[derive(
-Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -723,10 +723,10 @@ impl ToBytes for EntityKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntityKind::SmartContract => 0,
-            EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
-            EntityKind::Account(account_hash) => account_hash.serialized_length(),
-        }
+                EntityKind::SmartContract => 0,
+                EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
+                EntityKind::Account(account_hash) => account_hash.serialized_length(),
+            }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -884,7 +884,6 @@ impl EntityAddr {
         self.write_bytes(&mut ret)?;
         Ok(ret)
     }
-
 
     /// Returns the formatted String representation of the [`EntityAddr`].
     pub fn to_formatted_string(&self) -> String {
@@ -1312,7 +1311,7 @@ impl MessageTopics {
     }
 
     /// Returns an iterator over the topic name and its hash.
-    pub fn iter(&self) -> impl Iterator<Item=(&String, &TopicNameHash)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
         self.0.iter()
     }
 }
@@ -1356,7 +1355,7 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     let main_purse = URef::from_formatted_str(
         "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
     )
-        .unwrap();
+    .unwrap();
     let weight = Weight::new(1);
     let associated_keys = AssociatedKeys::new(account_hash, weight);
     let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
@@ -1395,14 +1394,14 @@ pub struct AddressableEntity {
 }
 
 impl From<AddressableEntity>
-for (
-    PackageHash,
-    ByteCodeHash,
-    ProtocolVersion,
-    URef,
-    AssociatedKeys,
-    ActionThresholds,
-)
+    for (
+        PackageHash,
+        ByteCodeHash,
+        ProtocolVersion,
+        URef,
+        AssociatedKeys,
+        ActionThresholds,
+    )
 {
     fn from(entity: AddressableEntity) -> Self {
         (
@@ -1604,8 +1603,8 @@ impl AddressableEntity {
     pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
         !authorization_keys.is_empty()
             && authorization_keys
-            .iter()
-            .any(|e| self.associated_keys.contains_key(e))
+                .iter()
+                .any(|e| self.associated_keys.contains_key(e))
     }
 
     /// Checks whether the sum of the weights of all authorization keys is
@@ -1638,12 +1637,10 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().upgrade_management()
     }
 
-
     /// Addr for accessing wasm bytes
     pub fn byte_code_addr(&self) -> HashAddr {
         self.byte_code_hash.value()
     }
-
 
     /// Returns a reference to the message topics
     pub fn message_topics(&self) -> &MessageTopics {

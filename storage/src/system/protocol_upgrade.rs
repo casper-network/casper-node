@@ -5,18 +5,27 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 use thiserror::Error;
 use tracing::{debug, error};
 
-use casper_types::{addressable_entity::{
-    ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
-    NamedKeyValue, NamedKeys, Weight,
-}, bytesrepr::{self, ToBytes}, system::{
-    auction::{
-        BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+use casper_types::{
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
     },
-    handle_payment::ACCUMULATION_PURSE_KEY,
-    mint::ROUND_SEIGNIORAGE_RATE_KEY,
-    SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-}, AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPoints, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef, U512, EntryPointAddr, EntryPointValue};
+    bytesrepr::{self, ToBytes},
+    system::{
+        auction::{
+            BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        handle_payment::ACCUMULATION_PURSE_KEY,
+        mint::ROUND_SEIGNIORAGE_RATE_KEY,
+        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+    },
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
+    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPointAddr,
+    EntryPointValue, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
+    U512,
+};
 
 use crate::{
     global_state::state::StateProvider,
@@ -122,16 +131,16 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
 impl<S> ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -354,11 +363,13 @@ impl<S> ProtocolUpgrader<S>
         let entry_points = system_entity_type.entry_points();
 
         for entry_point in entry_points.take_entry_points() {
-            let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
-                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
-            self.tracking_copy
-                .borrow_mut()
-                .write(Key::EntryPoint(entry_point_addr), StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)));
+            let entry_point_addr =
+                EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                    .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
+            self.tracking_copy.borrow_mut().write(
+                Key::EntryPoint(entry_point_addr),
+                StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)),
+            );
         }
 
         package.insert_entity_version(

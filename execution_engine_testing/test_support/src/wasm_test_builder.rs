@@ -60,9 +60,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
-    HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EntryPoints, EraId, Gas,
+    HandlePaymentCosts, HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package,
+    PackageHash, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
@@ -295,7 +295,7 @@ impl LmdbWasmTestBuilder {
                 DEFAULT_MAX_READERS,
                 true,
             )
-                .expect("should create LmdbEnvironment"),
+            .expect("should create LmdbEnvironment"),
         );
         let trie_store = Arc::new(
             LmdbTrieStore::new(&environment, None, DatabaseFlags::empty())
@@ -355,7 +355,7 @@ impl LmdbWasmTestBuilder {
             DEFAULT_MAX_READERS,
             true,
         )
-            .expect("should create LmdbEnvironment");
+        .expect("should create LmdbEnvironment");
 
         let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
 
@@ -562,8 +562,8 @@ impl LmdbWasmTestBuilder {
 }
 
 impl<S> WasmTestBuilder<S>
-    where
-        S: StateProvider + CommitProvider,
+where
+    S: StateProvider + CommitProvider,
 {
     /// Takes a [`GenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, request: GenesisRequest) -> &mut Self {
@@ -914,7 +914,7 @@ impl<S> WasmTestBuilder<S>
                 ARG_EVICTED_VALIDATORS => evicted_validators,
             },
         )
-            .build();
+        .build();
         self.exec(exec_request).expect_success().commit()
     }
 
@@ -1582,10 +1582,25 @@ impl<S> WasmTestBuilder<S>
         reader.keys_with_prefix(&[tag as u8])
     }
 
+    /// Gets all entry points for a given entity
+    pub fn get_entry_points(&self, entity_addr: EntityAddr) -> EntryPoints {
+        let state_root_hash = self.get_post_state_hash();
+
+        let mut tracking_copy = self
+            .data_access_layer
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        tracking_copy
+            .get_v1_entry_points(entity_addr)
+            .expect("must get entry points")
+    }
+
     /// Gets a stored value from a contract's named keys.
     pub fn get_value<T>(&mut self, entity_addr: EntityAddr, name: &str) -> T
-        where
-            T: FromBytes + CLTyped,
+    where
+        T: FromBytes + CLTyped,
     {
         let named_keys = self.get_named_keys(entity_addr);
 
