@@ -760,7 +760,7 @@ fn schedule_accept_deploy(
                     deploy,
                     source,
                     maybe_responder: Some(responder),
-                    ticket: Ticket::create_dummy(),
+                    ticket: None,
                 },
                 QueueKind::Validation,
             )

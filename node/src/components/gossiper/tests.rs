@@ -269,7 +269,7 @@ impl reactor::Reactor for Reactor {
                     deploy,
                     source: Source::Client,
                     maybe_responder: Some(responder),
-                    ticket: Ticket::create_dummy(),
+                    ticket: None,
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -301,7 +301,7 @@ impl reactor::Reactor for Reactor {
                         deploy: Arc::new(*item),
                         source: Source::Peer(sender),
                         maybe_responder: None,
-                        ticket: Ticket::create_dummy(),
+                        ticket: None,
                     },
                 ),
             ),

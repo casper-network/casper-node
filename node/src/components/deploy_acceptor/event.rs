@@ -48,7 +48,7 @@ pub(crate) enum Event {
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
         #[serde(skip)]
-        ticket: Ticket,
+        ticket: Option<Ticket>,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {

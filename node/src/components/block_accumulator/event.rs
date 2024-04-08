@@ -33,7 +33,7 @@ pub(crate) enum Event {
     ReceivedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
-        ticket: Ticket,
+        ticket: Option<Ticket>,
     },
     ExecutedBlock {
         meta_block: MetaBlock,
