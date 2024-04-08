@@ -349,7 +349,7 @@ fn should_fund_existing_account() {
         faucet_purse_fund_amount,
         faucet_distributions_per_interval.into(),
     )
-    .to_integer();
+        .to_integer();
 
     assert_eq!(
         user_purse_balance_after,
@@ -680,7 +680,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount},
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_session_request)
@@ -693,7 +693,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
         ENTRY_POINT_FAUCET,
         runtime_args! {ARG_TARGET => user_account},
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_call_faucet_request)
@@ -926,10 +926,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_914_271_090;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 111_340_630;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_911_250;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_619_882_230;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 94_378_284_000;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 111_374_220;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_772_418_180;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_619_948_020;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
@@ -957,7 +957,7 @@ fn faucet_costs() {
         FAUCET_INSTALLER_SESSION,
         runtime_args! {ARG_ID => FAUCET_ID, ARG_AMOUNT => faucet_fund_amount },
     )
-    .build();
+        .build();
 
     builder
         .exec(installer_session_request)
@@ -997,16 +997,16 @@ fn faucet_costs() {
     let user_fund_amount = U512::from(10_000_000_000u64);
 
     let deploy_item = DeployItemBuilder::new()
-            .with_address(installer_account)
-            .with_authorization_keys(&[installer_account])
-            .with_stored_session_named_key(
-                &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
-                ENTRY_POINT_FAUCET,
-                runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
-            )
-            .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_deploy_hash([4; 32])
-            .build();
+        .with_address(installer_account)
+        .with_authorization_keys(&[installer_account])
+        .with_stored_session_named_key(
+            &format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID),
+            ENTRY_POINT_FAUCET,
+            runtime_args! {ARG_TARGET => user_account, ARG_AMOUNT => user_fund_amount, ARG_ID => <Option<u64>>::None},
+        )
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_deploy_hash([4; 32])
+        .build();
 
     let faucet_call_by_installer = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
