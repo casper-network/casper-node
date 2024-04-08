@@ -25,7 +25,7 @@ pub(crate) enum Event {
     ReceivedBlock {
         block: Arc<Block>,
         sender: NodeId,
-        ticket: Option<Ticket>,
+        ticket: Ticket,
     },
     CreatedFinalitySignature {
         finality_signature: Box<FinalitySignature>,

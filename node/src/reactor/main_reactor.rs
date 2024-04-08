@@ -569,7 +569,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedBlock {
                         block: Arc::new(*item),
                         sender,
-                        ticket: Some(ticket),
+                        ticket,
                     },
                 ),
             ),
@@ -585,7 +585,7 @@ impl reactor::Reactor for MainReactor {
                         block_accumulator::Event::ReceivedBlock {
                             block,
                             sender: peer,
-                            ticket: None,
+                            ticket: Ticket::create_dummy(),
                         },
                     ),
                 )
