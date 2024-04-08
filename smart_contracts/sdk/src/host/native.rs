@@ -375,7 +375,7 @@ impl Environment {
         }
     }
 
-    fn casper_create_contract(
+    fn casper_create(
         &self,
         code_ptr: *const u8,
         code_size: usize,
@@ -719,7 +719,7 @@ mod symbols {
     }
 
     #[no_mangle]
-    pub extern "C" fn casper_create_contract(
+    pub extern "C" fn casper_create(
         code_ptr: *const u8,
         code_size: usize,
         manifest_ptr: *const ::casper_sdk_sys::Manifest,
@@ -739,7 +739,7 @@ mod symbols {
             &result_ptr,
         );
         let _call_result = with_current_environment(|stub| {
-            stub.casper_create_contract(
+            stub.casper_create(
                 code_ptr,
                 code_size,
                 manifest_ptr,

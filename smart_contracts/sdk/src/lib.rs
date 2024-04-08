@@ -19,6 +19,7 @@ use types::{Address, CallError};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use ctor::ctor;
+use vm_common::selector::Selector;
 
 #[cfg(target_arch = "wasm32")]
 fn hook_impl(info: &std::panic::PanicInfo) {

@@ -1,6 +1,5 @@
 extern crate proc_macro;
 
-// use casper_sdk::Selector;
 use darling::FromAttributes;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -324,7 +323,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
 
                                     impl casper_sdk::ToCallData for CallData {
-                                        const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                        const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector);
                                         type Return<'a> = #call_data_return_lifetime;
 
                                         fn input_data(&self) -> Option<Vec<u8>> {
@@ -685,7 +684,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                                 }
 
                                                 impl casper_sdk::ToCallData for #ident {
-                                                    const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+                                                    const SELECTOR: vm_common::selector::Selector = vm_common::selector::Selector::new(#selector);
                                                     type Return<'a> = #call_data_return_lifetime;
 
                                                     fn input_data(&self) -> Option<Vec<u8>> {
@@ -1296,7 +1295,7 @@ pub fn selector(input: TokenStream) -> TokenStream {
     let selector = compute_selector(bytes);
 
     TokenStream::from(quote! {
-        casper_sdk::Selector::new(#selector)
+        vm_common::selector::Selector::new(#selector)
     })
     .into()
 }

@@ -197,7 +197,7 @@ pub fn casper_create(
     let manifest_ptr = NonNull::from(manifest);
 
     let result_code = unsafe {
-        casper_sdk_sys::casper_create_contract(
+        casper_sdk_sys::casper_create(
             code_ptr,
             code_size,
             manifest_ptr.as_ptr(),

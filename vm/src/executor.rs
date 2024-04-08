@@ -1,4 +1,4 @@
-pub(crate) mod v2;
+pub mod v2;
 
 use borsh::BorshSerialize;
 use bytes::Bytes;

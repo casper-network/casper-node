@@ -183,7 +183,7 @@ pub(crate) fn casper_return<S: GlobalStateReader, E: Executor>(
     Err(VMError::Return { flags, data })
 }
 
-pub(crate) fn casper_create_contract<S: GlobalStateReader + 'static, E: Executor + 'static>(
+pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'static>(
     mut caller: impl Caller<S, E>,
     code_ptr: u32,
     code_len: u32,

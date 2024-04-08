@@ -16,11 +16,10 @@ mod exports {
         host, reserve_vec_space,
         sys::{CreateResult, EntryPoint, Manifest, Param},
         types::ResultCode,
-        Selector,
     };
     use core::ptr::NonNull;
-    use vm_common::flags::EntryPointFlags;
     use vm_common::keyspace::Keyspace;
+    use vm_common::{flags::EntryPointFlags, selector::Selector};
 
     // use crate::reserve_vec_space;
 

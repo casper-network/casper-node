@@ -28,7 +28,7 @@ pub struct ExecutorConfig {
     executor_kind: ExecutorKind,
 }
 
-impl ExecutorConfig {
+impl ExecutorConfigBuilder {
     pub fn new() -> ExecutorConfigBuilder {
         ExecutorConfigBuilder::default()
     }

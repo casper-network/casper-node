@@ -443,7 +443,7 @@ where
 
             imports.define(
                 "env",
-                "casper_create_contract",
+                "casper_create",
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
@@ -456,7 +456,7 @@ where
                      input_len: u32,
                      result_ptr: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        match host::casper_create_contract(
+                        match host::casper_create(
                             wasmer_caller,
                             code_ptr,
                             code_size,

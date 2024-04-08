@@ -24,7 +24,7 @@ macro_rules! for_each_host_function {
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
                 alloc_ctx: *const core::ffi::c_void,
             ) -> *mut u8;
-            pub fn casper_create_contract(
+            pub fn casper_create(
                 code_ptr: *const u8,
                 code_size: usize,
                 manifest_ptr: *const $crate::Manifest,

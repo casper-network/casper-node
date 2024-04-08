@@ -39,6 +39,7 @@ pub enum HostError {
 type HostResult = Result<(), HostError>;
 
 impl HostError {
+    /// Converts the host error into a u32.
     pub(crate) fn into_u32(self) -> u32 {
         match self {
             HostError::CalleeReverted => CALLEE_REVERTED,
@@ -48,6 +49,7 @@ impl HostError {
     }
 }
 
+/// Converts a host result into a u32.
 pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
     match result {
         Ok(_) => CALLEE_SUCCEED,
@@ -72,6 +74,7 @@ pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
 #[derive(Clone)]
 pub struct WasmEngine(());
 
+/// Errors that can occur when resolving imports.
 #[derive(Debug, Error)]
 pub enum Resolver {
     #[error("export {name} not found.")]
@@ -106,24 +109,34 @@ pub enum MemoryError {
     NonUtf8String,
 }
 
+/// Wasm trap code.
 #[derive(Debug, Error)]
 pub enum TrapCode {
+    /// Trap code for out of bounds memory access.
     #[error("call stack exhausted")]
     StackOverflow,
+    /// Trap code for out of bounds memory access.
     #[error("out of bounds memory access")]
     MemoryOutOfBounds,
+    /// Trap code for out of bounds table access.
     #[error("undefined element: out of bounds table access")]
     TableAccessOutOfBounds,
+    /// Trap code for indirect call to null.
     #[error("uninitialized element")]
     IndirectCallToNull,
+    /// Trap code for indirect call type mismatch.
     #[error("indirect call type mismatch")]
     BadSignature,
+    /// Trap code for integer overflow.
     #[error("integer overflow")]
     IntegerOverflow,
+    /// Trap code for division by zero.
     #[error("integer divide by zero")]
     IntegerDivisionByZero,
+    /// Trap code for invalid conversion to integer.
     #[error("invalid conversion to integer")]
     BadConversionToInteger,
+    /// Trap code for unreachable code reached triggered by unreachable instruction.
     #[error("unreachable")]
     UnreachableCodeReached,
 }
@@ -150,6 +163,7 @@ pub enum VMError {
 }
 
 impl VMError {
+    /// Returns the output data if the error is a `Return` error.
     pub fn into_output_data(self) -> Option<Bytes> {
         match self {
             VMError::Return { data, .. } => data,
@@ -158,8 +172,10 @@ impl VMError {
     }
 }
 
+/// Result of a VM operation.
 pub type VMResult<T> = Result<T, VMError>;
 
+/// Configuration for the Wasm engine.
 #[derive(Clone, Debug)]
 pub struct Config {
     pub(crate) gas_limit: u64,
@@ -167,6 +183,7 @@ pub struct Config {
     pub(crate) input: Bytes,
 }
 
+/// Configuration for the Wasm engine.
 #[derive(Clone, Debug, Default)]
 pub struct ConfigBuilder {
     gas_limit: Option<u64>,
@@ -177,10 +194,12 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
+    /// Create a new configuration builder.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Gas limit in units.
     pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
         self.gas_limit = Some(gas_limit);
         self
@@ -198,6 +217,7 @@ impl ConfigBuilder {
         self
     }
 
+    /// Build the configuration.
     pub fn build(self) -> Config {
         let gas_limit = self.gas_limit.expect("Required field");
         let memory_limit = self.memory_limit.expect("Required field");
@@ -218,10 +238,12 @@ impl WasmEngine {
         config: Config,
     ) -> Result<impl WasmInstance<S, E>, PreparationError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
+        // NOTE: We can add more engines here in the future, e.g. Lucet, Wasmtime, wasmi all configurable at runtime. For now, it's ok to return `impl WasmInstance`.
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
         Ok(instance)
     }
 
+    #[inline]
     pub fn new() -> Self {
         WasmEngine(())
     }
