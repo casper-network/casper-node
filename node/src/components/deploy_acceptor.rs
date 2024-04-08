@@ -244,7 +244,7 @@ impl DeployAcceptor {
         deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
-        _: Option<Ticket>, // We currently drop the ticket implicitly, see below.
+        _: Ticket, // We currently drop the ticket implicitly, see below.
     ) -> Effects<Event> {
         debug!(%source, %deploy, "checking acceptance");
         let verification_start_timestamp = Timestamp::now();

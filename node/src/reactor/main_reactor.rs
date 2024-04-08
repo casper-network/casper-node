@@ -39,7 +39,7 @@ use crate::{
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
-        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
+        network::{self, GossipedAddress, Identity as NetworkIdentity, Network, Ticket},
         proposed_block_validator::{self, ProposedBlockValidator},
         rest_server::RestServer,
         rpc_server::RpcServer,
@@ -605,7 +605,7 @@ impl reactor::Reactor for MainReactor {
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
                     finality_signature,
                     sender,
-                    ticket: Some(incoming.ticket),
+                    ticket: incoming.ticket,
                 };
                 reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
@@ -663,7 +663,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature: item,
                         sender,
-                        ticket: Some(ticket),
+                        ticket,
                     },
                 ),
             ),
@@ -687,7 +687,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature,
                         sender: peer,
-                        ticket: None,
+                        ticket: Ticket::create_dummy(),
                     },
                 ),
             ),
@@ -712,7 +712,7 @@ impl reactor::Reactor for MainReactor {
                     deploy,
                     source,
                     maybe_responder: Some(responder),
-                    ticket: None,
+                    ticket: Ticket::create_dummy(),
                 };
                 reactor::wrap_effects(
                     MainEvent::DeployAcceptor,
@@ -806,7 +806,7 @@ impl reactor::Reactor for MainReactor {
                         deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
-                        ticket: Some(ticket),
+                        ticket,
                     },
                 ),
             ),

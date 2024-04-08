@@ -26,7 +26,7 @@ use crate::{
             ALICE_NODE_ID, ALICE_PUBLIC_KEY, ALICE_SECRET_KEY, BOB_NODE_ID, BOB_PUBLIC_KEY,
             BOB_SECRET_KEY, CAROL_PUBLIC_KEY, CAROL_SECRET_KEY,
         },
-        network::Identity as NetworkIdentity,
+        network::{Identity as NetworkIdentity, Ticket},
         storage::{self, Storage},
     },
     effect::{
@@ -1572,7 +1572,7 @@ async fn block_accumulator_reactor_flow() {
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(fin_sig_1.clone()),
             sender: peer_1,
-            ticket: None,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1855,7 +1855,7 @@ async fn block_accumulator_reactor_flow() {
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(older_block_signature),
             sender: peer_2,
-            ticket: None,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1891,7 +1891,7 @@ async fn block_accumulator_reactor_flow() {
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(old_era_signature),
             sender: peer_2,
-            ticket: None,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1972,7 +1972,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(fin_sig_bob.clone()),
             sender: peer_1,
-            ticket: None,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());
@@ -1980,7 +1980,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let event = super::Event::ReceivedFinalitySignature {
             finality_signature: Box::new(fin_sig_carol.clone()),
             sender: peer_1,
-            ticket: None,
+            ticket: Ticket::create_dummy(),
         };
         let effects = block_accumulator.handle_event(effect_builder, &mut rng, event);
         assert!(effects.is_empty());

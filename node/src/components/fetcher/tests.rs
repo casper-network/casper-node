@@ -18,7 +18,7 @@ use crate::{
     components::{
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        network::{GossipedAddress, Identity as NetworkIdentity},
+        network::{GossipedAddress, Identity as NetworkIdentity, Ticket},
         storage::{self, Storage},
     },
     effect::{
@@ -224,7 +224,7 @@ impl ReactorTrait for Reactor {
                     deploy,
                     source: Source::Client,
                     maybe_responder: Some(responder),
-                    ticket: None,
+                    ticket: Ticket::create_dummy(),
                 };
                 reactor::wrap_effects(
                     Event::FakeDeployAcceptor,
@@ -353,7 +353,7 @@ impl Reactor {
                         deploy,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
-                        ticket: None,
+                        ticket: Ticket::create_dummy(),
                     }),
                 )
             }
