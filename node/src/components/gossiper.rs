@@ -659,8 +659,8 @@ where
                         // TODO: Ticket, do something?
                         self.table.new_data_id(&item_id, sender)
                     } else {
-                        // We're not already handling this item, and we do have the full item stored, so
-                        // don't initiate gossiping for it.
+                        // We're not already handling this item, and we do have the full item
+                        // stored, so don't initiate gossiping for it.
                         GossipAction::Noop
                     };
                     self.handle_gossip(effect_builder, item_id, sender, action, ticket)

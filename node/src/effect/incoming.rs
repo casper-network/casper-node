@@ -24,8 +24,8 @@ pub struct MessageIncoming<M> {
     pub(crate) message: Box<M>,
     /// A ticket representing the "work" for processing the incoming message.
     ///
-    /// Only drop this once no more resources are consumed, as doing so will signal the peer that it
-    /// is okay to send another message. If a response is generated, consider using
+    /// Only drop this once no more resources are consumed, as doing so will signal the peer to
+    /// start sending another message. If a response is generated, consider using
     /// [`crate::effect::EffectBuilder::send_message_and_drop_ticket`].
     #[serde(skip)]
     pub(crate) ticket: Ticket,
