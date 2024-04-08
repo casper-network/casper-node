@@ -66,6 +66,7 @@ const ADD_BID_DELEGATION_RATE_3: DelegationRate = 20;
 const DELEGATE_AMOUNT_1: u64 = 125_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const DELEGATE_AMOUNT_2: u64 = 15_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const UNDELEGATE_AMOUNT_1: u64 = 35_000;
+const UNDELEGATE_AMOUNT_2: u64 = 5_000;
 
 const SYSTEM_TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
@@ -4717,5 +4718,288 @@ fn should_change_validator_bid_public_key() {
     assert_eq!(
         delegator.staked_amount(),
         U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
+}
+
+#[ignore]
+#[test]
+fn should_handle_excessively_long_bridge_record_chains() {
+    let mut validators = Vec::new();
+    for index in 0..21 {
+        let secret_key =
+            SecretKey::ed25519_from_bytes([10 + index; SecretKey::ED25519_LENGTH]).unwrap();
+        let pubkey = PublicKey::from(&secret_key);
+        let addr = AccountHash::from(&pubkey);
+        validators.push((pubkey, addr));
+    }
+
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_2,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let delegator_2_validator_2_delegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_2),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+        },
+    )
+    .build();
+
+    let mut post_genesis_requests = vec![
+        system_fund_request,
+        delegator_1_fund_request,
+        delegator_2_fund_request,
+        validator_1_fund_request,
+        validator_2_fund_request,
+        validator_1_add_bid_request,
+        validator_2_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+        delegator_2_validator_2_delegate_request,
+    ];
+
+    // add extra validators fund requests
+    for (_pubkey, addr) in validators.iter() {
+        let validator_fund_request = ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            CONTRACT_TRANSFER_TO_ACCOUNT,
+            runtime_args! {
+                ARG_TARGET => *addr,
+                ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+            },
+        )
+        .build();
+        post_genesis_requests.push(validator_fund_request)
+    }
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    builder.advance_eras_by_default_auction_delay();
+
+    // verify delegator 2 main purse balance after delegation
+    let delegator_2_main_purse = builder
+        .get_entity_by_account_hash(*BID_ACCOUNT_2_ADDR)
+        .expect("should have default account")
+        .main_purse();
+    assert_eq!(
+        builder.get_purse_balance(delegator_2_main_purse),
+        U512::from(TRANSFER_AMOUNT - DELEGATE_AMOUNT_2)
+    );
+
+    // redelegate funds to validator 1
+    let delegator_2_redelegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_2_ADDR,
+        CONTRACT_REDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_2 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_2_PK.clone(),
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone()
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_2_redelegate_request)
+        .commit()
+        .expect_success();
+
+    // change validator bid public key
+    let mut current_bid_public_key = NON_FOUNDER_VALIDATOR_1_PK.clone();
+    let mut current_bid_addr = *NON_FOUNDER_VALIDATOR_1_ADDR;
+    for (pubkey, addr) in validators.iter() {
+        let change_bid_public_key_request = ExecuteRequestBuilder::standard(
+            current_bid_addr,
+            CONTRACT_CHANGE_BID_PUBLIC_KEY,
+            runtime_args! {
+                ARG_PUBLIC_KEY => current_bid_public_key.clone(),
+                ARG_NEW_PUBLIC_KEY => pubkey.clone()
+            },
+        )
+        .build();
+
+        builder
+            .exec(change_bid_public_key_request)
+            .commit()
+            .expect_success();
+
+        current_bid_public_key = pubkey.clone();
+        current_bid_addr = *addr;
+    }
+
+    let era_id = builder.get_era();
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 25);
+    let new_validator_bid = bids.validator_bid(&current_bid_public_key).unwrap();
+    assert_eq!(
+        builder.get_purse_balance(*new_validator_bid.bonding_purse()),
+        U512::from(ADD_BID_AMOUNT_1)
+    );
+
+    // check if bridge records exist
+    let mut old_public_key = NON_FOUNDER_VALIDATOR_1_PK.clone();
+    for (pubkey, _addr) in validators.iter() {
+        let bridge = bids
+            .bridge(&old_public_key.clone(), &pubkey.clone(), &era_id)
+            .unwrap();
+        assert_eq!(bridge.old_validator_public_key(), &old_public_key.clone());
+        assert_eq!(bridge.new_validator_public_key(), &pubkey.clone());
+        assert_eq!(*bridge.era_id(), era_id);
+
+        old_public_key = pubkey.clone();
+    }
+
+    // verify delegator bids for current validator bid
+    let current_public_key = old_public_key;
+    let delegators = bids
+        .delegators_by_validator_public_key(&current_public_key)
+        .expect("should have delegators");
+    assert_eq!(delegators.len(), 1);
+    let delegator = bids
+        .delegator_by_public_keys(&current_public_key, &BID_ACCOUNT_1_PK)
+        .expect("should have account1 delegation");
+    assert_eq!(delegator.staked_amount(), U512::from(DELEGATE_AMOUNT_1));
+    let delegators = bids
+        .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_2_PK)
+        .expect("should have delegators");
+    assert_eq!(delegators.len(), 1);
+    let delegator = bids
+        .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_2_PK, &BID_ACCOUNT_2_PK)
+        .expect("should have account2 delegation");
+    assert_eq!(
+        delegator.staked_amount(),
+        U512::from(DELEGATE_AMOUNT_2 - UNDELEGATE_AMOUNT_2 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
+    );
+
+    // distribute rewards
+    let protocol_version = DEFAULT_PROTOCOL_VERSION;
+    let total_payout = builder.base_round_reward(None, protocol_version);
+    let mut rewards = BTreeMap::new();
+    rewards.insert(NON_FOUNDER_VALIDATOR_1_PK.clone(), total_payout);
+    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *SYSTEM_ADDR,
+        builder.get_auction_contract_hash(),
+        METHOD_DISTRIBUTE,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARDS_MAP => rewards
+        },
+    )
+    .build();
+
+    builder.exec(distribute_request).commit().expect_success();
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 25);
+
+    let delegator = bids
+        .delegator_by_public_keys(&current_public_key, &BID_ACCOUNT_1_PK)
+        .expect("should have account1 delegation");
+    assert_eq!(delegator.staked_amount(), U512::from(DELEGATE_AMOUNT_1));
+
+    // advance eras until unbonds are processed
+    builder.advance_eras_by(DEFAULT_UNBONDING_DELAY + 1);
+
+    let bids = builder.get_bids();
+    assert_eq!(bids.len(), 25);
+    let delegator = bids.delegator_by_public_keys(&current_public_key, &BID_ACCOUNT_2_PK);
+    assert!(delegator.is_none());
+
+    // verify that unbond was returned to main purse instead of being redelegated
+    assert_eq!(
+        builder.get_purse_balance(delegator_2_main_purse),
+        U512::from(
+            TRANSFER_AMOUNT - DELEGATE_AMOUNT_2
+                + UNDELEGATE_AMOUNT_2
+                + DEFAULT_MINIMUM_DELEGATION_AMOUNT
+        )
     );
 }
