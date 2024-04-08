@@ -28,33 +28,19 @@ use casper_storage::{
     system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
     tracking_copy::TrackingCopyExt,
 };
-use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{
-        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
-        AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-        EntryPointType, EntryPoints, MessageTopicError, MessageTopics, NamedKeys, Parameter,
-        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
-    },
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contract_messages::{
-        Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
-    },
-    contracts::ContractPackage,
-    crypto,
-    system::{
-        self,
-        auction::{self, EraInfo},
-        handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
-    },
-    AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction,
-    HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
-};
+use casper_types::{account::{Account, AccountHash}, addressable_entity::{
+    self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
+    AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, MessageTopicError, MessageTopics, NamedKeys, Parameter,
+    RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
+}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contract_messages::{
+    Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
+}, contracts::ContractPackage, crypto, system::{
+    self,
+    auction::{self, EraInfo},
+    handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+    STANDARD_PAYMENT,
+}, AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512, EntryPointAddr, EntryPointValue};
 
 use crate::{
     execution::ExecError, runtime::host_function_flag::HostFunctionFlag,
@@ -88,8 +74,8 @@ pub struct Runtime<'a, R> {
 }
 
 impl<'a, R> Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -179,8 +165,8 @@ where
     /// misleading gas charges if one system contract calls other system contract (e.g. auction
     /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), ExecError>
-    where
-        T: Into<Gas>,
+        where
+            T: Into<Gas>,
     {
         if self.is_system_immediate_caller()? || self.host_function_flag.is_in_host_function_scope()
         {
@@ -541,15 +527,15 @@ where
                 ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
-                if auction_error == auction::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if auction_error == auction::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             ApiError::HandlePayment(handle_payment_error)
-                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             api_error => ExecError::Revert(api_error),
         }
     }
@@ -1031,7 +1017,7 @@ where
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-        let max_stack_height = wasm_config.max_stack_height;
+            let max_stack_height = wasm_config.max_stack_height;
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -1160,18 +1146,18 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, ExecError> {
-        let (entity, entity_hash, package) = match identifier {
+        let (entity, entity_addr, package) = match identifier {
             CallContractIdentifier::Contract {
                 contract_hash: entity_hash,
             } => {
-                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
-                    Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+                let entity_addr = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    EntityAddr::new_system(entity_hash.value())
                 } else {
-                    Key::contract_entity_key(entity_hash)
+                    EntityAddr::new_smart_contract(entity_hash.value())
                 };
 
                 let entity = if let Some(StoredValue::AddressableEntity(entity)) =
-                    self.context.read_gs(&entity_key)?
+                    self.context.read_gs(&Key::AddressableEntity(entity_addr))?
                 {
                     entity
                 } else {
@@ -1192,7 +1178,7 @@ where
                     return Err(ExecError::DisabledEntity(entity_hash));
                 }
 
-                (entity, entity_hash, package)
+                (entity, entity_addr, package)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
@@ -1226,21 +1212,21 @@ where
                     .copied()
                     .ok_or(ExecError::MissingEntityVersion(entity_version_key))?;
 
-                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
-                    Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+                let entity_addr = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    EntityAddr::new_system(entity_hash.value())
                 } else {
-                    Key::contract_entity_key(entity_hash)
+                    EntityAddr::new_smart_contract(entity_hash.value())
                 };
 
                 let entity = if let Some(StoredValue::AddressableEntity(entity)) =
-                    self.context.read_gs(&entity_key)?
+                    self.context.read_gs(&Key::AddressableEntity(entity_addr))?
                 {
                     entity
                 } else {
                     self.migrate_contract_and_contract_package(entity_hash)?
                 };
 
-                (entity, entity_hash, package)
+                (entity, entity_addr, package)
             }
         };
 
@@ -1258,10 +1244,20 @@ where
             });
         }
 
-        let entry_point = entity
-            .entry_point(entry_point_name)
-            .cloned()
-            .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?;
+        // First check if we can fetch the discrete record
+        // if not use the method on the tracking copy to fetch the
+        // full set which also peeks the cache.
+        let entry_point = {
+            let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point_name)?;
+            match self.context.read_gs(&Key::EntryPoint(entry_point_addr))? {
+                Some(StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point))) => entry_point,
+                Some(_) | None => {
+                    let entry_points = self.context.get_casper_vm_v1_entry_point(Key::AddressableEntity(entity_addr))?;
+                    entry_points.get(entry_point_name).cloned()
+                        .ok_or_else(|| ExecError::NoSuchMethod(entry_point_name.to_owned()))?
+                }
+            }
+        };
 
         let entry_point_type = entry_point.entry_point_type();
 
@@ -1303,6 +1299,8 @@ where
                 }
             }
         }
+
+        let entity_hash = AddressableEntityHash::new(entity_addr.value());
 
         if !self
             .context
@@ -1365,7 +1363,6 @@ where
             all_urefs
         };
 
-        let entity_addr = entity.entity_addr(entity_hash);
 
         let entity_named_keys = self
             .context
@@ -1441,11 +1438,9 @@ where
             casper_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
-        let entity_tag = entity.kind().tag();
-
         let mut named_keys = entity_named_keys;
 
-        let context_entity_key = Key::addressable_entity_key(entity_tag, entity_hash);
+        let context_entity_key = Key::AddressableEntity(entity_addr);
 
         let context = self.context.new_from_self(
             context_entity_key,
@@ -1824,10 +1819,11 @@ where
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
         self.context.write_named_keys(entity_addr, named_keys)?;
 
+        self.context.write_entry_points(entity_addr, entry_points)?;
+
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash.into(),
-            entry_points,
             protocol_version,
             main_purse,
             associated_keys,
@@ -2427,9 +2423,9 @@ where
         if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
-                .context
-                .engine_config()
-                .is_administrator(&self.context.get_caller())
+            .context
+            .engine_config()
+            .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -2440,8 +2436,8 @@ where
         // as the source purse has enough funds to cover the transfer.
         if amount
             > self
-                .available_balance(source, holds_epoch)?
-                .unwrap_or_default()
+            .available_balance(source, holds_epoch)?
+            .unwrap_or_default()
         {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
@@ -2475,13 +2471,11 @@ where
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let entry_points = EntryPoints::new();
                 let message_topics = MessageTopics::default();
 
                 let entity = AddressableEntity::new(
                     package_hash,
                     byte_code_hash,
-                    entry_points,
                     protocol_version,
                     main_purse,
                     associated_keys,
@@ -2957,12 +2951,9 @@ where
         let versions = package.versions();
         for entity_hash in versions.contract_hashes() {
             let entry_points = {
-                let entity: AddressableEntity = self
-                    .context
-                    .read_gs_typed(&Key::contract_entity_key(*entity_hash))?;
-                entity.entry_points().clone().take_entry_points()
+                self.context.get_casper_vm_v1_entry_point(Key::contract_entity_key(*entity_hash))?
             };
-            for entry_point in entry_points {
+            for entry_point in entry_points.take_entry_points() {
                 match entry_point.access() {
                     EntryPointAccess::Public | EntryPointAccess::Template => {
                         continue;
@@ -3095,8 +3086,8 @@ where
         host_function: &HostFunction<T>,
         weights: T,
     ) -> Result<(), Trap>
-    where
-        T: AsRef<[HostFunctionCost]> + Copy,
+        where
+            T: AsRef<[HostFunctionCost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
@@ -3360,10 +3351,11 @@ where
                 self.context
                     .write_named_keys(contract_addr, contract.named_keys().clone())?;
 
+                self.context.write_entry_points(contract_addr, contract.entry_points().clone())?;
+
                 let updated_entity = AddressableEntity::new(
                     PackageHash::new(contract.contract_package_hash().value()),
                     ByteCodeHash::new(contract.contract_wasm_hash().value()),
-                    contract.entry_points().clone(),
                     self.context.protocol_version(),
                     entity_main_purse,
                     associated_keys,
@@ -3440,7 +3432,7 @@ where
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
                 )
-                .map_err(ExecError::CLValue)?;
+                    .map_err(ExecError::CLValue)?;
                 if prev_block_time == current_blocktime {
                     prev_count
                 } else {

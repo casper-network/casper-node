@@ -19,23 +19,10 @@ use casper_storage::{
     AddressGenerator,
 };
 
-use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{
-        ActionType, AddKeyFailure, EntityKindTag, MessageTopicError, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
-    },
-    bytesrepr::ToBytes,
-    contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash},
-    execution::Effects,
-    handle_stored_dictionary_value,
-    system::auction::EraInfo,
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess,
-    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash,
-    Transfer, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
-};
+use casper_types::{account::{Account, AccountHash}, addressable_entity::{
+    ActionType, AddKeyFailure, EntityKindTag, MessageTopicError, NamedKeyAddr, NamedKeyValue,
+    NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+}, bytesrepr::ToBytes, contract_messages::{Message, MessageAddr, MessageTopicSummary, Messages, TopicNameHash}, execution::Effects, handle_stored_dictionary_value, system::auction::EraInfo, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue, CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512, EntryPoints, EntryPointAddr, EntryPointValue};
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
 
@@ -83,8 +70,8 @@ pub struct RuntimeContext<'a, R> {
 }
 
 impl<'a, R> RuntimeContext<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     /// Creates new runtime context where we don't already have one.
     ///
@@ -417,6 +404,34 @@ where
             .map_err(Into::into)
     }
 
+    pub(crate) fn write_entry_points(&mut self, entity_addr: EntityAddr, entry_points: EntryPoints) -> Result<(), ExecError> {
+        if entry_points.is_empty() {
+            return Ok(());
+        }
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())?;
+            let entry_point_value = StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point));
+            self.metered_write_gs_unsafe(Key::EntryPoint(entry_point_addr), entry_point_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_casper_vm_v1_entry_point(&mut self, entity_key: Key) -> Result<EntryPoints, ExecError> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(ExecError::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_v1_entry_points(entity_addr)
+            .map_err(Into::into)
+    }
+
+
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
         self.entity.clone()
@@ -479,9 +494,9 @@ where
     ///
     /// This is useful if you want to get the exact type from global state.
     pub fn read_gs_typed<T>(&mut self, key: &Key) -> Result<T, ExecError>
-    where
-        T: TryFrom<StoredValue>,
-        T::Error: Debug,
+        where
+            T: TryFrom<StoredValue>,
+            T::Error: Debug,
     {
         let value = match self.read_gs(key)? {
             None => return Err(ExecError::KeyNotFound(*key)),
@@ -676,7 +691,8 @@ where
             | StoredValue::ContractPackage(_)
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
-            | StoredValue::Message(_) => Ok(()),
+            | StoredValue::Message(_)
+            | StoredValue::EntryPoint(_) => Ok(()),
         }
     }
 
@@ -824,8 +840,8 @@ where
 
     /// Charges gas for using a host system contract's entrypoint.
     pub(crate) fn charge_system_contract_call<T>(&mut self, call_cost: T) -> Result<(), ExecError>
-    where
-        T: Into<Gas>,
+        where
+            T: Into<Gas>,
     {
         let amount: Gas = call_cost.into();
         self.charge_gas(amount)
@@ -836,8 +852,8 @@ where
     /// Use with caution - there is no validation done as the key is assumed to be validated
     /// already.
     pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
-    where
-        K: Into<Key>,
+        where
+            K: Into<Key>,
     {
         self.tracking_copy.borrow_mut().prune(key.into());
     }
@@ -851,9 +867,9 @@ where
         key: K,
         value: V,
     ) -> Result<(), ExecError>
-    where
-        K: Into<Key>,
-        V: Into<StoredValue>,
+        where
+            K: Into<Key>,
+            V: Into<StoredValue>,
     {
         let stored_value = value.into();
 
@@ -905,8 +921,8 @@ where
     ///
     /// This method performs full validation of the key to be written.
     pub(crate) fn metered_write_gs<T>(&mut self, key: Key, value: T) -> Result<(), ExecError>
-    where
-        T: Into<StoredValue>,
+        where
+            T: Into<StoredValue>,
     {
         let stored_value = value.into();
         self.validate_writeable(&key)?;
@@ -944,9 +960,9 @@ where
     /// value stored under `key` has different type, then `TypeMismatch`
     /// errors is returned.
     pub(crate) fn metered_add_gs<K, V>(&mut self, key: K, value: V) -> Result<(), ExecError>
-    where
-        K: Into<Key>,
-        V: Into<StoredValue>,
+        where
+            K: Into<Key>,
+            V: Into<StoredValue>,
     {
         let key = key.into();
         let value = value.into();
@@ -1122,7 +1138,7 @@ where
         } else {
             entity.set_action_threshold(action_type, threshold)
         }
-        .map_err(ExecError::from)?;
+            .map_err(ExecError::from)?;
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 

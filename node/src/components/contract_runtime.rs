@@ -41,6 +41,7 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
+use casper_storage::data_access_layer::EntryPointsRequest;
 use casper_types::{
     ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, EraId, ProtocolUpgradeConfig,
 };
@@ -295,8 +296,8 @@ impl ContractRuntime {
         _rng: &mut NodeRng,
         request: ContractRuntimeRequest,
     ) -> Effects<Event>
-    where
-        REv: From<ContractRuntimeRequest>
+        where
+            REv: From<ContractRuntimeRequest>
             + From<ContractRuntimeAnnouncement>
             + From<StorageRequest>
             + From<MetaBlockAnnouncement>
@@ -319,7 +320,7 @@ impl ContractRuntime {
                     trace!(?result, "query result");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetBalance {
                 request: balance_request,
@@ -335,7 +336,7 @@ impl ContractRuntime {
                     trace!(?result, "balance result");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetEraValidators {
                 request: era_validators_request,
@@ -353,7 +354,7 @@ impl ContractRuntime {
                     trace!(?result, "era validators result");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
@@ -372,7 +373,7 @@ impl ContractRuntime {
                     trace!(?result, "execution result checksum");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetAddressableEntity {
                 state_root_hash,
@@ -392,7 +393,24 @@ impl ContractRuntime {
                     trace!(?result, "get addressable entity");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
+            }
+            ContractRuntimeRequest::GetEntryPoint {
+                state_root_hash, key, responder
+            } => {
+                trace!(?state_root_hash, "get entry point");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = EntryPointsRequest::new(state_root_hash, key);
+                    let result = data_access_layer.entry_point(request);
+                    metrics
+                        .entry_points
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
+                    responder.respond(result).await
+                }.ignore()
             }
             ContractRuntimeRequest::GetTotalSupply {
                 request: total_supply_request,
@@ -410,7 +428,7 @@ impl ContractRuntime {
                     trace!(?result, "total supply results");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetRoundSeigniorageRate {
                 request: round_seigniorage_rate_request,
@@ -432,7 +450,7 @@ impl ContractRuntime {
                     trace!(?result, "round seigniorage rate results");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetTaggedValues {
                 request: tagged_values_request,
@@ -450,7 +468,7 @@ impl ContractRuntime {
                     trace!(?result, "get all values result");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             // trie related events
             ContractRuntimeRequest::GetTrie {
@@ -467,7 +485,7 @@ impl ContractRuntime {
                     trace!(?result, "trie response");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::PutTrie {
                 request: put_trie_request,
@@ -488,7 +506,7 @@ impl ContractRuntime {
                     trace!(?result, "put trie response");
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 executable_block,
@@ -561,7 +579,7 @@ impl ContractRuntime {
                                 meta_block_state,
                                 current_gas_price,
                             )
-                            .ignore(),
+                                .ignore(),
                         )
                     }
                 }
@@ -588,10 +606,10 @@ impl ContractRuntime {
                             *transaction,
                         )
                     })
-                    .await;
+                        .await;
                     responder.respond(result).await
                 }
-                .ignore()
+                    .ignore()
             }
             ContractRuntimeRequest::GetEraGasPrice { era_id, responder } => responder
                 .respond(self.current_gas_price.maybe_gas_price_for_era_id(era_id))
@@ -609,8 +627,8 @@ impl ContractRuntime {
         effect_builder: EffectBuilder<REv>,
         TrieRequestIncoming { sender, message }: TrieRequestIncoming,
     ) -> Effects<Event>
-    where
-        REv: From<NetworkRequest<Message>> + Send,
+        where
+            REv: From<NetworkRequest<Message>> + Send,
     {
         let TrieRequestMessage(ref serialized_id) = *message;
         let fetch_response = match self.fetch_trie_local(serialized_id) {
@@ -698,8 +716,8 @@ impl ContractRuntime {
 }
 
 impl<REv> Component<REv> for ContractRuntime
-where
-    REv: From<ContractRuntimeRequest>
+    where
+        REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
         + From<NetworkRequest<Message>>
         + From<StorageRequest>

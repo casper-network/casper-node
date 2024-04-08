@@ -147,7 +147,7 @@ fn tracking_copy_write() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Write(one)),
-            (k, TransformKindV2::Write(two))
+            (k, TransformKindV2::Write(two)),
         ])
     );
 }
@@ -192,7 +192,7 @@ fn tracking_copy_rw() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Identity),
-            (k, TransformKindV2::Write(value))
+            (k, TransformKindV2::Write(value)),
         ])
     );
 }
@@ -212,7 +212,7 @@ fn tracking_copy_ra() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::Identity),
-            (k, TransformKindV2::AddInt32(3))
+            (k, TransformKindV2::AddInt32(3)),
         ])
     );
 }
@@ -233,7 +233,7 @@ fn tracking_copy_aw() {
         tc.effects,
         effects(vec![
             (k, TransformKindV2::AddInt32(3)),
-            (k, TransformKindV2::Write(write_value))
+            (k, TransformKindV2::Write(write_value)),
         ])
     );
 }
@@ -517,6 +517,7 @@ fn should_traverse_all_paths() {
         "unexpected stored value"
     );
 }
+
 fn handle_stored_value_into(
     key: Key,
     stored_value: StoredValue,
@@ -547,7 +548,6 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -594,7 +594,6 @@ proptest! {
         let entity = AddressableEntity::new(
             PackageHash::new([1u8;32]),
             ByteCodeHash::default(),
-            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
@@ -642,7 +641,6 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -740,7 +738,6 @@ fn query_for_circular_references_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
@@ -804,7 +801,6 @@ fn validate_query_proof_should_work() {
     let a_e = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([20; 32]),
         ByteCodeHash::default(),
-        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::new(AccountHash::new([3; 32]), Weight::new(1)),
@@ -817,7 +813,6 @@ fn validate_query_proof_should_work() {
     let c_e = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
@@ -1073,7 +1068,6 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
         let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
-            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -1141,7 +1135,6 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
-        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),

@@ -15,7 +15,17 @@ use schemars::JsonSchema;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
-use crate::{account::Account, addressable_entity::NamedKeyValue, bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, contract_messages::{MessageChecksum, MessageTopicSummary}, contract_wasm::ContractWasm, contracts::{Contract, ContractPackage}, package::Package, system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse}, AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1, EntryPointValue};
+use crate::{
+    account::Account,
+    addressable_entity::NamedKeyValue,
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contract_messages::{MessageChecksum, MessageTopicSummary},
+    contract_wasm::ContractWasm,
+    contracts::{Contract, ContractPackage},
+    package::Package,
+    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+    AddressableEntity, ByteCode, CLValue, DeployInfo, EntryPointValue, TransferV1,
+};
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
 
@@ -48,9 +58,9 @@ enum Tag {
 #[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(with = "serde_helpers::BinarySerHelper")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(with = "serde_helpers::BinarySerHelper")
 )]
 pub enum StoredValue {
     /// A CLValue.
@@ -457,7 +467,9 @@ impl From<ByteCode> for StoredValue {
 }
 
 impl From<EntryPointValue> for StoredValue {
-    fn from(value: EntryPointValue) -> Self { StoredValue::EntryPoint(value) }
+    fn from(value: EntryPointValue) -> Self {
+        StoredValue::EntryPoint(value)
+    }
 }
 
 impl TryFrom<StoredValue> for CLValue {
@@ -657,30 +669,30 @@ impl ToBytes for StoredValue {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
-            StoredValue::Account(account) => account.serialized_length(),
-            StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
-            StoredValue::Contract(contract_header) => contract_header.serialized_length(),
-            StoredValue::ContractPackage(contract_package) => {
-                contract_package.serialized_length()
+                StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
+                StoredValue::Account(account) => account.serialized_length(),
+                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
+                StoredValue::Contract(contract_header) => contract_header.serialized_length(),
+                StoredValue::ContractPackage(contract_package) => {
+                    contract_package.serialized_length()
+                }
+                StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.serialized_length(),
+                StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
+                StoredValue::EraInfo(era_info) => era_info.serialized_length(),
+                StoredValue::Bid(bid) => bid.serialized_length(),
+                StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
+                StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::AddressableEntity(entity) => entity.serialized_length(),
+                StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
+                StoredValue::Package(package) => package.serialized_length(),
+                StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    message_topic_summary.serialized_length()
+                }
+                StoredValue::Message(message_digest) => message_digest.serialized_length(),
+                StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+                StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length(),
             }
-            StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.serialized_length(),
-            StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
-            StoredValue::EraInfo(era_info) => era_info.serialized_length(),
-            StoredValue::Bid(bid) => bid.serialized_length(),
-            StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
-            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
-            StoredValue::AddressableEntity(entity) => entity.serialized_length(),
-            StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
-            StoredValue::Package(package) => package.serialized_length(),
-            StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
-            StoredValue::MessageTopic(message_topic_summary) => {
-                message_topic_summary.serialized_length()
-            }
-            StoredValue::Message(message_digest) => message_digest.serialized_length(),
-            StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
-            StoredValue::EntryPoint(entry_point_value) => entry_point_value.serialized_length()
-        }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
@@ -706,7 +718,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
-            StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer)
+            StoredValue::EntryPoint(entry_point_value) => entry_point_value.write_bytes(writer),
         }
     }
 }
@@ -771,11 +783,8 @@ impl FromBytes for StoredValue {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
             }
-            tag if tag == Tag::EntryPoint as u8 => {
-                EntryPointValue::from_bytes(remainder).map(|(entry_point, remainder)| {
-                    (StoredValue::EntryPoint(entry_point), remainder)
-                })
-            }
+            tag if tag == Tag::EntryPoint as u8 => EntryPointValue::from_bytes(remainder)
+                .map(|(entry_point, remainder)| (StoredValue::EntryPoint(entry_point), remainder)),
             _ => Err(Error::Formatting),
         }
     }

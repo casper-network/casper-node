@@ -483,7 +483,7 @@ fn sample_contract(entry_points_len: u8) -> AddressableEntity {
     AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        entry_points,
+        // entry_points,
         ProtocolVersion::default(),
         URef::default(),
         AssociatedKeys::default(),
@@ -502,9 +502,9 @@ fn contract_hash_fn(i: u8) -> AddressableEntityHash {
 }
 
 fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>
-where
-    FK: Fn(u8) -> K,
-    FV: Fn(u8) -> V,
+    where
+        FK: Fn(u8) -> K,
+        FV: Fn(u8) -> V,
 {
     (0..count)
         .map(|i| {
@@ -516,8 +516,8 @@ where
 }
 
 fn sample_set<K: Ord, F>(fun: F, count: u8) -> BTreeSet<K>
-where
-    F: Fn(u8) -> K,
+    where
+        F: Fn(u8) -> K,
 {
     (0..count).map(fun).collect()
 }

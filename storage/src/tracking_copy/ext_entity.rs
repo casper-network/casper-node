@@ -118,8 +118,8 @@ pub trait TrackingCopyEntityExt<R> {
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -197,8 +197,6 @@ where
                 let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
                 let package_hash = PackageHash::new(generator.new_hash_address());
 
-                let entry_points = EntryPoints::new();
-
                 self.migrate_named_keys(
                     EntityAddr::Account(entity_hash.value()),
                     account.named_keys().clone(),
@@ -207,7 +205,6 @@ where
                 let entity = AddressableEntity::new(
                     package_hash,
                     byte_code_hash,
-                    entry_points,
                     protocol_version,
                     account.main_purse(),
                     account.associated_keys().clone().into(),
@@ -276,9 +273,9 @@ where
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
+            .intersection(authorization_keys)
+            .next()
+            .is_some()
         {
             // Exit early if there's at least a single signature coming from an admin.
             return Ok((entity_record, entity_hash));
@@ -350,7 +347,6 @@ where
         let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
-        let entry_points = EntryPoints::new();
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
@@ -359,7 +355,6 @@ where
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            entry_points,
             protocol_version,
             main_purse,
             associated_keys,
@@ -440,7 +435,6 @@ where
             // however, we intend to revisit this and potentially allow it in a future release
             // as a replacement for stored session.
             let byte_code_hash = ByteCodeHash::default();
-            let entry_points = EntryPoints::new();
 
             let action_thresholds = {
                 let account_threshold = account.action_thresholds().clone();
@@ -449,7 +443,7 @@ where
                     Weight::new(1u8),
                     Weight::new(account_threshold.key_management.value()),
                 )
-                .map_err(Self::Error::SetThresholdFailure)?
+                    .map_err(Self::Error::SetThresholdFailure)?
             };
 
             let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
@@ -457,7 +451,6 @@ where
             let entity = AddressableEntity::new(
                 package_hash,
                 byte_code_hash,
-                entry_points,
                 protocol_version,
                 account.main_purse(),
                 associated_keys,
@@ -603,7 +596,7 @@ where
                         None => {
                             return Err(TrackingCopyError::MissingSystemContractHash(
                                 HANDLE_PAYMENT.to_string(),
-                            ))
+                            ));
                         }
                     };
                     EntityAddr::new_system(hash.value())

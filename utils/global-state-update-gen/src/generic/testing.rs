@@ -62,7 +62,6 @@ impl MockStateReader {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            EntryPoints::new(),
             self.protocol_version,
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),

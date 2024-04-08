@@ -56,6 +56,9 @@ const EXECUTION_RESULTS_CHECKSUM_HELP: &str = "contract_runtime_execution_result
 const ADDRESSABLE_ENTITY_NAME: &str = "contract_runtime_addressable_entity";
 const ADDRESSABLE_ENTITY_HELP: &str = "contract_runtime_addressable_entity";
 
+const ENTRY_POINT_NAME: &str = "contract_runtime_entry_point";
+const ENTRY_POINT_HELP: &str = "contract_runtime_entry_point";
+
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 
@@ -88,6 +91,7 @@ pub struct Metrics {
     pub(super) get_all_values: Histogram,
     pub(super) execution_results_checksum: Histogram,
     pub(super) addressable_entity: Histogram,
+    pub(super) entry_points: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
     pub(super) exec_block: Histogram,
@@ -196,6 +200,12 @@ impl Metrics {
                 ADDRESSABLE_ENTITY_HELP,
                 common_buckets.clone(),
             )?,
+            entry_points: utils::register_histogram_metric(
+                registry,
+                ENTRY_POINT_NAME,
+                ENTRY_POINT_HELP,
+                common_buckets.clone(),
+            )?,
             get_trie: utils::register_histogram_metric(
                 registry,
                 GET_TRIE_NAME,
@@ -240,5 +250,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.exec_block);
         unregister_metric!(self.registry, self.latest_commit_step);
         unregister_metric!(self.registry, self.exec_queue_size);
+        unregister_metric!(self.registry, self.entry_points);
     }
 }

@@ -5,27 +5,18 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 use thiserror::Error;
 use tracing::{debug, error};
 
-use casper_types::{
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
-        NamedKeyValue, NamedKeys, Weight,
+use casper_types::{addressable_entity::{
+    ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
+    NamedKeyValue, NamedKeys, Weight,
+}, bytesrepr::{self, ToBytes}, system::{
+    auction::{
+        BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    bytesrepr::{self, ToBytes},
-    system::{
-        auction::{
-            BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
-        },
-        handle_payment::ACCUMULATION_PURSE_KEY,
-        mint::ROUND_SEIGNIORAGE_RATE_KEY,
-        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-    },
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPoints,
-    FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
-    U512,
-};
+    handle_payment::ACCUMULATION_PURSE_KEY,
+    mint::ROUND_SEIGNIORAGE_RATE_KEY,
+    SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+}, AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPoints, FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef, U512, EntryPointAddr, EntryPointValue};
 
 use crate::{
     global_state::state::StateProvider,
@@ -131,16 +122,16 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
 impl<S> ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -299,7 +290,6 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         debug!(%system_entity_type, "refresh system contract entry points");
         let entity_name = system_entity_type.entity_name();
-        let entry_points = system_entity_type.entry_points();
 
         let (mut entity, maybe_named_keys, must_prune) =
             match self.retrieve_system_entity(entity_hash, system_entity_type) {
@@ -322,7 +312,6 @@ where
         let new_entity = AddressableEntity::new(
             entity.package_hash(),
             ByteCodeHash::default(),
-            entry_points,
             self.config.new_protocol_version(),
             URef::default(),
             AssociatedKeys::default(),
@@ -344,9 +333,9 @@ where
             .borrow_mut()
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
-        if let Some(named_keys) = maybe_named_keys {
-            let entity_addr = EntityAddr::new_system(entity_hash.value());
+        let entity_addr = EntityAddr::new_system(entity_hash.value());
 
+        if let Some(named_keys) = maybe_named_keys {
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                     .map_err(|err| ProtocolUpgradeError::Bytesrepr(err.to_string()))?;
@@ -360,6 +349,16 @@ where
                     .borrow_mut()
                     .write(entry_key, StoredValue::NamedKey(named_key_value));
             }
+        }
+
+        let entry_points = system_entity_type.entry_points();
+
+        for entry_point in entry_points.take_entry_points() {
+            let entry_point_addr = EntryPointAddr::new_v1_entry_point_addr(entity_addr, entry_point.name())
+                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error.to_string()))?;
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::EntryPoint(entry_point_addr), StoredValue::EntryPoint(EntryPointValue::V1CasperVm(entry_point)));
         }
 
         package.insert_entity_version(
@@ -505,7 +504,6 @@ where
         let system_account_entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            EntryPoints::new(),
             self.config.new_protocol_version(),
             main_purse,
             associated_keys,

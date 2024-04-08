@@ -81,6 +81,7 @@ use crate::{
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
+use crate::data_access_layer::{EntryPointsRequest, EntryPointsResult};
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -145,7 +146,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return GenesisResult::Failure(GenesisError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let chainspec_hash = request.chainspec_hash();
@@ -181,7 +182,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -248,7 +249,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return StepResult::Failure(StepError::TrackingCopy(TrackingCopyError::Storage(
                     err,
-                )))
+                )));
             }
         };
         let protocol_version = request.protocol_version();
@@ -260,7 +261,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -268,7 +269,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
             match &mut request.next_era_id().into_bytes() {
@@ -276,7 +277,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return StepResult::Failure(StepError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -353,7 +354,7 @@ pub trait CommitProvider: StateProvider {
             Err(err) => {
                 return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -365,7 +366,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -373,7 +374,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return BlockRewardsResult::Failure(BlockRewardsError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -431,7 +432,7 @@ pub trait CommitProvider: StateProvider {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return FeeResult::RootNotFound,
             Err(gse) => {
-                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)))
+                return FeeResult::Failure(FeeError::TrackingCopy(TrackingCopyError::Storage(gse)));
             }
         };
 
@@ -443,7 +444,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
-                    ))
+                    ));
                 }
             };
             match &mut protocol_version.into_bytes() {
@@ -451,7 +452,7 @@ pub trait CommitProvider: StateProvider {
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(*bre),
-                    ))
+                    ));
                 }
             };
 
@@ -489,7 +490,7 @@ pub trait CommitProvider: StateProvider {
                     Err(gse) => {
                         return FeeResult::Failure(FeeError::TrackingCopy(
                             TrackingCopyError::Storage(gse),
-                        ))
+                        ));
                     }
                 };
                 FeeResult::Success {
@@ -508,7 +509,7 @@ pub trait CommitProvider: StateProvider {
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
-    type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
+    type Reader: StateReader<Key, StoredValue, Error=GlobalStateError>;
 
     /// Flush the state provider.
     fn flush(&self, request: FlushRequest) -> FlushResult;
@@ -609,7 +610,7 @@ pub trait StateProvider {
             Err(err) => {
                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
         let balance_request = request.clone().into();
@@ -617,7 +618,7 @@ pub trait StateProvider {
         let (total_balance, remaining_balance, purse_addr) = match balance_result {
             BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
             BalanceResult::Failure(tce) => {
-                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
             }
             BalanceResult::Success {
                 total_balance,
@@ -655,7 +656,7 @@ pub trait StateProvider {
             Err(cve) => {
                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                     TrackingCopyError::CLValue(cve),
-                ))
+                ));
             }
         };
 
@@ -767,7 +768,7 @@ pub trait StateProvider {
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant);
                     }
                     None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
@@ -1151,7 +1152,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return ExecutionResultsChecksumResult::RootNotFound,
             Err(err) => {
-                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err))
+                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err));
             }
         };
         match tc.get_checksum_registry() {
@@ -1175,7 +1176,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1224,7 +1225,7 @@ pub trait StateProvider {
                 match self.query(query_request) {
                     QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
                     QueryResult::ValueNotFound(msg) => {
-                        return AddressableEntityResult::ValueNotFound(msg)
+                        return AddressableEntityResult::ValueNotFound(msg);
                     }
                     QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
                     QueryResult::Success { value, .. } => {
@@ -1241,7 +1242,7 @@ pub trait StateProvider {
             _ => {
                 return AddressableEntityResult::Failure(TrackingCopyError::UnexpectedKeyVariant(
                     key,
-                ))
+                ));
             }
         };
 
@@ -1255,7 +1256,7 @@ pub trait StateProvider {
                     None => {
                         return AddressableEntityResult::Failure(
                             TrackingCopyError::UnexpectedStoredValueVariant,
-                        )
+                        );
                     }
                 };
                 AddressableEntityResult::Success { entity }
@@ -1274,7 +1275,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return SystemEntityRegistryResult::RootNotFound,
             Err(err) => {
-                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err))
+                return SystemEntityRegistryResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 
@@ -1308,6 +1309,28 @@ pub trait StateProvider {
                     SystemEntityRegistryResult::NamedEntityNotFound(name.clone())
                 }
             },
+        }
+    }
+
+    /// Gets an entry point value.
+    fn entry_point(&self, request: EntryPointsRequest) -> EntryPointsResult {
+        let state_hash = request.state_hash();
+        let query_request = QueryRequest::new(state_hash, request.key(), vec![]);
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => { EntryPointsResult::RootNotFound }
+            QueryResult::ValueNotFound(msg) => { EntryPointsResult::ValueNotFound(msg) }
+            QueryResult::Failure(tce) => { EntryPointsResult::Failure(tce) }
+            QueryResult::Success { value, .. } => {
+                if let StoredValue::EntryPoint(entry_point_value) = *value {
+                    EntryPointsResult::Success { entry_points: entry_point_value }
+                } else {
+                    error!("Expected to get entry point value received other variant");
+                    EntryPointsResult::Failure(
+                        TrackingCopyError::UnexpectedStoredValueVariant
+                    )
+                }
+            }
         }
     }
 
@@ -1371,7 +1394,7 @@ pub trait StateProvider {
             Ok(Some(tc)) => tc,
             Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
             Err(err) => {
-                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err))
+                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err));
             }
         };
 
@@ -1431,7 +1454,7 @@ pub trait StateProvider {
             Err(err) => {
                 return TransferResult::Failure(TransferError::TrackingCopy(
                     TrackingCopyError::Storage(err),
-                ))
+                ));
             }
         };
 
@@ -1540,7 +1563,7 @@ pub trait StateProvider {
                 let main_purse = match runtime.mint(U512::zero()) {
                     Ok(uref) => uref,
                     Err(mint_error) => {
-                        return TransferResult::Failure(TransferError::Mint(mint_error))
+                        return TransferResult::Failure(TransferError::Mint(mint_error));
                     }
                 };
                 // TODO: KARAN TO FIX: this should create a shiny new addressable entity instance,
@@ -1631,11 +1654,11 @@ pub fn put_stored_values<'a, R, S, E>(
     prestate_hash: Digest,
     stored_values: HashMap<Key, StoredValue>,
 ) -> Result<Digest, E>
-where
-    R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
+    where
+        R: TransactionSource<'a, Handle=S::Handle>,
+        S: TrieStore<Key, StoredValue>,
+        S::Error: From<R::Error>,
+        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -1667,11 +1690,11 @@ pub fn commit<'a, R, S, E>(
     prestate_hash: Digest,
     effects: Effects,
 ) -> Result<Digest, E>
-where
-    R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<Key, StoredValue>,
-    S::Error: From<R::Error>,
-    E: From<R::Error>
+    where
+        R: TransactionSource<'a, Handle=S::Handle>,
+        S: TrieStore<Key, StoredValue>,
+        S::Error: From<R::Error>,
+        E: From<R::Error>
         + From<S::Error>
         + From<bytesrepr::Error>
         + From<CommitError>

@@ -65,7 +65,6 @@ fn new_addressable_entity_with_purse(
     let entity = AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
@@ -194,8 +193,8 @@ fn build_runtime_context_and_execute<T, F>(
     mut named_keys: NamedKeys,
     functor: F,
 ) -> Result<T, ExecError>
-where
-    F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, ExecError>,
+    where
+        F: FnOnce(RuntimeContext<LmdbGlobalStateView>) -> Result<T, ExecError>,
 {
     let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
         .expect("should create secret key");
@@ -1004,7 +1003,7 @@ fn should_meter_for_gas_storage_write() {
             let gas_after = rc.gas_counter();
             Ok((gas_before, gas_after))
         })
-        .expect("should run test");
+            .expect("should run test");
 
     assert!(
         gas_usage_after > gas_usage_before,
@@ -1040,7 +1039,7 @@ fn should_meter_for_gas_storage_add() {
             let gas_after = rc.gas_counter();
             Ok((gas_before, gas_after))
         })
-        .expect("should run test");
+            .expect("should run test");
 
     assert!(
         gas_usage_after > gas_usage_before,

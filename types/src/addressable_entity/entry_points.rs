@@ -1,6 +1,5 @@
 use core::fmt::{Debug, Display, Formatter};
-use std::collections::BTreeMap;
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use blake2::{
     digest::{Update, VariableOutput},
@@ -9,29 +8,31 @@ use blake2::{
 use datasize::DataSize;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 #[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::from_str;
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
-use crate::{BLAKE2B_DIGEST_LENGTH, bytesrepr, checksummed_hex, CLType, EntityAddr, Group, HashAddr, KEY_HASH_LENGTH};
-use crate::addressable_entity::{FromStrError};
-use crate::bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    addressable_entity::FromStrError,
+    bytesrepr,
+    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex, CLType, EntityAddr, Group, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+};
 
 const V1_ENTRY_POINT_TAG: u8 = 0;
 const V2_ENTRY_POINT_TAG: u8 = 1;
 
 const V1_ENTRY_POINT_PREFIX: &str = "entry-point-v1-";
 const V2_ENTRY_POINT_PREFIX: &str = "entry-point-v2-";
-
 
 /// Context of method execution
 ///
@@ -548,7 +549,9 @@ impl ToBytes for EntryPointV2 {
     }
 
     fn serialized_length(&self) -> usize {
-        self.selector.serialized_length() + self.function_index.serialized_length() + self.flags.serialized_length()
+        self.selector.serialized_length()
+            + self.function_index.serialized_length()
+            + self.flags.serialized_length()
     }
 }
 
@@ -557,14 +560,16 @@ impl FromBytes for EntryPointV2 {
         let (selector, remainder) = u32::from_bytes(bytes)?;
         let (function_index, remainder) = u32::from_bytes(remainder)?;
         let (flags, remainder) = u32::from_bytes(remainder)?;
-        Ok(EntryPointV2 {
-            selector,
-            function_index,
-            flags,
-        })
+        Ok((
+            EntryPointV2 {
+                selector,
+                function_index,
+                flags,
+            },
+            remainder,
+        ))
     }
 }
-
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -581,12 +586,15 @@ pub enum EntryPointAddr {
 }
 
 impl EntryPointAddr {
-    pub fn new_v1_entry_point_addr(entity_addr: EntityAddr, name: String) -> Result<Self, bytesrepr::Error> {
+    pub fn new_v1_entry_point_addr(
+        entity_addr: EntityAddr,
+        name: &str,
+    ) -> Result<Self, bytesrepr::Error> {
         let bytes = name.to_bytes()?;
         let mut hasher = {
             match VarBlake2b::new(BLAKE2B_DIGEST_LENGTH) {
                 Ok(hasher) => hasher,
-                Err(_) => return Err(bytesrepr::Error::Formatting)
+                Err(_) => return Err(bytesrepr::Error::Formatting),
             }
         };
         hasher.update(bytes);
@@ -599,7 +607,6 @@ impl EntryPointAddr {
         })
     }
 
-
     pub const fn new_v2_entry_point_addr(entity_addr: EntityAddr, selector: u32) -> Self {
         Self::VmCasperV2 {
             entity_addr,
@@ -610,17 +617,15 @@ impl EntryPointAddr {
     /// Returns the encapsulated [`EntityAddr`].
     pub fn entity_addr(&self) -> EntityAddr {
         match self {
-            EntryPointAddr::VmCasperV1 { entity_addr, .. } => { *entity_addr }
-            EntryPointAddr::VmCasperV2 { entity_addr, .. } => { *entity_addr }
+            EntryPointAddr::VmCasperV1 { entity_addr, .. } => *entity_addr,
+            EntryPointAddr::VmCasperV2 { entity_addr, .. } => *entity_addr,
         }
     }
-
 
     /// Returns the formatted String representation of the [`EntryPointAddr`].
     pub fn to_formatted_string(&self) -> String {
         format!("{}", self)
     }
-
 
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(entry_point_v1) = input.strip_prefix(V1_ENTRY_POINT_PREFIX) {
@@ -630,15 +635,22 @@ impl EntryPointAddr {
                     checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
                 let (name_bytes, _) =
                     FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
-                return Ok(Self::VmCasperV1 { entity_addr, name_bytes });
+                return Ok(Self::VmCasperV1 {
+                    entity_addr,
+                    name_bytes,
+                });
             }
         }
 
         if let Some(entry_point_v2) = input.strip_prefix(V2_ENTRY_POINT_PREFIX) {
             if let Some((entity_addr_str, selector_str)) = entry_point_v2.rsplit_once('-') {
                 let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
-                let selector: u32 = from_str(selector_str).map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
-                return Ok(Self::VmCasperV2 { entity_addr, selector });
+                let selector: u32 = from_str(selector_str)
+                    .map_err(|_| FromStrError::BytesRepr(Error::Formatting))?;
+                return Ok(Self::VmCasperV2 {
+                    entity_addr,
+                    selector,
+                });
             }
         }
 
@@ -650,12 +662,18 @@ impl ToBytes for EntryPointAddr {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
-            EntryPointAddr::VmCasperV1 { entity_addr, name_bytes: named_bytes } => {
+            EntryPointAddr::VmCasperV1 {
+                entity_addr,
+                name_bytes: named_bytes,
+            } => {
                 buffer.insert(0, V1_ENTRY_POINT_TAG);
                 buffer.append(&mut entity_addr.to_bytes()?);
                 buffer.append(&mut named_bytes.to_bytes()?);
             }
-            EntryPointAddr::VmCasperV2 { entity_addr, selector } => {
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                selector,
+            } => {
                 buffer.insert(0, V2_ENTRY_POINT_TAG);
                 buffer.append(&mut entity_addr.to_bytes()?);
                 buffer.append(&mut selector.to_bytes()?);
@@ -665,17 +683,19 @@ impl ToBytes for EntryPointAddr {
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + match self {
-            EntryPointAddr::VmCasperV1 { entity_addr, name_bytes: named_bytes } => {
-                entity_addr.serialized_length() + named_bytes.serialized_length()
-            }
-            EntryPointAddr::VmCasperV2 { entity_addr, selector } => {
-                entity_addr.serialized_length() + selector.serialized_length()
-            }
+        U8_SERIALIZED_LENGTH
+            + match self {
+            EntryPointAddr::VmCasperV1 {
+                entity_addr,
+                name_bytes: named_bytes,
+            } => entity_addr.serialized_length() + named_bytes.serialized_length(),
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                selector,
+            } => entity_addr.serialized_length() + selector.serialized_length(),
         }
     }
 }
-
 
 impl FromBytes for EntryPointAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
@@ -684,17 +704,26 @@ impl FromBytes for EntryPointAddr {
             V1_ENTRY_POINT_TAG => {
                 let (entity_addr, bytes) = EntityAddr::from_bytes(bytes)?;
                 let (name_bytes, bytes) = FromBytes::from_bytes(bytes)?;
-                Ok((Self::VmCasperV1 {
-                    entity_addr,
-                    name_bytes,
-                }, bytes))
+                Ok((
+                    Self::VmCasperV1 {
+                        entity_addr,
+                        name_bytes,
+                    },
+                    bytes,
+                ))
             }
             V2_ENTRY_POINT_TAG => {
                 let (entity_addr, bytes) = EntityAddr::from_bytes(bytes)?;
                 let (selector, bytes) = u32::from_bytes(bytes)?;
-                Ok((Self::VmCasperV2 { entity_addr, selector }, bytes))
+                Ok((
+                    Self::VmCasperV2 {
+                        entity_addr,
+                        selector,
+                    },
+                    bytes,
+                ))
             }
-            _ => Err(Error::Formatting)
+            _ => Err(Error::Formatting),
         }
     }
 }
@@ -702,10 +731,22 @@ impl FromBytes for EntryPointAddr {
 impl Display for EntryPointAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            EntryPointAddr::VmCasperV1 { entity_addr, name_bytes } => {
-                write!(f, "{}{}-{}", V1_ENTRY_POINT_PREFIX, entity_addr, base16::encode_lower(name_bytes))
+            EntryPointAddr::VmCasperV1 {
+                entity_addr,
+                name_bytes,
+            } => {
+                write!(
+                    f,
+                    "{}{}-{}",
+                    V1_ENTRY_POINT_PREFIX,
+                    entity_addr,
+                    base16::encode_lower(name_bytes)
+                )
             }
-            EntryPointAddr::VmCasperV2 { entity_addr, selector } => {
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                selector,
+            } => {
                 write!(f, "{}{}-{}", V2_ENTRY_POINT_PREFIX, entity_addr, selector)
             }
         }
@@ -715,10 +756,16 @@ impl Display for EntryPointAddr {
 impl Debug for EntryPointAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            EntryPointAddr::VmCasperV1 { entity_addr, name_bytes } => {
+            EntryPointAddr::VmCasperV1 {
+                entity_addr,
+                name_bytes,
+            } => {
                 write!(f, "EntryPointAddr({:?}-{:?})", entity_addr, name_bytes)
             }
-            EntryPointAddr::VmCasperV2 { entity_addr, selector } => {
+            EntryPointAddr::VmCasperV2 {
+                entity_addr,
+                selector,
+            } => {
                 write!(f, "EntryPointAddr({:?}-{:?})", entity_addr, selector)
             }
         }
@@ -729,9 +776,15 @@ impl Debug for EntryPointAddr {
 impl Distribution<EntryPointAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntryPointAddr {
         if rng.gen() {
-            EntryPointAddr::VmCasperV1 { entity_addr: rng.gen(), name_bytes: rng.gen() }
+            EntryPointAddr::VmCasperV1 {
+                entity_addr: rng.gen(),
+                name_bytes: rng.gen(),
+            }
         } else {
-            EntryPointAddr::VmCasperV2 { entity_addr: rng.gen(), selector: rng.gen() }
+            EntryPointAddr::VmCasperV2 {
+                entity_addr: rng.gen(),
+                selector: rng.gen(),
+            }
         }
     }
 }
@@ -754,7 +807,6 @@ impl EntryPointValue {
     }
 }
 
-
 impl ToBytes for EntryPointValue {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -772,9 +824,10 @@ impl ToBytes for EntryPointValue {
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + match self {
-            EntryPointValue::V1CasperVm(entry_point) => { entry_point.serialized_length() }
-            EntryPointValue::V2CasperVm(entry_point) => { entry_point.serialized_length() }
+        U8_SERIALIZED_LENGTH
+            + match self {
+            EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
+            EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
         }
     }
 }
@@ -791,7 +844,7 @@ impl FromBytes for EntryPointValue {
                 let (entry_point, remainder) = EntryPointV2::from_bytes(remainder)?;
                 Ok((Self::V2CasperVm(entry_point), remainder))
             }
-            _ => Err(Error::Formatting)
+            _ => Err(Error::Formatting),
         }
     }
 }

@@ -29,6 +29,7 @@ mod system_entity_registry;
 pub mod tagged_values;
 mod total_supply;
 mod trie;
+mod entry_points;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use auction::{AuctionMethod, BiddingRequest, BiddingResult};
@@ -43,6 +44,7 @@ pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+pub use entry_points::{EntryPointsResult, EntryPointsRequest};
 pub use fee::{FeeError, FeeRequest, FeeResult};
 pub use flush::{FlushRequest, FlushResult};
 pub use genesis::{GenesisRequest, GenesisResult};
@@ -98,8 +100,8 @@ impl<S> DataAccessLayer<S> {
 }
 
 impl<S> CommitProvider for DataAccessLayer<S>
-where
-    S: CommitProvider,
+    where
+        S: CommitProvider,
 {
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
         self.state.commit(state_hash, effects)
@@ -107,8 +109,8 @@ where
 }
 
 impl<S> StateProvider for DataAccessLayer<S>
-where
-    S: StateProvider,
+    where
+        S: StateProvider,
 {
     type Reader = S::Reader;
 

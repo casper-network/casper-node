@@ -36,7 +36,9 @@ use tracing::warn;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr},
+    addressable_entity::{
+        AddressableEntityHash, EntityAddr, EntityKindTag, EntryPointAddr, NamedKeyAddr,
+    },
     byte_code,
     bytesrepr::{
         self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U64_SERIALIZED_LENGTH,
@@ -55,7 +57,6 @@ use crate::{
     ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
     TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
-use crate::addressable_entity::EntryPointAddr;
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
@@ -519,7 +520,7 @@ impl Key {
             Key::NamedKey(_) => String::from("Key::NamedKey"),
             Key::BlockMessageCount => String::from("Key::BlockMessageCount"),
             Key::BalanceHold(_) => String::from("Key::BalanceHold"),
-            Key::EntryPoint(_) => String::from("Key::EntryPoint")
+            Key::EntryPoint(_) => String::from("Key::EntryPoint"),
         }
     }
 
@@ -725,7 +726,7 @@ impl Key {
             let validator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                 bytes[1..BidAddr::VALIDATOR_BID_ADDR_LENGTH].as_ref(),
             )
-                .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+            .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
 
             let bid_addr = {
                 if tag == BidAddrTag::Unified {
@@ -736,7 +737,7 @@ impl Key {
                     let delegator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                         bytes[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
                     )
-                        .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                    .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
                     BidAddr::new_delegator_addr((validator_bytes, delegator_bytes))
                 } else {
                     return Err(FromStrError::BidAddr("invalid tag".to_string()));
@@ -1167,9 +1168,7 @@ impl Key {
                 // an entity can read its own named keys
                 &named_key_addr.entity_addr() == entity_addr
             }
-            Key::EntryPoint(entry_point_addr) => {
-                &entry_point_addr.entity_addr() == entity_addr
-            }
+            Key::EntryPoint(entry_point_addr) => &entry_point_addr.entity_addr() == entity_addr,
             Key::ByteCode(_)
             | Key::Account(_)
             | Key::Hash(_)
@@ -1497,7 +1496,7 @@ impl ToBytes for Key {
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
             Key::BalanceHold(balance_hold_addr) => balance_hold_addr.write_bytes(writer),
-            Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer)
+            Key::EntryPoint(entry_point_addr) => entry_point_addr.write_bytes(writer),
         }
     }
 }
@@ -1634,7 +1633,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::NamedKey(_) => unimplemented!(),
         Key::BlockMessageCount => unimplemented!(),
         Key::BalanceHold(_) => unimplemented!(),
-        Key::EntryPoint(_) => unimplemented!()
+        Key::EntryPoint(_) => unimplemented!(),
     }
 }
 
@@ -1762,9 +1761,7 @@ mod serde_helpers {
                 Key::BalanceHold(balance_hold_addr) => {
                     BinarySerHelper::BalanceHold(balance_hold_addr)
                 }
-                Key::EntryPoint(entry_point_addr) => {
-                    BinarySerHelper::EntryPoint(entry_point_addr)
-                }
+                Key::EntryPoint(entry_point_addr) => BinarySerHelper::EntryPoint(entry_point_addr),
             }
         }
     }
@@ -1891,7 +1888,10 @@ mod tests {
     const BLOCK_MESSAGE_COUNT: Key = Key::BlockMessageCount;
     const BALANCE_HOLD: Key =
         Key::BalanceHold(BalanceHoldAddr::new_gas([42; 32], BlockTime::new(100)));
-    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(EntityAddr::new_smart_contract([42; 32]), 1u32));
+    const ENTRY_POINT: Key = Key::EntryPoint(EntryPointAddr::new_v2_entry_point_addr(
+        EntityAddr::new_smart_contract([42; 32]),
+        1u32,
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,

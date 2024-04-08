@@ -5,10 +5,10 @@
 pub mod action_thresholds;
 mod action_type;
 pub mod associated_keys;
+mod entry_points;
 mod error;
 mod named_keys;
 mod weight;
-mod entry_points;
 
 use alloc::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -49,13 +49,16 @@ pub use self::{
     action_thresholds::ActionThresholds,
     action_type::ActionType,
     associated_keys::AssociatedKeys,
+    entry_points::{
+        EntryPoint, EntryPointAccess, EntryPointAddr, EntryPointType, EntryPointValue, EntryPoints,
+        Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME,
+    },
     error::{
         FromAccountHashStrError, SetThresholdFailure, TryFromIntError,
         TryFromSliceForAccountHashError,
     },
     named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
-    entry_points::{EntryPoint, EntryPoints, EntryPointAccess, EntryPointType, EntryPointAddr, Parameter, Parameters, DEFAULT_ENTRY_POINT_NAME, EntryPointValue},
 };
 use crate::{
     account::{Account, AccountHash},
@@ -66,8 +69,8 @@ use crate::{
     contracts::{Contract, ContractHash},
     system::SystemEntityType,
     uref::{self, URef},
-    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights,
-    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
+    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
+    Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
     KEY_HASH_LENGTH,
 };
 
@@ -556,7 +559,6 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
-
 /// Tag for the variants of [`EntityKind`].
 #[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -863,6 +865,27 @@ impl EntityAddr {
         Ok(ret)
     }
 
+    /// Returns the common prefix for all v1 EntryPoints.
+    pub fn entry_points_v1_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = Vec::with_capacity(self.serialized_length() + 2);
+        ret.push(KeyTag::EntryPoint as u8);
+        // Current a naked u8, redo to enum
+        ret.push(0u8);
+        self.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
+    /// Returns the common prefix for all v2 EntryPoints.
+    pub fn entry_points_v2_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = Vec::with_capacity(self.serialized_length() + 2);
+        ret.push(KeyTag::EntryPoint as u8);
+        // Current a naked u8, redo to enum
+        ret.push(1u8);
+        self.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
+
     /// Returns the formatted String representation of the [`EntityAddr`].
     pub fn to_formatted_string(&self) -> String {
         match self {
@@ -1046,7 +1069,7 @@ impl NamedKeyAddr {
         let mut hasher = {
             match VarBlake2b::new(BLAKE2B_DIGEST_LENGTH) {
                 Ok(hasher) => hasher,
-                Err(_) => return Err(bytesrepr::Error::Formatting)
+                Err(_) => return Err(bytesrepr::Error::Formatting),
             }
         };
         hasher.update(bytes);
@@ -1337,7 +1360,6 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
     let weight = Weight::new(1);
     let associated_keys = AssociatedKeys::new(account_hash, weight);
     let action_thresholds = ActionThresholds::new(weight, weight, weight).unwrap();
-    let entry_points = EntryPoints::new_with_default_entry_point();
     let protocol_version = ProtocolVersion::from_parts(2, 0, 0);
     let mut message_topics = MessageTopics::default();
     message_topics
@@ -1348,7 +1370,6 @@ static ADDRESSABLE_ENTITY: Lazy<AddressableEntity> = Lazy::new(|| {
         entity_kind: EntityKind::Account(account_hash),
         package_hash,
         byte_code_hash,
-        entry_points,
         main_purse,
         associated_keys,
         action_thresholds,
@@ -1367,7 +1388,7 @@ pub struct AddressableEntity {
     byte_code_hash: ByteCodeHash,
     main_purse: URef,
 
-    entry_points: EntryPoints,
+    // entry_points: EntryPoints,
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
     message_topics: MessageTopics,
@@ -1377,7 +1398,6 @@ impl From<AddressableEntity>
 for (
     PackageHash,
     ByteCodeHash,
-    EntryPoints,
     ProtocolVersion,
     URef,
     AssociatedKeys,
@@ -1388,7 +1408,6 @@ for (
         (
             entity.package_hash,
             entity.byte_code_hash,
-            entity.entry_points,
             entity.protocol_version,
             entity.main_purse,
             entity.associated_keys,
@@ -1403,7 +1422,6 @@ impl AddressableEntity {
     pub fn new(
         package_hash: PackageHash,
         byte_code_hash: ByteCodeHash,
-        entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
         main_purse: URef,
         associated_keys: AssociatedKeys,
@@ -1414,7 +1432,6 @@ impl AddressableEntity {
         AddressableEntity {
             package_hash,
             byte_code_hash,
-            entry_points,
             protocol_version,
             main_purse,
             action_thresholds,
@@ -1442,16 +1459,6 @@ impl AddressableEntity {
     /// Hash for accessing contract WASM
     pub fn byte_code_hash(&self) -> ByteCodeHash {
         self.byte_code_hash
-    }
-
-    /// Checks whether there is a method with the given name
-    pub fn has_entry_point(&self, name: &str) -> bool {
-        self.entry_points.has_entry_point(name)
-    }
-
-    /// Returns the type signature for the given `method`.
-    pub fn entry_point(&self, method: &str) -> Option<&EntryPoint> {
-        self.entry_points.get(method)
     }
 
     /// Get the protocol version this header is targeting.
@@ -1631,20 +1638,12 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().upgrade_management()
     }
 
-    /// Adds new entry point
-    pub fn add_entry_point<T: Into<String>>(&mut self, entry_point: EntryPoint) {
-        self.entry_points.add_entry_point(entry_point);
-    }
 
     /// Addr for accessing wasm bytes
     pub fn byte_code_addr(&self) -> HashAddr {
         self.byte_code_hash.value()
     }
 
-    /// Returns immutable reference to methods
-    pub fn entry_points(&self) -> &EntryPoints {
-        &self.entry_points
-    }
 
     /// Returns a reference to the message topics
     pub fn message_topics(&self) -> &MessageTopics {
@@ -1717,25 +1716,6 @@ impl AddressableEntity {
         ContextAccessRights::new(entity_hash, urefs_iter)
     }
 
-    /// Update the byte code hash for a given Entity associated with an Account.
-    pub fn update_session_entity(
-        self,
-        byte_code_hash: ByteCodeHash,
-        entry_points: EntryPoints,
-    ) -> Self {
-        Self {
-            package_hash: self.package_hash,
-            byte_code_hash,
-            entry_points,
-            protocol_version: self.protocol_version,
-            main_purse: self.main_purse,
-            associated_keys: self.associated_keys,
-            action_thresholds: self.action_thresholds,
-            message_topics: self.message_topics,
-            entity_kind: self.entity_kind,
-        }
-    }
-
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
@@ -1749,7 +1729,6 @@ impl ToBytes for AddressableEntity {
         let mut result = bytesrepr::allocate_buffer(self)?;
         self.package_hash().write_bytes(&mut result)?;
         self.byte_code_hash().write_bytes(&mut result)?;
-        self.entry_points().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
@@ -1760,8 +1739,7 @@ impl ToBytes for AddressableEntity {
     }
 
     fn serialized_length(&self) -> usize {
-        ToBytes::serialized_length(&self.entry_points)
-            + ToBytes::serialized_length(&self.package_hash)
+        ToBytes::serialized_length(&self.package_hash)
             + ToBytes::serialized_length(&self.byte_code_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.main_purse)
@@ -1774,7 +1752,6 @@ impl ToBytes for AddressableEntity {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.package_hash().write_bytes(writer)?;
         self.byte_code_hash().write_bytes(writer)?;
-        self.entry_points().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
@@ -1789,7 +1766,6 @@ impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (package_hash, bytes) = PackageHash::from_bytes(bytes)?;
         let (byte_code_hash, bytes) = ByteCodeHash::from_bytes(bytes)?;
-        let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
@@ -1800,7 +1776,6 @@ impl FromBytes for AddressableEntity {
             AddressableEntity {
                 package_hash,
                 byte_code_hash,
-                entry_points,
                 protocol_version,
                 main_purse,
                 associated_keys,
@@ -1816,7 +1791,6 @@ impl FromBytes for AddressableEntity {
 impl Default for AddressableEntity {
     fn default() -> Self {
         AddressableEntity {
-            entry_points: EntryPoints::new_with_default_entry_point(),
             byte_code_hash: [0; KEY_HASH_LENGTH].into(),
             package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
@@ -1834,7 +1808,6 @@ impl From<Contract> for AddressableEntity {
         AddressableEntity::new(
             PackageHash::new(value.contract_package_hash().value()),
             ByteCodeHash::new(value.contract_wasm_hash().value()),
-            value.entry_points().clone(),
             value.protocol_version(),
             URef::default(),
             AssociatedKeys::default(),
@@ -1850,7 +1823,6 @@ impl From<Account> for AddressableEntity {
         AddressableEntity::new(
             PackageHash::default(),
             ByteCodeHash::new([0u8; 32]),
-            EntryPoints::new(),
             ProtocolVersion::default(),
             value.main_purse(),
             value.associated_keys().clone().into(),
@@ -1959,7 +1931,6 @@ mod tests {
         let contract = AddressableEntity::new(
             PackageHash::new([254; 32]),
             ByteCodeHash::new([253; 32]),
-            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,
             associated_keys,
