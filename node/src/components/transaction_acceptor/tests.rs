@@ -22,7 +22,9 @@ use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::{
-    data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
+    data_access_layer::{
+        AddressableEntityResult, BalanceIdentifier, BalanceResult, EntryPointsResult, QueryResult,
+    },
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
@@ -31,10 +33,11 @@ use casper_types::{
     bytesrepr::Bytes,
     global_state::TrieMerkleProof,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EraId, HashAddr,
-    InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction,
-    TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder, URef, U512,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, EntryPointValue,
+    EraId, HashAddr, InvalidDeploy, InvalidTransaction, InvalidTransactionV1, Package, PricingMode,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
+    Transaction, TransactionConfig, TransactionSessionKind, TransactionV1, TransactionV1Builder,
+    URef, U512,
 };
 
 use super::*;
@@ -631,6 +634,18 @@ impl TestScenario {
                 | TestScenario::FromPeerRepeatedValidTransaction(_)
         )
     }
+
+    fn contract_scenario(&self) -> Option<ContractScenario> {
+        match self {
+            TestScenario::FromPeerCustomPaymentContract(contract_scenario)
+            | TestScenario::FromPeerSessionContract(_, contract_scenario)
+            | TestScenario::FromClientCustomPaymentContract(contract_scenario)
+            | TestScenario::FromClientSessionContract(_, contract_scenario) => {
+                Some(*contract_scenario)
+            }
+            _ => None,
+        }
+    }
 }
 
 fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
@@ -884,6 +899,27 @@ impl reactor::Reactor for Reactor {
                         }
                     } else {
                         panic!("should GetAddressableEntity using Key's Account or Hash variant");
+                    };
+                    responder.respond(result).ignore()
+                }
+                ContractRuntimeRequest::GetEntryPoint {
+                    state_root_hash: _,
+                    responder,
+                    ..
+                } => {
+                    let contract_scenario = self
+                        .test_scenario
+                        .contract_scenario()
+                        .expect("must get contract scenario");
+                    let result = match contract_scenario {
+                        ContractScenario::Valid => EntryPointsResult::Success {
+                            entry_point: EntryPointValue::V1CasperVm(EntryPoint::default()),
+                        },
+                        ContractScenario::MissingContractAtHash
+                        | ContractScenario::MissingContractAtName
+                        | ContractScenario::MissingEntryPoint => {
+                            EntryPointsResult::ValueNotFound("entry point not found".to_string())
+                        }
                     };
                     responder.respond(result).ignore()
                 }
