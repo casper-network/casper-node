@@ -585,7 +585,7 @@ impl reactor::Reactor for MainReactor {
                         block_accumulator::Event::ReceivedBlock {
                             block,
                             sender: peer,
-                            ticket: Ticket::create_dummy(),
+                            ticket: Ticket::stub(),
                         },
                     ),
                 )
@@ -687,7 +687,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature,
                         sender: peer,
-                        ticket: Ticket::create_dummy(),
+                        ticket: Ticket::stub(),
                     },
                 ),
             ),
@@ -712,7 +712,7 @@ impl reactor::Reactor for MainReactor {
                     deploy,
                     source,
                     maybe_responder: Some(responder),
-                    ticket: Ticket::create_dummy(),
+                    ticket: Ticket::stub(),
                 };
                 reactor::wrap_effects(
                     MainEvent::DeployAcceptor,

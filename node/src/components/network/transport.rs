@@ -104,9 +104,20 @@ impl Ticket {
     }
 
     /// Creates a new dummy ticket for testing.
+    ///
+    /// Unlike [`standin`], it is perfectly fine to use in testing.
     #[cfg(test)]
     #[inline(always)]
     pub(crate) fn create_dummy() -> Self {
+        Self::stub()
+    }
+
+    /// Creates a new ticket that does nothing.
+    ///
+    /// This method indicates a "hole" in the pass-through chain of `Ticket`s and its usage should
+    /// ultimately be removed.
+    #[inline(always)]
+    pub(crate) fn stub() -> Self {
         Ticket {
             opt_request: None,
             net_metrics: Weak::new(),
