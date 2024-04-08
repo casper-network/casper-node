@@ -427,12 +427,12 @@ where
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     pub(crate) fn total_balance(&mut self, purse_uref: &URef) -> Result<Motes, ExecError> {
         let key = Key::URef(*purse_uref);
-        let (total, _) = self
+        let total = self
             .tracking_copy
             .borrow_mut()
-            .get_total_balance_with_proof(key)
+            .get_total_balance(key)
             .map_err(ExecError::TrackingCopy)?;
-        Ok(Motes::new(total))
+        Ok(total)
     }
 
     /// Reads the available balance of a purse [`URef`].
