@@ -314,7 +314,7 @@ where
             Event::StorageRequest(req) => self.handle_storage_request(*req),
             Event::NetRequestIncoming(incoming) => {
                 let sender = incoming.sender;
-                match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
+                match self.handle_net_request_incoming::<REv>(effect_builder, *incoming) {
                     Ok(effects) => Ok(effects),
                     Err(GetRequestError::Fatal(fatal_error)) => Err(fatal_error),
                     Err(ref other_err) => {
@@ -646,7 +646,7 @@ impl Storage {
     fn handle_net_request_incoming<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        incoming: Box<NetRequestIncoming>,
+        incoming: NetRequestIncoming,
     ) -> Result<Effects<Event>, GetRequestError>
     where
         REv: From<NetworkRequest<Message>> + Send,
