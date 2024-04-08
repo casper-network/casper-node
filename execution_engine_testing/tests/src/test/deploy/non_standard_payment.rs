@@ -102,7 +102,7 @@ fn should_charge_non_main_purse() {
         .expect_success()
         .commit();
 
-    let payment_purse_balance = builder.get_purse_balance_result(
+    let payment_purse_balance = builder.get_purse_balance_result_with_proofs(
         DEFAULT_PROTOCOL_VERSION,
         BalanceIdentifier::Payment,
         block_time,
