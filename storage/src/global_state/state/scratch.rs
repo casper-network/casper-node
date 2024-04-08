@@ -231,7 +231,10 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         for result in keys_iter {
             match result {
                 Ok(key) => {
-                    if !cache.pruned.contains(&key) {
+                    // If the key is pruned then we won't return it. If the key is already cached,
+                    // then it would have been picked up by the code above so we don't add it again
+                    // to avoid duplicates.
+                    if !cache.pruned.contains(&key) && !cache.cached_values.contains_key(&key) {
                         ret.push(key);
                     }
                 }
