@@ -1220,7 +1220,7 @@ where
     }
 
     /// Returns a `BalanceResult` for a purse, panics if the balance can't be found.
-    pub fn get_purse_balance_result(
+    pub fn get_purse_balance_result_with_proofs(
         &self,
         protocol_version: ProtocolVersion,
         balance_identifier: BalanceIdentifier,
@@ -1229,7 +1229,7 @@ where
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
         let balance_handling = BalanceHandling::Available { holds_epoch };
-        let proof_handling = ProofHandling::NoProofs;
+        let proof_handling = ProofHandling::Proofs;
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
@@ -1243,7 +1243,7 @@ where
     }
 
     /// Returns a `BalanceResult` for a purse using a `PublicKey`.
-    pub fn get_public_key_balance_result(
+    pub fn get_public_key_balance_result_with_proofs(
         &self,
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
@@ -1253,7 +1253,7 @@ where
         let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
         let balance_handling = BalanceHandling::Available { holds_epoch };
-        let proof_handling = ProofHandling::NoProofs;
+        let proof_handling = ProofHandling::Proofs;
         let request = BalanceRequest::from_public_key(
             state_root_hash,
             protocol_version,
