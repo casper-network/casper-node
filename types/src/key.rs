@@ -726,7 +726,7 @@ impl Key {
             let validator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                 bytes[1..BidAddr::VALIDATOR_BID_ADDR_LENGTH].as_ref(),
             )
-            .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
 
             let bid_addr = {
                 if tag == BidAddrTag::Unified {
@@ -737,7 +737,7 @@ impl Key {
                     let delegator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
                         bytes[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
                     )
-                    .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                        .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
                     BidAddr::new_delegator_addr((validator_bytes, delegator_bytes))
                 } else {
                     return Err(FromStrError::BidAddr("invalid tag".to_string()));
@@ -1168,7 +1168,6 @@ impl Key {
                 // an entity can read its own named keys
                 &named_key_addr.entity_addr() == entity_addr
             }
-            Key::EntryPoint(entry_point_addr) => &entry_point_addr.entity_addr() == entity_addr,
             Key::ByteCode(_)
             | Key::Account(_)
             | Key::Hash(_)
@@ -1177,7 +1176,8 @@ impl Key {
             | Key::BalanceHold(_)
             | Key::Dictionary(_)
             | Key::Message(_)
-            | Key::BlockMessageCount => true,
+            | Key::BlockMessageCount
+            | Key::EntryPoint(_) => true,
             _ => false,
         };
         if !ret {

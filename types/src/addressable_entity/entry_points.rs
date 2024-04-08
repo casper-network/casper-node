@@ -1,10 +1,18 @@
 use core::fmt::{Debug, Display, Formatter};
-use std::{collections::BTreeMap, fmt};
+
+use alloc::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -754,7 +762,7 @@ impl Display for EntryPointAddr {
 }
 
 impl Debug for EntryPointAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             EntryPointAddr::VmCasperV1 {
                 entity_addr,
