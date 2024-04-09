@@ -13,6 +13,10 @@ pub static PACKAGE_JSON_NAME_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)(^  "name": )"([^"]+)"#).unwrap());
 pub static PACKAGE_JSON_VERSION_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?m)(^  "version": )"([^"]+)"#).unwrap());
+pub static TYPES_VERSION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
+pub static CASPER_STORAGE_VERSION_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap());
 
 fn replacement(updated_version: &str) -> String {
     format!(r#"$1"{}"#, updated_version)
@@ -29,27 +33,28 @@ pub mod types {
         vec![
             DependentFile::new(
                 "storage/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                TYPES_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
                 "execution_engine/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                TYPES_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
                 "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                TYPES_VERSION_REGEX.clone(),
                 replacement,
             ),
+            DependentFile::new("node/Cargo.toml", TYPES_VERSION_REGEX.clone(), replacement),
             DependentFile::new(
-                "node/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                "binary_port/Cargo.toml",
+                TYPES_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
                 "smart_contracts/contract/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                TYPES_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
@@ -69,6 +74,17 @@ pub mod types {
     });
 }
 
+pub mod binary_port {
+    use super::*;
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![DependentFile::new(
+            "binary_port/Cargo.toml",
+            MANIFEST_VERSION_REGEX.clone(),
+            replacement,
+        )]
+    });
+}
 pub mod storage {
     use super::*;
 
@@ -76,17 +92,17 @@ pub mod storage {
         vec![
             DependentFile::new(
                 "execution_engine/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                CASPER_STORAGE_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
                 "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                CASPER_STORAGE_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
                 "node/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                CASPER_STORAGE_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
@@ -134,33 +150,6 @@ pub mod execution_engine {
                     replacement_with_slash,
                 ),
             ]
-    });
-}
-
-pub mod json_rpc {
-    use super::*;
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "node/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-json-rpc = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
-                "json_rpc/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-            DependentFile::new(
-                "json_rpc/src/lib.rs",
-                Regex::new(
-                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-json-rpc)/(?:[^"]+)"#,
-                )
-                .unwrap(),
-                replacement_with_slash,
-            ),
-        ]
     });
 }
 
@@ -244,56 +233,4 @@ pub mod execution_engine_testing_test_support {
                 ),
             ]
     });
-}
-
-pub mod chainspec_protocol_version {
-    use super::*;
-
-    pub static REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"(?m)(^version = )'([^']+)"#).unwrap());
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "resources/production/chainspec.toml",
-                REGEX.clone(),
-                chainspec_toml_replacement,
-            ),
-            DependentFile::new(
-                "resources/local/chainspec.toml.in",
-                REGEX.clone(),
-                chainspec_toml_replacement,
-            ),
-        ]
-    });
-
-    fn chainspec_toml_replacement(updated_version: &str) -> String {
-        format!(r#"$1'{}"#, updated_version)
-    }
-}
-
-pub mod chainspec_activation_point {
-    use super::*;
-
-    pub static REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"(?m)(^activation_point =) (.+)"#).unwrap());
-
-    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "resources/production/chainspec.toml",
-                REGEX.clone(),
-                chainspec_toml_replacement,
-            ),
-            DependentFile::new(
-                "resources/local/chainspec.toml.in",
-                REGEX.clone(),
-                chainspec_toml_replacement,
-            ),
-        ]
-    });
-
-    fn chainspec_toml_replacement(updated_activation_point: &str) -> String {
-        format!(r#"$1 {}"#, updated_activation_point)
-    }
 }

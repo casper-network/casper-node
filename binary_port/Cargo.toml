@@ -11,7 +11,7 @@ license = "Apache-2.0"
 exclude = ["proptest-regressions"]
 
 [dependencies]
-casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 serde = { version = "1.0.183", features = ["derive"] }
 thiserror = "1.0.45"
 serde-map-to-array = "1.1.0"
