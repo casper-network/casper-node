@@ -52,8 +52,9 @@ use casper_types::{
     CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, EntryPointAddr, EntryPointValue, Gas, GrantedAccess, Group,
     Groups, HoldsEpoch, HostFunction, HostFunctionCost, InitiatorAddr, Key, NamedArg, Package,
-    PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    PackageHash, PackageStatus, Phase, PublicKey, RuntimeArgs, StoredValue, TransactionRuntime,
+    Transfer, TransferResult, TransferV2, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    U512,
 };
 
 use crate::{
@@ -1444,8 +1445,11 @@ where
                 EntityKind::System(_) | EntityKind::Account(_) => {
                     Key::ByteCode(ByteCodeAddr::Empty)
                 }
-                EntityKind::SmartContract => {
+                EntityKind::SmartContract(TransactionRuntime::VmCasperV1) => {
                     Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_addr))
+                }
+                EntityKind::SmartContract(runtime @ TransactionRuntime::VmCasperV2) => {
+                    return Err(ExecError::IncompatibleRuntime(runtime))
                 }
             };
 
@@ -1849,7 +1853,7 @@ where
             associated_keys,
             action_thresholds,
             previous_message_topics.clone(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
 
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
@@ -3383,7 +3387,7 @@ where
                     associated_keys,
                     ActionThresholds::default(),
                     MessageTopics::default(),
-                    EntityKind::SmartContract,
+                    EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
                 );
 
                 let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(

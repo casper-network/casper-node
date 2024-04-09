@@ -42,6 +42,7 @@ use crate::{
             ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
         },
         mint::BalanceHoldAddr,
+        SystemEntityType,
     },
     transaction::gens::deploy_hash_arb,
     transfer::{
@@ -50,8 +51,8 @@ use crate::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
-    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
-    U256, U512,
+    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue,
+    TransactionRuntime, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -441,6 +442,30 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
         )
 }
 
+pub fn system_entity_type_arb() -> impl Strategy<Value = SystemEntityType> {
+    prop_oneof![
+        Just(SystemEntityType::Mint),
+        Just(SystemEntityType::HandlePayment),
+        Just(SystemEntityType::StandardPayment),
+        Just(SystemEntityType::Auction),
+    ]
+}
+
+pub fn transaction_runtime_arb() -> impl Strategy<Value = TransactionRuntime> {
+    prop_oneof![
+        Just(TransactionRuntime::VmCasperV1),
+        Just(TransactionRuntime::VmCasperV2),
+    ]
+}
+
+pub fn entity_kind_arb() -> impl Strategy<Value = EntityKind> {
+    prop_oneof![
+        system_entity_type_arb().prop_map(EntityKind::System),
+        account_hash_arb().prop_map(EntityKind::Account),
+        transaction_runtime_arb().prop_map(EntityKind::SmartContract),
+    ]
+}
+
 pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
     (
         protocol_version_arb(),
@@ -450,6 +475,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         associated_keys_arb(),
         action_thresholds_arb(),
         message_topics_arb(),
+        entity_kind_arb(),
     )
         .prop_map(
             |(
@@ -460,6 +486,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 associated_keys,
                 action_thresholds,
                 message_topics,
+                entity_kind,
             )| {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
@@ -469,7 +496,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     associated_keys,
                     action_thresholds,
                     message_topics,
-                    EntityKind::SmartContract,
+                    entity_kind,
                 )
             },
         )

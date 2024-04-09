@@ -22,7 +22,7 @@ use casper_types::{
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPointValue, EraId, Group, Groups, Key, Package,
     PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    TransferAddr, TransferV1, URef, U512,
+    TransactionRuntime, TransferAddr, TransferV1, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -379,7 +379,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         stored_value.insert(
             "AddressableEntity".to_string(),
