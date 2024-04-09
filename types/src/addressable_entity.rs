@@ -911,7 +911,7 @@ impl Distribution<EntityKind> for Standard {
 /// The address for an AddressableEntity which contains the 32 bytes and tagging information.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema), schemars(untagged))]
 pub enum EntityAddr {
     /// The address for a system entity account or contract.
     System(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr),
@@ -2384,6 +2384,9 @@ mod tests {
     use super::*;
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
+    #[cfg(feature = "json-schema")]
+    use schemars::{gen::SchemaGenerator, schema::InstanceType};
+
     #[test]
     fn entity_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
@@ -2483,6 +2486,25 @@ mod tests {
             let json_string = serde_json::to_string_pretty(&addr).unwrap();
             let decoded = serde_json::from_str(&json_string).unwrap();
             assert_eq!(addr, decoded)
+        }
+    }
+
+    #[cfg(feature = "json-schema")]
+    #[test]
+    fn entity_addr_schema() {
+        let mut gen = SchemaGenerator::default();
+        let any_of = EntityAddr::json_schema(&mut gen)
+            .into_object()
+            .subschemas
+            .expect("should have subschemas")
+            .any_of
+            .expect("should have any_of");
+        for elem in any_of {
+            let schema = elem
+                .into_object()
+                .instance_type
+                .expect("should have instance type");
+            assert!(schema.contains(&InstanceType::String), "{:?}", schema);
         }
     }
 
