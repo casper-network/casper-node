@@ -20,7 +20,8 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
-        BalanceIdentifier, BalanceRequest, BalanceResult, QueryRequest, QueryResult, TrieRequest,
+        BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
+        QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
 };
@@ -528,6 +529,7 @@ where
         protocol_version,
         balance_id,
         balance_handling,
+        ProofHandling::Proofs,
     );
     match effect_builder.get_balance(balance_req).await {
         BalanceResult::RootNotFound => {
@@ -536,10 +538,16 @@ where
         BalanceResult::Success {
             total_balance,
             available_balance,
-            total_balance_proof,
-            balance_holds,
+            proofs_result,
             ..
         } => {
+            let ProofsResult::Proofs {
+                total_balance_proof,
+                balance_holds,
+            } = proofs_result else {
+                warn!("binary port received no proofs for a balance request with proofs");
+                return BinaryResponse::new_error(ErrorCode::InternalError, protocol_version);
+            };
             let response = BalanceResponse {
                 total_balance,
                 available_balance,
