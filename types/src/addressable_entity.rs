@@ -909,7 +909,7 @@ impl Distribution<EntityKind> for Standard {
 }
 
 /// The address for an AddressableEntity which contains the 32 bytes and tagging information.
-#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntityAddr {
@@ -1111,6 +1111,33 @@ impl Debug for EntityAddr {
                     "EntityAddr::SmartContract({})",
                     base16::encode_lower(hash_addr)
                 )
+            }
+        }
+    }
+}
+
+impl Serialize for EntityAddr {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            let (tag, value): (EntityKindTag, HashAddr) = (self.tag(), self.value());
+            (tag, value).serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for EntityAddr {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            Self::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let (tag, addr) = <(EntityKindTag, HashAddr)>::deserialize(deserializer)?;
+            match tag {
+                EntityKindTag::System => Ok(EntityAddr::new_system(addr)),
+                EntityKindTag::Account => Ok(EntityAddr::new_account(addr)),
+                EntityKindTag::SmartContract => Ok(EntityAddr::new_smart_contract(addr)),
             }
         }
     }
@@ -2399,14 +2426,6 @@ mod tests {
     }
 
     #[test]
-    fn formatted_string_roundtrip() {
-        let entity_addr = EntityAddr::Account([5; 32]);
-        let encoded = entity_addr.to_formatted_string();
-        let decoded = EntityAddr::from_formatted_str(&encoded).expect("must get entity addr");
-        assert_eq!(decoded, entity_addr);
-    }
-
-    #[test]
     fn entity_hash_serde_roundtrip() {
         let entity_hash = AddressableEntityHash([255; 32]);
         let serialized = bincode::serialize(&entity_hash).unwrap();
@@ -2423,13 +2442,48 @@ mod tests {
     }
 
     #[test]
-    fn serialization_roundtrip() {
-        let entity_addr = EntityAddr::new_system([1; 32]);
-        bytesrepr::test_serialization_roundtrip(&entity_addr);
-        let entity_addr = EntityAddr::new_account([1; 32]);
-        bytesrepr::test_serialization_roundtrip(&entity_addr);
-        let entity_addr = EntityAddr::new_smart_contract([1; 32]);
-        bytesrepr::test_serialization_roundtrip(&entity_addr);
+    fn entity_addr_formatted_string_roundtrip() {
+        let entity_addr = EntityAddr::Account([5; 32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).expect("must get entity addr");
+        assert_eq!(decoded, entity_addr);
+    }
+
+    #[test]
+    fn entity_addr_serialization_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            bytesrepr::test_serialization_roundtrip(&addr);
+        }
+    }
+
+    #[test]
+    fn entity_addr_serde_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            let serialized = bincode::serialize(&addr).unwrap();
+            let deserialized = bincode::deserialize(&serialized).unwrap();
+            assert_eq!(addr, deserialized)
+        }
+    }
+
+    #[test]
+    fn entity_addr_json_roundtrip() {
+        for addr in [
+            EntityAddr::new_system([1; 32]),
+            EntityAddr::new_account([1; 32]),
+            EntityAddr::new_smart_contract([1; 32]),
+        ] {
+            let json_string = serde_json::to_string_pretty(&addr).unwrap();
+            let decoded = serde_json::from_str(&json_string).unwrap();
+            assert_eq!(addr, decoded)
+        }
     }
 
     #[test]
