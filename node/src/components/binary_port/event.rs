@@ -38,7 +38,7 @@ impl Display for Event {
                     GetRequest::Information { info_type_tag, key } => {
                         write!(f, "get info with tag {} ({})", info_type_tag, key.len())
                     }
-                    GetRequest::State(state_request) => match &**state_request {
+                    GetRequest::State(state_request) => match state_request.as_ref() {
                         GlobalStateRequest::Item { base_key, .. } => {
                             write!(f, "get item from global state ({})", base_key)
                         }
