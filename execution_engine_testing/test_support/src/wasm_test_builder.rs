@@ -23,6 +23,10 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
+        inactive_validators::{
+            InactiveValidatorsUndelegationRequest, InactiveValidatorsUndelegationResult,
+        },
+        BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
         BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
         FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
@@ -1017,6 +1021,35 @@ where
         }
 
         distribute_block_rewards_result
+    }
+
+    /// Undelegate delegators from inactive validators.
+    pub fn undelegate_from_inactive_validators(
+        &mut self,
+        pre_state_hash: Option<Digest>,
+        protocol_version: ProtocolVersion,
+        time: u64,
+    ) -> InactiveValidatorsUndelegationResult {
+        let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
+        let native_runtime_config = self.native_runtime_config();
+        let inactive_validators_req = InactiveValidatorsUndelegationRequest::new(
+            native_runtime_config,
+            pre_state_hash,
+            protocol_version,
+            time,
+        );
+        let inactive_validators_result = self
+            .data_access_layer
+            .undelegate_from_inactive_validators(inactive_validators_req);
+
+        if let InactiveValidatorsUndelegationResult::Success {
+            post_state_hash, ..
+        } = inactive_validators_result
+        {
+            self.post_state_hash = Some(post_state_hash);
+        }
+
+        inactive_validators_result
     }
 
     /// Expects a successful run

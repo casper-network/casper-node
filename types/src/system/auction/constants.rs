@@ -54,7 +54,7 @@ pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
 pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
 /// Named constant for `rewards_map`;
 pub const ARG_REWARDS_MAP: &str = "rewards_map";
-/// Named constant for `rewards_map`;
+/// Named constant for `inactive_validator_undelegation_delay`;
 pub const ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY: &str = "inactive_validator_undelegation_delay";
 
 /// Named constant for method `get_era_validators`.

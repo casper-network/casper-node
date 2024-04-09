@@ -44,7 +44,7 @@ use casper_types::{
     crypto,
     system::{
         self,
-        auction::{self, EraInfo},
+        auction::{self, EraInfo, Error},
         handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
@@ -844,6 +844,19 @@ where
                             .engine_config()
                             .inactive_validator_undelegation_delay(),
                     );
+
+                let global_inactive_validator_undelegation_delay = self
+                    .context()
+                    .engine_config()
+                    .inactive_validator_undelegation_delay();
+
+                if inactive_validator_undelegation_delay
+                    > global_inactive_validator_undelegation_delay
+                {
+                    return Err(ExecError::Revert(ApiError::from(
+                        Error::InactiveValidatorUndelegationDelayTooLarge,
+                    )));
+                }
 
                 let result = runtime
                     .add_bid(account_hash, delegation_rate, amount, holds_epoch, inactive_validator_undelegation_delay)
