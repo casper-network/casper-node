@@ -11,7 +11,7 @@ use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest};
+use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
@@ -221,18 +221,20 @@ impl TransactionAcceptor {
                 let block_time = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
                 let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
                 let balance_handling = BalanceHandling::Available { holds_epoch };
+                let proof_handling = ProofHandling::NoProofs;
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     protocol_version,
                     entity.main_purse(),
                     balance_handling,
+                    proof_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)
                     .event(move |balance_result| Event::GetBalanceResult {
                         event_metadata,
                         block_header,
-                        maybe_balance: balance_result.motes().copied(),
+                        maybe_balance: balance_result.available_balance().copied(),
                     })
             }
         }

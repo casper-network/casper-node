@@ -24,11 +24,11 @@ use crate::{
     bytesrepr::{FromBytes, ToBytes},
     checksummed_hex,
     key::FromStrError,
-    system::auction::Error,
     BlockTime, Key, KeyTag, Timestamp, URefAddr, BLOCKTIME_SERIALIZED_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const GAS_TAG: u8 = 0;
+const PROCESSING_TAG: u8 = 1;
 
 /// Serialization tag for BalanceHold variants.
 #[derive(
@@ -41,6 +41,8 @@ pub enum BalanceHoldAddrTag {
     #[default]
     /// Tag for gas variant.
     Gas = GAS_TAG,
+    /// Tag for processing variant.
+    Processing = PROCESSING_TAG,
 }
 
 impl BalanceHoldAddrTag {
@@ -52,6 +54,9 @@ impl BalanceHoldAddrTag {
         // TryFrom requires std, so doing this instead.
         if value == GAS_TAG {
             return Some(BalanceHoldAddrTag::Gas);
+        }
+        if value == PROCESSING_TAG {
+            return Some(BalanceHoldAddrTag::Processing);
         }
         None
     }
@@ -70,6 +75,7 @@ impl Display for BalanceHoldAddrTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let tag = match self {
             BalanceHoldAddrTag::Gas => GAS_TAG,
+            BalanceHoldAddrTag::Processing => PROCESSING_TAG,
         };
         write!(f, "{}", base16::encode_lower(&[tag]))
     }
@@ -115,7 +121,13 @@ pub enum BalanceHoldAddr {
         /// The block time this hold was placed.
         block_time: BlockTime,
     },
-    // future balance hold variants might allow punitive lockup or settlement periods, etc
+    /// Processing variant
+    Processing {
+        /// The address of the purse this hold is on.
+        purse_addr: URefAddr,
+        /// The block time this hold was placed.
+        block_time: BlockTime,
+    },
 }
 
 impl BalanceHoldAddr {
@@ -132,10 +144,29 @@ impl BalanceHoldAddr {
         }
     }
 
+    /// Creates a Processing variant instance of [`BalanceHoldAddr`].
+    pub(crate) const fn new_processing(
+        purse_addr: URefAddr,
+        block_time: BlockTime,
+    ) -> BalanceHoldAddr {
+        BalanceHoldAddr::Processing {
+            purse_addr,
+            block_time,
+        }
+    }
+
     /// How long is be the serialized value for this instance.
     pub fn serialized_length(&self) -> usize {
         match self {
             BalanceHoldAddr::Gas {
+                purse_addr,
+                block_time,
+            } => {
+                BalanceHoldAddrTag::BALANCE_HOLD_ADDR_TAG_LENGTH
+                    + ToBytes::serialized_length(purse_addr)
+                    + ToBytes::serialized_length(block_time)
+            }
+            BalanceHoldAddr::Processing {
                 purse_addr,
                 block_time,
             } => {
@@ -150,6 +181,7 @@ impl BalanceHoldAddr {
     pub fn tag(&self) -> BalanceHoldAddrTag {
         match self {
             BalanceHoldAddr::Gas { .. } => BalanceHoldAddrTag::Gas,
+            BalanceHoldAddr::Processing { .. } => BalanceHoldAddrTag::Processing,
         }
     }
 
@@ -157,6 +189,7 @@ impl BalanceHoldAddr {
     pub fn purse_addr(&self) -> URefAddr {
         match self {
             BalanceHoldAddr::Gas { purse_addr, .. } => *purse_addr,
+            BalanceHoldAddr::Processing { purse_addr, .. } => *purse_addr,
         }
     }
 
@@ -164,17 +197,8 @@ impl BalanceHoldAddr {
     pub fn block_time(&self) -> BlockTime {
         match self {
             BalanceHoldAddr::Gas { block_time, .. } => *block_time,
+            BalanceHoldAddr::Processing { block_time, .. } => *block_time,
         }
-    }
-
-    /// Returns the common prefix of all holds on the cited purse.
-    pub fn balance_hold_prefix(&self) -> Result<Vec<u8>, Error> {
-        let purse_addr_bytes = self.purse_addr().to_bytes()?;
-        let size = 1 + purse_addr_bytes.len();
-        let mut ret = Vec::with_capacity(size);
-        ret.push(KeyTag::BalanceHold as u8);
-        ret.extend(purse_addr_bytes);
-        Ok(ret)
     }
 
     /// To formatted string.
@@ -189,12 +213,18 @@ impl BalanceHoldAddr {
                     // also, put the tag in readable form
                     base16::encode_lower(&GAS_TAG.to_le_bytes()),
                     base16::encode_lower(purse_addr),
-                    // TODO: we could conceivably stringify the u64 millis instead of bytes-ing
-                    // which would allow visual / human determination of the timestamp
-                    // but on the other hand, how many humans casually do from UNIX EPOCH
-                    // time calculation with their eyeballs? Something to discuss prior to
-                    // shipping.
-                    // BlockTime.value as string instead
+                    base16::encode_lower(&block_time.value().to_le_bytes())
+                )
+            }
+            BalanceHoldAddr::Processing {
+                purse_addr,
+                block_time,
+            } => {
+                format!(
+                    "{}{}{}",
+                    // also, put the tag in readable form
+                    base16::encode_lower(&PROCESSING_TAG.to_le_bytes()),
+                    base16::encode_lower(purse_addr),
                     base16::encode_lower(&block_time.value().to_le_bytes())
                 )
             }
@@ -234,6 +264,14 @@ impl BalanceHoldAddr {
             let block_time_millis = <u64>::from_le_bytes(block_time_bytes);
             let block_time = BlockTime::new(block_time_millis);
             Ok(BalanceHoldAddr::new_gas(uref_addr, block_time))
+        } else if tag == BalanceHoldAddrTag::Processing {
+            let block_time_bytes =
+                <[u8; BLOCKTIME_SERIALIZED_LENGTH]>::try_from(bytes[33..].as_ref())
+                    .map_err(|err| FromStrError::BalanceHold(err.to_string()))?;
+
+            let block_time_millis = <u64>::from_le_bytes(block_time_bytes);
+            let block_time = BlockTime::new(block_time_millis);
+            Ok(BalanceHoldAddr::new_processing(uref_addr, block_time))
         } else {
             Err(FromStrError::BalanceHold("invalid tag".to_string()))
         }
@@ -246,6 +284,10 @@ impl ToBytes for BalanceHoldAddr {
         buffer.push(self.tag() as u8);
         match self {
             BalanceHoldAddr::Gas {
+                purse_addr,
+                block_time,
+            }
+            | BalanceHoldAddr::Processing {
                 purse_addr,
                 block_time,
             } => {
@@ -270,6 +312,17 @@ impl FromBytes for BalanceHoldAddr {
                 let (block_time, rem) = BlockTime::from_bytes(rem)?;
                 Ok((
                     BalanceHoldAddr::Gas {
+                        purse_addr,
+                        block_time,
+                    },
+                    rem,
+                ))
+            }
+            tag if tag == BalanceHoldAddrTag::Processing as u8 => {
+                let (purse_addr, rem) = URefAddr::from_bytes(remainder)?;
+                let (block_time, rem) = BlockTime::from_bytes(rem)?;
+                Ok((
+                    BalanceHoldAddr::Processing {
                         purse_addr,
                         block_time,
                     },
@@ -316,6 +369,10 @@ impl Display for BalanceHoldAddr {
             BalanceHoldAddr::Gas {
                 purse_addr,
                 block_time,
+            }
+            | BalanceHoldAddr::Processing {
+                purse_addr,
+                block_time,
             } => {
                 write!(
                     f,
@@ -341,6 +398,15 @@ impl Debug for BalanceHoldAddr {
                 base16::encode_lower(&purse_addr),
                 Timestamp::from(block_time.value())
             ),
+            BalanceHoldAddr::Processing {
+                purse_addr,
+                block_time,
+            } => write!(
+                f,
+                "BidAddr::Processing({}, {})",
+                base16::encode_lower(&purse_addr),
+                Timestamp::from(block_time.value())
+            ),
         }
     }
 }
@@ -359,6 +425,9 @@ mod tests {
     #[test]
     fn serialization_roundtrip() {
         let addr = BalanceHoldAddr::new_gas([1; 32], BlockTime::new(Timestamp::now().millis()));
+        bytesrepr::test_serialization_roundtrip(&addr);
+        let addr =
+            BalanceHoldAddr::new_processing([1; 32], BlockTime::new(Timestamp::now().millis()));
         bytesrepr::test_serialization_roundtrip(&addr);
     }
 }

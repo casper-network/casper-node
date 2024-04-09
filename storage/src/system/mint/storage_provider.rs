@@ -18,6 +18,9 @@ pub trait StorageProvider {
     /// Add data to a [`URef`].
     fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 
+    /// Read total balance.
+    fn total_balance(&mut self, uref: URef) -> Result<U512, Error>;
+
     /// Read balance.
     fn available_balance(
         &mut self,
