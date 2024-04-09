@@ -78,13 +78,11 @@ pub mod binary_port {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
-        vec![
-            DependentFile::new(
-                "binary_port/Cargo.toml",
-                MANIFEST_VERSION_REGEX.clone(),
-                replacement,
-            ),
-        ]
+        vec![DependentFile::new(
+            "binary_port/Cargo.toml",
+            MANIFEST_VERSION_REGEX.clone(),
+            replacement,
+        )]
     });
 }
 pub mod storage {
