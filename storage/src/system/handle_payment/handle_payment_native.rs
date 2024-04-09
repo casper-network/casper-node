@@ -166,10 +166,8 @@ where
         self.tracking_copy()
             .borrow_mut()
             .write(key, named_key_value);
-        match self.named_keys_mut().insert(name, key) {
-            Some(_) => Ok(()),
-            None => Err(Error::PutKey),
-        }
+        self.named_keys_mut().insert(name, key);
+        Ok(())
     }
 
     fn remove_key(&mut self, name: &str) -> Result<(), Error> {

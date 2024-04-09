@@ -2691,6 +2691,13 @@ where
         }
     }
 
+    fn total_balance(&mut self, purse: URef) -> Result<U512, ExecError> {
+        match self.context.total_balance(&purse) {
+            Ok(motes) => Ok(motes.value()),
+            Err(err) => Err(err),
+        }
+    }
+
     fn available_balance(
         &mut self,
         purse: URef,
