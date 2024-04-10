@@ -763,7 +763,7 @@ mod serde_helpers {
     use super::*;
 
     #[derive(Serialize)]
-    pub(super) enum BinarySerHelper<'a> {
+    pub(super) enum HumanReadableSerHelper<'a> {
         CLValue(&'a CLValue),
         Account(&'a Account),
         ContractWasm(&'a ContractWasm),
@@ -785,7 +785,7 @@ mod serde_helpers {
     }
 
     #[derive(Deserialize)]
-    pub(super) enum BinaryDeserHelper {
+    pub(super) enum HumanReadableDeserHelper {
         CLValue(CLValue),
         Account(Account),
         ContractWasm(ContractWasm),
@@ -806,62 +806,74 @@ mod serde_helpers {
         NamedKey(NamedKeyValue),
     }
 
-    impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
+    impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
         fn from(stored_value: &'a StoredValue) -> Self {
             match stored_value {
-                StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
-                StoredValue::Account(payload) => BinarySerHelper::Account(payload),
-                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
-                StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
-                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
-                StoredValue::LegacyTransfer(payload) => BinarySerHelper::LegacyTransfer(payload),
-                StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
-                StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
-                StoredValue::Bid(payload) => BinarySerHelper::Bid(payload),
-                StoredValue::Withdraw(payload) => BinarySerHelper::Withdraw(payload),
-                StoredValue::Unbonding(payload) => BinarySerHelper::Unbonding(payload),
+                StoredValue::CLValue(payload) => HumanReadableSerHelper::CLValue(payload),
+                StoredValue::Account(payload) => HumanReadableSerHelper::Account(payload),
+                StoredValue::ContractWasm(payload) => HumanReadableSerHelper::ContractWasm(payload),
+                StoredValue::Contract(payload) => HumanReadableSerHelper::Contract(payload),
+                StoredValue::ContractPackage(payload) => {
+                    HumanReadableSerHelper::ContractPackage(payload)
+                }
+                StoredValue::LegacyTransfer(payload) => {
+                    HumanReadableSerHelper::LegacyTransfer(payload)
+                }
+                StoredValue::DeployInfo(payload) => HumanReadableSerHelper::DeployInfo(payload),
+                StoredValue::EraInfo(payload) => HumanReadableSerHelper::EraInfo(payload),
+                StoredValue::Bid(payload) => HumanReadableSerHelper::Bid(payload),
+                StoredValue::Withdraw(payload) => HumanReadableSerHelper::Withdraw(payload),
+                StoredValue::Unbonding(payload) => HumanReadableSerHelper::Unbonding(payload),
                 StoredValue::AddressableEntity(payload) => {
-                    BinarySerHelper::AddressableEntity(payload)
+                    HumanReadableSerHelper::AddressableEntity(payload)
                 }
-                StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
-                StoredValue::Package(payload) => BinarySerHelper::Package(payload),
-                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
+                StoredValue::BidKind(payload) => HumanReadableSerHelper::BidKind(payload),
+                StoredValue::Package(payload) => HumanReadableSerHelper::Package(payload),
+                StoredValue::ByteCode(payload) => HumanReadableSerHelper::ByteCode(payload),
                 StoredValue::MessageTopic(message_topic_summary) => {
-                    BinarySerHelper::MessageTopic(message_topic_summary)
+                    HumanReadableSerHelper::MessageTopic(message_topic_summary)
                 }
-                StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
-                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
+                StoredValue::Message(message_digest) => {
+                    HumanReadableSerHelper::Message(message_digest)
+                }
+                StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
             }
         }
     }
 
-    impl From<BinaryDeserHelper> for StoredValue {
-        fn from(helper: BinaryDeserHelper) -> Self {
+    impl From<HumanReadableDeserHelper> for StoredValue {
+        fn from(helper: HumanReadableDeserHelper) -> Self {
             match helper {
-                BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
-                BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
-                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
-                BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
-                BinaryDeserHelper::ContractPackage(payload) => {
+                HumanReadableDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
+                HumanReadableDeserHelper::Account(payload) => StoredValue::Account(payload),
+                HumanReadableDeserHelper::ContractWasm(payload) => {
+                    StoredValue::ContractWasm(payload)
+                }
+                HumanReadableDeserHelper::Contract(payload) => StoredValue::Contract(payload),
+                HumanReadableDeserHelper::ContractPackage(payload) => {
                     StoredValue::ContractPackage(payload)
                 }
-                BinaryDeserHelper::LegacyTransfer(payload) => StoredValue::LegacyTransfer(payload),
-                BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
-                BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
-                BinaryDeserHelper::Bid(bid) => StoredValue::Bid(bid),
-                BinaryDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
-                BinaryDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
-                BinaryDeserHelper::AddressableEntity(payload) => {
+                HumanReadableDeserHelper::LegacyTransfer(payload) => {
+                    StoredValue::LegacyTransfer(payload)
+                }
+                HumanReadableDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
+                HumanReadableDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
+                HumanReadableDeserHelper::Bid(bid) => StoredValue::Bid(bid),
+                HumanReadableDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
+                HumanReadableDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
+                HumanReadableDeserHelper::AddressableEntity(payload) => {
                     StoredValue::AddressableEntity(payload)
                 }
-                BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
-                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
-                BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
-                BinaryDeserHelper::MessageTopic(message_topic_summary) => {
+                HumanReadableDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                HumanReadableDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
+                HumanReadableDeserHelper::Package(payload) => StoredValue::Package(payload),
+                HumanReadableDeserHelper::MessageTopic(message_topic_summary) => {
                     StoredValue::MessageTopic(message_topic_summary)
                 }
-                BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
-                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                HumanReadableDeserHelper::Message(message_digest) => {
+                    StoredValue::Message(message_digest)
+                }
+                HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
             }
         }
     }
@@ -870,7 +882,7 @@ mod serde_helpers {
 impl Serialize for StoredValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serde_helpers::BinarySerHelper::from(self).serialize(serializer)
+            serde_helpers::HumanReadableSerHelper::from(self).serialize(serializer)
         } else {
             let bytes = self
                 .to_bytes()
@@ -883,7 +895,7 @@ impl Serialize for StoredValue {
 impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
-            let json_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
+            let json_helper = serde_helpers::HumanReadableDeserHelper::deserialize(deserializer)?;
             Ok(StoredValue::from(json_helper))
         } else {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
@@ -895,11 +907,18 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
 
-    use crate::{bytesrepr, gens};
-
     proptest! {
+        #[test]
+        fn json_contract_package_serialization(v in gens::contract_package_arb()) {
+            let stored_value = StoredValue::ContractPackage(v);
+            let json_str = serde_json::to_string(&stored_value).unwrap();
+            let deserialized = serde_json::from_str::<StoredValue>(&json_str).unwrap();
+            assert_eq!(stored_value, deserialized);
+        }
+
         #[test]
         fn serialization_roundtrip(v in gens::stored_value_arb()) {
             bytesrepr::test_serialization_roundtrip(&v);
