@@ -721,6 +721,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         account_arb().prop_map(StoredValue::Account),
         byte_code_arb().prop_map(StoredValue::ByteCode),
         contract_arb().prop_map(StoredValue::Contract),
+        contract_package_arb().prop_map(StoredValue::ContractPackage),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         package_arb().prop_map(StoredValue::Package),
         transfer_v1_arb().prop_map(StoredValue::LegacyTransfer),

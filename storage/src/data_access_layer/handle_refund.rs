@@ -3,7 +3,7 @@ use crate::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    execution::Effects, Digest, InitiatorAddr, ProtocolVersion, TransactionHash, U512,
+    execution::Effects, Digest, InitiatorAddr, Phase, ProtocolVersion, TransactionHash, U512,
 };
 use num_rational::Ratio;
 
@@ -23,13 +23,35 @@ pub enum HandleRefundMode {
         cost: U512,
         consumed: U512,
         gas_price: u8,
+        ratio: Ratio<u64>,
         source: Box<BalanceIdentifier>,
         target: Box<BalanceIdentifier>,
+    },
+    RefundAmount {
+        limit: U512,
+        cost: U512,
+        consumed: U512,
+        gas_price: u8,
         ratio: Ratio<u64>,
+        source: Box<BalanceIdentifier>,
     },
     SetRefundPurse {
         target: Box<BalanceIdentifier>,
     },
+    ClearRefundPurse,
+}
+
+impl HandleRefundMode {
+    /// Returns the appropriate phase for the mode.
+    pub fn phase(&self) -> Phase {
+        match self {
+            HandleRefundMode::ClearRefundPurse
+            | HandleRefundMode::Burn { .. }
+            | HandleRefundMode::Refund { .. }
+            | HandleRefundMode::RefundAmount { .. } => Phase::FinalizePayment,
+            HandleRefundMode::SetRefundPurse { .. } => Phase::Payment,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +136,15 @@ impl HandleRefundResult {
                 amount: refund_amount,
                 ..
             } => refund_amount.unwrap_or(U512::zero()),
+        }
+    }
+
+    /// The error message, if any.
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            HandleRefundResult::RootNotFound => Some("root not found".to_string()),
+            HandleRefundResult::Failure(tce) => Some(format!("{}", tce)),
+            HandleRefundResult::Success { .. } => None,
         }
     }
 }

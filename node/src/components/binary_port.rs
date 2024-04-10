@@ -721,7 +721,6 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let version = effect_builder.get_protocol_version().await;
     loop {
         let Some(incoming_request) = server.next_request().await? else {
             debug!("remote party closed the connection");
@@ -732,6 +731,7 @@ where
             return Err(Error::NoPayload);
         };
 
+        let version = effect_builder.get_protocol_version().await;
         let resp = handle_payload(effect_builder, payload, version).await;
         let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
         incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))

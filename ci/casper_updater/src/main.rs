@@ -31,7 +31,6 @@
     unknown_crate_types
 )]
 
-mod chainspec;
 mod dependent_file;
 mod package;
 mod regex_data;
@@ -43,13 +42,12 @@ use std::{
 };
 
 use clap::{
-    builder::{PathBufValueParser, PossibleValue, RangedU64ValueParser},
+    builder::{PathBufValueParser, PossibleValue},
     crate_version, Arg, ArgAction, Command as App,
 };
 use once_cell::sync::Lazy;
 use semver::Version;
 
-use chainspec::Chainspec;
 use package::Package;
 
 const APP_NAME: &str = "Casper Updater";
@@ -71,13 +69,6 @@ const BUMP_ARG_HELP: &str =
 const MAJOR: &str = "major";
 const MINOR: &str = "minor";
 const PATCH: &str = "patch";
-
-const ACTIVATION_POINT_ARG_NAME: &str = "activation-point";
-const ACTIVATION_POINT_ARG_SHORT: char = 'a';
-const ACTIVATION_POINT_ARG_VALUE_NAME: &str = "INTEGER";
-const ACTIVATION_POINT_ARG_HELP: &str =
-    "Sets the activation point for the new version.  If this option is specified, --bump must also \
-    be specified.";
 
 const DRY_RUN_ARG_NAME: &str = "dry-run";
 const DRY_RUN_ARG_SHORT: char = 'd';
@@ -110,7 +101,6 @@ impl BumpVersion {
 struct Args {
     root_dir: PathBuf,
     bump_version: Option<BumpVersion>,
-    activation_point: Option<u64>,
     dry_run: bool,
     allow_earlier_version: bool,
 }
@@ -123,11 +113,6 @@ pub(crate) fn root_dir() -> &'static Path {
 /// The version component to bump, if any.
 pub(crate) fn bump_version() -> Option<BumpVersion> {
     ARGS.bump_version
-}
-
-/// The new activation point, if any.
-pub(crate) fn new_activation_point() -> Option<u64> {
-    ARGS.activation_point
 }
 
 /// Whether we're doing a dry run or not.
@@ -163,17 +148,7 @@ fn get_args() -> Args {
                     PossibleValue::new(MAJOR),
                     PossibleValue::new(MINOR),
                     PossibleValue::new(PATCH),
-                ])
-                .requires(ACTIVATION_POINT_ARG_NAME),
-        )
-        .arg(
-            Arg::new(ACTIVATION_POINT_ARG_NAME)
-                .long(ACTIVATION_POINT_ARG_NAME)
-                .short(ACTIVATION_POINT_ARG_SHORT)
-                .value_name(ACTIVATION_POINT_ARG_VALUE_NAME)
-                .help(ACTIVATION_POINT_ARG_HELP)
-                .value_parser(RangedU64ValueParser::<u64>::new())
-                .requires(BUMP_ARG_NAME),
+                ]),
         )
         .arg(
             Arg::new(DRY_RUN_ARG_NAME)
@@ -210,10 +185,6 @@ fn get_args() -> Args {
             _ => unreachable!(),
         });
 
-    let activation_point = arg_matches
-        .get_one::<u64>(ACTIVATION_POINT_ARG_NAME)
-        .copied();
-
     let dry_run = arg_matches.get_flag(DRY_RUN_ARG_NAME);
 
     let allow_earlier_version = arg_matches.get_flag(ALLOW_EARLIER_VERSION_NAME);
@@ -221,7 +192,6 @@ fn get_args() -> Args {
     Args {
         root_dir,
         bump_version,
-        activation_point,
         dry_run,
         allow_earlier_version,
     }
@@ -230,12 +200,12 @@ fn get_args() -> Args {
 fn main() {
     let rust_packages = [
         Package::cargo("types", &regex_data::types::DEPENDENT_FILES),
+        Package::cargo("binary_port", &regex_data::binary_port::DEPENDENT_FILES),
         Package::cargo("storage", &regex_data::storage::DEPENDENT_FILES),
         Package::cargo(
             "execution_engine",
             &regex_data::execution_engine::DEPENDENT_FILES,
         ),
-        Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES),
         Package::cargo("node", &regex_data::node::DEPENDENT_FILES),
         Package::cargo(
             "smart_contracts/contract",
@@ -256,9 +226,6 @@ fn main() {
         &regex_data::smart_contracts_contract_as::DEPENDENT_FILES,
     );
     smart_contracts_contract_as.update();
-
-    let chainspec = Chainspec::new();
-    chainspec.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {

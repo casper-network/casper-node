@@ -265,6 +265,9 @@ impl FromStr for TimeDiff {
 }
 
 impl TimeDiff {
+    /// Zero diff.
+    pub const ZERO: TimeDiff = TimeDiff(0);
+
     /// Returns the time difference as the number of milliseconds since the Unix epoch
     pub const fn millis(&self) -> u64 {
         self.0

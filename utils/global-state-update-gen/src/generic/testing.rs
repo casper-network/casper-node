@@ -530,7 +530,6 @@ fn should_change_one_validator() {
     update.assert_written_balance(account3.main_purse(), validator3_new_balance.as_u64());
 
     let bids = reader.get_bids();
-    println!("should_change_one_validator {:?}", bids);
 
     let old_bid3 = bids.validator_bid(&validator3).expect("should have bid");
     let bid_purse = *old_bid3.bonding_purse();

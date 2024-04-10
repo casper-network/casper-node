@@ -14,11 +14,23 @@ const EXPONENTIAL_BUCKET_FACTOR: f64 = 2.0;
 /// - Values above 10.24 (f64 seconds here) will not fall in a bucket that is kept.
 const EXPONENTIAL_BUCKET_COUNT: usize = 10;
 
-const RUN_EXECUTE_NAME: &str = "contract_runtime_run_execute";
-const RUN_EXECUTE_HELP: &str = "time in seconds to execute but not commit a contract";
+const EXEC_WASM_V1_NAME: &str = "contract_runtime_exec_wasm_v1";
+const EXEC_WASM_V1_HELP: &str = "time in seconds to execute wasm using the v1 exec engine";
 
-const COMMIT_EFFECT_NAME: &str = "contract_runtime_commit_effects";
-const COMMIT_EFFECT_HELP: &str = "time in seconds to commit the effects of a tranasction execution";
+const EXEC_BLOCK_PRE_PROCESSING_NAME: &str = "contract_runtime_exec_block_pre_proc";
+const EXEC_BLOCK_PRE_PROCESSING_HELP: &str =
+    "processing time in seconds before any transactions have processed";
+
+const EXEC_BLOCK_POST_PROCESSING_NAME: &str = "contract_runtime_exec_block_post_proc";
+const EXEC_BLOCK_POST_PROCESSING_HELP: &str =
+    "processing time in seconds after all transactions have processed";
+
+const EXEC_BLOCK_STEP_PROCESSING_NAME: &str = "contract_runtime_exec_block_step_proc";
+const EXEC_BLOCK_STEP_PROCESSING_HELP: &str = "processing time in seconds of the end of era step";
+
+const EXEC_BLOCK_TOTAL_NAME: &str = "contract_runtime_exec_block_total_proc";
+const EXEC_BLOCK_TOTAL_HELP: &str =
+    "processing time in seconds for block execution (total elapsed)";
 
 const COMMIT_GENESIS_NAME: &str = "contract_runtime_commit_genesis";
 const COMMIT_GENESIS_HELP: &str = "time in seconds to commit an genesis";
@@ -62,8 +74,8 @@ const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 const GET_TRIE_NAME: &str = "contract_runtime_get_trie";
 const GET_TRIE_HELP: &str = "time in seconds to get a trie";
 
-const EXEC_BLOCK_NAME: &str = "contract_runtime_execute_block";
-const EXEC_BLOCK_HELP: &str = "time in seconds to execute all deploys in a block";
+const EXEC_BLOCK_TNX_PROCESSING_NAME: &str = "contract_runtime_execute_block";
+const EXEC_BLOCK_TNX_PROCESSING_HELP: &str = "time in seconds to execute all deploys in a block";
 
 const LATEST_COMMIT_STEP_NAME: &str = "contract_runtime_latest_commit_step";
 const LATEST_COMMIT_STEP_HELP: &str = "duration in seconds of latest commit step at era end";
@@ -75,8 +87,12 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 /// Metrics for the contract runtime component.
 #[derive(Debug)]
 pub struct Metrics {
-    pub(super) run_execute: Histogram,
-    pub(super) commit_effects: Histogram,
+    pub(super) exec_block_pre_processing: Histogram, // elapsed before tnx processing
+    pub(super) exec_block_tnx_processing: Histogram, // tnx processing elapsed
+    pub(super) exec_wasm_v1: Histogram,              // ee_v1 execution elapsed
+    pub(super) exec_block_step_processing: Histogram, // step processing elapsed
+    pub(super) exec_block_post_processing: Histogram, // elapsed after tnx processing
+    pub(super) exec_block_total: Histogram,          // total elapsed
     pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
@@ -90,7 +106,6 @@ pub struct Metrics {
     pub(super) addressable_entity: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
-    pub(super) exec_block: Histogram,
     pub(super) latest_commit_step: Gauge,
     pub(super) exec_queue_size: IntGauge,
     registry: Registry,
@@ -118,16 +133,40 @@ impl Metrics {
         registry.register(Box::new(exec_queue_size.clone()))?;
 
         Ok(Metrics {
-            run_execute: utils::register_histogram_metric(
+            exec_block_pre_processing: utils::register_histogram_metric(
                 registry,
-                RUN_EXECUTE_NAME,
-                RUN_EXECUTE_HELP,
+                EXEC_BLOCK_PRE_PROCESSING_NAME,
+                EXEC_BLOCK_PRE_PROCESSING_HELP,
                 common_buckets.clone(),
             )?,
-            commit_effects: utils::register_histogram_metric(
+            exec_block_tnx_processing: utils::register_histogram_metric(
                 registry,
-                COMMIT_EFFECT_NAME,
-                COMMIT_EFFECT_HELP,
+                EXEC_BLOCK_TNX_PROCESSING_NAME,
+                EXEC_BLOCK_TNX_PROCESSING_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_wasm_v1: utils::register_histogram_metric(
+                registry,
+                EXEC_WASM_V1_NAME,
+                EXEC_WASM_V1_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_block_post_processing: utils::register_histogram_metric(
+                registry,
+                EXEC_BLOCK_POST_PROCESSING_NAME,
+                EXEC_BLOCK_POST_PROCESSING_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_block_step_processing: utils::register_histogram_metric(
+                registry,
+                EXEC_BLOCK_STEP_PROCESSING_NAME,
+                EXEC_BLOCK_STEP_PROCESSING_HELP,
+                common_buckets.clone(),
+            )?,
+            exec_block_total: utils::register_histogram_metric(
+                registry,
+                EXEC_BLOCK_TOTAL_NAME,
+                EXEC_BLOCK_TOTAL_HELP,
                 common_buckets.clone(),
             )?,
             run_query: utils::register_histogram_metric(
@@ -194,7 +233,7 @@ impl Metrics {
                 registry,
                 ADDRESSABLE_ENTITY_NAME,
                 ADDRESSABLE_ENTITY_HELP,
-                common_buckets.clone(),
+                common_buckets,
             )?,
             get_trie: utils::register_histogram_metric(
                 registry,
@@ -208,12 +247,6 @@ impl Metrics {
                 PUT_TRIE_HELP,
                 tiny_buckets,
             )?,
-            exec_block: utils::register_histogram_metric(
-                registry,
-                EXEC_BLOCK_NAME,
-                EXEC_BLOCK_HELP,
-                common_buckets,
-            )?,
             latest_commit_step,
             exec_queue_size,
             registry: registry.clone(),
@@ -223,8 +256,12 @@ impl Metrics {
 
 impl Drop for Metrics {
     fn drop(&mut self) {
-        unregister_metric!(self.registry, self.run_execute);
-        unregister_metric!(self.registry, self.commit_effects);
+        unregister_metric!(self.registry, self.exec_block_pre_processing);
+        unregister_metric!(self.registry, self.exec_block_tnx_processing);
+        unregister_metric!(self.registry, self.exec_wasm_v1);
+        unregister_metric!(self.registry, self.exec_block_post_processing);
+        unregister_metric!(self.registry, self.exec_block_step_processing);
+        unregister_metric!(self.registry, self.exec_block_total);
         unregister_metric!(self.registry, self.commit_genesis);
         unregister_metric!(self.registry, self.commit_upgrade);
         unregister_metric!(self.registry, self.run_query);
@@ -237,7 +274,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.execution_results_checksum);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
-        unregister_metric!(self.registry, self.exec_block);
         unregister_metric!(self.registry, self.latest_commit_step);
         unregister_metric!(self.registry, self.exec_queue_size);
     }

@@ -402,6 +402,7 @@ impl ScratchProvider for DataAccessLayer<LmdbGlobalState> {
                 Ok(TriePruneResult::Pruned(new_root)) => {
                     state_root_hash = new_root;
                 }
+                Ok(TriePruneResult::MissingKey) => continue, // idempotent outcome
                 Ok(other) => return other,
                 Err(gse) => return TriePruneResult::Failure(gse),
             }

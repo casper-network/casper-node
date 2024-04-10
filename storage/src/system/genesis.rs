@@ -269,13 +269,11 @@ where
             named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
 
             // This purse is used only in FeeHandling::Accumulate setting.
-            let rewards_purse_uref = self.create_purse(U512::zero())?;
-
+            let accumulation_purse_uref = self.create_purse(U512::zero())?;
             named_keys.insert(
                 ACCUMULATION_PURSE_KEY.to_string(),
-                rewards_purse_uref.into(),
+                accumulation_purse_uref.into(),
             );
-
             named_keys
         };
 
