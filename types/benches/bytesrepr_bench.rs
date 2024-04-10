@@ -14,9 +14,9 @@ use casper_types::{
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLTyped, CLValue, DeployHash, DeployInfo,
     EntityVersionKey, EntityVersions, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash,
-    PackageStatus, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash,
-    TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512,
-    UREF_ADDR_LENGTH,
+    PackageStatus, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionRuntime,
+    TransactionV1Hash, TransferAddr, TransferV2, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128,
+    U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -468,7 +468,7 @@ fn sample_contract() -> AddressableEntity {
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
-        EntityKind::SmartContract,
+        EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
     )
 }
 
