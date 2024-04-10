@@ -451,6 +451,26 @@ impl BlockValidator {
             + From<FatalAnnouncement>
             + Send,
     {
+        if let Some(old_state) = self.validation_states.get_mut(&block) {
+            // if we got two requests for the same block in quick succession, it is possible that
+            // a state has been created and inserted for one of them while the other one was
+            // awaiting the past blocks from storage; in such a case just save the holder and
+            // responders, and return no effects, as all the fetching will have already been
+            // started
+            match old_state.add_responder(responder) {
+                AddResponderResult::Added => {}
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send,
+                } => {
+                    debug!(%response_to_send, "proposed block validation already completed");
+                    return responder.respond(response_to_send).ignore();
+                }
+            }
+            old_state.add_holder(sender);
+            return Effects::new();
+        }
+
         let (mut state, maybe_responder) = BlockValidationState::new(
             &block,
             missing_signatures,
