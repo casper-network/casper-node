@@ -77,7 +77,7 @@ strict_argument_checking = false
 # Number of simultaneous peer requests.
 simultaneous_peer_requests = 5
 # The consensus protocol to use. Options are "Zug" and "Highway".
-consensus_protocol = 'Highway'
+consensus_protocol = 'Zug'
 # The maximum amount of delegators per validator.
 max_delegators_per_validator = 1200
 # The split in finality signature rewards between block producer and participating signers.
@@ -106,7 +106,7 @@ compute_rewards = true
 # This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.
-refund_handling = { type = 'refund', refund_ratio = [99, 100] }
+refund_handling = { type = 'no_refund' }
 # Defines how fees are handled.
 #
 # Valid options are:
