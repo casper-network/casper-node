@@ -62,6 +62,7 @@ impl CitedBlock {
 pub(crate) struct RewardsInfo {
     eras_info: BTreeMap<EraId, EraInfo>,
     cited_blocks: Vec<CitedBlock>,
+    cited_block_height_start: u64,
 }
 
 /// The era information needed in the rewards computation:
@@ -98,6 +99,7 @@ impl RewardsInfo {
     pub async fn new<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
+        activation_era_id: EraId,
         signature_rewards_max_delay: u64,
         executable_block: ExecutableBlock,
     ) -> Result<Self, RewardsError> {
@@ -114,10 +116,15 @@ impl RewardsInfo {
                 .await
                 .ok_or(RewardsError::MissingSwitchBlock(previous_era_id))?;
 
-            // Here we do not substract 1, because we want one block more:
-            previous_era_switch_block_header
-                .height()
-                .saturating_sub(signature_rewards_max_delay)
+            if previous_era_id.is_genesis() || previous_era_id == activation_era_id {
+                // We do not attempt to reward blocks from before an upgrade!
+                previous_era_switch_block_header.height()
+            } else {
+                // Here we do not substract 1, because we want one block more:
+                previous_era_switch_block_header
+                    .height()
+                    .saturating_sub(signature_rewards_max_delay)
+            }
         };
         let range_to_fetch = cited_block_height_start..executable_block.height;
 
@@ -142,14 +149,17 @@ impl RewardsInfo {
         Ok(RewardsInfo {
             eras_info,
             cited_blocks,
+            cited_block_height_start,
         })
     }
 
     #[cfg(test)]
     pub fn new_testing(eras_info: BTreeMap<EraId, EraInfo>, cited_blocks: Vec<CitedBlock>) -> Self {
+        let cited_block_height_start = cited_blocks.first().map(|block| block.height).unwrap_or(0);
         Self {
             eras_info,
             cited_blocks,
+            cited_block_height_start,
         }
     }
 
@@ -371,6 +381,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
         let rewards_info = RewardsInfo::new(
             effect_builder,
             chainspec.protocol_version(),
+            chainspec.protocol_config.activation_point.era_id(),
             chainspec.core_config.signature_rewards_max_delay,
             executable_block,
         )
@@ -437,7 +448,7 @@ pub(crate) fn rewards_for_era(
         for (signature_rewards, signed_block_height) in block
             .rewarded_signatures
             .iter()
-            .zip((0..block.height).rev())
+            .zip((rewards_info.cited_block_height_start..block.height).rev())
         {
             let signed_block_era = rewards_info.era_for_block_height(signed_block_height)?;
             let validators_providing_signature =
