@@ -73,6 +73,7 @@ macro_rules! rate_limited {
         static $key: $crate::utils::rate_limited::RateLimited =
             $crate::utils::rate_limited::RateLimited::new();
 
+        #[allow(clippy::redundant_closure_call)]
         if let Some(skipped) = $key.acquire($count, $per) {
             $action(skipped);
         }
