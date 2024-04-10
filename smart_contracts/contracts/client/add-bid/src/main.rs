@@ -21,13 +21,13 @@ fn add_bid(
     };
     // Optional arguments
     if let Some(minimum_delegation_amount) = minimum_delegation_amount {
-        args.insert(
+        let _ = args.insert(
             auction::ARG_MINIMUM_DELEGATION_AMOUNT,
             minimum_delegation_amount,
         );
     }
     if let Some(maximum_delegation_amount) = maximum_delegation_amount {
-        args.insert(
+        let _ = args.insert(
             auction::ARG_MAXIMUM_DELEGATION_AMOUNT,
             maximum_delegation_amount,
         );
