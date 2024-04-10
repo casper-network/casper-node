@@ -631,10 +631,9 @@ pub trait Auction:
                 .cloned()
                 .or_else(|| {
                     let bid_key = BidAddr::from(proposer.clone()).into();
-                    let validator_bid = detail::read_validator_bid(self, &bid_key).ok()?;
-                    detail::seigniorage_recipient(self, &validator_bid).ok()
+                    let validator_bid = read_validator_bid(self, &bid_key).ok()?;
+                    seigniorage_recipient(self, &validator_bid).ok()
                 })
-                .get(&validator_public_key)
                 .ok_or(Error::ValidatorNotFound)?;
 
             let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
