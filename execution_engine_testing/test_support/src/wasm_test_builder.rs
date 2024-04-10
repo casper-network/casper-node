@@ -19,15 +19,14 @@ use tempfile::TempDir;
 use casper_execution_engine::engine_state::{
     Error, ExecutionEngineV1, WasmV1Request, WasmV1Result, DEFAULT_MAX_QUERY_DEPTH,
 };
-use casper_storage::data_access_layer::forced_undelegate::{
-    ForcedUndelegateRequest, ForcedUndelegateResult,
-};
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
-        BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
+        balance::BalanceHandling,
+        forced_undelegate::{ForcedUndelegateRequest, ForcedUndelegateResult},
+        AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult, BiddingRequest,
+        BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
         QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
         StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
@@ -1027,7 +1026,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        time: u64,
+        block_time: u64,
     ) -> ForcedUndelegateResult {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let native_runtime_config = self.native_runtime_config();
@@ -1035,7 +1034,7 @@ where
             native_runtime_config,
             pre_state_hash,
             protocol_version,
-            time,
+            BlockTime::new(block_time),
         );
         let forced_undelegate_result = self
             .data_access_layer
