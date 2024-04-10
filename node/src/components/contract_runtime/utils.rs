@@ -106,7 +106,6 @@ pub(super) async fn exec_or_requeue<REv>(
 
             rewards
         } else {
-            //TODO instead, use a list of all the validators with 0
             BTreeMap::new()
         });
     }
