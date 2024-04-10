@@ -673,10 +673,7 @@ impl GasLimited for TransactionV1 {
                 };
                 Gas::new(U512::from(computation_limit))
             }
-            PricingMode::Reserved {
-                reserved_gas,
-                ..
-            } => {
+            PricingMode::Reserved { reserved_gas, .. } => {
                 // prepaid, if receipt is legit (future use)
                 Gas::new(U512::from(*reserved_gas))
             }
@@ -1106,7 +1103,7 @@ mod tests {
             paid_amount: Default::default(),
             reservation_price: Default::default(),
             reservation_bid: Default::default(),
-            time_frame: None
+            time_frame: None,
         };
 
         let reserved_transaction = TransactionV1Builder::new_random(rng)
@@ -1318,7 +1315,12 @@ mod tests {
     /// TODO: Needs to be reworked to account for a flexible range of reservation pricing models
     #[allow(dead_code)]
     #[cfg(test)]
-    fn reserved_pricing(reserved_gas: u64, paid_amount: u64, reservation_price: u8, reservation_bid: u64) {
+    fn reserved_pricing(
+        reserved_gas: u64,
+        paid_amount: u64,
+        reservation_price: u8,
+        reservation_bid: u64,
+    ) {
         let mut chainspec = Chainspec::default();
         let chain_name = "net-1";
         chainspec

@@ -17,7 +17,7 @@ use rand::Rng;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{de::Error as SerdeError, Deserializer, Serializer};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -236,7 +236,9 @@ impl From<u64> for Timestamp {
 }
 
 /// A time difference between two timestamps.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",

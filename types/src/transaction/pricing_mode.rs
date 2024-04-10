@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use super::Transaction;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{BlockTime, bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, Digest,
-    TimeDiff};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    BlockTime, Digest, TimeDiff,
+};
 
 const CLASSIC_TAG: u8 = 0;
 const FIXED_TAG: u8 = 1;
