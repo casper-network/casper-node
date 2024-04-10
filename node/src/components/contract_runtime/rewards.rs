@@ -366,12 +366,7 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
     {
         // Special case: genesis block and immediate switch blocks do not yield any reward, because
         // there is no block producer, and no signatures from previous blocks to be rewarded:
-        Ok(chainspec
-            .network_config
-            .accounts_config
-            .validators()
-            .map(|account| (account.public_key.clone(), U512::zero()))
-            .collect())
+        Ok(BTreeMap::new())
     } else {
         let rewards_info = RewardsInfo::new(
             effect_builder,
