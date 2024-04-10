@@ -19,6 +19,9 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     account,
@@ -659,6 +662,7 @@ pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
     /// All versions (enabled & disabled)
+    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
     versions: ContractVersions,
     /// Disabled versions
     disabled_versions: DisabledVersions,
@@ -852,6 +856,18 @@ impl From<ContractPackage> for Package {
             lock_status,
         )
     }
+}
+
+struct ContractVersionLabels;
+
+impl KeyValueLabels for ContractVersionLabels {
+    const KEY: &'static str = "contract_version_key";
+    const VALUE: &'static str = "contract_entity_hash";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for ContractVersionLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
 }
 
 /// Methods and type signatures supported by a contract.
@@ -1281,7 +1297,7 @@ mod tests {
 mod prop_tests {
     use proptest::prelude::*;
 
-    use crate::{bytesrepr, gens};
+    use crate::{bytesrepr, contracts::ContractPackage, gens};
 
     proptest! {
         #![proptest_config(ProptestConfig {
@@ -1297,6 +1313,13 @@ mod prop_tests {
         #[test]
         fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract_pkg);
+        }
+
+        #[test]
+        fn test_json_contract_package(v in gens::contract_package_arb()) {
+            let json_str = serde_json::to_string(&v).unwrap();
+            let deserialized = serde_json::from_str::<ContractPackage>(&json_str).unwrap();
+            assert_eq!(v, deserialized);
         }
     }
 }
