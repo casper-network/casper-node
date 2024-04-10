@@ -1118,12 +1118,7 @@ pub trait StateProvider {
                 amount,
                 new_validator,
             } => runtime
-                .redelegate(
-                    delegator,
-                    validator,
-                    amount,
-                    new_validator,
-                )
+                .redelegate(delegator, validator, amount, new_validator)
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(|auc_err| {
                     TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
