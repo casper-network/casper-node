@@ -1214,3 +1214,20 @@ impl Default for Config {
         }
     }
 }
+
+#[cfg(test)]
+impl Config {
+    /// Creates a configuration with very low timeouts, suitable for unit testing.
+    pub(crate) fn default_with_low_timeouts() -> Self {
+        Self {
+            tcp_connect_timeout: TimeDiff::from_seconds(3),
+            setup_timeout: TimeDiff::from_seconds(3),
+            tcp_connect_base_backoff: TimeDiff::from_millis(10),
+            significant_error_backoff: TimeDiff::from_seconds(2),
+            permanent_error_backoff: TimeDiff::from_seconds(2),
+            successful_reconnect_delay: TimeDiff::from_millis(10),
+            flaky_connection_threshold: TimeDiff::from_seconds(10),
+            ..Default::default()
+        }
+    }
+}

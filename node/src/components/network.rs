@@ -326,7 +326,7 @@ where
     }
 
     /// Queues a message to be sent to validator nodes in the given era.
-    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, _era_id: EraId) {
+    fn broadcast_message_to_validators(&self, channel: Channel, payload: Bytes, era_id: EraId) {
         let Some(ref conman) = self.conman else {
             error!(
                 "cannot broadcast message to validators on non-initialized networking component"
@@ -337,7 +337,10 @@ where
         self.net_metrics.broadcast_requests.inc();
 
         // Determine whether we should restrict broadcasts at all.
-        let validators = self.validator_matrix.active_or_upcoming_validators();
+        let validators = self
+            .validator_matrix
+            .era_validators(era_id)
+            .unwrap_or_default();
         if self.config.use_validator_broadcast && !validators.is_empty() {
             let state = conman.read_state();
             for (consensus_key, &peer_id) in state.key_index().iter() {
