@@ -293,6 +293,7 @@ where
             self.identity.clone(),
             handshake_configuration,
             keylog,
+            self.net_metrics.clone(),
         );
 
         let conman = ConMan::new(
@@ -369,6 +370,8 @@ where
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> Vec<NodeId> {
+        self.net_metrics.gossip_requests.inc();
+
         let Some(ref conman) = self.conman else {
             error!("should never attempt to gossip on uninitialized component");
             return Default::default();
@@ -483,11 +486,18 @@ where
                     .create_request(channel.into_channel_id())
                     .with_payload(payload)
             }
+            let payload_len = payload.len() as u64;
             let request = mk_request(&route.client, channel, payload);
 
             // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
             match request.try_queue_for_sending() {
-                Ok(guard) => process_request_guard(channel, guard),
+                Ok(guard) => {
+                    self.net_metrics
+                        .channel_metrics
+                        .get(channel)
+                        .update_from_outgoing_request(payload_len);
+                    process_request_guard(&self.net_metrics, channel, guard)
+                }
                 Err(builder) => {
                     // Failed to queue immediately, our next step depends on whether we were asked
                     // to keep trying or to discard.
@@ -509,15 +519,29 @@ where
                         // Technically, the queueing future should be spawned by the reactor, but
                         // since the networking component usually controls its own futures, we are
                         // allowed to spawn these as well.
+                        let net_metrics = self.net_metrics.clone();
                         tokio::spawn(async move {
+                            // Note: This future is not cancellation safe due to the metrics being
+                            //       updated with no drop implementation. However, there is no way
+                            //       to exit this early or cancel its execution, so we should be
+                            //       good.
+
+                            net_metrics.overflow_buffer_count.inc();
+                            net_metrics.overflow_buffer_bytes.add(payload_len as i64);
                             let guard = mk_request(&client, channel, payload)
                                 .queue_for_sending()
                                 .await;
+                            net_metrics.overflow_buffer_bytes.sub(payload_len as i64);
+                            net_metrics.overflow_buffer_count.dec();
+                            net_metrics
+                                .channel_metrics
+                                .get(channel)
+                                .update_from_outgoing_request(payload_len);
                             responder.respond(()).await;
 
                             // We need to properly process the guard, so it does not cause a
                             // cancellation from being dropped.
-                            process_request_guard(channel, guard)
+                            process_request_guard(&net_metrics, channel, guard)
                         });
                     } else {
                         // We had to drop the message, since we hit the buffer limit.
@@ -1024,12 +1048,17 @@ where
 /// Ensures that outgoing messages are not cancelled, a would be the case when simply dropping the
 /// `RequestGuard`. Potential errors that are available early are dropped, later errors discarded.
 #[inline]
-fn process_request_guard(channel: Channel, guard: RequestGuard) {
+fn process_request_guard(net_metrics: &Arc<Metrics>, channel: Channel, guard: RequestGuard) {
+    let cm = net_metrics.channel_metrics.get(channel);
     match guard.try_get_response() {
-        Ok(Ok(_outcome)) => {
+        Ok(Ok(ref payload)) => {
             // We got an incredibly quick round-trip, lucky us! Nothing to do.
+            cm.update_from_received_response(
+                payload.as_ref().map(Bytes::len).unwrap_or_default() as u64
+            )
         }
         Ok(Err(err)) => {
+            cm.send_failures.inc();
             rate_limited!(
                 MESSAGE_SENDING_FAILURE,
                 5,

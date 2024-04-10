@@ -18,6 +18,9 @@ All notable changes to this project will be documented in this file.  The format
 * Add `tcp_connect_timeout`, `setup_timeout`, `tcp_connect_attempts`, `tcp_connect_base_backoff`, `significant_error_backoff`, `permanent_error_backoff`, `successful_reconnect_delay`, `flaky_connection_threshold`, `max_incoming_connections` and `max_outgoing_connections` to the `network.conman` section in the config.
 * `use_validator_broadcast` can now be configured to control the node's broadcast behavior.
 * `use_mixed_gossip` can now be configured to enable or disable the node's gossip peer selection.
+* Add `net_gossip_requests`, `net_overflow_buffer_count` and `net_overflow_buffer_bytes` metrics.
+* Add a new family of metrics per channel has been added, namely `request_out_count` `request_out_bytes` `response_in_count` `response_in_bytes` `request_in_count` `request_in_bytes` `response_out_count` and `response_out_bytes`. These are labelled with each channel.
+
 
 ### Changed
 * The node's connection model has changed, now only establishing a single connection per peer. The direction of the connection is chosen based on the randomly generated `NodeID`s.
@@ -31,6 +34,7 @@ All notable changes to this project will be documented in this file.  The format
 * The `max_outgoing_byte_rate_non_validators` setting has been removed.
 * The tarpit feature has been removed along with the respective `tarpit_version_threshold`, `tarpit_duration` and `tarpit_chance` configuration settings.
 * The validation of the maximum network message size setting in the chainspec based on specimen generation has been removed.
+* The following metrics have been deprecated and will constantly show as `0`: `net_queued_messages`, `net_out_count_protocol`, `net_out_count_consensus`, `net_out_count_deploy_gossip`, `net_out_count_block_gossip`, `net_out_count_finality_signature_gossip`, `net_out_count_address_gossip`, `net_out_count_deploy_transfer`, `net_out_count_block_transfer`, `net_out_count_trie_transfer`, `net_out_count_other`, `net_out_bytes_protocol`, `net_out_bytes_consensus`, `net_out_bytes_deploy_gossip`, `net_out_bytes_block_gossip`, `net_out_bytes_finality_signature_gossip`, `net_out_bytes_address_gossip`, `net_out_bytes_deploy_transfer`, `net_out_bytes_block_transfer`, `net_out_bytes_trie_transfer`, `net_out_bytes_other`, `net_out_state_connecting`, `net_out_state_waiting`, `net_out_state_connected`, `net_out_state_blocked`, `net_out_state_loopback`, `net_in_count_protocol`, `net_in_count_consensus`, `net_in_count_deploy_gossip`, `net_in_count_block_gossip`, `net_in_count_finality_signature_gossip`, `net_in_count_address_gossip`, `net_in_count_deploy_transfer`, `net_in_count_block_transfer`, `net_in_count_trie_transfer`, `net_in_count_other`, `net_in_bytes_protocol`, `net_in_bytes_consensus`, `net_in_bytes_deploy_gossip`, `net_in_bytes_block_gossip`, `net_in_bytes_finality_signature_gossip`, `net_in_bytes_address_gossip`, `net_in_bytes_deploy_transfer`, `net_in_bytes_block_transfer`, `net_in_bytes_trie_transfer`, `net_in_bytes_other`, `requests_for_trie_accepted`, `requests_for_trie_finished` and `accumulated_outgoing_limiter_delay`.
 
 ## 1.5.6
 

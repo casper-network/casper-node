@@ -2,7 +2,7 @@
 
 use prometheus::{
     core::{Atomic, Collector, GenericCounter, GenericGauge},
-    Counter, Gauge, Histogram, HistogramOpts, HistogramTimer, IntCounter, IntGauge, Registry,
+    Counter, Gauge, Histogram, HistogramOpts, HistogramTimer, IntCounter, IntGauge, Opts, Registry,
 };
 
 /// A metric wrapper that will deregister the metric from a given registry on drop.
@@ -13,6 +13,22 @@ where
 {
     metric: Option<Box<T>>,
     registry: Registry,
+}
+
+/// A metric that has been deprecated, but is kept around for backwards API compatibility.
+#[derive(Debug)]
+pub(crate) struct DeprecatedMetric(RegisteredMetric<IntCounter>);
+
+impl DeprecatedMetric {
+    /// Creates a new deprecated metric.
+    #[inline(always)]
+    pub(crate) fn new<S1: Into<String>, S2: Into<String>>(
+        registry: Registry,
+        name: S1,
+        help: S2,
+    ) -> Result<Self, prometheus::Error> {
+        Ok(DeprecatedMetric(registry.new_int_counter(name, help)?))
+    }
 }
 
 impl<T> RegisteredMetric<T>
@@ -67,6 +83,12 @@ where
         self.inner().dec()
     }
 
+    /// Decrements the gauge by set amount.
+    #[inline]
+    pub(crate) fn sub(&self, v: P::T) {
+        self.inner().sub(v)
+    }
+
     /// Returns the gauge value.
     #[cfg(test)]
     #[inline]
@@ -78,6 +100,12 @@ where
     #[inline]
     pub(crate) fn inc(&self) {
         self.inner().inc()
+    }
+
+    /// Increments the gauge by set amount.
+    #[inline]
+    pub(crate) fn add(&self, v: P::T) {
+        self.inner().add(v)
     }
 
     /// Sets the gauge value.
@@ -150,12 +178,25 @@ pub(crate) trait RegistryExt {
         help: S2,
     ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error>;
 
+    /// Creates a new [`IntCounter`] from options.
+    fn new_int_counter_opts(
+        &self,
+        opts: Opts,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error>;
+
     /// Creates a new [`IntGauge`] registered to this registry.
     fn new_int_gauge<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error>;
+
+    /// Creates a new deprecated metric, registered to this registry.
+    fn new_deprecated<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<DeprecatedMetric, prometheus::Error>;
 }
 
 impl RegistryExt for Registry {
@@ -194,11 +235,26 @@ impl RegistryExt for Registry {
         RegisteredMetric::new(self.clone(), IntCounter::new(name, help)?)
     }
 
+    fn new_int_counter_opts(
+        &self,
+        opts: Opts,
+    ) -> Result<RegisteredMetric<IntCounter>, prometheus::Error> {
+        RegisteredMetric::new(self.clone(), IntCounter::with_opts(opts)?)
+    }
+
     fn new_int_gauge<S1: Into<String>, S2: Into<String>>(
         &self,
         name: S1,
         help: S2,
     ) -> Result<RegisteredMetric<IntGauge>, prometheus::Error> {
         RegisteredMetric::new(self.clone(), IntGauge::new(name, help)?)
+    }
+    fn new_deprecated<S1: Into<String>, S2: Into<String>>(
+        &self,
+        name: S1,
+        help: S2,
+    ) -> Result<DeprecatedMetric, prometheus::Error> {
+        let help = format!("(DEPRECATED) {}", help.into());
+        DeprecatedMetric::new(self.clone(), name, help)
     }
 }

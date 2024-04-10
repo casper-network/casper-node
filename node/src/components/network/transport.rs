@@ -3,21 +3,25 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
-use std::{marker::PhantomData, pin::Pin};
+use std::{
+    marker::PhantomData,
+    pin::Pin,
+    sync::{Arc, Weak},
+};
 
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
-use tracing::{trace, Span};
+use tracing::{error, trace, Span};
 
 use crate::{
     components::network::{deserialize_network_message, Message},
     reactor::{EventQueueHandle, QueueKind},
     tls,
     types::{chainspec::JulietConfig, NodeId},
-    utils::LockedLineWriter,
+    utils::{rate_limited::rate_limited, LockedLineWriter},
 };
 
 use super::{
@@ -25,6 +29,7 @@ use super::{
     conman::{ProtocolHandler, ProtocolHandshakeOutcome},
     error::{ConnectionError, MessageReceiverError},
     handshake::HandshakeConfiguration,
+    metrics::Metrics,
     Channel, Config, Event, FromIncoming, Identity, Payload, PerChannel, Transport,
 };
 
@@ -75,18 +80,34 @@ pub(super) fn create_rpc_builder(
 /// Dropping it will cause an "ACK", which in the Juliet transport's case is an empty response, to
 /// be sent. Cancellations or responses with actual payloads are not used at this time.
 #[derive(Debug)]
-pub(crate) struct Ticket(Option<Box<IncomingRequest>>);
+pub(crate) struct Ticket {
+    /// The underlying request.
+    opt_request: Option<Box<IncomingRequest>>,
+    /// A weak reference to the networking metrics.
+    net_metrics: Weak<Metrics>,
+}
 
 impl Ticket {
+    /// Creates a new ticket from a given juliet RPC request.
     #[inline(always)]
-    pub(super) fn from_rpc_request(incoming_request: IncomingRequest) -> Self {
-        Ticket(Some(Box::new(incoming_request)))
+    pub(super) fn from_rpc_request(
+        net_metrics: Weak<Metrics>,
+        incoming_request: IncomingRequest,
+    ) -> Self {
+        Ticket {
+            opt_request: Some(Box::new(incoming_request)),
+            net_metrics,
+        }
     }
 
+    /// Creates a new dummy ticket for testing.
     #[cfg(test)]
     #[inline(always)]
     pub(crate) fn create_dummy() -> Self {
-        Ticket(None)
+        Ticket {
+            opt_request: None,
+            net_metrics: Weak::new(),
+        }
     }
 }
 
@@ -94,7 +115,19 @@ impl Drop for Ticket {
     #[inline(always)]
     fn drop(&mut self) {
         // Currently, we simply send a request confirmation in the for of an `ACK`.
-        if let Some(incoming_request) = self.0.take() {
+        if let Some(incoming_request) = self.opt_request.take() {
+            if let Some(net_metrics) = self.net_metrics.upgrade() {
+                if let Some(channel) = Channel::from_repr(incoming_request.channel().get()) {
+                    let cm = net_metrics.channel_metrics.get(channel);
+                    cm.update_from_sent_response(0);
+                } else {
+                    rate_limited!(FAILED_TO_RECONSTRUCT_CHANNEL_ID, |dropped| error!(
+                        req_channel = incoming_request.channel().get(),
+                        dropped, "should never failed to reconstruct channel from incoming request"
+                    ));
+                }
+            }
+
             incoming_request.respond(None);
         }
     }
@@ -105,6 +138,7 @@ pub(super) struct TransportHandler<REv: 'static, P> {
     identity: Identity,
     handshake_configuration: HandshakeConfiguration,
     keylog: Option<LockedLineWriter>,
+    net_metrics: Arc<Metrics>,
     _payload: PhantomData<P>,
 }
 
@@ -117,12 +151,14 @@ where
         identity: Identity,
         handshake_configuration: HandshakeConfiguration,
         keylog: Option<LockedLineWriter>,
+        net_metrics: Arc<Metrics>,
     ) -> Self {
         Self {
             event_queue,
             identity,
             handshake_configuration,
             keylog,
+            net_metrics,
             _payload: PhantomData,
         }
     }
@@ -225,13 +261,19 @@ where
             QueueKind::MessageIncoming
         };
 
+        // Update metrics.
+        self.net_metrics
+            .channel_metrics
+            .get(channel)
+            .update_from_incoming_request(payload.len() as u64);
+
         self.event_queue
             .schedule::<Event<P>>(
                 Event::IncomingMessage {
                     peer_id: Box::new(peer),
                     msg: Box::new(msg),
                     span: Span::current(),
-                    ticket: Ticket::from_rpc_request(request),
+                    ticket: Ticket::from_rpc_request(Arc::downgrade(&self.net_metrics), request),
                 },
                 queue_kind,
             )

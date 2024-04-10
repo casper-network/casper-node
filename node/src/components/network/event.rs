@@ -18,7 +18,7 @@ use crate::{
 };
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-const_assert!(_NETWORK_EVENT_SIZE < 65);
+const_assert!(_NETWORK_EVENT_SIZE <= 72);
 
 /// A network event.
 #[derive(Debug, From, Serialize)]
