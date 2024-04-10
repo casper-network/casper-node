@@ -13,10 +13,8 @@ use serde::{Deserialize, Serialize};
 use super::Transaction;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest,
-};
+use crate::{BlockTime, bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, Digest,
+    TimeDiff};
 
 const CLASSIC_TAG: u8 = 0;
 const FIXED_TAG: u8 = 1;
@@ -57,10 +55,16 @@ pub enum PricingMode {
     Reserved {
         /// Pre-paid receipt.
         receipt: Digest,
-        /// Price paid in the past to reserve space in a future block.
+        /// Gas reserved.
+        reserved_gas: u64,
+        /// Motes paid or locked in the past to reserve space in a future block.
         paid_amount: u64,
         /// The gas price at the time of reservation.
-        strike_price: u8,
+        reservation_price: u8,
+        /// Bid of motes per gas at the time of reservation.
+        reservation_bid: u64,
+        /// Time frame of the reservation.
+        time_frame: Option<(BlockTime, TimeDiff)>,
     },
 }
 
@@ -79,8 +83,12 @@ impl PricingMode {
             },
             2 => PricingMode::Reserved {
                 receipt: rng.gen(),
+                reserved_gas: rng.gen(),
                 paid_amount: rng.gen(),
-                strike_price: rng.gen(),
+                reservation_price: rng.gen(),
+                reservation_bid: rng.gen(),
+                // TODO: Handle "random" time frames
+                time_frame: None,
             },
             _ => unreachable!(),
         }
@@ -103,12 +111,16 @@ impl Display for PricingMode {
             }
             PricingMode::Reserved {
                 receipt,
+                reserved_gas,
                 paid_amount,
-                strike_price,
-            } => write!(
+                reservation_price,
+                reservation_bid,
+                time_frame,
+            } => // TODO: Investigate whether time_frame renders legibly
+                write!(
                 formatter,
-                "reserved: {} paid_amount: {} strike_price: {}",
-                receipt, paid_amount, strike_price
+                "reserved: {} reserved_gas: {} paid_amount: {} reservation_price: {} reservation_bid: {} time_frame: {:?}",
+                receipt, reserved_gas, paid_amount, reservation_price, reservation_bid, time_frame
             ),
             PricingMode::Fixed {
                 gas_price_tolerance,
@@ -132,13 +144,19 @@ impl ToBytes for PricingMode {
             }
             PricingMode::Reserved {
                 receipt,
+                reserved_gas,
                 paid_amount,
-                strike_price,
+                reservation_price,
+                reservation_bid,
+                time_frame,
             } => {
                 RESERVED_TAG.write_bytes(writer)?;
                 receipt.write_bytes(writer)?;
+                reserved_gas.write_bytes(writer)?;
                 paid_amount.write_bytes(writer)?;
-                strike_price.write_bytes(writer)
+                reservation_price.write_bytes(writer)?;
+                reservation_bid.write_bytes(writer)?;
+                time_frame.write_bytes(writer)
             }
             PricingMode::Fixed {
                 gas_price_tolerance,
@@ -169,12 +187,18 @@ impl ToBytes for PricingMode {
                 }
                 PricingMode::Reserved {
                     receipt,
+                    reserved_gas,
                     paid_amount,
-                    strike_price,
+                    reservation_price,
+                    reservation_bid,
+                    time_frame,
                 } => {
                     receipt.serialized_length()
+                        + reserved_gas.serialized_length()
                         + paid_amount.serialized_length()
-                        + strike_price.serialized_length()
+                        + reservation_price.serialized_length()
+                        + reservation_bid.serialized_length()
+                        + time_frame.serialized_length()
                 }
                 PricingMode::Fixed {
                     gas_price_tolerance,
@@ -212,13 +236,19 @@ impl FromBytes for PricingMode {
             }
             RESERVED_TAG => {
                 let (receipt, remainder) = Digest::from_bytes(remainder)?;
+                let (reserved_gas, remainder) = u64::from_bytes(remainder)?;
                 let (paid_amount, remainder) = u64::from_bytes(remainder)?;
-                let (strike_price, remainder) = u8::from_bytes(remainder)?;
+                let (reservation_price, remainder) = u8::from_bytes(remainder)?;
+                let (reservation_bid, remainder) = u64::from_bytes(remainder)?;
+                let (time_frame, remainder) = Option::from_bytes(remainder)?;
                 Ok((
                     PricingMode::Reserved {
                         receipt,
+                        reserved_gas,
                         paid_amount,
-                        strike_price,
+                        reservation_price,
+                        reservation_bid,
+                        time_frame,
                     },
                     remainder,
                 ))

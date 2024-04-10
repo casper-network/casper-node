@@ -16,7 +16,8 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error as SerdeError, Deserializer, Serializer};
+use serde::{Serialize, Deserialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -235,7 +236,7 @@ impl From<u64> for Timestamp {
 }
 
 /// A time difference between two timestamps.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
@@ -345,30 +346,6 @@ impl Div<TimeDiff> for TimeDiff {
 impl From<TimeDiff> for Duration {
     fn from(diff: TimeDiff) -> Duration {
         Duration::from_millis(diff.0)
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-impl Serialize for TimeDiff {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            self.to_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-impl<'de> Deserialize<'de> for TimeDiff {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if deserializer.is_human_readable() {
-            let value_as_string = String::deserialize(deserializer)?;
-            TimeDiff::from_str(&value_as_string).map_err(SerdeError::custom)
-        } else {
-            let inner = u64::deserialize(deserializer)?;
-            Ok(TimeDiff(inner))
-        }
     }
 }
 
