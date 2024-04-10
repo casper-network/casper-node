@@ -25,7 +25,7 @@ use crate::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
         ReactorStateName,
     },
-    DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
+    BalanceResponse, DictionaryQueryResult, RecordId, TransactionWithExecutionInfo, Uptime,
 };
 
 /// A type of the payload being returned in a binary response.
@@ -105,6 +105,8 @@ pub enum PayloadType {
     NodeStatus,
     /// Result of querying for a dictionary item.
     DictionaryQueryResult,
+    /// Balance query response.
+    BalanceResponse,
 }
 
 impl PayloadType {
@@ -131,7 +133,7 @@ impl PayloadType {
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..33)).unwrap()
+        Self::try_from(rng.gen_range(0..37)).unwrap()
     }
 }
 
@@ -193,6 +195,8 @@ impl TryFrom<u8> for PayloadType {
             x if x == PayloadType::DictionaryQueryResult as u8 => {
                 Ok(PayloadType::DictionaryQueryResult)
             }
+            x if x == PayloadType::WasmV1Result as u8 => Ok(PayloadType::WasmV1Result),
+            x if x == PayloadType::BalanceResponse as u8 => Ok(PayloadType::BalanceResponse),
             _ => Err(()),
         }
     }
@@ -245,6 +249,7 @@ impl fmt::Display for PayloadType {
             PayloadType::NodeStatus => write!(f, "NodeStatus"),
             PayloadType::WasmV1Result => write!(f, "WasmV1Result"),
             PayloadType::DictionaryQueryResult => write!(f, "DictionaryQueryResult"),
+            PayloadType::BalanceResponse => write!(f, "BalanceResponse"),
         }
     }
 }
@@ -285,6 +290,7 @@ const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
 const NODE_STATUS_TAG: u8 = 33;
 const DICTIONARY_QUERY_RESULT_TAG: u8 = 34;
 const WASM_V1_RESULT_TAG: u8 = 35;
+const BALANCE_RESPONSE_TAG: u8 = 36;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -335,6 +341,7 @@ impl ToBytes for PayloadType {
             PayloadType::NodeStatus => NODE_STATUS_TAG,
             PayloadType::WasmV1Result => WASM_V1_RESULT_TAG,
             PayloadType::DictionaryQueryResult => DICTIONARY_QUERY_RESULT_TAG,
+            PayloadType::BalanceResponse => BALANCE_RESPONSE_TAG,
         }
         .write_bytes(writer)
     }
@@ -379,6 +386,8 @@ impl FromBytes for PayloadType {
             GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
             NODE_STATUS_TAG => PayloadType::NodeStatus,
             DICTIONARY_QUERY_RESULT_TAG => PayloadType::DictionaryQueryResult,
+            WASM_V1_RESULT_TAG => PayloadType::WasmV1Result,
+            BALANCE_RESPONSE_TAG => PayloadType::BalanceResponse,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((record_id, remainder))
@@ -509,6 +518,10 @@ impl PayloadEntity for BlockSynchronizerStatus {
 
 impl PayloadEntity for ConsensusStatus {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusStatus;
+}
+
+impl PayloadEntity for BalanceResponse {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BalanceResponse;
 }
 
 #[cfg(test)]

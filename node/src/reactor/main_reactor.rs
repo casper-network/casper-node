@@ -263,6 +263,9 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::ProtocolVersion { responder } => responder
                     .respond(self.chainspec.protocol_version())
                     .ignore(),
+                ReactorInfoRequest::BalanceHoldsInterval { responder } => responder
+                    .respond(self.chainspec.core_config.balance_hold_interval)
+                    .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
                 .handle_meta_block(
