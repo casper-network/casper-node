@@ -153,7 +153,11 @@ impl Config {
 
     /// Constructs a `Config` suitable for use by the first node of a testnet on a single machine.
     pub(crate) fn default_local_net_first_node(bind_port: u16) -> Self {
-        Config::new((TEST_BIND_INTERFACE, bind_port).into())
+        Config {
+            conman: ConmanConfig::default_with_low_timeouts(),
+            blocklist_retain_duration: TimeDiff::from_seconds(1),
+            ..Config::new((TEST_BIND_INTERFACE, bind_port).into())
+        }
     }
 
     /// Constructs a `Config` suitable for use by a node joining a testnet on a single machine.
@@ -165,6 +169,8 @@ impl Config {
                 SocketAddr::from((TEST_BIND_INTERFACE, known_peer_port)).to_string()
             ],
             gossip_interval: DEFAULT_TEST_GOSSIP_INTERVAL,
+            conman: ConmanConfig::default_with_low_timeouts(),
+            blocklist_retain_duration: TimeDiff::from_seconds(1),
             ..Default::default()
         }
     }
