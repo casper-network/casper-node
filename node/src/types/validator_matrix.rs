@@ -266,21 +266,6 @@ impl ValidatorMatrix {
         self.is_validator_in_era(era_id, &self.public_signing_key)
     }
 
-    /// Return the set of active or upcoming validators.
-    ///
-    /// The set is not guaranteed to be minimal, as it will include validators up to `auction_delay
-    /// + 1` back eras from the highest era known.
-    #[inline]
-    pub(crate) fn active_or_upcoming_validators(&self) -> HashSet<PublicKey> {
-        self.read_inner()
-            .values()
-            .rev()
-            .take(self.auction_delay as usize + 1)
-            .flat_map(|validator_weights| validator_weights.validator_public_keys())
-            .cloned()
-            .collect()
-    }
-
     pub(crate) fn create_finality_signature(
         &self,
         block_header: &BlockHeader,
