@@ -21,14 +21,14 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
-        BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
+        balance::BalanceHandling,
         inactive_validators::{
             InactiveValidatorsUndelegationRequest, InactiveValidatorsUndelegationResult,
         },
-        BalanceRequest, BalanceResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
-        BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
+        AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult, BiddingRequest,
+        BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult, BlockStore,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest, FeeResult,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
         ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
         QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
         StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
@@ -1036,7 +1036,7 @@ where
             native_runtime_config,
             pre_state_hash,
             protocol_version,
-            time,
+            BlockTime::new(time),
         );
         let inactive_validators_result = self
             .data_access_layer

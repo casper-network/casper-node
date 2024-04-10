@@ -45,11 +45,11 @@ use crate::{
         balance::BalanceHandling,
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
-        mint::{TransferRequest, TransferRequestArgs, TransferResult},
         inactive_validators::{
             InactiveValidatorsUndelegationError, InactiveValidatorsUndelegationRequest,
             InactiveValidatorsUndelegationResult,
         },
+        mint::{TransferRequest, TransferRequestArgs, TransferResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
         BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
@@ -1085,9 +1085,16 @@ pub trait StateProvider {
                 public_key,
                 delegation_rate,
                 amount,
+                inactive_validator_undelegation_delay,
                 holds_epoch,
             } => runtime
-                .add_bid(public_key, delegation_rate, amount, holds_epoch)
+                .add_bid(
+                    public_key,
+                    delegation_rate,
+                    amount,
+                    inactive_validator_undelegation_delay,
+                    holds_epoch,
+                )
                 .map(AuctionMethodRet::UpdatedAmount)
                 .map_err(TrackingCopyError::Api),
             AuctionMethod::WithdrawBid { public_key, amount } => runtime

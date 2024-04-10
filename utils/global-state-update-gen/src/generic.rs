@@ -14,7 +14,9 @@ use clap::ArgMatches;
 use itertools::Itertools;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::engine_config::{DEFAULT_PROTOCOL_VERSION, DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY};
+use casper_execution_engine::engine_state::engine_config::{
+    DEFAULT_INACTIVE_VALIDATOR_UNDELEGATION_DELAY, DEFAULT_PROTOCOL_VERSION,
+};
 use casper_types::{
     system::auction::{
         Bid, BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipientsSnapshot,

@@ -4441,7 +4441,7 @@ fn should_undelegate_from_inactive_validator_after_delay() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -4485,7 +4485,7 @@ fn should_undelegate_from_inactive_validator_after_delay() {
     builder.advance_eras_by(global_inactive_validator_undelegation_delay - 1);
 
     // undelegate from inactive validators
-    builder.undelegate_from_inactive_validators(None, *DEFAULT_PROTOCOL_VERSION, timestamp);
+    builder.undelegate_from_inactive_validators(None, DEFAULT_PROTOCOL_VERSION, timestamp);
 
     let bids = builder.get_bids();
     assert_eq!(bids.len(), 3);
@@ -4516,7 +4516,7 @@ fn should_undelegate_from_inactive_validator_after_delay() {
     builder.advance_eras_by(4);
 
     // undelegate from inactive validators
-    builder.undelegate_from_inactive_validators(None, *DEFAULT_PROTOCOL_VERSION, timestamp);
+    builder.undelegate_from_inactive_validators(None, DEFAULT_PROTOCOL_VERSION, timestamp);
 
     let bids = builder.get_bids();
     assert_eq!(bids.len(), 2);

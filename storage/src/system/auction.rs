@@ -69,8 +69,8 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-        holds_epoch: HoldsEpoch,
         inactive_validator_undelegation_delay: u64,
+        holds_epoch: HoldsEpoch,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
             // The validator set may be closed on some side chains,

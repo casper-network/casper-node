@@ -7,15 +7,16 @@ use casper_execution_engine::engine_state::{ExecutionEngineV1, WasmV1Request, Wa
 use casper_storage::{
     block_store::types::ApprovalsHashes,
     data_access_layer::{
-        balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
-        BalanceIdentifier, BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult,
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
-        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        balance::BalanceHandling,
         inactive_validators::{
             InactiveValidatorsUndelegationRequest, InactiveValidatorsUndelegationResult,
         },
+        AuctionMethod, BalanceHoldKind, BalanceHoldRequest, BalanceIdentifier, BalanceRequest,
+        BiddingRequest, BlockRewardsRequest, BlockRewardsResult, DataAccessLayer,
+        EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest, FeeResult, FlushRequest,
+        HandleFeeMode, HandleFeeRequest, HandleRefundMode, HandleRefundRequest,
+        InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult, StepRequest,
+        StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -698,26 +699,26 @@ pub fn execute_finalized_block(
     // transpire before this block is entirely finished.
     let step_outcome = if let Some(era_report) = &executable_block.era_report {
         // Undelegate delegators from validators that have been inactive for a number of eras
-    // specified by the `inactive_validator_undelegation_delay` chainspec option
-    let inactive_validators_req = InactiveValidatorsUndelegationRequest::new(
-        native_runtime_config.clone(),
-        state_root_hash,
-        protocol_version,
-        block_time,
-    );
-    match scratch_state.undelegate_from_inactive_validators(inactive_validators_req) {
-        InactiveValidatorsUndelegationResult::RootNotFound => {
-            return Err(BlockExecutionError::RootNotFound(state_root_hash))
+        // specified by the `inactive_validator_undelegation_delay` chainspec option
+        let inactive_validators_req = InactiveValidatorsUndelegationRequest::new(
+            native_runtime_config.clone(),
+            state_root_hash,
+            protocol_version,
+            block_time,
+        );
+        match scratch_state.undelegate_from_inactive_validators(inactive_validators_req) {
+            InactiveValidatorsUndelegationResult::RootNotFound => {
+                return Err(BlockExecutionError::RootNotFound(state_root_hash))
+            }
+            InactiveValidatorsUndelegationResult::Failure(err) => {
+                return Err(BlockExecutionError::InactiveValidatorsUndelegation(err))
+            }
+            InactiveValidatorsUndelegationResult::Success {
+                post_state_hash, ..
+            } => {
+                state_root_hash = post_state_hash;
+            }
         }
-        InactiveValidatorsUndelegationResult::Failure(err) => {
-            return Err(BlockExecutionError::InactiveValidatorsUndelegation(err))
-        }
-        InactiveValidatorsUndelegationResult::Success {
-            post_state_hash, ..
-        } => {
-            state_root_hash = post_state_hash;
-        }
-    }
 
         // step processing starts now
         let step_processing_start = Instant::now();

@@ -859,7 +859,13 @@ where
                 }
 
                 let result = runtime
-                    .add_bid(account_hash, delegation_rate, amount, holds_epoch, inactive_validator_undelegation_delay)
+                    .add_bid(
+                        account_hash,
+                        delegation_rate,
+                        amount,
+                        inactive_validator_undelegation_delay,
+                        holds_epoch,
+                    )
                     .map_err(Self::reverter)?;
 
                 CLValue::from_t(result).map_err(Self::reverter)

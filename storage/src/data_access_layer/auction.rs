@@ -45,6 +45,7 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
+        inactive_validator_undelegation_delay: u64,
         holds_epoch: HoldsEpoch,
     },
     WithdrawBid {
@@ -85,7 +86,11 @@ impl AuctionMethod {
                 Err(AuctionMethodError::InvalidEntryPoint(entry_point))
             }
             TransactionEntryPoint::ActivateBid => Self::new_activate_bid(runtime_args),
-            TransactionEntryPoint::AddBid => Self::new_add_bid(runtime_args, holds_epoch),
+            TransactionEntryPoint::AddBid => Self::new_add_bid(
+                runtime_args,
+                chainspec.core_config.inactive_validator_undelegation_delay,
+                holds_epoch,
+            ),
             TransactionEntryPoint::WithdrawBid => Self::new_withdraw_bid(runtime_args),
             TransactionEntryPoint::Delegate => Self::new_delegate(
                 runtime_args,
@@ -108,15 +113,24 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
+        global_inactive_validator_undelegation_delay: u64,
         holds_epoch: HoldsEpoch,
     ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
         let delegation_rate = Self::get_named_argument(runtime_args, auction::ARG_DELEGATION_RATE)?;
         let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
+        let inactive_validator_undelegation_delay: Option<u64> = Self::get_named_argument(
+            runtime_args,
+            auction::ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
+        )?;
+        let inactive_validator_undelegation_delay = inactive_validator_undelegation_delay
+            .unwrap_or(global_inactive_validator_undelegation_delay);
+
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
             amount,
+            inactive_validator_undelegation_delay,
             holds_epoch,
         })
     }

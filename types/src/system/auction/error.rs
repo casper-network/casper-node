@@ -342,7 +342,7 @@ pub enum Error {
     /// Inactive validator undelegation delay exceeds global limit.
     /// ```
     /// # use casper_types::system::auction::Error;
-    /// assert_eq!(52, Error::DelegationRateTooLarge as u8);
+    /// assert_eq!(52, Error::InactiveValidatorUndelegationDelayTooLarge as u8);
     /// ```
     InactiveValidatorUndelegationDelayTooLarge = 52,
 }
