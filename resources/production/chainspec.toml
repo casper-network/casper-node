@@ -245,7 +245,7 @@ size_multiplier = 100
 [wasm.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 1_200_000, arguments = [0, 0, 0] }
-add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
+add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 1_200_000, arguments = [0, 120_000, 0, 0] }
 call_contract = { cost = 300_000_000, arguments = [0, 0, 0, 120_000, 0, 120_000, 0] }
 call_versioned_contract = { cost = 300_000_000, arguments = [0, 0, 0, 0, 0, 120_000, 0, 120_000, 0] }
