@@ -37,6 +37,10 @@ pub enum Error {
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),
+
+    /// Cannot provide proofs over working state in a cache (programmer error).
+    #[error("Attempt to generate proofs using non-empty cache.")]
+    CannotProvideProofsOverCachedData,
 }
 
 impl<T> From<sync::PoisonError<T>> for Error {

@@ -33,11 +33,12 @@ use casper_types::{
         AUCTION, MINT,
     },
     Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, U512,
+    PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
 };
 
 #[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
+
 use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
@@ -47,13 +48,14 @@ use crate::{
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
-        BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier, BalanceRequest, BalanceResult,
-        BidsRequest, BidsResult, BlockRewardsError, BlockRewardsRequest, BlockRewardsResult,
-        EraValidatorsRequest, ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
-        FeeError, FeeRequest, FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        HandleRefundMode, HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
+        BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockRewardsError,
+        BlockRewardsRequest, BlockRewardsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
+        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
         RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
         SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
         SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
@@ -556,48 +558,109 @@ pub trait StateProvider: Send + Sync {
             Err(tce) => return BalanceResult::Failure(tce),
         };
 
-        let (total_balance, total_balance_proof) =
-            match tc.get_total_balance_with_proof(purse_balance_key) {
-                Err(tce) => return BalanceResult::Failure(tce),
-                Ok((balance, proof)) => (balance, Box::new(proof)),
-            };
+        let proof_handling = request.proof_handling();
 
-        let balance_holds = match request.balance_handling() {
-            BalanceHandling::Total => BTreeMap::new(),
-            BalanceHandling::Available { holds_epoch } => {
-                match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
+        match proof_handling {
+            ProofHandling::NoProofs => {
+                let balance_key = Key::Balance(purse_addr);
+                let total_balance = match tc.read(&balance_key) {
+                    Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
+                        Ok(val) => val,
+                        Err(cve) => return BalanceResult::Failure(TrackingCopyError::CLValue(cve)),
+                    },
+                    Ok(Some(_)) => {
+                        return BalanceResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        )
+                    }
+                    Ok(None) => {
+                        return BalanceResult::Failure(TrackingCopyError::KeyNotFound(balance_key))
+                    }
                     Err(tce) => return BalanceResult::Failure(tce),
-                    Ok(holds) => holds,
+                };
+                let balance_holds = match request.balance_handling() {
+                    BalanceHandling::Total => BTreeMap::new(),
+                    BalanceHandling::Available { holds_epoch } => {
+                        match tc.get_balance_holds(purse_addr, holds_epoch) {
+                            Err(tce) => return BalanceResult::Failure(tce),
+                            Ok(holds) => holds,
+                        }
+                    }
+                };
+
+                let available_balance = if balance_holds.is_empty() {
+                    total_balance
+                } else {
+                    let held = balance_holds
+                        .values()
+                        .flat_map(|holds| holds.values().copied())
+                        .collect_vec()
+                        .into_iter()
+                        .sum();
+                    debug_assert!(
+                        total_balance >= held,
+                        "it should not be possible to hold more than the total available"
+                    );
+                    if held > total_balance {
+                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                    }
+                    total_balance.checked_sub(held).unwrap_or(U512::zero())
+                };
+
+                BalanceResult::Success {
+                    purse_addr,
+                    total_balance,
+                    available_balance,
+                    proofs_result: ProofsResult::NotRequested { balance_holds },
                 }
             }
-        };
+            ProofHandling::Proofs => {
+                let (total_balance, total_balance_proof) =
+                    match tc.get_total_balance_with_proof(purse_balance_key) {
+                        Err(tce) => return BalanceResult::Failure(tce),
+                        Ok((balance, proof)) => (balance, Box::new(proof)),
+                    };
 
-        let available_balance = if balance_holds.is_empty() {
-            total_balance
-        } else {
-            let held = balance_holds
-                .values()
-                .flat_map(|holds| holds.values().map(|(v, _)| *v))
-                .collect_vec()
-                .into_iter()
-                .sum();
+                let balance_holds_with_proofs = match request.balance_handling() {
+                    BalanceHandling::Total => BTreeMap::new(),
+                    BalanceHandling::Available { holds_epoch } => {
+                        match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
+                            Err(tce) => return BalanceResult::Failure(tce),
+                            Ok(holds) => holds,
+                        }
+                    }
+                };
 
-            debug_assert!(
-                total_balance >= held,
-                "it should not be possible to hold more than the total available"
-            );
-            if held > total_balance {
-                error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                let available_balance = if balance_holds_with_proofs.is_empty() {
+                    total_balance
+                } else {
+                    let held = balance_holds_with_proofs
+                        .values()
+                        .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                        .collect_vec()
+                        .into_iter()
+                        .sum();
+
+                    debug_assert!(
+                        total_balance >= held,
+                        "it should not be possible to hold more than the total available"
+                    );
+                    if held > total_balance {
+                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                    }
+                    total_balance.checked_sub(held).unwrap_or(U512::zero())
+                };
+
+                BalanceResult::Success {
+                    purse_addr,
+                    total_balance,
+                    available_balance,
+                    proofs_result: ProofsResult::Proofs {
+                        total_balance_proof,
+                        balance_holds: balance_holds_with_proofs,
+                    },
+                }
             }
-            total_balance.checked_sub(held).unwrap_or(U512::zero())
-        };
-
-        BalanceResult::Success {
-            purse_addr,
-            total_balance,
-            total_balance_proof,
-            available_balance,
-            balance_holds,
         }
     }
 
@@ -612,75 +675,170 @@ pub trait StateProvider: Send + Sync {
                 ))
             }
         };
-        let balance_request = request.clone().into();
-        let balance_result = self.balance(balance_request);
-        let (total_balance, remaining_balance, purse_addr) = match balance_result {
-            BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
-            BalanceResult::Failure(tce) => {
-                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+        let hold_mode = request.balance_hold_mode();
+        match hold_mode {
+            BalanceHoldMode::Hold {
+                identifier,
+                hold_amount,
+                holds_epoch,
+                insufficient_handling,
+            } => {
+                let tag = match request.balance_hold_kind() {
+                    BalanceHoldKind::All => {
+                        return BalanceHoldResult::Failure(
+                            BalanceHoldError::UnexpectedWildcardVariant,
+                        )
+                    }
+                    BalanceHoldKind::Tag(tag) => tag,
+                };
+                let balance_request = BalanceRequest::new(
+                    request.state_hash(),
+                    request.protocol_version(),
+                    identifier,
+                    BalanceHandling::Available { holds_epoch },
+                    ProofHandling::NoProofs,
+                );
+                let balance_result = self.balance(balance_request);
+                let (total_balance, remaining_balance, purse_addr) = match balance_result {
+                    BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
+                    BalanceResult::Failure(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                    BalanceResult::Success {
+                        total_balance,
+                        available_balance,
+                        purse_addr,
+                        ..
+                    } => (total_balance, available_balance, purse_addr),
+                };
+
+                let held_amount = {
+                    if remaining_balance >= hold_amount {
+                        // the purse has sufficient balance to fully cover the hold
+                        hold_amount
+                    } else if insufficient_handling == InsufficientBalanceHandling::Noop {
+                        // the purse has insufficient balance and the insufficient
+                        // balance handling mode is noop, so get out
+                        return BalanceHoldResult::Failure(BalanceHoldError::InsufficientBalance {
+                            remaining_balance,
+                        });
+                    } else {
+                        // currently this is always the default HoldRemaining variant.
+                        // the purse holder has insufficient balance to cover the hold,
+                        // but the system will put a hold on whatever balance remains.
+                        // this is basically punitive to block an edge case resource consumption
+                        // attack whereby a malicious purse holder drains a balance to not-zero
+                        // but not-enough-to-cover-holds and then spams a bunch of transactions
+                        // knowing that they will fail due to insufficient funds, but only
+                        // after making the system do the work of processing the balance
+                        // check without penalty to themselves.
+                        remaining_balance
+                    }
+                };
+                let cl_value = match CLValue::from_t(held_amount) {
+                    Ok(cl_value) => cl_value,
+                    Err(cve) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                            TrackingCopyError::CLValue(cve),
+                        ))
+                    }
+                };
+
+                let block_time = request.block_time();
+                let balance_hold_addr = match tag {
+                    BalanceHoldAddrTag::Gas => BalanceHoldAddr::Gas {
+                        purse_addr,
+                        block_time,
+                    },
+                    BalanceHoldAddrTag::Processing => BalanceHoldAddr::Processing {
+                        purse_addr,
+                        block_time,
+                    },
+                };
+
+                let hold_key = Key::BalanceHold(balance_hold_addr);
+                tc.write(hold_key, StoredValue::CLValue(cl_value));
+                let holds = vec![balance_hold_addr];
+
+                let available_balance = remaining_balance.saturating_sub(held_amount);
+                let effects = tc.effects();
+                BalanceHoldResult::success(
+                    Some(holds),
+                    total_balance,
+                    available_balance,
+                    hold_amount,
+                    held_amount,
+                    effects,
+                )
             }
-            BalanceResult::Success {
-                total_balance,
-                available_balance,
-                purse_addr,
-                ..
-            } => (total_balance, available_balance, purse_addr),
-        };
+            BalanceHoldMode::Clear {
+                identifier,
+                holds_epoch,
+            } => {
+                let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
+                    Ok(source_purse) => source_purse.addr(),
+                    Err(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                };
 
-        let held_amount = {
-            if remaining_balance >= request.hold_amount() {
-                // the purse has sufficient balance to fully cover the hold
-                request.hold_amount()
-            } else if request.insufficient_handling() == InsufficientBalanceHandling::Noop {
-                // the purse has insufficient balance but the holding mode is noop, so get out
-                return BalanceHoldResult::Failure(BalanceHoldError::InsufficientBalance {
-                    remaining_balance,
-                });
-            } else {
-                // currently this is always the default HoldRemaining variant.
-                // the purse holder has insufficient balance to cover the hold,
-                // but the system will put a hold on whatever balance remains.
-                // this is basically punitive to block an edge case resource consumption
-                // attack whereby a malicious purse holder drains a balance to not-zero
-                // but not-enough-to-cover-holds and then spams a bunch of transactions
-                // knowing that they will fail due to insufficient funds, but only
-                // after making the system do the work of processing the balance
-                // check without penalty to themselves.
-                remaining_balance
+                {
+                    // clear holds
+                    let bid_kind = request.balance_hold_kind();
+                    let mut filter = vec![];
+                    let tag = BalanceHoldAddrTag::Processing;
+                    if bid_kind.matches(tag) {
+                        filter.push((
+                            BalanceHoldAddrTag::Processing,
+                            HoldsEpoch::from_block_time(request.block_time(), TimeDiff::ZERO),
+                        ));
+                    }
+                    let tag = BalanceHoldAddrTag::Gas;
+                    if bid_kind.matches(tag) {
+                        filter.push((tag, holds_epoch));
+                    }
+                    if let Err(tce) = tc.clear_expired_balance_holds(purse_addr, filter) {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
+                    }
+                }
+
+                // get updated balance
+                let balance_result = self.balance(BalanceRequest::new(
+                    request.state_hash(),
+                    request.protocol_version(),
+                    identifier,
+                    BalanceHandling::Available { holds_epoch },
+                    ProofHandling::NoProofs,
+                ));
+                let (total_balance, available_balance) = match balance_result {
+                    BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
+                    BalanceResult::Failure(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                    BalanceResult::Success {
+                        total_balance,
+                        available_balance,
+                        ..
+                    } => (total_balance, available_balance),
+                };
+                // note that hold & held in this context does not refer to remaining holds,
+                // but rather to the requested hold amount and the resulting held amount for
+                // this execution. as calls to this variant clears holds and does not create
+                // new holds, hold & held are zero and no new hold address exists.
+                let new_hold_addr = None;
+                let hold = U512::zero();
+                let held = U512::zero();
+                let effects = tc.effects();
+                BalanceHoldResult::success(
+                    new_hold_addr,
+                    total_balance,
+                    available_balance,
+                    hold,
+                    held,
+                    effects,
+                )
             }
-        };
-
-        let cl_value = match CLValue::from_t(held_amount) {
-            Ok(cl_value) => cl_value,
-            Err(cve) => {
-                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
-                    TrackingCopyError::CLValue(cve),
-                ))
-            }
-        };
-
-        let balance_hold_addr = match request.hold_kind() {
-            BalanceHoldAddrTag::Gas => BalanceHoldAddr::Gas {
-                purse_addr,
-                block_time: request.block_time(),
-            },
-        };
-
-        tc.write(
-            Key::BalanceHold(balance_hold_addr),
-            StoredValue::CLValue(cl_value),
-        );
-
-        let available_balance = remaining_balance.saturating_sub(held_amount);
-        let effects = tc.effects();
-
-        BalanceHoldResult::success(
-            total_balance,
-            available_balance,
-            request.hold_amount(),
-            held_amount,
-            effects,
-        )
+        }
     }
 
     /// Get the requested era validators.
@@ -925,7 +1083,7 @@ pub trait StateProvider: Send + Sync {
             protocol_version,
             Id::Transaction(transaction_hash),
             Rc::clone(&tc),
-            Phase::FinalizePayment,
+            refund_mode.phase(),
         ) {
             Ok(rt) => rt,
             Err(tce) => {
@@ -934,15 +1092,47 @@ pub trait StateProvider: Send + Sync {
         };
 
         let result = match refund_mode {
+            HandleRefundMode::RefundAmount {
+                limit,
+                cost,
+                gas_price,
+                consumed,
+                ratio,
+                source,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let (numer, denom) = ratio.into();
+                let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    HoldsEpoch::NOT_APPLICABLE,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => Some(refund),
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                Ok(refund_amount)
+            }
             HandleRefundMode::Refund {
                 initiator_addr,
                 limit,
                 cost,
                 gas_price,
                 consumed,
+                ratio,
                 source,
                 target,
-                ratio,
             } => {
                 let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
                     Ok(value) => value,
@@ -982,7 +1172,7 @@ pub trait StateProvider: Send + Sync {
                     )
                     .map_err(|_| Error::Transfer)
                 {
-                    Ok(_) => Ok(refund_amount),
+                    Ok(_) => Ok(Some(refund_amount)),
                     Err(err) => Err(err),
                 }
             }
@@ -1009,14 +1199,14 @@ pub trait StateProvider: Send + Sync {
                     HoldsEpoch::NOT_APPLICABLE,
                     ratio,
                 ) {
-                    Ok((refund, _)) => refund,
+                    Ok((amount, _)) => Some(amount),
                     Err(hpe) => {
                         return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
                             system::Error::HandlePayment(hpe),
                         ));
                     }
                 };
-                match runtime.burn(source_purse, Some(burn_amount)) {
+                match runtime.burn(source_purse, burn_amount) {
                     Ok(_) => Ok(burn_amount),
                     Err(err) => Err(err),
                 }
@@ -1027,19 +1217,20 @@ pub trait StateProvider: Send + Sync {
                     Err(tce) => return HandleRefundResult::Failure(tce),
                 };
                 match runtime.set_refund_purse(target_purse) {
-                    Ok(_) => Ok(U512::zero()),
+                    Ok(_) => Ok(None),
                     Err(err) => Err(err),
                 }
             }
+            HandleRefundMode::ClearRefundPurse => match runtime.clear_refund_purse() {
+                Ok(_) => Ok(None),
+                Err(err) => Err(err),
+            },
         };
 
         let effects = tc.borrow_mut().effects();
 
         match result {
-            Ok(amount) => HandleRefundResult::Success {
-                effects,
-                amount: Some(amount),
-            },
+            Ok(amount) => HandleRefundResult::Success { effects, amount },
             Err(hpe) => HandleRefundResult::Failure(TrackingCopyError::SystemContract(
                 system::Error::HandlePayment(hpe),
             )),
@@ -1110,24 +1301,6 @@ pub trait StateProvider: Send + Sync {
                     Err(tce) => return HandleFeeResult::Failure(tce),
                 };
                 runtime.burn(source_purse, amount)
-            }
-            HandleFeeMode::ClearHolds {
-                source,
-                holds_epoch,
-            } => {
-                let tag = BalanceHoldAddrTag::Gas;
-                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
-                    Ok(value) => value,
-                    Err(tce) => return HandleFeeResult::Failure(tce),
-                };
-                if let Err(tce) = tc.borrow_mut().clear_expired_balance_holds(
-                    source_purse.addr(),
-                    tag,
-                    holds_epoch,
-                ) {
-                    return HandleFeeResult::Failure(tce);
-                }
-                Ok(())
             }
         };
 
@@ -1554,7 +1727,6 @@ pub trait StateProvider: Send + Sync {
                 }
             }
         }
-
         let transfer_args = match runtime_args_builder.build(
             &entity,
             entity_named_keys,

@@ -12,7 +12,6 @@ use std::{
 };
 
 use either::Either;
-use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
 use num_traits::One;
@@ -25,7 +24,7 @@ use casper_storage::{
     data_access_layer::{
         balance::{BalanceHandling, BalanceResult},
         AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
-        TotalSupplyRequest, TotalSupplyResult,
+        ProofHandling, TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
@@ -826,6 +825,7 @@ impl TestFixture {
             highest_block.protocol_version(),
             account_public_key,
             BalanceHandling::Available { holds_epoch },
+            ProofHandling::NoProofs,
         );
 
         let balance_result = runner
@@ -834,15 +834,9 @@ impl TestFixture {
             .data_access_layer()
             .balance(balance_request);
 
-        if let BalanceResult::Success { balance_holds, .. } = balance_result {
-            balance_holds
-                .values()
-                .flat_map(|holds| holds.values().map(|(v, _)| *v))
-                .collect_vec()
-                .into_iter()
-                .sum()
-        } else {
-            panic!("failed balance result")
+        match balance_result.proofs_result() {
+            None => panic!("failed balance result"),
+            Some(proofs_result) => proofs_result.total_held_amount(),
         }
     }
 

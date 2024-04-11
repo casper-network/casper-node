@@ -408,11 +408,9 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have stored payment key");
 
-    let stored_payment = builder
+    let _stored_payment = builder
         .query(None, stored_payment_key, &[])
         .expect("should have stored payement");
-
-    println!("{:?}", stored_payment);
 
     let stored_payment_contract_hash = stored_payment_key
         .into_entity_hash_addr()

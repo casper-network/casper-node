@@ -22,7 +22,9 @@ use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::{
-    data_access_layer::{AddressableEntityResult, BalanceIdentifier, BalanceResult, QueryResult},
+    data_access_layer::{
+        AddressableEntityResult, BalanceIdentifier, BalanceResult, ProofsResult, QueryResult,
+    },
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
@@ -815,12 +817,15 @@ impl reactor::Reactor for Reactor {
                         if self.test_scenario == TestScenario::AccountWithUnknownBalance {
                             BalanceResult::RootNotFound
                         } else {
+                            let proofs_result = ProofsResult::Proofs {
+                                total_balance_proof: Box::new(proof),
+                                balance_holds: Default::default(),
+                            };
                             BalanceResult::Success {
                                 purse_addr,
                                 total_balance: Default::default(),
                                 available_balance: U512::from(motes),
-                                total_balance_proof: Box::new(proof),
-                                balance_holds: Default::default(),
+                                proofs_result,
                             }
                         };
                     responder.respond(balance_result).ignore()

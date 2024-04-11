@@ -29,7 +29,7 @@ pub enum GetRequest {
         key: Vec<u8>,
     },
     /// Retrieves data from the global state.
-    State(GlobalStateRequest),
+    State(Box<GlobalStateRequest>),
 }
 
 impl GetRequest {
@@ -44,7 +44,7 @@ impl GetRequest {
                 info_type_tag: rng.gen(),
                 key: rng.random_vec(16..32),
             },
-            2 => GetRequest::State(GlobalStateRequest::random(rng)),
+            2 => GetRequest::State(Box::new(GlobalStateRequest::random(rng))),
             _ => unreachable!(),
         }
     }
@@ -122,7 +122,7 @@ impl FromBytes for GetRequest {
             }
             STATE_TAG => {
                 let (req, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((GetRequest::State(req), remainder))
+                Ok((GetRequest::State(Box::new(req)), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

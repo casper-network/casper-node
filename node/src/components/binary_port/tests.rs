@@ -382,16 +382,16 @@ impl ReactorEvent for Event {
 
 fn all_values_request() -> BinaryRequest {
     let state_identifier = GlobalStateIdentifier::StateRootHash(Digest::hash([1u8; 32]));
-    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
+    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::AllItems {
         state_identifier: Some(state_identifier),
         key_tag: KeyTag::Account,
-    }))
+    })))
 }
 
 fn trie_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Trie {
+    BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Trie {
         trie_key: Digest::hash([1u8; 32]),
-    }))
+    })))
 }
 
 fn try_speculative_exec_request(rng: &mut TestRng) -> BinaryRequest {
