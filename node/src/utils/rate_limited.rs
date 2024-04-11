@@ -40,7 +40,7 @@ pub(crate) const DEFAULT_REFRESH_COUNT: usize = 100;
 /// The argument is the number of times this call has been skipped since the last time it was
 /// called.
 ///
-/// ```
+/// ```ignore
 /// rate_limited!(
 ///     CONNECTION_THRESHOLD_EXCEEDED,
 ///     |count| warn!(count, "exceeded connection threshold")
@@ -49,7 +49,7 @@ pub(crate) const DEFAULT_REFRESH_COUNT: usize = 100;
 ///
 /// The macro can alternatively called with a specific count-per:
 ///
-/// ```
+/// ```ignore
 /// rate_limited!(
 ///     CONNECTION_THRESHOLD_EXCEEDED,
 ///     20,
