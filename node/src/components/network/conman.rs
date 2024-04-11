@@ -246,6 +246,7 @@ pub(crate) trait ProtocolHandler: Send + Sync {
     async fn handle_incoming_request(
         &self,
         peer: NodeId,
+        consensus_key: Option<&PublicKey>,
         request: IncomingRequest,
     ) -> Result<(), String>;
 }
@@ -1032,7 +1033,7 @@ impl ActiveRoute {
             if let Err(err) = self
                 .ctx
                 .protocol_handler
-                .handle_incoming_request(self.peer_id, request)
+                .handle_incoming_request(self.peer_id, self.consensus_key.as_deref(), request)
                 .await
             {
                 // The handler return an error, exit and close connection.

@@ -238,8 +238,8 @@ impl ValidatorMatrix {
 
     /// Determine if the active validator is in a current or upcoming set of active validators.
     ///
-    /// This function may produce false positives, as it works backwards from the highest known era.
-    /// Depending on the current network state, this may be an upcoming or active era, at least the
+    /// This function may produce false positives, as it works backwards from the highest known
+    /// era. Depending on the current network state, this may be an upcoming or active era, the
     /// previous era validators may be positively identified by this function.
     #[inline]
     pub(crate) fn is_active_or_upcoming_validator(&self, public_key: &PublicKey) -> bool {

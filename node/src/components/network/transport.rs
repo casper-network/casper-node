@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use casper_types::PublicKey;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -20,7 +21,7 @@ use crate::{
     components::network::{deserialize_network_message, Message},
     reactor::{EventQueueHandle, QueueKind},
     tls,
-    types::{chainspec::JulietConfig, NodeId},
+    types::{chainspec::JulietConfig, NodeId, ValidatorMatrix},
     utils::{rate_limited::rate_limited, LockedLineWriter},
 };
 
@@ -139,6 +140,7 @@ pub(super) struct TransportHandler<REv: 'static, P> {
     handshake_configuration: HandshakeConfiguration,
     keylog: Option<LockedLineWriter>,
     net_metrics: Arc<Metrics>,
+    validator_matrix: ValidatorMatrix,
     _payload: PhantomData<P>,
 }
 
@@ -152,6 +154,7 @@ where
         handshake_configuration: HandshakeConfiguration,
         keylog: Option<LockedLineWriter>,
         net_metrics: Arc<Metrics>,
+        validator_matrix: ValidatorMatrix,
     ) -> Self {
         Self {
             event_queue,
@@ -159,6 +162,7 @@ where
             handshake_configuration,
             keylog,
             net_metrics,
+            validator_matrix,
             _payload: PhantomData,
         }
     }
@@ -212,9 +216,10 @@ where
     async fn handle_incoming_request(
         &self,
         peer: NodeId,
+        consensus_key: Option<&PublicKey>,
         request: IncomingRequest,
     ) -> Result<(), String> {
-        self.do_handle_incoming_request(peer, request)
+        self.do_handle_incoming_request(peer, consensus_key, request)
             .await
             .map_err(|err| err.to_string())
     }
@@ -228,6 +233,7 @@ where
     async fn do_handle_incoming_request(
         &self,
         peer: NodeId,
+        consensus_key: Option<&PublicKey>,
         request: IncomingRequest,
     ) -> Result<(), MessageReceiverError> {
         let channel = Channel::from_repr(request.channel().get())
@@ -251,8 +257,10 @@ where
             });
         }
 
-        // TODO: Restore priorization based on validator status.
-        let validator_status = false;
+        let validator_status = consensus_key
+            .map(|key| self.validator_matrix.is_active_or_upcoming_validator(key))
+            .unwrap_or(false);
+
         let queue_kind = if validator_status {
             QueueKind::MessageValidator
         } else if msg.is_low_priority() {
