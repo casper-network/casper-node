@@ -336,7 +336,7 @@ pay = 10_000
 
 
 [vacancy]
-# The cost of a transaction is based on a multiplier. This allows for economic disincentives to misues of the network.
+# The cost of a transaction is based on a multiplier. This allows for economic disincentives for misuse of the network.
 #
 # The network starts with a current_gas_price of min_gas_price.
 #
