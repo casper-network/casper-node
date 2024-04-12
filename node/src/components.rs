@@ -199,7 +199,11 @@ pub(crate) trait PortBoundComponent<REv>: InitializedComponent<REv> {
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error>;
 }
 
+/// A component that is subscribing to changes in the validator set.
 pub(crate) trait ValidatorBoundComponent<REv>: Component<REv> {
+    /// Notifies the component that the validator set has changed.
+    ///
+    /// This function is guaranteed to be called whenever a new era begins.
     fn handle_validators(
         &mut self,
         effect_builder: EffectBuilder<REv>,
