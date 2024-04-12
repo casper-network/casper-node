@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.  The format
 * The node's connection model has changed, now only establishing a single connection per peer. The direction of the connection is chosen based on the randomly generated `NodeID`s.
 * Node-to-node communication is now based on the [`juliet`](https://docs.rs/juliet) networking protocol, allowing for multiplexed communication that includes backpressure. This will result in some operations having lower latency and increased reliability under load.
 * Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+* Many previously chatty log messages have been rate limited. This in turn allowed increasing some `DEBUG` level messages to the more appropriate `WARN`, as they are no longer infinitely remotely triggerable.
 
 ### Removed
 * The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.

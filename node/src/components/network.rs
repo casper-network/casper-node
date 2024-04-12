@@ -294,6 +294,7 @@ where
             handshake_configuration,
             keylog,
             self.net_metrics.clone(),
+            self.validator_matrix.clone(),
         );
 
         let conman = ConMan::new(

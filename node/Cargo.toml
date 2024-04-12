@@ -72,12 +72,12 @@ signature = "1"
 smallvec = { version = "1", features = ["serde"] }
 static_assertions = "1"
 stats_alloc = "0.1.8"
-structopt = "0.3.14"
+structopt = "0.3.26"
 strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 sys-info = "0.8.0"
 tempfile = "3.4.0"
 thiserror = "1"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time", "parking_lot"] }
+tokio = { version = "1.37.0", features = ["macros", "net", "rt-multi-thread", "sync", "time", "parking_lot"] }
 tokio-openssl = "0.6.1"
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec", "compat"] }
