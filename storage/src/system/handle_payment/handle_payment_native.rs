@@ -178,11 +178,13 @@ where
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())
             .map_err(|_| Error::RemoveKey)?;
         let key = Key::NamedKey(named_key_addr);
-        let tc = self.tracking_copy();
-        if let Some(StoredValue::NamedKey(_)) =
-            tc.borrow_mut().read(&key).map_err(|_| Error::RemoveKey)?
-        {
-            tc.borrow_mut().prune(key);
+        let value = self
+            .tracking_copy()
+            .borrow_mut()
+            .read(&key)
+            .map_err(|_| Error::RemoveKey)?;
+        if let Some(StoredValue::NamedKey(_)) = value {
+            self.tracking_copy().borrow_mut().prune(key);
         }
         Ok(())
     }

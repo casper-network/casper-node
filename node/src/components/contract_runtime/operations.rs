@@ -24,6 +24,7 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, TransformKindV2, TransformV2},
+    system::handle_payment::ARG_AMOUNT,
     BlockHeader, BlockTime, BlockV2, CLValue, CategorizedTransaction, Chainspec, ChecksumRegistry,
     Digest, EraEndV2, EraId, FeeHandling, Gas, GasLimited, HoldsEpoch, Key, ProtocolVersion,
     PublicKey, RefundHandling, Transaction, TransactionCategory, U512,
@@ -229,7 +230,15 @@ pub fn execute_finalized_block(
                         custom_payment_gas_limit,
                         &transaction,
                     ) {
-                        Ok(pay_request) => execution_engine_v1.execute(&scratch_state, pay_request),
+                        Ok(mut pay_request) => {
+                            // We'll send a hint to the custom payment logic on the amount
+                            // it should pay for the transaction to be executed.
+                            pay_request
+                                .args
+                                .insert(ARG_AMOUNT, cost)
+                                .map_err(|e| BlockExecutionError::PaymentError(e.to_string()))?;
+                            execution_engine_v1.execute(&scratch_state, pay_request)
+                        }
                         Err(error) => {
                             WasmV1Result::invalid_executable_item(custom_payment_gas_limit, error)
                         }
