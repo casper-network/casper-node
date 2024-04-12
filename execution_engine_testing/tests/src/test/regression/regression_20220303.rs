@@ -62,10 +62,10 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
 
     let legacy_mint_hash = ContractHash::new(mint_contract_hash.value());
 
-    let old_contract = builder
+    let old_mint_contract = builder
         .get_legacy_contract(legacy_mint_hash)
         .expect("should have mint contract");
-    assert_eq!(old_contract.protocol_version(), old_protocol_version);
+    assert_eq!(old_mint_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(
         old_protocol_version.value().major + major_bump,
         old_protocol_version.value().minor + minor_bump,
@@ -106,7 +106,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .get_addressable_entity(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(
-        old_contract.contract_package_hash().value(),
+        old_mint_contract.contract_package_hash().value(),
         new_contract.package_hash().value()
     );
     assert_eq!(
@@ -114,9 +114,8 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         new_contract.byte_code_hash().value()
     );
     let new_entry_points =
-        builder.get_entry_points(EntityAddr::SmartContract(mint_contract_hash.value()));
-    println!("New points {:?}", new_entry_points);
-    let old_entry_points = EntryPoints::from(old_contract.entry_points().clone());
+        builder.get_entry_points(EntityAddr::System(mint_contract_hash.value()));
+    let old_entry_points = EntryPoints::from(old_mint_contract.entry_points().clone());
     assert_ne!(&old_entry_points, &new_entry_points);
     assert_eq!(
         &new_entry_points,

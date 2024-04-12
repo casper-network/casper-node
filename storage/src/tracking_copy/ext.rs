@@ -390,8 +390,6 @@ impl<R> TrackingCopyExt<R> for TrackingCopy<R>
             }
         };
 
-        println!("{:?}", ret);
-
         let mut entry_points_v1 = EntryPoints::new();
 
         for entry_point_key in ret.iter() {

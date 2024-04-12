@@ -1120,7 +1120,6 @@ impl From<EntryPoints> for EntityEntryPoints {
         for contract_entry_point in value.take_entry_points() {
             entry_points.add_entry_point(EntityEntryPoint::from(contract_entry_point));
         }
-        println!("{:?}", entry_points);
         entry_points
     }
 }
