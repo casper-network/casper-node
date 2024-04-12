@@ -8,12 +8,13 @@ use casper_types::{
         ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
         NamedKeyValue, NamedKeys, Weight,
     },
+    contracts::EntryPoints as ContractEntryPoints,
     execution::{Effects, TransformKindV2, TransformV2},
     gens::*,
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
-    CLValueDictionary, CLValueError, EntityAddr, EntityKind, EntryPoints, HashAddr, Key, KeyTag,
-    PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
+    CLValueDictionary, CLValueError, EntityAddr, EntityKind, HashAddr, Key, KeyTag, PackageHash,
+    ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
@@ -321,7 +322,7 @@ fn should_traverse_contract_pathing() {
         [2; 32].into(),
         [3; 32].into(),
         contract_named_keys,
-        EntryPoints::new(),
+        ContractEntryPoints::new(),
         ProtocolVersion::V1_0_0,
     );
     let contract_hash = ContractHash::default();
@@ -348,7 +349,7 @@ fn should_traverse_account_pathing() {
         [2; 32].into(),
         [3; 32].into(),
         NamedKeys::default(),
-        EntryPoints::new(),
+        ContractEntryPoints::new(),
         ProtocolVersion::V1_0_0,
     );
     let contract_hash = ContractHash::default();
@@ -412,7 +413,7 @@ fn should_traverse_all_paths() {
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
-            EntryPoints::new(),
+            ContractEntryPoints::new(),
             ProtocolVersion::V1_0_0,
         );
         StoredValue::Contract(contract)

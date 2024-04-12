@@ -20,9 +20,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
     CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPointValue, EraId, Group, Groups, Key, Package,
-    PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    TransferAddr, TransferV1, URef, U512,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPointValue, EraId, Group, Groups,
+    Key, Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, TransferAddr, TransferV1, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -361,6 +361,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         stored_value.insert(

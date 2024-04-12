@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, URef, U512,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints, Key, Parameter, URef, U512,
 };
 
 const TRANSFER_AS_CONTRACT: &str = "transfer_as_contract";
@@ -20,6 +20,7 @@ const ARG_PURSE: &str = "purse";
 const PURSE_KEY: &str = "purse";
 const CONTRACT_HASH_NAME: &str = "regression-contract-hash";
 const PACKAGE_HASH_NAME: &str = "package-contract-hash";
+
 type NonTrivialArg = BTreeMap<String, Key>;
 
 #[no_mangle]
@@ -35,6 +36,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     type NonTrivialArg = BTreeMap<String, Key>;
@@ -45,6 +47,7 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     ));
 
     let named_keys = {

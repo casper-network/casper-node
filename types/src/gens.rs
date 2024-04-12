@@ -30,7 +30,7 @@ use crate::{
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     contracts::{
         Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
-        ContractVersions,
+        ContractVersions, EntryPoint as ContractEntryPoint, EntryPoints as ContractEntryPoints,
     },
     crypto::{self, gens::public_key_arb_no_system},
     deploy_info::gens::deploy_info_arb,
@@ -49,9 +49,9 @@ use crate::{
         TransferAddr,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group,
-    Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128,
-    U256, U512,
+    Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
+    EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer,
+    StoredValue, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -334,6 +334,14 @@ pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     ]
 }
 
+pub fn entry_point_payment_arb() -> impl Strategy<Value = EntryPointPayment> {
+    prop_oneof![
+        Just(EntryPointPayment::Caller),
+        Just(EntryPointPayment::SelfOnly),
+        Just(EntryPointPayment::SelfOnward),
+    ]
+}
+
 pub fn parameter_arb() -> impl Strategy<Value = Parameter> {
     (".*", cl_type_arb()).prop_map(|(name, cl_type)| Parameter::new(name, cl_type))
 }
@@ -348,17 +356,44 @@ pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
         parameters_arb(),
         entry_point_type_arb(),
         entry_point_access_arb(),
+        entry_point_payment_arb(),
+        cl_type_arb(),
+    )
+        .prop_map(
+            |(name, parameters, entry_point_type, entry_point_access, entry_point_payment, ret)| {
+                EntryPoint::new(
+                    name,
+                    parameters,
+                    ret,
+                    entry_point_access,
+                    entry_point_type,
+                    entry_point_payment,
+                )
+            },
+        )
+}
+
+pub fn contract_entry_point_arb() -> impl Strategy<Value = ContractEntryPoint> {
+    (
+        ".*",
+        parameters_arb(),
+        entry_point_type_arb(),
+        entry_point_access_arb(),
         cl_type_arb(),
     )
         .prop_map(
             |(name, parameters, entry_point_type, entry_point_access, ret)| {
-                EntryPoint::new(name, parameters, ret, entry_point_access, entry_point_type)
+                ContractEntryPoint::new(name, parameters, ret, entry_point_access, entry_point_type)
             },
         )
 }
 
 pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
+}
+
+pub fn contract_entry_points_arb() -> impl Strategy<Value = ContractEntryPoints> {
+    collection::vec(contract_entry_point_arb(), 1..10).prop_map(ContractEntryPoints::from)
 }
 
 pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
@@ -417,7 +452,7 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
     (
         protocol_version_arb(),
-        entry_points_arb(),
+        contract_entry_points_arb(),
         u8_slice_32(),
         u8_slice_32(),
         named_keys_arb(20),

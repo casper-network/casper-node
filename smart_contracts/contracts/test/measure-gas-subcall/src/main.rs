@@ -11,7 +11,8 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::Parameters, AddressableEntityHash, ApiError, CLType, CLValue,
-    EntityVersion, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Phase, RuntimeArgs,
+    EntityVersion, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Phase, RuntimeArgs,
 };
 
 const ARG_TARGET: &str = "target_contract";
@@ -45,6 +46,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point_1);
@@ -55,6 +57,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
 
         entry_points.add_entry_point(entry_point_2);

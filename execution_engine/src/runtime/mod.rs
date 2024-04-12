@@ -3373,7 +3373,7 @@ where
                     .write_named_keys(contract_addr, contract.named_keys().clone())?;
 
                 self.context
-                    .write_entry_points(contract_addr, contract.entry_points().clone())?;
+                    .write_entry_points(contract_addr, contract.entry_points().clone().into())?;
 
                 let updated_entity = AddressableEntity::new(
                     PackageHash::new(contract.contract_package_hash().value()),

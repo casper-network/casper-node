@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, RuntimeArgs,
+    account::AccountHash, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointPayment,
+    EntryPointType, EntryPoints, RuntimeArgs,
 };
 
 const ENTRY_POINT_NAME: &str = "get_caller_ext";
@@ -43,6 +43,7 @@ pub extern "C" fn call() {
             CLType::ByteArray(32),
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(entry_point);
         entry_points

@@ -123,6 +123,50 @@ pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
 /// Collection of entry point parameters.
 pub type Parameters = Vec<Parameter>;
 
+/// An enum specifying who pays for the invocation and execution of the entrypoint.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[repr(u8)]
+pub enum EntryPointPayment {
+    /// The caller must cover cost
+    Caller = 0,
+    /// Will cover cost to execute self but not cost of any subsequent invoked contracts
+    SelfOnly = 1,
+    /// will cover cost to execute self and the cost of any subsequent invoked contracts
+    SelfOnward = 2,
+}
+
+impl ToBytes for EntryPointPayment {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
+}
+
+impl FromBytes for EntryPointPayment {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (id, rem) = u8::from_bytes(bytes)?;
+        let tag = match id {
+            tag if tag == EntryPointPayment::Caller as u8 => EntryPointPayment::Caller,
+            tag if tag == EntryPointPayment::SelfOnly as u8 => EntryPointPayment::SelfOnly,
+            tag if tag == EntryPointPayment::SelfOnward as u8 => EntryPointPayment::SelfOnward,
+            _ => return Err(Error::Formatting),
+        };
+        Ok((tag, rem))
+    }
+}
+
 /// Type signature of a method. Order of arguments matter since can be
 /// referenced by index as well as name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +178,7 @@ pub struct EntryPoint {
     ret: CLType,
     access: EntryPointAccess,
     entry_point_type: EntryPointType,
+    entry_point_payment: EntryPointPayment,
 }
 
 impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPointType) {
@@ -156,6 +201,7 @@ impl EntryPoint {
         ret: CLType,
         access: EntryPointAccess,
         entry_point_type: EntryPointType,
+        entry_point_payment: EntryPointPayment,
     ) -> Self {
         EntryPoint {
             name: name.into(),
@@ -163,6 +209,7 @@ impl EntryPoint {
             ret,
             access,
             entry_point_type,
+            entry_point_payment,
         }
     }
 
@@ -209,6 +256,7 @@ impl Default for EntryPoint {
             ret: CLType::Unit,
             access: EntryPointAccess::Public,
             entry_point_type: EntryPointType::Caller,
+            entry_point_payment: EntryPointPayment::Caller,
         }
     }
 }
@@ -226,6 +274,7 @@ impl ToBytes for EntryPoint {
             + self.ret.serialized_length()
             + self.access.serialized_length()
             + self.entry_point_type.serialized_length()
+            + self.entry_point_payment.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -234,6 +283,7 @@ impl ToBytes for EntryPoint {
         self.ret.append_bytes(writer)?;
         self.access.write_bytes(writer)?;
         self.entry_point_type.write_bytes(writer)?;
+        self.entry_point_payment.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -245,6 +295,7 @@ impl FromBytes for EntryPoint {
         let (ret, bytes) = CLType::from_bytes(bytes)?;
         let (access, bytes) = EntryPointAccess::from_bytes(bytes)?;
         let (entry_point_type, bytes) = EntryPointType::from_bytes(bytes)?;
+        let (entry_point_payment, bytes) = EntryPointPayment::from_bytes(bytes)?;
 
         Ok((
             EntryPoint {
@@ -253,6 +304,7 @@ impl FromBytes for EntryPoint {
                 ret,
                 access,
                 entry_point_type,
+                entry_point_payment,
             },
             bytes,
         ))

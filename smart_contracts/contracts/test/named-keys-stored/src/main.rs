@@ -12,8 +12,8 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash,
-    RuntimeArgs,
+    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Key, PackageHash, RuntimeArgs,
 };
 
 const ENTRY_POINT_CONTRACT: &str = "named_keys_contract";
@@ -143,6 +143,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(contract_entrypoint);
         let session_entrypoint = EntryPoint::new(
@@ -151,6 +152,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(session_entrypoint);
         let contract_to_contract_entrypoint = EntryPoint::new(
@@ -159,6 +161,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(contract_to_contract_entrypoint);
         let contract_to_contract_entrypoint = EntryPoint::new(
@@ -167,6 +170,7 @@ pub extern "C" fn call() {
             CLType::Unit,
             EntryPointAccess::Public,
             EntryPointType::Called,
+            EntryPointPayment::Caller,
         );
         entry_points.add_entry_point(contract_to_contract_entrypoint);
         entry_points

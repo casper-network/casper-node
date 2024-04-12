@@ -7,8 +7,8 @@ use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, ByteCodeHash, CLValue, Digest, EntityAddr, EraId, Key, ProtocolVersion,
-    StoredValue, SystemEntityRegistry, URef,
+    AccessRights, ByteCodeHash, CLValue, Digest, EntityAddr, EntryPoints, EraId, Key,
+    ProtocolVersion, StoredValue, SystemEntityRegistry, URef,
 };
 use rand::Rng;
 
@@ -115,7 +115,8 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     );
     let new_entry_points =
         builder.get_entry_points(EntityAddr::SmartContract(mint_contract_hash.value()));
-    assert_ne!(old_contract.entry_points(), &new_entry_points);
+    let old_entry_points = EntryPoints::from(old_contract.entry_points().clone());
+    assert_ne!(&old_entry_points, &new_entry_points);
     assert_eq!(
         &new_entry_points,
         &mint::mint_entry_points(),

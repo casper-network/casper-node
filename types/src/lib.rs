@@ -88,8 +88,8 @@ pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
-    EntryPointAddr, EntryPointType, EntryPointValue, EntryPoints, Parameter, Parameters,
-    DEFAULT_ENTRY_POINT_NAME,
+    EntryPointAddr, EntryPointPayment, EntryPointType, EntryPointValue, EntryPoints, Parameter,
+    Parameters, DEFAULT_ENTRY_POINT_NAME,
 };
 #[doc(inline)]
 pub use api_error::ApiError;

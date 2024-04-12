@@ -259,6 +259,7 @@ impl KeyValueLabels for EntityVersionLabels {
 impl KeyValueJsonSchema for EntityVersionLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EntityVersionAndHash");
 }
+
 /// Collection of named groups.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -891,8 +892,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        AccessRights, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
-        ProtocolVersion, URef,
+        AccessRights, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointPayment,
+        EntryPointType, Parameter, ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 
@@ -934,6 +935,7 @@ mod tests {
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 2"]),
                 EntryPointType::Caller,
+                EntryPointPayment::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             let entrypoint = EntryPoint::new(
@@ -942,6 +944,7 @@ mod tests {
                 CLType::U32,
                 EntryPointAccess::groups(&["Group 1"]),
                 EntryPointType::Caller,
+                EntryPointPayment::Caller,
             );
             ret.insert(entrypoint.name().to_owned(), entrypoint);
             ret

@@ -6,8 +6,8 @@ use crate::{
         METHOD_GET_ERA_VALIDATORS, METHOD_READ_ERA_ID, METHOD_REDELEGATE, METHOD_RUN_AUCTION,
         METHOD_SLASH, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
-    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
-    PublicKey, U512,
+    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPoints,
+    Parameter, PublicKey, U512,
 };
 
 use super::ARG_REWARDS_MAP;
@@ -22,6 +22,7 @@ pub fn auction_entry_points() -> EntryPoints {
         Option::<ValidatorWeights>::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -35,6 +36,7 @@ pub fn auction_entry_points() -> EntryPoints {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -47,6 +49,7 @@ pub fn auction_entry_points() -> EntryPoints {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -60,6 +63,7 @@ pub fn auction_entry_points() -> EntryPoints {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -73,6 +77,7 @@ pub fn auction_entry_points() -> EntryPoints {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -87,6 +92,7 @@ pub fn auction_entry_points() -> EntryPoints {
         U512::cl_type(),
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -96,6 +102,7 @@ pub fn auction_entry_points() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -105,6 +112,7 @@ pub fn auction_entry_points() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -117,6 +125,7 @@ pub fn auction_entry_points() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -126,6 +135,7 @@ pub fn auction_entry_points() -> EntryPoints {
         CLType::U64,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -135,6 +145,7 @@ pub fn auction_entry_points() -> EntryPoints {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Called,
+        EntryPointPayment::Caller,
     );
     entry_points.add_entry_point(entry_point);
 
