@@ -2089,6 +2089,13 @@
           "enum": [
             "ActivateBid"
           ]
+        },
+        {
+          "description": "The `change_bid_public_key` native entry point, used to change a bid's public key.",
+          "type": "string",
+          "enum": [
+            "ChangeBidPublicKey"
+          ]
         }
       ]
     },
