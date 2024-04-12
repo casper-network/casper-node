@@ -70,7 +70,7 @@ where
         self.phase()
     }
 
-    fn get_key(&self, name: &str) -> Option<Key> {
+    fn get_key(&mut self, name: &str) -> Option<Key> {
         self.named_keys().get(name).cloned()
     }
 
@@ -178,6 +178,7 @@ where
             Ok(total) => Ok(total.value()),
             Err(err) => {
                 error!(?err, "mint native total_balance");
+                dbg!(&err);
                 Err(Error::Storage)
             }
         }

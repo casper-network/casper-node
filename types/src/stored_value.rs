@@ -403,9 +403,18 @@ impl StoredValue {
         }
     }
 
+    /// Returns the serialized length of the `StoredValue`.
     pub fn into_byte_code(self) -> Option<ByteCode> {
         match self {
             StoredValue::ByteCode(byte_code) => Some(byte_code),
+            _ => None,
+        }
+    }
+
+    /// Returns the serialized length of the `StoredValue`.
+    pub fn into_named_key(self) -> Option<NamedKeyValue> {
+        match self {
+            StoredValue::NamedKey(named_key_value) => Some(named_key_value),
             _ => None,
         }
     }

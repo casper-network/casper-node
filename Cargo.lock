@@ -7167,6 +7167,7 @@ dependencies = [
  "either",
  "num-derive 0.4.1",
  "num-traits",
+ "parking_lot 0.12.1",
  "rand",
  "safe-transmute",
  "thiserror",

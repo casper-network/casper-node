@@ -26,7 +26,7 @@ pub trait RuntimeProvider {
     fn get_phase(&self) -> Phase;
 
     /// This method should handle obtaining a given named [`Key`] under a `name`.
-    fn get_key(&self, name: &str) -> Option<Key>;
+    fn get_key(&mut self, name: &str) -> Option<Key>;
 
     /// Returns approved CSPR spending limit.
     fn get_approved_spending_limit(&self) -> U512;

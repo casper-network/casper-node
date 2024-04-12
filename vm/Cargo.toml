@@ -33,6 +33,8 @@ casper-storage = { path = "../storage" }
 
 either = "1.10"
 
+parking_lot = "0.12.1"
+
 [[bench]]
 name = "vm_call"
 harness = false

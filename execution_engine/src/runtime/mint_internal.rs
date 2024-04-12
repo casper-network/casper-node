@@ -50,7 +50,7 @@ where
         self.context.phase()
     }
 
-    fn get_key(&self, name: &str) -> Option<Key> {
+    fn get_key(&mut self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
     }
 
