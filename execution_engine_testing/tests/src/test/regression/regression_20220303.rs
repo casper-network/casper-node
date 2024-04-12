@@ -115,6 +115,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     );
     let new_entry_points =
         builder.get_entry_points(EntityAddr::SmartContract(mint_contract_hash.value()));
+    println!("New points {:?}", new_entry_points);
     let old_entry_points = EntryPoints::from(old_contract.entry_points().clone());
     assert_ne!(&old_entry_points, &new_entry_points);
     assert_eq!(

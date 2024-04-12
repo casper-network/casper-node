@@ -83,8 +83,8 @@ pub trait TrackingCopyExt<R> {
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -389,6 +389,8 @@ where
                 }
             }
         };
+
+        println!("{:?}", ret);
 
         let mut entry_points_v1 = EntryPoints::new();
 
