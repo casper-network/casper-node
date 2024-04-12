@@ -4956,45 +4956,18 @@
     },
     "EntityAddr": {
       "description": "The address for an AddressableEntity which contains the 32 bytes and tagging information.",
-      "oneOf": [
+      "anyOf": [
         {
           "description": "The address for a system entity account or contract.",
-          "type": "object",
-          "required": [
-            "System"
-          ],
-          "properties": {
-            "System": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to an Account.",
-          "type": "object",
-          "required": [
-            "Account"
-          ],
-          "properties": {
-            "Account": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         },
         {
           "description": "The address of an entity that corresponds to a Userland smart contract.",
-          "type": "object",
-          "required": [
-            "SmartContract"
-          ],
-          "properties": {
-            "SmartContract": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
+          "type": "string"
         }
       ]
     },

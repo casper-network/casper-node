@@ -7,11 +7,11 @@ use std::{
 };
 
 use casper_binary_port::{
-    BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest, ConsensusStatus,
-    ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
-    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, LastProgress, NetworkName, NodeStatus, PayloadType, ReactorStateName,
-    RecordId, Uptime,
+    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+    ConsensusStatus, ConsensusValidatorChanges, DictionaryItemIdentifier, DictionaryQueryResult,
+    ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest,
+    InformationRequest, InformationRequestTag, LastProgress, NetworkName, NodeStatus, PayloadType,
+    PurseIdentifier, ReactorStateName, RecordId, Uptime,
 };
 use casper_storage::global_state::state::CommitProvider;
 use casper_types::{
@@ -23,7 +23,7 @@ use casper_types::{
     Account, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockIdentifier,
     BlockSynchronizerStatus, CLValue, CLValueDictionary, ChainspecRawBytes, DictionaryAddr, Digest,
     EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
-    SignedBlock, StoredValue, Transaction, TransactionV1Builder, Transfer, URef,
+    SignedBlock, StoredValue, Timestamp, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -194,6 +194,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
         dict_seed_uref.addr().to_vec(),
         TEST_DICT_ITEM_KEY.as_bytes().to_vec(),
     );
+    let main_purse = rng.gen();
 
     let mut effects = Effects::new();
     effects.push(TransformV2::new(
@@ -207,7 +208,7 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
             iter::once((TEST_DICT_NAME.to_owned(), Key::URef(dict_seed_uref)))
                 .collect::<BTreeMap<_, _>>()
                 .into(),
-            rng.gen(),
+            main_purse,
             AssociatedKeys::default(),
             ActionThresholds::default(),
         ))),
@@ -223,6 +224,12 @@ fn test_effects(rng: &mut TestRng) -> TestEffects {
                 TEST_DICT_NAME.to_owned(),
             )
             .expect("should create named key value"),
+        )),
+    ));
+    effects.push(TransformV2::new(
+        Key::Balance(main_purse.addr()),
+        TransformKindV2::Write(StoredValue::CLValue(
+            CLValue::from_t(U512::one()).expect("should create CLValue"),
         )),
     ));
     TestEffects {
@@ -351,6 +358,8 @@ async fn binary_port_component() {
         try_spec_exec_invalid(&mut rng),
         try_accept_transaction_invalid(&mut rng),
         try_accept_transaction(&secret_signing_key),
+        get_balance_by_block(*highest_block.hash()),
+        get_balance_by_state_root(state_root_hash, test_account_hash),
     ];
 
     for TestCase {
@@ -683,11 +692,11 @@ fn get_block_transfers(expected: BlockHeader) -> TestCase {
 fn get_era_summary(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_era_summary",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Item {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             base_key: Key::EraSummary,
             path: vec![],
-        })),
+        }))),
         asserter: Box::new(|response| {
             assert_response::<GlobalStateQueryResult, _>(
                 response,
@@ -704,10 +713,10 @@ fn get_era_summary(state_root_hash: Digest) -> TestCase {
 fn get_all_bids(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_all_bids",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::AllItems {
             state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             key_tag: KeyTag::Bid,
-        })),
+        }))),
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,
@@ -721,9 +730,9 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
 fn get_trie(digest: Digest) -> TestCase {
     TestCase {
         name: "get_trie",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Trie {
+        request: BinaryRequest::Get(GetRequest::State(Box::new(GlobalStateRequest::Trie {
             trie_key: digest,
-        })),
+        }))),
         asserter: Box::new(|response| {
             assert_response::<GetTrieFullResult, _>(
                 response,
@@ -737,10 +746,12 @@ fn get_trie(digest: Digest) -> TestCase {
 fn get_dictionary_item_by_addr(state_root_hash: Digest, addr: DictionaryAddr) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_addr",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::DictionaryItem(addr),
-        })),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::DictionaryItem {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                identifier: DictionaryItemIdentifier::DictionaryItem(addr),
+            },
+        ))),
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -763,13 +774,15 @@ fn get_dictionary_item_by_seed_uref(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_seed_uref",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::URef {
-                seed_uref,
-                dictionary_item_key: dictionary_item_key.clone(),
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::DictionaryItem {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                identifier: DictionaryItemIdentifier::URef {
+                    seed_uref,
+                    dictionary_item_key: dictionary_item_key.clone(),
+                },
             },
-        })),
+        ))),
         asserter: Box::new(move |response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -794,14 +807,16 @@ fn get_dictionary_item_by_legacy_named_key(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_legacy_named_key",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::AccountNamedKey {
-                hash,
-                dictionary_name,
-                dictionary_item_key,
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::DictionaryItem {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                identifier: DictionaryItemIdentifier::AccountNamedKey {
+                    hash,
+                    dictionary_name,
+                    dictionary_item_key,
+                },
             },
-        })),
+        ))),
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
@@ -820,19 +835,60 @@ fn get_dictionary_item_by_named_key(
 ) -> TestCase {
     TestCase {
         name: "get_dictionary_item_by_named_key",
-        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::DictionaryItem {
-            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
-            identifier: DictionaryItemIdentifier::EntityNamedKey {
-                addr,
-                dictionary_name,
-                dictionary_item_key,
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::DictionaryItem {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                identifier: DictionaryItemIdentifier::EntityNamedKey {
+                    addr,
+                    dictionary_name,
+                    dictionary_item_key,
+                },
             },
-        })),
+        ))),
         asserter: Box::new(|response| {
             assert_response::<DictionaryQueryResult, _>(
                 response,
                 Some(PayloadType::DictionaryQueryResult),
                 |res| matches!(res.into_inner(),(_, res) if res.value().as_cl_value().is_some()),
+            )
+        }),
+    }
+}
+
+fn get_balance_by_block(block_hash: BlockHash) -> TestCase {
+    TestCase {
+        name: "get_balance_by_block",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::BalanceByBlock {
+                block_identifier: Some(BlockIdentifier::Hash(block_hash)),
+                purse_identifier: PurseIdentifier::Payment,
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<BalanceResponse, _>(
+                response,
+                Some(PayloadType::BalanceResponse),
+                |res| res.available_balance == U512::zero(),
+            )
+        }),
+    }
+}
+
+fn get_balance_by_state_root(state_root_hash: Digest, account_hash: AccountHash) -> TestCase {
+    TestCase {
+        name: "get_balance_by_state_root",
+        request: BinaryRequest::Get(GetRequest::State(Box::new(
+            GlobalStateRequest::BalanceByStateRoot {
+                state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
+                purse_identifier: PurseIdentifier::Account(account_hash),
+                timestamp: Timestamp::now(),
+            },
+        ))),
+        asserter: Box::new(|response| {
+            assert_response::<BalanceResponse, _>(
+                response,
+                Some(PayloadType::BalanceResponse),
+                |res| res.available_balance == U512::one(),
             )
         }),
     }
