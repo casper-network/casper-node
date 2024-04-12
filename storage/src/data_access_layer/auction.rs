@@ -71,6 +71,10 @@ pub enum AuctionMethod {
         new_validator: PublicKey,
         minimum_delegation_amount: u64,
     },
+    ChangeBidPublicKey {
+        public_key: PublicKey,
+        new_public_key: PublicKey,
+    },
 }
 
 impl AuctionMethod {
@@ -98,6 +102,9 @@ impl AuctionMethod {
                 runtime_args,
                 chainspec.core_config.minimum_delegation_amount,
             ),
+            TransactionEntryPoint::ChangeBidPublicKey => {
+                Self::new_change_bid_public_key(runtime_args)
+            }
         }
     }
 
@@ -174,6 +181,16 @@ impl AuctionMethod {
             amount,
             new_validator,
             minimum_delegation_amount,
+        })
+    }
+
+    fn new_change_bid_public_key(runtime_args: &RuntimeArgs) -> Result<Self, AuctionMethodError> {
+        let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
+        let new_public_key = Self::get_named_argument(runtime_args, auction::ARG_NEW_PUBLIC_KEY)?;
+
+        Ok(Self::ChangeBidPublicKey {
+            public_key,
+            new_public_key,
         })
     }
 
