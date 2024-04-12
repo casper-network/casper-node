@@ -33,17 +33,12 @@ CONTRACT_TARGET_DIR_AS    = target_as
 
 build-contract-rs/%:
 	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
-	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
 
 .PHONY: build-all-contracts-rs
-build-all-contracts-rs:
-	cd smart_contracts/contracts && \
-	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(ALL_CONTRACTS))
+build-all-contracts-rs: $(patsubst %, build-contract-rs/%, $(ALL_CONTRACTS))
 
 .PHONY: build-client-contracts-rs
-build-client-contracts-rs:
-	cd smart_contracts/contracts && \
-	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(CLIENT_CONTRACTS))
+build-client-contracts-rs: $(patsubst %, build-contract-rs/%, $(CLIENT_CONTRACTS))
 
 strip-contract/%:
 	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
