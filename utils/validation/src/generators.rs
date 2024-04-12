@@ -380,7 +380,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         stored_value.insert(
             "AddressableEntity".to_string(),

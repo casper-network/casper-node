@@ -584,39 +584,41 @@ impl KeyValueJsonSchema for EntryPointLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
 }
 
+/// The entry point for the V2 Casper VM.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EntryPointV2 {
-    pub selector: u32,
+    /// The selector.
     pub function_index: u32,
+    /// The flags.
     pub flags: u32,
 }
 
 impl ToBytes for EntryPointV2 {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.selector.to_bytes()?);
-        buffer.append(&mut self.function_index.to_bytes()?);
-        buffer.append(&mut self.flags.to_bytes()?);
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.selector.serialized_length()
-            + self.function_index.serialized_length()
-            + self.flags.serialized_length()
+        self.function_index.serialized_length() + self.flags.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.append(&mut self.function_index.to_bytes()?);
+        writer.append(&mut self.flags.to_bytes()?);
+        Ok(())
     }
 }
 
 impl FromBytes for EntryPointV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (selector, remainder) = u32::from_bytes(bytes)?;
-        let (function_index, remainder) = u32::from_bytes(remainder)?;
+        let (function_index, remainder) = u32::from_bytes(bytes)?;
         let (flags, remainder) = u32::from_bytes(remainder)?;
         Ok((
             EntryPointV2 {
-                selector,
                 function_index,
                 flags,
             },
@@ -879,16 +881,7 @@ impl EntryPointValue {
 impl ToBytes for EntryPointValue {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            EntryPointValue::V1CasperVm(entry_point) => {
-                buffer.insert(0, V1_ENTRY_POINT_TAG);
-                buffer.append(&mut entry_point.to_bytes()?);
-            }
-            EntryPointValue::V2CasperVm(entry_point) => {
-                buffer.insert(0, V2_ENTRY_POINT_TAG);
-                buffer.append(&mut entry_point.to_bytes()?);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -898,6 +891,20 @@ impl ToBytes for EntryPointValue {
                 EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
                 EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            EntryPointValue::V1CasperVm(entry_point) => {
+                writer.push(V1_ENTRY_POINT_TAG);
+                entry_point.write_bytes(writer)?;
+            }
+            EntryPointValue::V2CasperVm(entry_point) => {
+                writer.push(V2_ENTRY_POINT_TAG);
+                entry_point.write_bytes(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -915,5 +922,23 @@ impl FromBytes for EntryPointValue {
             }
             _ => Err(Error::Formatting),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn entry_point_type_serialization_roundtrip() {
+        let vm1 = EntryPointAddr::VmCasperV1 {
+            entity_addr: EntityAddr::new_smart_contract([42; 32]),
+            name_bytes: [99; 32],
+        };
+        bytesrepr::test_serialization_roundtrip(&vm1);
+        let vm2 = EntryPointAddr::VmCasperV2 {
+            entity_addr: EntityAddr::new_smart_contract([42; 32]),
+            selector: u32::MAX,
+        };
+        bytesrepr::test_serialization_roundtrip(&vm2);
     }
 }

@@ -70,8 +70,8 @@ use crate::{
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, HashAddr,
-    Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, TransactionRuntime,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -635,8 +635,7 @@ impl Distribution<EntityKindTag> for Standard {
 }
 
 #[derive(
-Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
+Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 /// The type of Package.
@@ -646,8 +645,7 @@ pub enum EntityKind {
     /// Package associated with an Account hash.
     Account(AccountHash),
     /// Packages associated with Wasm stored on chain.
-    #[default]
-    SmartContract,
+    SmartContract(TransactionRuntime),
 }
 
 impl EntityKind {
@@ -655,7 +653,7 @@ impl EntityKind {
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
-            Self::SmartContract | Self::System(_) => None,
+            Self::SmartContract(_) | Self::System(_) => None,
         }
     }
 
@@ -663,7 +661,7 @@ impl EntityKind {
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::SmartContract | Self::System(_) => AssociatedKeys::default(),
+            Self::SmartContract(_) | Self::System(_) => AssociatedKeys::default(),
         }
     }
 
@@ -701,7 +699,7 @@ impl Tagged<EntityKindTag> for EntityKind {
         match self {
             EntityKind::System(_) => EntityKindTag::System,
             EntityKind::Account(_) => EntityKindTag::Account,
-            EntityKind::SmartContract => EntityKindTag::SmartContract,
+            EntityKind::SmartContract(_) => EntityKindTag::SmartContract,
         }
     }
 }
@@ -723,7 +721,9 @@ impl ToBytes for EntityKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntityKind::SmartContract => 0,
+            EntityKind::SmartContract(transaction_runtime) => {
+                    transaction_runtime.serialized_length()
+                }
             EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
             EntityKind::Account(account_hash) => account_hash.serialized_length(),
         }
@@ -731,9 +731,9 @@ impl ToBytes for EntityKind {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            EntityKind::SmartContract => {
+            EntityKind::SmartContract(transaction_runtime) => {
                 writer.push(self.tag());
-                Ok(())
+                transaction_runtime.write_bytes(writer)
             }
             EntityKind::System(system_entity_type) => {
                 writer.push(self.tag());
@@ -759,7 +759,10 @@ impl FromBytes for EntityKind {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((EntityKind::Account(account_hash), remainder))
             }
-            EntityKindTag::SmartContract => Ok((EntityKind::SmartContract, remainder)),
+            EntityKindTag::SmartContract => {
+                let (transaction_runtime, remainder) = TransactionRuntime::from_bytes(remainder)?;
+                Ok((EntityKind::SmartContract(transaction_runtime), remainder))
+            }
         }
     }
 }
@@ -773,8 +776,8 @@ impl Display for EntityKind {
             EntityKind::Account(account_hash) => {
                 write!(f, "account-entity-kind({})", account_hash)
             }
-            EntityKind::SmartContract => {
-                write!(f, "smart-contract-entity-kind")
+            EntityKind::SmartContract(transaction_runtime) => {
+                write!(f, "smart-contract-entity-kind({})", transaction_runtime)
             }
         }
     }
@@ -786,7 +789,7 @@ impl Distribution<EntityKind> for Standard {
         match rng.gen_range(0..=2) {
             0 => EntityKind::System(rng.gen()),
             1 => EntityKind::Account(rng.gen()),
-            2 => EntityKind::SmartContract,
+            2 => EntityKind::SmartContract(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -829,7 +832,7 @@ impl EntityAddr {
         match entity_kind {
             EntityKind::System(_) => Self::new_system(hash_addr),
             EntityKind::Account(_) => Self::new_account(hash_addr),
-            EntityKind::SmartContract => Self::new_smart_contract(hash_addr),
+            EntityKind::SmartContract(_) => Self::new_smart_contract(hash_addr),
         }
     }
 
@@ -1445,7 +1448,7 @@ impl AddressableEntity {
         match self.entity_kind {
             EntityKind::System(_) => EntityAddr::new_system(hash_addr),
             EntityKind::Account(_) => EntityAddr::new_account(hash_addr),
-            EntityKind::SmartContract => EntityAddr::new_smart_contract(hash_addr),
+            EntityKind::SmartContract(_) => EntityAddr::new_smart_contract(hash_addr),
         }
     }
 
@@ -1693,7 +1696,7 @@ impl AddressableEntity {
             EntityKind::Account(_) => {
                 Key::addressable_entity_key(EntityKindTag::Account, entity_hash)
             }
-            EntityKind::SmartContract => {
+            EntityKind::SmartContract(_) => {
                 Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
             }
         }
@@ -1794,7 +1797,7 @@ impl Default for AddressableEntity {
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
             message_topics: MessageTopics::default(),
-            entity_kind: EntityKind::SmartContract,
+            entity_kind: EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         }
     }
 }
@@ -1809,7 +1812,7 @@ impl From<Contract> for AddressableEntity {
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         )
     }
 }
@@ -1933,7 +1936,7 @@ mod tests {
             ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
             MessageTopics::default(),
-            EntityKind::SmartContract,
+            EntityKind::SmartContract(TransactionRuntime::VmCasperV1),
         );
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
