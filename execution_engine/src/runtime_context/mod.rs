@@ -689,7 +689,8 @@ where
             | StoredValue::ContractPackage(_)
             | StoredValue::ContractWasm(_)
             | StoredValue::MessageTopic(_)
-            | StoredValue::Message(_) => Ok(()),
+            | StoredValue::Message(_)
+            | StoredValue::Reservation(_) => Ok(()),
         }
     }
 
