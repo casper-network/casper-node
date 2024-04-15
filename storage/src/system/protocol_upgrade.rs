@@ -791,6 +791,9 @@ impl<S> ProtocolUpgrader<S>
 
     /// Handle legacy account migration.
     pub fn handle_legacy_accounts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_accounts() {
+            return Ok(());
+        }
         debug!("handle accounts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Account) {
@@ -817,6 +820,9 @@ impl<S> ProtocolUpgrader<S>
 
     /// Handle legacy contract migration.
     pub fn handle_legacy_contracts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        if !self.config.migrate_legacy_contracts() {
+            return Ok(());
+        }
         debug!("handle contracts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Hash) {
@@ -825,8 +831,12 @@ impl<S> ProtocolUpgrader<S>
         };
         let protocol_version = self.config.new_protocol_version();
         for existing_key in existing_keys {
-            if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
-                return Err(ProtocolUpgradeError::TrackingCopy(tce));
+            if let Some(StoredValue::Contract(_)) = tc.read(&existing_key)? {
+                if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+                    return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                }
+            } else {
+                continue;
             }
         }
         Ok(())

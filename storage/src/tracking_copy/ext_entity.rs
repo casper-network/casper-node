@@ -4,9 +4,7 @@ use tracing::error;
 use casper_types::{account::AccountHash, addressable_entity::{
     ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
     Weight,
-}, bytesrepr, system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT}, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef, U512, ContractWasm, ByteCodeAddr, ByteCode};
-use casper_types::contracts::ContractPackage;
-use casper_types::system::mint::Error;
+}, bytesrepr, system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT}, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef, U512, ByteCodeAddr, ByteCode};
 
 use crate::{
     global_state::{error::Error as GlobalStateError, state::StateReader},

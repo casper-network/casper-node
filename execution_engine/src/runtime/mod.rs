@@ -40,7 +40,6 @@ use casper_types::{
     contract_messages::{
         Message, MessageAddr, MessagePayload, MessageTopicOperation, MessageTopicSummary,
     },
-    contracts::ContractPackage,
     crypto,
     system::{
         self,
@@ -49,7 +48,7 @@ use casper_types::{
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion,
+    CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HoldsEpoch, HostFunction,
     HostFunctionCost, InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase,
     PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferV2,
