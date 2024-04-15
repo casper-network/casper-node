@@ -8,7 +8,6 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
 
-use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
@@ -74,7 +73,7 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
     local_addr: Arc<OnceCell<SocketAddr>>,
-    cors_origin: CorsOrigin,
+    cors_origin: String,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
@@ -88,9 +87,9 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
             .or(rest_metrics)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter)
-            .with(match cors_origin {
-                CorsOrigin::Any => warp::cors().allow_any_origin(),
-                CorsOrigin::Specified(origin) => warp::cors().allow_origin(origin.as_str()),
+            .with(match cors_origin.as_str() {
+                "*" => warp::cors().allow_any_origin(),
+                origin => warp::cors().allow_origin(origin),
             }),
     );
 
