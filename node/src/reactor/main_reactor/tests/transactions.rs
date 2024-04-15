@@ -1535,7 +1535,7 @@ impl SingleTransactionTestCase {
             false,
         )
         .available_balance()
-        .map(|balance| *balance);
+        .copied();
 
         balance_checker(
             alice_initial_balance,
@@ -2004,7 +2004,7 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
         assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
         assert_exec_result_cost(
             exec_result,
-            expected_transaction_cost.into(),
+            expected_transaction_cost,
             expected_consumed_gas,
         );
     };
@@ -2015,8 +2015,7 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
         (*refund_ratio.numer()).into(),
         (*refund_ratio.denom()).into(),
     ) * Ratio::from(expected_transaction_cost))
-    .to_integer()
-    .into();
+    .to_integer();
 
     // Nothing is burnt so total supply should be the same.
     let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
