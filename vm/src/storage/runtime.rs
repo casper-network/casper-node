@@ -214,7 +214,6 @@ mod tests {
     use casper_storage::{
         global_state::{self, state::StateProvider},
         system::mint::{storage_provider::StorageProvider, Mint},
-        AddressGeneratorBuilder,
     };
     use casper_types::{
         addressable_entity::NamedKeyValue, AccessRights, AddressableEntityHash, CLValue,
@@ -247,11 +246,6 @@ mod tests {
         ];
 
         let deploy_hash = [42; 32];
-
-        let address_generator = AddressGeneratorBuilder::default()
-            .seed_with(&deploy_hash)
-            .build();
-        let address_generator = Arc::new(RwLock::new(address_generator));
 
         let (global_state, root_hash, _tempdir) =
             global_state::state::lmdb::make_temporary_global_state(initial_data);
