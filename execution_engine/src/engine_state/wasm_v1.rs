@@ -6,10 +6,9 @@ use thiserror::Error;
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     account::AccountHash, bytesrepr::Bytes, contract_messages::Messages, execution::Effects,
-    runtime_args, system::mint::ARG_AMOUNT, BlockTime, DeployHash, Digest, ExecutableDeployItem,
-    Gas, InitiatorAddr, Phase, PricingMode, RuntimeArgs, Transaction, TransactionEntryPoint,
-    TransactionHash, TransactionInvocationTarget, TransactionSessionKind, TransactionTarget,
-    TransactionV1, Transfer, U512,
+    BlockTime, DeployHash, Digest, ExecutableDeployItem, Gas, InitiatorAddr, Phase, PricingMode,
+    RuntimeArgs, Transaction, TransactionEntryPoint, TransactionHash, TransactionInvocationTarget,
+    TransactionSessionKind, TransactionTarget, TransactionV1, Transfer,
 };
 
 use crate::engine_state::{DeployItem, Error as EngineError};
@@ -605,25 +604,21 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
 
     fn try_from(v1_txn: &TransactionV1) -> Result<Self, Self::Error> {
         let transaction_hash = TransactionHash::V1(*v1_txn.hash());
-        let pricing_mode = v1_txn.pricing_mode();
-        let payment_amount = match v1_txn.pricing_mode() {
-            PricingMode::Classic {
-                payment_amount,
-                standard_payment,
-                ..
+        match v1_txn.pricing_mode() {
+            mode @ PricingMode::Classic {
+                standard_payment, ..
             } => {
                 if *standard_payment {
                     return Err(InvalidRequest::UnsupportedMode(
                         transaction_hash,
-                        pricing_mode.to_string(),
+                        mode.to_string(),
                     ));
                 }
-                *payment_amount
             }
-            PricingMode::Fixed { .. } | PricingMode::Reserved { .. } => {
+            mode @ PricingMode::Fixed { .. } | mode @ PricingMode::Reserved { .. } => {
                 return Err(InvalidRequest::UnsupportedMode(
                     transaction_hash,
-                    pricing_mode.to_string(),
+                    mode.to_string(),
                 ));
             }
         };
@@ -639,14 +634,13 @@ impl TryFrom<&TransactionV1> for PaymentInfo {
                 ));
             }
         };
-        let args = runtime_args! { ARG_AMOUNT => U512::from(payment_amount)};
         let TransactionEntryPoint::Custom(entry_point) = v1_txn.entry_point().clone() else {
             return Err(InvalidRequest::InvalidEntryPoint(transaction_hash, v1_txn.entry_point().to_string()));
         };
         Ok(PaymentInfo(ExecutableInfo {
             item: payment,
             entry_point,
-            args,
+            args: v1_txn.args().clone(),
         }))
     }
 }

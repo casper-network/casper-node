@@ -1,6 +1,6 @@
 use super::*;
 use casper_storage::data_access_layer::{ProofHandling, ProofsResult};
-use casper_types::BlockTime;
+use casper_types::{BlockTime, GasLimited};
 
 use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
 
@@ -1381,4 +1381,815 @@ async fn wasm_transaction_refunds_are_burnt() {
     );
 
     assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+}
+
+async fn send_transaction(
+    fixture: &mut TestFixture,
+    txn: Transaction,
+) -> (TransactionHash, u64, ExecutionResult) {
+    let txn_hash = txn.hash();
+
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    (
+        txn_hash,
+        exec_info.block_height,
+        exec_info
+            .execution_result
+            .expect("Exec result should have been stored."),
+    )
+}
+
+struct SingleTransactionTestCase {
+    fixture: TestFixture,
+    #[allow(unused)]
+    alice_secret_key: Arc<SecretKey>,
+    alice_public_key: PublicKey,
+    bob_secret_key: Arc<SecretKey>,
+    bob_public_key: PublicKey,
+    #[allow(unused)]
+    charlie_secret_key: Arc<SecretKey>,
+    charlie_public_key: PublicKey,
+}
+
+impl SingleTransactionTestCase {
+    async fn new(network_config: Option<ConfigsOverride>) -> Self {
+        let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+        let mut fixture = TestFixture::new(initial_stakes, network_config).await;
+        let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+        let alice_public_key = PublicKey::from(&*alice_secret_key);
+        let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+        let bob_public_key = PublicKey::from(&*bob_secret_key);
+        let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+        let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
+        Self {
+            fixture,
+            alice_secret_key,
+            alice_public_key,
+            bob_secret_key,
+            bob_public_key,
+            charlie_secret_key,
+            charlie_public_key,
+        }
+    }
+
+    fn chainspec(&self) -> &Chainspec {
+        &self.fixture.chainspec
+    }
+
+    #[allow(unused)]
+    fn alice_secret_key(&self) -> Arc<SecretKey> {
+        self.alice_secret_key.clone()
+    }
+
+    fn bob_secret_key(&self) -> Arc<SecretKey> {
+        self.bob_secret_key.clone()
+    }
+
+    async fn run_scenario<E, T, B>(
+        &mut self,
+        txn: Transaction,
+        exec_result_checker: Option<E>,
+        total_supply_checker: Option<T>,
+        balance_checker: B,
+    ) where
+        E: Fn(ExecutionResult),
+        T: Fn(U512, U512),
+        B: Fn(U512, U512, U512, U512, U512, U512, Option<U512>),
+    {
+        // Wait for all nodes to complete era 0.
+        self.fixture
+            .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+            .await;
+
+        let alice_initial_balance =
+            *get_balance(&mut self.fixture, &self.alice_public_key, None, true)
+                .total_balance()
+                .expect("Expected Alice to have a balance.");
+        let bob_initial_balance = *get_balance(&mut self.fixture, &self.bob_public_key, None, true)
+            .total_balance()
+            .expect("Expected Bob to have a balance.");
+        let initial_total_supply = get_total_supply(&mut self.fixture, None);
+
+        let (_txn_hash, block_height, exec_result) = send_transaction(&mut self.fixture, txn).await;
+        if let Some(exec_result_checker) = exec_result_checker {
+            exec_result_checker(exec_result);
+        }
+
+        let total_supply_after_transaction =
+            get_total_supply(&mut self.fixture, Some(block_height));
+        if let Some(total_supply_checker) = total_supply_checker {
+            total_supply_checker(initial_total_supply, total_supply_after_transaction);
+        }
+
+        let bob_available_balance = *get_balance(
+            &mut self.fixture,
+            &self.bob_public_key,
+            Some(block_height),
+            false,
+        )
+        .available_balance()
+        .expect("Expected Bob to have a balance");
+        let bob_total_balance = *get_balance(
+            &mut self.fixture,
+            &self.bob_public_key,
+            Some(block_height),
+            true,
+        )
+        .total_balance()
+        .expect("Expected Bob to have a balance");
+
+        let alice_available_balance = *get_balance(
+            &mut self.fixture,
+            &self.alice_public_key,
+            Some(block_height),
+            false,
+        )
+        .available_balance()
+        .expect("Expected Alice to have a balance");
+        let alice_total_balance = *get_balance(
+            &mut self.fixture,
+            &self.alice_public_key,
+            Some(block_height),
+            true,
+        )
+        .total_balance()
+        .expect("Expected Alice to have a balance");
+
+        let charlie_available_balance = get_balance(
+            &mut self.fixture,
+            &self.charlie_public_key,
+            Some(block_height),
+            false,
+        )
+        .available_balance()
+        .copied();
+
+        balance_checker(
+            alice_initial_balance,
+            alice_available_balance,
+            alice_total_balance,
+            bob_initial_balance,
+            bob_available_balance,
+            bob_total_balance,
+            charlie_available_balance,
+        );
+    }
+}
+
+#[tokio::test]
+async fn wasm_transaction_refunds_are_burnt_v2() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Burn { refund_ratio })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        })
+        .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transaction_cost.into(),
+            Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                          * invalid wasm. */
+        );
+    };
+
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
+    // gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(total_supply_after_txn, initial_total_supply - refund_amount);
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // Bob doesn't get a refund. The refund is burnt.
+        let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
+        let bob_expected_available_balance = bob_expected_total_balance;
+
+        // Alice should get the non-refunded part of the fee since it's set to pay to proposer
+        let alice_expected_total_balance =
+            alice_initial_balance + expected_transaction_cost - refund_amount;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn only_refunds_are_burnt_no_fee() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Burn { refund_ratio })
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        })
+        .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    // Fixed transaction pricing.
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transaction_cost.into(),
+            Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                          * invalid wasm. */
+        );
+    };
+
+    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
+    // refund ratio to the full transaction cost.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    // We set it up so that the refunds are burnt so check this.
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(total_supply_after_txn, initial_total_supply - refund_amount);
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // Bob doesn't get a refund. The refund is burnt. A hold is put in in place for the
+        // transaction cost.
+        let bob_balance_hold = U512::from(expected_transaction_cost) - refund_amount;
+        let bob_expected_total_balance = bob_initial_balance - refund_amount;
+        let bob_expected_available_balance = bob_total_balance - bob_balance_hold;
+
+        // Alice should't get anything since we are operating with no fees
+        let alice_expected_total_balance = alice_initial_balance;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn fees_and_refunds_are_burnt_separately() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Burn { refund_ratio })
+        .with_fee_handling(FeeHandling::Burn)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        })
+        .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    // Fixed transaction pricing.
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transaction_cost.into(),
+            Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                          * invalid wasm. */
+        );
+    };
+
+    // Both refunds and fees should be burnt (even though they are burnt separately). Refund + fee
+    // amounts to the txn cost so expect that the total supply is reduced by that amount.
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(
+            total_supply_after_txn,
+            initial_total_supply - expected_transaction_cost
+        );
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // The refund and the fees are burnt. No holds should be in place.
+        let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
+        let bob_expected_available_balance = bob_total_balance;
+
+        // Alice should't get anything since we are operating with no fees
+        let alice_expected_total_balance = alice_initial_balance;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn refunds_are_payed_and_fees_are_burnt() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::Burn)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        })
+        .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    // Fixed transaction pricing.
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transaction_cost.into(),
+            Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                          * invalid wasm. */
+        );
+    };
+
+    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
+    // refund ratio to the full transaction cost.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    // Only fees are burnt, so the refund_amount should still be in the total supply.
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(
+            total_supply_after_txn,
+            initial_total_supply - expected_transaction_cost + refund_amount
+        );
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // Bob should get back the refund. The fees are burnt and no holds should be in place.
+        let bob_expected_total_balance =
+            bob_initial_balance - expected_transaction_cost + refund_amount;
+        let bob_expected_available_balance = bob_total_balance;
+
+        // Alice should't get anything since we are operating with no fees
+        let alice_expected_total_balance = alice_initial_balance;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
+}
+
+async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
+    let (price_handling, min_gas_price) = match txn_pricing_mode {
+        PricingMode::Classic {
+            gas_price_tolerance,
+            ..
+        } => (PricingHandling::Classic, gas_price_tolerance),
+        PricingMode::Fixed {
+            gas_price_tolerance,
+        } => (PricingHandling::Fixed, gas_price_tolerance),
+        PricingMode::Reserved { .. } => unimplemented!(),
+    };
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(price_handling)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(min_gas_price)
+        .with_max_gas_price(min_gas_price);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(txn_pricing_mode)
+        .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+        .build()
+        .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    // Fixed transaction pricing.
+    let expected_consumed_gas = Gas::new(0); // expect that this transaction doesn't consume any gas since it has invalid wasm.
+    let expected_transaction_cost =
+        txn.gas_limit(test.chainspec()).unwrap().value() * min_gas_price;
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+        assert_exec_result_cost(
+            exec_result,
+            expected_transaction_cost,
+            expected_consumed_gas,
+        );
+    };
+
+    // This transaction consumed 0 gas, the unspent gas is equal to the limit, so we apply the
+    // refund ratio to the full transaction cost.
+    let refund_amount: U512 = (Ratio::<U512>::new(
+        (*refund_ratio.numer()).into(),
+        (*refund_ratio.denom()).into(),
+    ) * Ratio::from(expected_transaction_cost))
+    .to_integer();
+
+    // Nothing is burnt so total supply should be the same.
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(total_supply_after_txn, initial_total_supply);
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // Bob should get back the refund. The fees should be on hold, so Bob's total should be the
+        // same as initial.
+        let bob_expected_total_balance = bob_initial_balance;
+        let bob_expected_available_balance =
+            bob_total_balance - expected_transaction_cost + refund_amount;
+
+        // Alice should't get anything since we are operating with no fees
+        let alice_expected_total_balance = alice_initial_balance;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn refunds_are_payed_and_fees_are_on_hold_fixed_pricing() {
+    const MIN_GAS_PRICE: u8 = 5;
+
+    refunds_are_payed_and_fees_are_on_hold(PricingMode::Fixed {
+        gas_price_tolerance: MIN_GAS_PRICE,
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn refunds_are_payed_and_fees_are_on_hold_classic_pricing() {
+    const MIN_GAS_PRICE: u8 = 5;
+
+    refunds_are_payed_and_fees_are_on_hold(PricingMode::Classic {
+        payment_amount: 5000,
+        gas_price_tolerance: MIN_GAS_PRICE,
+        standard_payment: true,
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn only_refunds_are_burnt_no_fee_custom_payment() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Classic)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::Burn)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut test = SingleTransactionTestCase::new(Some(config)).await;
+    let chain_name = test.chainspec().network_config.name.clone();
+
+    // This contract uses custom payment.
+    let contract_file = RESOURCES_PATH
+        .join("..")
+        .join("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("ee_601_regression.wasm");
+    let module_bytes = Bytes::from(std::fs::read(contract_file).expect("cannot read module bytes"));
+
+    let expected_transaction_gas = 1000u64;
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(TransactionSessionKind::Standard, module_bytes, "call")
+            .with_chain_name(chain_name)
+            .with_pricing_mode(PricingMode::Classic {
+                payment_amount: expected_transaction_gas,
+                gas_price_tolerance: MIN_GAS_PRICE,
+                standard_payment: false,
+            })
+            .with_initiator_addr(PublicKey::from(test.bob_secret_key().as_ref()))
+            .build()
+            .unwrap(),
+    );
+    txn.sign(&test.bob_secret_key());
+
+    let exec_result_check = |exec_result: ExecutionResult| {
+        assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because we didn't request enough gas for this transaction
+                                                        // to succeed.
+        match exec_result {
+            ExecutionResult::V2(exec_result_v2) => {
+                assert_eq!(exec_result_v2.cost, expected_transaction_cost.into());
+            }
+            _ => {
+                panic!("Unexpected exec result version.")
+            }
+        }
+    };
+
+    // This transaction consumed all the gas so there should be no refund.
+    let refund_amount = U512::from(0);
+
+    // Expect that the fees are burnt.
+    let total_supply_check = |initial_total_supply: U512, total_supply_after_txn: U512| {
+        assert_eq!(
+            total_supply_after_txn,
+            initial_total_supply - expected_transaction_cost + refund_amount
+        );
+    };
+
+    let balance_check = |alice_initial_balance: U512,
+                         alice_available_balance: U512,
+                         alice_total_balance: U512,
+                         bob_initial_balance: U512,
+                         bob_available_balance: U512,
+                         bob_total_balance: U512,
+                         _charlie_balance: Option<U512>| {
+        // Bob should get a refund. Since the contract doesn't set a custom purse for the refund, it
+        // should get the refund in the main purse.
+        let bob_expected_total_balance =
+            bob_initial_balance - expected_transaction_cost + refund_amount;
+        let bob_expected_available_balance = bob_expected_total_balance; // No holds expected.
+
+        // Alice should't get anything since we are operating with no fees
+        let alice_expected_total_balance = alice_initial_balance;
+        let alice_expected_available_balance = alice_expected_total_balance;
+
+        assert_eq!(
+            bob_available_balance.clone(),
+            bob_expected_available_balance
+        );
+
+        assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+        assert_eq!(
+            alice_available_balance.clone(),
+            alice_expected_available_balance
+        );
+
+        assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+    };
+
+    test.run_scenario(
+        txn,
+        Some(exec_result_check),
+        Some(total_supply_check),
+        balance_check,
+    )
+    .await;
 }
