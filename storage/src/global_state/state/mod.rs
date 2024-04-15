@@ -1086,6 +1086,7 @@ pub trait StateProvider {
                 delegation_rate,
                 amount,
                 inactive_validator_undelegation_delay,
+                maximum_inactive_validator_undelegation_delay,
                 holds_epoch,
             } => runtime
                 .add_bid(
@@ -1093,6 +1094,7 @@ pub trait StateProvider {
                     delegation_rate,
                     amount,
                     inactive_validator_undelegation_delay,
+                    maximum_inactive_validator_undelegation_delay,
                     holds_epoch,
                 )
                 .map(AuctionMethodRet::UpdatedAmount)

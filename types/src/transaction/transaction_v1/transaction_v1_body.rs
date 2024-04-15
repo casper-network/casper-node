@@ -301,7 +301,14 @@ impl TransactionV1Body {
         let public_key = PublicKey::random(rng);
         let delegation_rate = rng.gen();
         let amount = rng.gen::<u64>();
-        let args = arg_handling::new_add_bid_args(public_key, delegation_rate, amount).unwrap();
+        let inactive_validator_undelegation_delay = Some(rng.gen::<u64>());
+        let args = arg_handling::new_add_bid_args(
+            public_key,
+            delegation_rate,
+            amount,
+            inactive_validator_undelegation_delay,
+        )
+        .unwrap();
         TransactionV1Body::new(
             args,
             TransactionTarget::Native,
@@ -334,8 +341,14 @@ impl TransactionV1Body {
                 let public_key = PublicKey::random(rng);
                 let delegation_rate = rng.gen();
                 let amount = rng.gen::<u64>();
-                let args =
-                    arg_handling::new_add_bid_args(public_key, delegation_rate, amount).unwrap();
+                let inactive_validator_undelegation_delay = Some(rng.gen::<u64>());
+                let args = arg_handling::new_add_bid_args(
+                    public_key,
+                    delegation_rate,
+                    amount,
+                    inactive_validator_undelegation_delay,
+                )
+                .unwrap();
                 TransactionV1Body::new(
                     args,
                     TransactionTarget::Native,

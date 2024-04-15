@@ -1028,7 +1028,8 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
                     public_key: VALIDATOR_1.clone(),
                     amount,
                     delegation_rate: 0,
-                    inactive_validator_undelegation_delay: 36,
+                    inactive_validator_undelegation_delay: None,
+                    maximum_inactive_validator_undelegation_delay: 36,
                     holds_epoch: HoldsEpoch::NOT_APPLICABLE,
                 }
             } else {

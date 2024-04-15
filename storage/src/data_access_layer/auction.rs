@@ -45,7 +45,8 @@ pub enum AuctionMethod {
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-        inactive_validator_undelegation_delay: u64,
+        inactive_validator_undelegation_delay: Option<u64>,
+        maximum_inactive_validator_undelegation_delay: u64,
         holds_epoch: HoldsEpoch,
     },
     WithdrawBid {
@@ -113,7 +114,7 @@ impl AuctionMethod {
 
     fn new_add_bid(
         runtime_args: &RuntimeArgs,
-        global_inactive_validator_undelegation_delay: u64,
+        maximum_inactive_validator_undelegation_delay: u64,
         holds_epoch: HoldsEpoch,
     ) -> Result<Self, AuctionMethodError> {
         let public_key = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
@@ -123,14 +124,13 @@ impl AuctionMethod {
             runtime_args,
             auction::ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY,
         )?;
-        let inactive_validator_undelegation_delay = inactive_validator_undelegation_delay
-            .unwrap_or(global_inactive_validator_undelegation_delay);
 
         Ok(Self::AddBid {
             public_key,
             delegation_rate,
             amount,
             inactive_validator_undelegation_delay,
+            maximum_inactive_validator_undelegation_delay,
             holds_epoch,
         })
     }

@@ -69,7 +69,8 @@ pub trait Auction:
         public_key: PublicKey,
         delegation_rate: DelegationRate,
         amount: U512,
-        inactive_validator_undelegation_delay: u64,
+        inactive_validator_undelegation_delay: Option<u64>,
+        maximum_inactive_validator_undelegation_delay: u64,
         holds_epoch: HoldsEpoch,
     ) -> Result<U512, ApiError> {
         if !self.allow_auction_bids() {
@@ -84,6 +85,12 @@ pub trait Auction:
 
         if delegation_rate > DELEGATION_RATE_DENOMINATOR {
             return Err(Error::DelegationRateTooLarge.into());
+        }
+
+        let inactive_validator_undelegation_delay = inactive_validator_undelegation_delay
+            .unwrap_or(maximum_inactive_validator_undelegation_delay);
+        if inactive_validator_undelegation_delay > maximum_inactive_validator_undelegation_delay {
+            return Err(Error::InactiveValidatorUndelegationDelayTooLarge.into());
         }
 
         let provided_account_hash = AccountHash::from_public_key(&public_key, |x| self.blake2b(x));

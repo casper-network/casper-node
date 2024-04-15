@@ -18,6 +18,8 @@ const TRANSFER_ARG_ID: OptionalArg<u64> = OptionalArg::new("id");
 const ADD_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const ADD_BID_ARG_DELEGATION_RATE: RequiredArg<u8> = RequiredArg::new("delegation_rate");
 const ADD_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+const ADD_BID_ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY: OptionalArg<u64> =
+    OptionalArg::new("inactive_validator_undelegation_delay");
 
 const WITHDRAW_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
 const WITHDRAW_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
@@ -214,11 +216,19 @@ pub(in crate::transaction::transaction_v1) fn new_add_bid_args<A: Into<U512>>(
     public_key: PublicKey,
     delegation_rate: u8,
     amount: A,
+    maybe_inactive_delegator_undelegation_delay: Option<u64>,
 ) -> Result<RuntimeArgs, CLValueError> {
     let mut args = RuntimeArgs::new();
     ADD_BID_ARG_PUBLIC_KEY.insert(&mut args, public_key)?;
     ADD_BID_ARG_DELEGATION_RATE.insert(&mut args, delegation_rate)?;
     ADD_BID_ARG_AMOUNT.insert(&mut args, amount.into())?;
+
+    if let Some(inactive_delegator_undelegation_delay) = maybe_inactive_delegator_undelegation_delay
+    {
+        ADD_BID_ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY
+            .insert(&mut args, inactive_delegator_undelegation_delay)?;
+    }
+
     Ok(args)
 }
 
@@ -229,6 +239,8 @@ pub(in crate::transaction::transaction_v1) fn has_valid_add_bid_args(
     let _public_key = ADD_BID_ARG_PUBLIC_KEY.get(args)?;
     let _delegation_rate = ADD_BID_ARG_DELEGATION_RATE.get(args)?;
     let _amount = ADD_BID_ARG_AMOUNT.get(args)?;
+    let _maybe_inactive_validator_undelegation_delay =
+        ADD_BID_ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY.get(args)?;
     Ok(())
 }
 
@@ -243,7 +255,7 @@ pub(in crate::transaction::transaction_v1) fn new_withdraw_bid_args<A: Into<U512
     Ok(args)
 }
 
-/// Checks the given `RuntimeArgs` are suitable for use in an withdraw_bid transaction.
+/// Checks the given `RuntimeArgs` are suitable for use in a withdraw_bid transaction.
 pub(in crate::transaction::transaction_v1) fn has_valid_withdraw_bid_args(
     args: &RuntimeArgs,
 ) -> Result<(), InvalidTransactionV1> {
@@ -488,8 +500,13 @@ mod tests {
         let rng = &mut TestRng::new();
 
         // Check random args.
-        let mut args =
-            new_add_bid_args(PublicKey::random(rng), rng.gen(), rng.gen::<u64>()).unwrap();
+        let mut args = new_add_bid_args(
+            PublicKey::random(rng),
+            rng.gen(),
+            rng.gen::<u64>(),
+            Some(rng.gen::<u64>()),
+        )
+        .unwrap();
         has_valid_add_bid_args(&args).unwrap();
 
         // Check with extra arg.

@@ -39,7 +39,7 @@ pub extern "C" fn call() {
     let bond_amount = runtime::get_named_arg(ARG_AMOUNT);
     let delegation_rate = runtime::get_named_arg(ARG_DELEGATION_RATE);
     let inactive_validator_undelegation_delay =
-        runtime::get_named_arg(ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY);
+        runtime::try_get_named_arg(ARG_INACTIVE_VALIDATOR_UNDELEGATION_DELAY);
 
     add_bid(
         public_key,
