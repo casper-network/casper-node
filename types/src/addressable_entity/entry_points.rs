@@ -181,7 +181,16 @@ pub struct EntryPoint {
     entry_point_payment: EntryPointPayment,
 }
 
-impl From<EntryPoint> for (String, Parameters, CLType, EntryPointAccess, EntryPointType, EntryPointPayment) {
+impl From<EntryPoint>
+    for (
+        String,
+        Parameters,
+        CLType,
+        EntryPointAccess,
+        EntryPointType,
+        EntryPointPayment,
+    )
+{
     fn from(entry_point: EntryPoint) -> Self {
         (
             entry_point.name,
@@ -536,7 +545,7 @@ impl EntryPoints {
     }
 
     /// Returns iterator for existing entry point names.
-    pub fn keys(&self) -> impl Iterator<Item=&String> {
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
     }
 
@@ -752,15 +761,15 @@ impl ToBytes for EntryPointAddr {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntryPointAddr::VmCasperV1 {
-                entity_addr,
-                name_bytes: named_bytes,
-            } => entity_addr.serialized_length() + named_bytes.serialized_length(),
-            EntryPointAddr::VmCasperV2 {
-                entity_addr,
-                selector,
-            } => entity_addr.serialized_length() + selector.serialized_length(),
-        }
+                EntryPointAddr::VmCasperV1 {
+                    entity_addr,
+                    name_bytes: named_bytes,
+                } => entity_addr.serialized_length() + named_bytes.serialized_length(),
+                EntryPointAddr::VmCasperV2 {
+                    entity_addr,
+                    selector,
+                } => entity_addr.serialized_length() + selector.serialized_length(),
+            }
     }
 }
 
@@ -889,9 +898,9 @@ impl ToBytes for EntryPointValue {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-            EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
-            EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
-        }
+                EntryPointValue::V1CasperVm(entry_point) => entry_point.serialized_length(),
+                EntryPointValue::V2CasperVm(entry_point) => entry_point.serialized_length(),
+            }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {

@@ -52,8 +52,7 @@ use crate::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     Digest, EntityKind, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType,
     EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer,
-    StoredValue,
-    TransactionRuntime, URef, U128, U256, U512,
+    StoredValue, TransactionRuntime, URef, U128, U256, U512,
 };
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {

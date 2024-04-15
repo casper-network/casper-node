@@ -3,18 +3,27 @@ use std::{
     iter::FromIterator,
 };
 
-use casper_types::{account::{
-    Account, AccountHash, ActionThresholds as AccountActionThresholds,
-    AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
-}, addressable_entity::{
-    ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
-}, system::{
-    auction::{
-        Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
-        ValidatorBid, WithdrawPurse,
+use casper_types::{
+    account::{
+        Account, AccountHash, ActionThresholds as AccountActionThresholds,
+        AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
-    mint::BalanceHoldAddr,
-}, AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointPayment, EntryPointType, EntryPointValue, EraId, Group, Groups, Key, Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, TransferAddr, TransferV1, URef, U512, TransactionRuntime};
+    addressable_entity::{
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
+    },
+    system::{
+        auction::{
+            Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
+            ValidatorBid, WithdrawPurse,
+        },
+        mint::BalanceHoldAddr,
+    },
+    AccessRights, AddressableEntityHash, BlockTime, ByteCode, ByteCodeHash, ByteCodeKind, CLType,
+    CLTyped, CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
+    EntryPointAccess, EntryPointPayment, EntryPointType, EntryPointValue, EraId, Group, Groups,
+    Key, Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, TransactionRuntime, TransferAddr, TransferV1, URef, U512,
+};
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
     error::Error,
@@ -360,7 +369,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::EntryPoint(EntryPointValue::V1CasperVm(
                 public_contract_entry_point,
             ))
-                .into()])?,
+            .into()])?,
         );
 
         let entity = AddressableEntity::new(
@@ -444,7 +453,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 withdraw_purse_1,
                 withdraw_purse_2,
             ])
-                .into()])?,
+            .into()])?,
         );
         stored_value.insert(
             "Unbonding".to_string(),
@@ -452,7 +461,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 unbonding_purse_1,
                 unbonding_purse_2,
             ])
-                .into()])?,
+            .into()])?,
         );
 
         Fixture::ABI {

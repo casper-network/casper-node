@@ -462,7 +462,7 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -1077,7 +1077,7 @@ impl EntryPoints {
     }
 
     /// Returns iterator for existing entry point names.
-    pub fn keys(&self) -> impl Iterator<Item=&String> {
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
     }
 
@@ -1149,13 +1149,13 @@ pub struct Contract {
 }
 
 impl From<Contract>
-for (
-    ContractPackageHash,
-    ContractWasmHash,
-    NamedKeys,
-    EntryPoints,
-    ProtocolVersion,
-)
+    for (
+        ContractPackageHash,
+        ContractWasmHash,
+        NamedKeys,
+        EntryPoints,
+        ProtocolVersion,
+    )
 {
     fn from(contract: Contract) -> Self {
         (

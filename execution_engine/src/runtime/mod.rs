@@ -89,8 +89,8 @@ pub struct Runtime<'a, R> {
 }
 
 impl<'a, R> Runtime<'a, R>
-    where
-        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -180,8 +180,8 @@ impl<'a, R> Runtime<'a, R>
     /// misleading gas charges if one system contract calls other system contract (e.g. auction
     /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), ExecError>
-        where
-            T: Into<Gas>,
+    where
+        T: Into<Gas>,
     {
         if self.is_system_immediate_caller()? || self.host_function_flag.is_in_host_function_scope()
         {
@@ -542,15 +542,15 @@ impl<'a, R> Runtime<'a, R>
                 ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
-            if auction_error == auction::Error::GasLimit as u8 =>
-                {
-                    ExecError::GasLimit
-                }
+                if auction_error == auction::Error::GasLimit as u8 =>
+            {
+                ExecError::GasLimit
+            }
             ApiError::HandlePayment(handle_payment_error)
-            if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
-                {
-                    ExecError::GasLimit
-                }
+                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
+            {
+                ExecError::GasLimit
+            }
             api_error => ExecError::Revert(api_error),
         }
     }
@@ -1032,7 +1032,7 @@ impl<'a, R> Runtime<'a, R>
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-            let max_stack_height = wasm_config.max_stack_height;
+        let max_stack_height = wasm_config.max_stack_height;
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -2447,9 +2447,9 @@ impl<'a, R> Runtime<'a, R>
         if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
-            .context
-            .engine_config()
-            .is_administrator(&self.context.get_caller())
+                .context
+                .engine_config()
+                .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -2460,8 +2460,8 @@ impl<'a, R> Runtime<'a, R>
         // as the source purse has enough funds to cover the transfer.
         if amount
             > self
-            .available_balance(source, holds_epoch)?
-            .unwrap_or_default()
+                .available_balance(source, holds_epoch)?
+                .unwrap_or_default()
         {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
@@ -3111,8 +3111,8 @@ impl<'a, R> Runtime<'a, R>
         host_function: &HostFunction<T>,
         weights: T,
     ) -> Result<(), Trap>
-        where
-            T: AsRef<[HostFunctionCost]> + Copy,
+    where
+        T: AsRef<[HostFunctionCost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
@@ -3461,7 +3461,7 @@ impl<'a, R> Runtime<'a, R>
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
                 )
-                    .map_err(ExecError::CLValue)?;
+                .map_err(ExecError::CLValue)?;
                 if prev_block_time == current_blocktime {
                     prev_count
                 } else {

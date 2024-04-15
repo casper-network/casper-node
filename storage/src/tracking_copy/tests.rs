@@ -14,8 +14,7 @@ use casper_types::{
     global_state::TrieMerkleProof,
     handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
     CLValueDictionary, CLValueError, EntityAddr, EntityKind, HashAddr, Key, KeyTag, PackageHash,
-    ProtocolVersion, StoredValue, TransactionRuntime, URef, U256, U512,
-    UREF_ADDR_LENGTH,
+    ProtocolVersion, StoredValue, TransactionRuntime, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
