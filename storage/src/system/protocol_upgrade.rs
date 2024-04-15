@@ -824,10 +824,10 @@ impl<S> ProtocolUpgrader<S>
             Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
         };
         let protocol_version = self.config.new_protocol_version();
-        for _existing_key in existing_keys {
-            // if let Err(tce) = tc.migrate_contract(key_or_hashaddr?, protocol_version) {
-            //     return Err(ProtocolUpgradeError::TrackingCopy(tce));
-            // }
+        for existing_key in existing_keys {
+            if let Err(tce) = tc.migrate_contract(existing_key, protocol_version) {
+                return Err(ProtocolUpgradeError::TrackingCopy(tce));
+            }
         }
         Ok(())
     }

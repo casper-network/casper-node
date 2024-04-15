@@ -86,7 +86,7 @@ pub trait TrackingCopyEntityExt<R> {
         account: Account,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
-    fn migrate_contract(&mut self, contract_hash: AddressableEntityHash, protocol_version: ProtocolVersion) -> Result<(), Self::Error>;
+    fn migrate_contract(&mut self, contract_key: Key, protocol_version: ProtocolVersion) -> Result<(), Self::Error>;
 
     /// Returns entity, named keys, and access rights for the system.
     fn system_entity(
@@ -478,11 +478,13 @@ impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
     //           add a new contract version.
     // }
 
-    fn migrate_contract(&mut self, contract_hash: AddressableEntityHash, protocol_version: ProtocolVersion) -> Result<(), Self::Error> {
-        let maybe_legacy_contract = self.read(&Key::Hash(contract_hash.value()))?;
+    fn migrate_contract(&mut self, contract_key: Key, protocol_version: ProtocolVersion) -> Result<(), Self::Error> {
+        let maybe_legacy_contract = self.read(&contract_key)?;
 
         match maybe_legacy_contract {
             Some(StoredValue::Contract(legacy_contract)) => {
+                let contract_hash = contract_key.into_entity_hash().ok_or(Self::Error::UnexpectedKeyVariant(contract_key))?;
+
                 let contract_package_key = Key::Hash(legacy_contract.contract_package_hash().value());
                 let maybe_legacy_package = self.read(&contract_package_key)?
                     .and_then(|stored_value| stored_value.into_contract_package());
@@ -557,7 +559,7 @@ impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
             }
             Some(StoredValue::CLValue(_)) => return Ok(()),
             Some(_) => return Err(Self::Error::UnexpectedStoredValueVariant),
-            None => return Err(Self::Error::MissingSystemContractHash(format!("{}", contract_hash))),
+            None => return Err(Self::Error::ContractNotFound(contract_key)),
         }
 
 

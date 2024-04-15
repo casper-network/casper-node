@@ -78,6 +78,9 @@ pub enum Error {
     /// The value wasn't found.
     #[error("Value not found")]
     ValueNotFound(String),
+    /// Unable to find a contract.
+    #[error("Contract {:?} not found", _0)]
+    ContractNotFound(Key),
 }
 
 impl Error {

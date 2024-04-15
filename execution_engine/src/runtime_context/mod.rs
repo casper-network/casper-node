@@ -854,7 +854,7 @@ impl<'a, R> RuntimeContext<'a, R>
     }
 
     pub(crate) fn migrate_contract(&mut self, contract_hash: AddressableEntityHash, protocol_version: ProtocolVersion) -> Result<(), ExecError> {
-        self.tracking_copy.borrow_mut().migrate_contract(contract_hash, protocol_version)
+        self.tracking_copy.borrow_mut().migrate_contract(Key::Hash(contract_hash.value()), protocol_version)
             .map_err(ExecError::TrackingCopy)
     }
 
