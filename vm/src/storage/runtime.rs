@@ -306,5 +306,14 @@ mod tests {
             .total_balance(target)
             .expect("Should get total balance");
         assert_eq!(target_balance, U512::from(1000u64));
+
+        runtime
+            .mint_into_existing_purse(target, U512::from(1000u64))
+            .expect("Should mint");
+
+        let target_balance = runtime
+            .total_balance(target)
+            .expect("Should get total balance");
+        assert_eq!(target_balance, U512::from(2000u64));
     }
 }
