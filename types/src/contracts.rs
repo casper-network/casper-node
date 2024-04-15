@@ -19,9 +19,6 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     account,
@@ -662,7 +659,6 @@ pub struct ContractPackage {
     /// Key used to add or disable versions
     access_key: URef,
     /// All versions (enabled & disabled)
-    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
     versions: ContractVersions,
     /// Disabled versions
     disabled_versions: DisabledVersions,
@@ -732,6 +728,11 @@ impl ContractPackage {
     /// Returns mut reference to all of this contract's disabled versions.
     pub fn disabled_versions_mut(&mut self) -> &mut DisabledVersions {
         &mut self.disabled_versions
+    }
+
+    /// Returns lock_status of the contract package.
+    pub fn lock_status(&self) -> ContractPackageStatus {
+        self.lock_status.clone()
     }
 
     #[cfg(test)]
@@ -856,18 +857,6 @@ impl From<ContractPackage> for Package {
             lock_status,
         )
     }
-}
-
-struct ContractVersionLabels;
-
-impl KeyValueLabels for ContractVersionLabels {
-    const KEY: &'static str = "contract_version_key";
-    const VALUE: &'static str = "contract_entity_hash";
-}
-
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for ContractVersionLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
 }
 
 /// Methods and type signatures supported by a contract.
