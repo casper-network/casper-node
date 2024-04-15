@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::convert::TryFrom;
 
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -105,5 +105,86 @@ pub(crate) mod deploy_hash_as_array {
             <[u8; DeployHash::LENGTH]>::deserialize(deserializer)?
         };
         Ok(DeployHash::new(Digest::from(bytes)))
+    }
+}
+
+pub mod contract_package {
+    use core::convert::TryFrom;
+
+    use super::*;
+    #[cfg(feature = "json-schema")]
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
+
+    use crate::{
+        contracts::{
+            ContractHash, ContractPackage, ContractPackageStatus, ContractVersion,
+            ContractVersionKey, ContractVersions, DisabledVersions, ProtocolVersionMajor,
+        },
+        Groups, URef,
+    };
+
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+    pub struct HumanReadableContractVersion {
+        protocol_version_major: ProtocolVersionMajor,
+        contract_version: ContractVersion,
+        contract_hash: ContractHash,
+    }
+
+    /// Helper struct for deserializing/serializing `ContractPackage` from and to JSON.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+    pub struct HumanReadableContractPackage {
+        access_key: URef,
+        versions: Vec<HumanReadableContractVersion>,
+        disabled_versions: DisabledVersions,
+        groups: Groups,
+        lock_status: ContractPackageStatus,
+    }
+
+    impl From<&ContractPackage> for HumanReadableContractPackage {
+        fn from(package: &ContractPackage) -> Self {
+            let mut versions = vec![];
+            for (key, hash) in package.versions() {
+                versions.push(HumanReadableContractVersion {
+                    protocol_version_major: key.protocol_version_major(),
+                    contract_version: key.contract_version(),
+                    contract_hash: *hash,
+                });
+            }
+            HumanReadableContractPackage {
+                access_key: package.access_key(),
+                versions,
+                disabled_versions: package.disabled_versions().clone(),
+                groups: package.groups().clone(),
+                lock_status: package.lock_status(),
+            }
+        }
+    }
+
+    impl TryFrom<HumanReadableContractPackage> for ContractPackage {
+        type Error = String;
+
+        fn try_from(value: HumanReadableContractPackage) -> Result<Self, Self::Error> {
+            let mut versions = ContractVersions::default();
+            for version in value.versions.iter() {
+                let key = ContractVersionKey::new(
+                    version.protocol_version_major,
+                    version.contract_version,
+                );
+                if versions.contains_key(&key) {
+                    return Err(format!("duplicate contract version: {:?}", key));
+                }
+                versions.insert(key, version.contract_hash);
+            }
+            Ok(ContractPackage::new(
+                value.access_key,
+                versions,
+                value.disabled_versions,
+                value.groups,
+                value.lock_status,
+            ))
+        }
     }
 }

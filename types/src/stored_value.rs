@@ -770,7 +770,23 @@ impl FromBytes for StoredValue {
 }
 
 mod serde_helpers {
+    use core::fmt;
+
+    use crate::serde_helpers::contract_package::HumanReadableContractPackage;
+
     use super::*;
+
+    pub struct InvalidHumanReadableDeser(String);
+
+    impl fmt::Display for InvalidHumanReadableDeser {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "Couldn't deserialize StoredValue. Underlying error: {}",
+                self.0
+            )
+        }
+    }
 
     #[derive(Serialize)]
     pub(super) enum HumanReadableSerHelper<'a> {
@@ -778,7 +794,7 @@ mod serde_helpers {
         Account(&'a Account),
         ContractWasm(&'a ContractWasm),
         Contract(&'a Contract),
-        ContractPackage(&'a ContractPackage),
+        ContractPackage(HumanReadableContractPackage),
         LegacyTransfer(&'a TransferV1),
         DeployInfo(&'a DeployInfo),
         EraInfo(&'a EraInfo),
@@ -801,7 +817,7 @@ mod serde_helpers {
         Account(Account),
         ContractWasm(ContractWasm),
         Contract(Contract),
-        ContractPackage(ContractPackage),
+        ContractPackage(HumanReadableContractPackage),
         LegacyTransfer(TransferV1),
         DeployInfo(DeployInfo),
         EraInfo(EraInfo),
@@ -825,7 +841,7 @@ mod serde_helpers {
                 StoredValue::ContractWasm(payload) => HumanReadableSerHelper::ContractWasm(payload),
                 StoredValue::Contract(payload) => HumanReadableSerHelper::Contract(payload),
                 StoredValue::ContractPackage(payload) => {
-                    HumanReadableSerHelper::ContractPackage(payload)
+                    HumanReadableSerHelper::ContractPackage(payload.into())
                 }
                 StoredValue::LegacyTransfer(payload) => {
                     HumanReadableSerHelper::LegacyTransfer(payload)
@@ -853,9 +869,10 @@ mod serde_helpers {
         }
     }
 
-    impl From<HumanReadableDeserHelper> for StoredValue {
-        fn from(helper: HumanReadableDeserHelper) -> Self {
-            match helper {
+    impl TryFrom<HumanReadableDeserHelper> for StoredValue {
+        type Error = InvalidHumanReadableDeser;
+        fn try_from(value: HumanReadableDeserHelper) -> Result<Self, Self::Error> {
+            let res = match value {
                 HumanReadableDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
                 HumanReadableDeserHelper::Account(payload) => StoredValue::Account(payload),
                 HumanReadableDeserHelper::ContractWasm(payload) => {
@@ -863,7 +880,14 @@ mod serde_helpers {
                 }
                 HumanReadableDeserHelper::Contract(payload) => StoredValue::Contract(payload),
                 HumanReadableDeserHelper::ContractPackage(payload) => {
-                    StoredValue::ContractPackage(payload)
+                    ContractPackage::try_from(payload)
+                        .map(StoredValue::ContractPackage)
+                        .map_err(|error| {
+                            InvalidHumanReadableDeser(format!(
+                                "Failed to deserialize ContractPackage: {}",
+                                error
+                            ))
+                        })?
                 }
                 HumanReadableDeserHelper::LegacyTransfer(payload) => {
                     StoredValue::LegacyTransfer(payload)
@@ -886,7 +910,8 @@ mod serde_helpers {
                     StoredValue::Message(message_digest)
                 }
                 HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
-            }
+            };
+            Ok(res)
         }
     }
 }
@@ -908,7 +933,7 @@ impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let json_helper = serde_helpers::HumanReadableDeserHelper::deserialize(deserializer)?;
-            Ok(StoredValue::from(json_helper))
+            StoredValue::try_from(json_helper).map_err(|error| de::Error::custom(error.to_string()))
         } else {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
             bytesrepr::deserialize::<StoredValue>(bytes)
@@ -921,14 +946,38 @@ impl<'de> Deserialize<'de> for StoredValue {
 mod tests {
     use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
+    use serde_json::Value;
+    const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = "{\"ContractPackage\":{\"access_key\":\"uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007\",\"versions\":[{\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd\"}],\"disabled_versions\":[],\"groups\":[],\"lock_status\":\"Unlocked\"}}";
+    const INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = "{\"ContractPackage\":{\"access_key\":\"uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007\",\"versions\":[{\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd\"}, {\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfe\"}],\"disabled_versions\":[],\"groups\":[],\"lock_status\":\"Unlocked\"}}";
+
+    #[test]
+    fn contract_package_stored_value_serializes_versions_to_flat_array() {
+        let value_from_raw_json =
+            serde_json::from_str::<Value>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let deserialized =
+            serde_json::from_str::<StoredValue>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let roundtrip_value = serde_json::to_value(&deserialized).unwrap();
+        assert_eq!(value_from_raw_json, roundtrip_value);
+    }
+
+    #[test]
+    fn contract_package_stored_value_should_fail_on_duplicate_keys() {
+        let deserialization_res =
+            serde_json::from_str::<StoredValue>(INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW);
+        assert!(deserialization_res.is_err());
+        assert!(deserialization_res
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate contract version: ContractVersionKey(1, 1)"));
+    }
 
     proptest! {
+
         #[test]
-        fn json_contract_package_serialization(v in gens::contract_package_arb()) {
-            let stored_value = StoredValue::ContractPackage(v);
-            let json_str = serde_json::to_string(&stored_value).unwrap();
+        fn json_serialization_roundtrip(v in gens::stored_value_arb()) {
+            let json_str = serde_json::to_string(&v).unwrap();
             let deserialized = serde_json::from_str::<StoredValue>(&json_str).unwrap();
-            assert_eq!(stored_value, deserialized);
+            assert_eq!(v, deserialized);
         }
 
         #[test]
