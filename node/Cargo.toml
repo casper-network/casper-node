@@ -25,7 +25,6 @@ bincode = "1"
 bytes = "1.0.1"
 casper-binary-port = { version = "1.0.0", path = "../binary_port" }
 casper-execution-engine = { version = "7.0.0", path = "../execution_engine" }
-casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
 casper-storage = { version = "2.0.0", path = "../storage" }
 casper-types = { version = "5.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }

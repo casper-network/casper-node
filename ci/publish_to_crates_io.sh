@@ -79,7 +79,6 @@ check_python_has_toml
 publish types
 publish storage
 publish execution_engine
-publish json_rpc
 publish node
 publish smart_contracts/contract
 publish execution_engine_testing/test_support
