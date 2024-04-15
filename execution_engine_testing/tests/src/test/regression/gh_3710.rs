@@ -131,8 +131,8 @@ fn gh_3710_commit_prune_should_delete_values() {
 const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;
 
 fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>, public_key: &PublicKey)
-where
-    S: StateProvider + CommitProvider,
+    where
+        S: StateProvider + CommitProvider,
 {
     const DELEGATION_RATE: DelegationRate = 10;
 
@@ -148,7 +148,7 @@ where
         auction::METHOD_ADD_BID,
         args,
     )
-    .build();
+        .build();
 
     builder.exec(add_bid_request).expect_success().commit();
 
@@ -235,11 +235,7 @@ mod fixture {
         ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
         LOCAL_GENESIS_REQUEST,
     };
-    use casper_types::{
-        runtime_args,
-        system::auction::{EraInfo, SeigniorageAllocation},
-        EraId, Key, KeyTag, StoredValue, U512,
-    };
+    use casper_types::{runtime_args, system::auction::{EraInfo, SeigniorageAllocation}, EraId, Key, KeyTag, StoredValue, U512, RuntimeArgs};
 
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
     use crate::lmdb_fixture;
@@ -263,11 +259,11 @@ mod fixture {
                 CONTRACT_RECURSIVE_SUBCALL,
                 runtime_args! {},
             )
-            .build();
+                .build();
 
             builder.exec(execute_request).expect_success().commit();
         })
-        .unwrap();
+            .unwrap();
     }
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
@@ -289,11 +285,11 @@ mod fixture {
                 GROUPS_WASM,
                 runtime_args! {},
             )
-            .build();
+                .build();
 
             builder.exec(execute_request).expect_success().commit();
         })
-        .unwrap();
+            .unwrap();
     }
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
@@ -360,6 +356,6 @@ mod fixture {
                 rewards
             );
         })
-        .unwrap();
+            .unwrap();
     }
 }

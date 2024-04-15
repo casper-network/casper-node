@@ -477,11 +477,12 @@ impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
     // }
 
     fn migrate_contract(&mut self, contract_key: Key, protocol_version: ProtocolVersion) -> Result<(), Self::Error> {
+        println!("migrating");
         let maybe_legacy_contract = self.read(&contract_key)?;
 
         match maybe_legacy_contract {
             Some(StoredValue::Contract(legacy_contract)) => {
-                let contract_hash = contract_key.into_entity_hash().ok_or(Self::Error::UnexpectedKeyVariant(contract_key))?;
+                let contract_hash = AddressableEntityHash::new(contract_key.into_hash_addr().ok_or(Self::Error::UnexpectedKeyVariant(contract_key))?);
 
                 let contract_package_key = Key::Hash(legacy_contract.contract_package_hash().value());
                 let maybe_legacy_package = self.read(&contract_package_key)?

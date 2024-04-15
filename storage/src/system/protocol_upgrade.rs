@@ -823,7 +823,7 @@ impl<S> ProtocolUpgrader<S>
         if !self.config.migrate_legacy_contracts() {
             return Ok(());
         }
-        debug!("handle contracts migration");
+        println!("handle contracts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Hash) {
             Ok(keys) => keys,

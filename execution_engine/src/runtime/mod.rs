@@ -1742,6 +1742,7 @@ impl<'a, R> Runtime<'a, R>
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
+        println!("adding contract version");
         if !self.context.allow_casper_add_contract_version() {
             // NOTE: This is not a permission check on the caller,
             // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
@@ -1772,6 +1773,7 @@ impl<'a, R> Runtime<'a, R>
         //      create the new contract version carrying forward previous state including associated keys
         //      BUT add the caller to the associated keys with weight == to the action threshold for upgrade
         // ELSE, error
+        println!("goo");
         let (
             main_purse,
             previous_named_keys,
@@ -1894,6 +1896,7 @@ impl<'a, R> Runtime<'a, R>
         ),
         ExecError,
     > {
+        println!("in new version");
         if let Some(previous_entity_hash) = package.current_entity_hash() {
             let previous_entity_key = Key::contract_entity_key(previous_entity_hash);
             let (mut previous_entity, requires_purse_creation) =
@@ -1914,8 +1917,7 @@ impl<'a, R> Runtime<'a, R>
                         return Err(ExecError::UnexpectedStoredValueVariant);
                     }
                     Some(cl_value) => {
-                        let ret = cl_value.to_owned();
-                        ret.into_t::<URef>().map_err(ExecError::CLValue)
+                        cl_value.into_t::<URef>().map_err(ExecError::CLValue)
                     }
                 }?;
 
@@ -3356,6 +3358,7 @@ impl<'a, R> Runtime<'a, R>
         &mut self,
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, ExecError> {
+        println!("the package regular migration");
         let protocol_version = self.context.protocol_version();
         self.context.migrate_contract(contract_hash, protocol_version)?;
         self.context.read_gs_typed(&Key::contract_entity_key(contract_hash))

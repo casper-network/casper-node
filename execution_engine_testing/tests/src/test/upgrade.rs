@@ -59,7 +59,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
                 &contract_name,
                 RuntimeArgs::default(),
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -75,7 +75,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
                 ENTRY_FUNCTION_NAME,
                 RuntimeArgs::new(),
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -110,7 +110,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
                 &contract_name,
                 RuntimeArgs::default(),
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -129,7 +129,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
                 ENTRY_FUNCTION_NAME,
                 args,
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -173,7 +173,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
                 &contract_name,
                 RuntimeArgs::default(),
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -241,7 +241,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
                 &contract_name,
                 RuntimeArgs::default(),
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -309,7 +309,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
                     ARG_IS_LOCKED => false,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -363,7 +363,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
                     ARG_CONTRACT_PACKAGE => stored_package_hash,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -408,7 +408,7 @@ fn should_support_extending_functionality() {
                     ARG_IS_LOCKED => false
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -446,7 +446,7 @@ fn should_support_extending_functionality() {
                     PURSE_NAME => PURSE_1,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -472,7 +472,7 @@ fn should_support_extending_functionality() {
                     ARG_CONTRACT_PACKAGE => stored_package_hash,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -516,7 +516,7 @@ fn should_support_extending_functionality() {
                     PURSE_NAME => PURSE_1,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -551,7 +551,7 @@ fn should_maintain_named_keys_across_upgrade() {
                     ARG_IS_LOCKED => false
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -590,7 +590,7 @@ fn should_maintain_named_keys_across_upgrade() {
                     PURSE_NAME => purse_name,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -616,7 +616,7 @@ fn should_maintain_named_keys_across_upgrade() {
                     ARG_CONTRACT_PACKAGE => stored_package_hash,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -655,7 +655,7 @@ fn should_fail_upgrade_for_locked_contract() {
                     ARG_IS_LOCKED => true,
                 },
             )
-            .build()
+                .build()
         };
 
         builder.exec(exec_request).expect_success().commit();
@@ -690,7 +690,7 @@ fn should_fail_upgrade_for_locked_contract() {
                     ARG_CONTRACT_PACKAGE => stored_package_hash,
                 },
             )
-            .build()
+                .build()
         };
 
         assert!(builder.exec(exec_request).is_error());
@@ -720,7 +720,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         UPGRADE_THRESHOLD_CONTRACT_NAME,
         runtime_args! {},
     )
-    .build();
+        .build();
 
     builder.exec(install_request).expect_success().commit();
 
@@ -770,7 +770,7 @@ fn should_only_upgrade_if_threshold_is_met() {
                 ARG_KEY_WEIGHT => 1u8
             },
         )
-        .build();
+            .build();
 
         builder.exec(execute_request).expect_success().commit();
     }
@@ -783,7 +783,7 @@ fn should_only_upgrade_if_threshold_is_met() {
             ARG_NEW_UPGRADE_THRESHOLD => 3u8
         },
     )
-    .build();
+        .build();
 
     builder
         .exec(update_upgrade_threshold_request)
@@ -810,7 +810,7 @@ fn should_only_upgrade_if_threshold_is_met() {
             ARG_CONTRACT_PACKAGE => upgrade_threshold_package_hash
         },
     )
-    .build();
+        .build();
 
     builder.exec(invalid_upgrade_request).expect_failure();
 
@@ -830,8 +830,8 @@ fn should_only_upgrade_if_threshold_is_met() {
             ARG_CONTRACT_PACKAGE => upgrade_threshold_package_hash
         },
     )
-    .with_authorization_keys(authorization_keys.into_iter().collect())
-    .build();
+        .with_authorization_keys(authorization_keys.into_iter().collect())
+        .build();
 
     builder
         .exec(valid_upgrade_request)
@@ -857,6 +857,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
         .with_current_protocol_version(current_protocol_version)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(activation_point)
+        .with_migrate_legacy_contracts(false)
         .build();
 
     builder
@@ -896,7 +897,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
             HASH_KEY_NAME => contract_hash
         },
     )
-    .build();
+        .build();
     builder.exec(exec_request).expect_success().commit();
     let purse_holder_as_entity = builder
         .get_addressable_entity(contract_hash)
@@ -942,7 +943,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
             HASH_KEY_NAME => entity_hash
         },
     )
-    .build();
+        .build();
 
     builder.exec(exec_request).expect_success().commit();
 
@@ -961,7 +962,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
             ARG_CONTRACT_PACKAGE => stored_package_hash
         },
     )
-    .build();
+        .build();
 
     builder.exec(upgrade_request).expect_success().commit();
 
@@ -1029,7 +1030,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build()
+                .build()
         }
         InvocationType::ByPackageHash(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_hash(
@@ -1039,7 +1040,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ENTRY_POINT_ADD,
                 runtime_args,
             )
-            .build()
+                .build()
         }
         InvocationType::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
             *DEFAULT_ACCOUNT_ADDR,
@@ -1047,14 +1048,14 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             ENTRY_POINT_ADD,
             runtime_args,
         )
-        .build(),
+            .build(),
         InvocationType::ByContractName => ExecuteRequestBuilder::contract_call_by_name(
             *DEFAULT_ACCOUNT_ADDR,
             PURSE_HOLDER_STORED_CONTRACT_NAME,
             ENTRY_POINT_ADD,
             runtime_args,
         )
-        .build(),
+            .build(),
         InvocationType::ByUpgrader => ExecuteRequestBuilder::standard(
             *DEFAULT_ACCOUNT_ADDR,
             &format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME),
@@ -1062,7 +1063,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 ARG_CONTRACT_PACKAGE => package_hash
             },
         )
-        .build(),
+            .build(),
     };
 
     builder.exec(execute_request).expect_success().commit();
@@ -1081,7 +1082,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     } else {
         updated_key.into_hash_addr().map(AddressableEntityHash::new)
     }
-    .expect("must get entity hash");
+        .expect("must get entity hash");
 
     let updated_purse_entity = builder
         .get_addressable_entity(updated_hash)
