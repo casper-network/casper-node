@@ -1193,9 +1193,6 @@ impl<'a, R> RuntimeContext<'a, R>
         &mut self,
         package_hash: PackageHash,
     ) -> Result<Package, ExecError> {
-        if !self.is_authorized_by_admin() {
-            return Err(ExecError::InvalidContext);
-        }
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;

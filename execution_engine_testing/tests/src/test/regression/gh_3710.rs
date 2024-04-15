@@ -235,7 +235,7 @@ mod fixture {
         ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
         LOCAL_GENESIS_REQUEST,
     };
-    use casper_types::{runtime_args, system::auction::{EraInfo, SeigniorageAllocation}, EraId, Key, KeyTag, StoredValue, U512, RuntimeArgs};
+    use casper_types::{runtime_args, system::auction::{EraInfo, SeigniorageAllocation}, EraId, Key, KeyTag, StoredValue, U512};
 
     use super::{FIXTURE_N_ERAS, GH_3710_FIXTURE};
     use crate::lmdb_fixture;

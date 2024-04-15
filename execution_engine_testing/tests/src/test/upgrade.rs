@@ -1,15 +1,8 @@
-use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE,
-};
+use casper_engine_test_support::{ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE};
 
 use casper_execution_engine::{engine_state, execution::ExecError};
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::{AssociatedKeys, Weight},
-    runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash,
-    ProtocolVersion, RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION,
-};
+use casper_types::{account::AccountHash, addressable_entity::{AssociatedKeys, Weight}, runtime_args, AddressableEntityHash, CLValue, EntityVersion, EraId, PackageHash, ProtocolVersion, RuntimeArgs, StoredValue, ENTITY_INITIAL_VERSION};
+
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
 const DO_NOTHING_STORED_UPGRADER_CONTRACT_NAME: &str = "do_nothing_stored_upgrader";
@@ -857,7 +850,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
         .with_current_protocol_version(current_protocol_version)
         .with_new_protocol_version(new_protocol_version)
         .with_activation_point(activation_point)
-        .with_migrate_legacy_contracts(false)
+        .with_migrate_legacy_contracts(true)
         .build();
 
     builder
@@ -873,42 +866,6 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, AccountHash) {
     (builder, ACCOUNT_1_ADDR)
 }
 
-#[ignore]
-#[test]
-fn should_migrate_with_correct_upgrade_thresholds() {
-    let (mut builder, _) = setup_upgrade_threshold_state();
-
-    let default_addressable_entity = builder
-        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must have default entity");
-
-    let contract_hash = default_addressable_entity
-        .named_keys()
-        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash_addr().map(AddressableEntityHash::new))
-        .unwrap()
-        .expect("must convert to hash");
-
-    let exec_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        &format!("{}.wasm", PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME),
-        runtime_args! {
-            ENTRY_POINT_NAME => VERSION,
-            HASH_KEY_NAME => contract_hash
-        },
-    )
-        .build();
-    builder.exec(exec_request).expect_success().commit();
-    let purse_holder_as_entity = builder
-        .get_addressable_entity(contract_hash)
-        .expect("must have purse holder entity hash");
-
-    let actual_associated_keys = purse_holder_as_entity.associated_keys();
-
-    let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
-
-    assert_eq!(actual_associated_keys, &expect_associated_keys);
-}
 
 #[ignore]
 #[test]
@@ -987,7 +944,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
 }
 
 #[allow(clippy::enum_variant_names)]
-enum InvocationType {
+enum MigrationScenario {
     ByContractHash,
     ByContractName,
     ByPackageHash(Option<EntityVersion>),
@@ -995,7 +952,7 @@ enum InvocationType {
     ByUpgrader,
 }
 
-fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
+fn call_and_migrate_purse_holder_contract(migration_scenario: MigrationScenario) {
     let (mut builder, _) = setup_upgrade_threshold_state();
 
     let runtime_args = runtime_args! {
@@ -1021,8 +978,8 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .map(PackageHash::new)
         .unwrap();
 
-    let execute_request = match invocation_type {
-        InvocationType::ByPackageName(maybe_contract_version) => {
+    let execute_request = match migration_scenario {
+        MigrationScenario::ByPackageName(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
                 HASH_KEY_NAME,
@@ -1032,7 +989,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             )
                 .build()
         }
-        InvocationType::ByPackageHash(maybe_contract_version) => {
+        MigrationScenario::ByPackageHash(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
                 package_hash,
@@ -1042,21 +999,21 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             )
                 .build()
         }
-        InvocationType::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
+        MigrationScenario::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
             *DEFAULT_ACCOUNT_ADDR,
             entity_hash,
             ENTRY_POINT_ADD,
             runtime_args,
         )
             .build(),
-        InvocationType::ByContractName => ExecuteRequestBuilder::contract_call_by_name(
+        MigrationScenario::ByContractName => ExecuteRequestBuilder::contract_call_by_name(
             *DEFAULT_ACCOUNT_ADDR,
             PURSE_HOLDER_STORED_CONTRACT_NAME,
             ENTRY_POINT_ADD,
             runtime_args,
         )
             .build(),
-        InvocationType::ByUpgrader => ExecuteRequestBuilder::standard(
+        MigrationScenario::ByUpgrader => ExecuteRequestBuilder::standard(
             *DEFAULT_ACCOUNT_ADDR,
             &format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME),
             runtime_args! {
@@ -1077,7 +1034,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("must have updated entity");
 
-    let updated_hash = if let InvocationType::ByUpgrader = invocation_type {
+    let updated_hash = if let MigrationScenario::ByUpgrader = migration_scenario {
         updated_key.into_entity_hash()
     } else {
         updated_key.into_hash_addr().map(AddressableEntityHash::new)
@@ -1089,50 +1046,52 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .expect("must have purse holder entity hash");
 
     let actual_associated_keys = updated_purse_entity.associated_keys();
-
-    let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
-
-    assert_eq!(actual_associated_keys, &expect_associated_keys);
+    if let MigrationScenario::ByUpgrader = migration_scenario {
+        let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
+        assert_eq!(actual_associated_keys, &expect_associated_keys);
+    } else {
+        assert_eq!(actual_associated_keys, &AssociatedKeys::default());
+    }
 }
 
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_name() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByPackageName(None))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(None))
 }
 
 #[ignore]
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_name_and_version() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByPackageName(Some(INITIAL_VERSION)))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageName(Some(INITIAL_VERSION)))
 }
 
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_hash() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByPackageHash(None))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(None))
 }
 
 #[ignore]
 #[test]
 fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_version() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByPackageHash(Some(INITIAL_VERSION)))
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByPackageHash(Some(INITIAL_VERSION)))
 }
 
 #[ignore]
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_contract_hash() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByContractHash)
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByContractHash)
 }
 
 #[ignore]
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_contract_name() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByContractName)
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByContractName)
 }
 
 #[ignore]
 #[test]
 fn should_correctly_migrate_and_upgrade_with_upgrader() {
-    call_and_migrate_purse_holder_contract(InvocationType::ByUpgrader)
+    call_and_migrate_purse_holder_contract(MigrationScenario::ByUpgrader)
 }

@@ -1742,7 +1742,6 @@ impl<'a, R> Runtime<'a, R>
         message_topics: BTreeMap<String, MessageTopicOperation>,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
-        println!("adding contract version");
         if !self.context.allow_casper_add_contract_version() {
             // NOTE: This is not a permission check on the caller,
             // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
@@ -1773,7 +1772,6 @@ impl<'a, R> Runtime<'a, R>
         //      create the new contract version carrying forward previous state including associated keys
         //      BUT add the caller to the associated keys with weight == to the action threshold for upgrade
         // ELSE, error
-        println!("goo");
         let (
             main_purse,
             previous_named_keys,
@@ -1896,7 +1894,6 @@ impl<'a, R> Runtime<'a, R>
         ),
         ExecError,
     > {
-        println!("in new version");
         if let Some(previous_entity_hash) = package.current_entity_hash() {
             let previous_entity_key = Key::contract_entity_key(previous_entity_hash);
             let (mut previous_entity, requires_purse_creation) =
@@ -1914,7 +1911,7 @@ impl<'a, R> Runtime<'a, R>
                 let access_key = match self.context.read_gs(&Key::Hash(previous_entity.package_hash().value()))?
                     .and_then(|stored_value| stored_value.into_cl_value()) {
                     None => {
-                        return Err(ExecError::UnexpectedStoredValueVariant);
+                        return Err(ExecError::UpgradeAuthorizationFailure);
                     }
                     Some(cl_value) => {
                         cl_value.into_t::<URef>().map_err(ExecError::CLValue)
