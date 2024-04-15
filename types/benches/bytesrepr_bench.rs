@@ -502,9 +502,9 @@ fn contract_hash_fn(i: u8) -> AddressableEntityHash {
 }
 
 fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>
-where
-    FK: Fn(u8) -> K,
-    FV: Fn(u8) -> V,
+    where
+        FK: Fn(u8) -> K,
+        FV: Fn(u8) -> V,
 {
     (0..count)
         .map(|i| {
@@ -516,8 +516,8 @@ where
 }
 
 fn sample_set<K: Ord, F>(fun: F, count: u8) -> BTreeSet<K>
-where
-    F: Fn(u8) -> K,
+    where
+        F: Fn(u8) -> K,
 {
     (0..count).map(fun).collect()
 }
@@ -535,7 +535,6 @@ fn sample_contract_package(
     disabled_versions_len: u8,
     groups_len: u8,
 ) -> Package {
-    let access_key = URef::default();
     let versions = EntityVersions::from(sample_map(
         contract_version_key_fn,
         contract_hash_fn,
@@ -549,7 +548,6 @@ fn sample_contract_package(
     ));
 
     Package::new(
-        access_key,
         versions,
         disabled_versions,
         groups,

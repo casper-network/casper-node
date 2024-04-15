@@ -29,7 +29,7 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
+const PACKAGE_STRING_PREFIX: &str = "package-";
 // We need to support the legacy prefix of "contract-package-wasm".
 const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
@@ -189,7 +189,7 @@ pub const ENTITY_VERSION_KEY_SERIALIZED_LENGTH: usize =
 #[serde(transparent, deny_unknown_fields)]
 pub struct EntityVersions(
     #[serde(
-        with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, EntityVersionLabels>"
+    with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, EntityVersionLabels>"
     )]
     BTreeMap<EntityVersionKey, AddressableEntityHash>,
 );
@@ -201,7 +201,7 @@ impl EntityVersions {
     }
 
     /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
-    pub fn contract_hashes(&self) -> impl Iterator<Item = &AddressableEntityHash> {
+    pub fn contract_hashes(&self) -> impl Iterator<Item=&AddressableEntityHash> {
         self.0.values()
     }
 
@@ -259,6 +259,7 @@ impl KeyValueLabels for EntityVersionLabels {
 impl KeyValueJsonSchema for EntityVersionLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EntityVersionAndHash");
 }
+
 /// Collection of named groups.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -309,7 +310,7 @@ impl Groups {
     }
 
     /// Returns an iterator over the `Key`s (i.e. the map's values).
-    pub fn keys(&self) -> impl Iterator<Item = &BTreeSet<URef>> {
+    pub fn keys(&self) -> impl Iterator<Item=&BTreeSet<URef>> {
         self.0.values()
     }
 
@@ -363,9 +364,9 @@ impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(description = "The hex-encoded address of the Package.")
+feature = "json-schema",
+derive(JsonSchema),
+schemars(description = "The hex-encoded address of the Package.")
 )]
 pub struct PackageHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
@@ -389,7 +390,7 @@ impl PackageHash {
 
     /// Formats the `PackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -607,8 +608,6 @@ impl FromBytes for PackageStatus {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Package {
-    /// Key used to add or disable versions.
-    access_key: URef,
     /// All versions (enabled & disabled).
     versions: EntityVersions,
     /// Collection of disabled entity versions. The runtime will not permit disabled entity
@@ -631,14 +630,12 @@ impl CLTyped for Package {
 impl Package {
     /// Create new `Package` (with no versions) from given access key.
     pub fn new(
-        access_key: URef,
         versions: EntityVersions,
         disabled_versions: BTreeSet<EntityVersionKey>,
         groups: Groups,
         lock_status: PackageStatus,
     ) -> Self {
         Package {
-            access_key,
             versions,
             disabled_versions,
             groups,
@@ -656,11 +653,6 @@ impl Package {
         self.disabled_versions.remove(&entity_version_key);
 
         Ok(())
-    }
-
-    /// Get the access key for this entity.
-    pub fn access_key(&self) -> URef {
-        self.access_key
     }
 
     /// Get the mutable group definitions for this entity.
@@ -847,15 +839,13 @@ impl ToBytes for Package {
     }
 
     fn serialized_length(&self) -> usize {
-        self.access_key.serialized_length()
-            + self.versions.serialized_length()
+        self.versions.serialized_length()
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.access_key().write_bytes(writer)?;
         self.versions().write_bytes(writer)?;
         self.disabled_versions().write_bytes(writer)?;
         self.groups().write_bytes(writer)?;
@@ -867,14 +857,12 @@ impl ToBytes for Package {
 
 impl FromBytes for Package {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (access_key, bytes) = URef::from_bytes(bytes)?;
         let (versions, bytes) = EntityVersions::from_bytes(bytes)?;
         let (disabled_versions, bytes) = BTreeSet::<EntityVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
 
         let result = Package {
-            access_key,
             versions,
             disabled_versions,
             groups,
@@ -901,7 +889,6 @@ mod tests {
 
     fn make_package_with_two_versions() -> Package {
         let mut package = Package::new(
-            URef::new([0; 32], AccessRights::NONE),
             EntityVersions::default(),
             BTreeSet::new(),
             Groups::default(),
@@ -960,7 +947,6 @@ mod tests {
     fn next_entity_version() {
         let major = 1;
         let mut package = Package::new(
-            URef::new([0; 32], AccessRights::NONE),
             EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),

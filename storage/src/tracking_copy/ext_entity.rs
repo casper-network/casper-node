@@ -1,19 +1,12 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 use tracing::error;
 
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
-        Weight,
-    },
-    bytesrepr,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT},
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
-    ContextAccessRights, EntityAddr, EntityKind, EntityVersions, EntryPoints, Groups, Key, Package,
-    PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue,
-    StoredValueTypeMismatch, URef,
-};
+use casper_types::{account::AccountHash, addressable_entity::{
+    ActionThresholds, AssociatedKeys, MessageTopics, NamedKeyAddr, NamedKeyValue, NamedKeys,
+    Weight,
+}, bytesrepr, system::{handle_payment::ACCUMULATION_PURSE_KEY, AUCTION, HANDLE_PAYMENT, MINT}, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntityVersions, EntryPoints, Groups, Key, Package, PackageHash, PackageStatus, Phase, ProtocolVersion, PublicKey, StoredValue, StoredValueTypeMismatch, URef, U512, ContractWasm, ByteCodeAddr, ByteCode};
+use casper_types::contracts::ContractPackage;
+use casper_types::system::mint::Error;
 
 use crate::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -93,6 +86,7 @@ pub trait TrackingCopyEntityExt<R> {
         account: Account,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error>;
+    fn migrate_contract(&mut self, contract_hash: AddressableEntityHash, protocol_version: ProtocolVersion) -> Result<(), Self::Error>;
 
     /// Returns entity, named keys, and access rights for the system.
     fn system_entity(
@@ -118,8 +112,8 @@ pub trait TrackingCopyEntityExt<R> {
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -216,11 +210,8 @@ where
                     EntityKind::Account(account_hash),
                 );
 
-                let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
-
                 let package = {
                     let mut package = Package::new(
-                        access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
@@ -276,9 +267,9 @@ where
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
+            .intersection(authorization_keys)
+            .next()
+            .is_some()
         {
             // Exit early if there's at least a single signature coming from an admin.
             return Ok((entity_record, entity_hash));
@@ -368,11 +359,8 @@ where
             EntityKind::Account(account_hash),
         );
 
-        let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
-
         let package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -420,10 +408,8 @@ where
                 AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
             let package_hash = PackageHash::new(generator.new_hash_address());
-            let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
             let mut package = Package::new(
-                access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -449,7 +435,7 @@ where
                     Weight::new(1u8),
                     Weight::new(account_threshold.key_management.value()),
                 )
-                .map_err(Self::Error::SetThresholdFailure)?
+                    .map_err(Self::Error::SetThresholdFailure)?
             };
 
             let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
@@ -480,6 +466,104 @@ where
 
         Ok(())
     }
+
+    // fn migrate_contract(&mut self, ???) -> Result<(), Self::Error> {
+    //   migrate contract, contract package, and contract wasm into modern equivalents
+    //   for package, remove the access_uref field on the new struct
+    //       write the old access_uref URefAddr under the original Key::Hash of the ContractPackage
+    //       use the same HashAddr as the original Key::Hash for the Key::Package(<-- original addr -->)
+    //       IMPORTANT: do not attempt to associate accounts to access_uref at this stage...
+    //           we wrote the old access_uref under the original key so that we can check it later
+    //           in add_contract_version in the ee runtime only if and when a caller attempts to
+    //           add a new contract version.
+    // }
+
+    fn migrate_contract(&mut self, contract_hash: AddressableEntityHash, protocol_version: ProtocolVersion) -> Result<(), Self::Error> {
+        let maybe_legacy_contract = self.read(&Key::Hash(contract_hash.value()))?;
+
+        match maybe_legacy_contract {
+            Some(StoredValue::Contract(legacy_contract)) => {
+                let contract_package_key = Key::Hash(legacy_contract.contract_package_hash().value());
+                let maybe_legacy_package = self.read(&contract_package_key)?
+                    .and_then(|stored_value| stored_value.into_contract_package());
+                match maybe_legacy_package {
+                    Some(legacy_package) => {
+                        let access_uref = legacy_package.access_key();
+                        let mut generator = AddressGenerator::new(access_uref.addr().as_ref(), Phase::System);
+
+                        let package: Package = legacy_package.into();
+                        let package_key = Key::Package(legacy_contract.contract_package_hash().value());
+
+                        self.write(package_key, StoredValue::Package(package));
+
+                        let purse = generator.new_uref(AccessRights::all());
+                        let cl_value: CLValue = CLValue::from_t(()).map_err(Self::Error::CLValue)?;
+                        self.write(Key::URef(purse), StoredValue::CLValue(cl_value));
+
+                        let balance_value: CLValue = CLValue::from_t(U512::zero()).map_err(Self::Error::CLValue)?;
+                        self.write(Key::Balance(purse.addr()), StoredValue::CLValue(balance_value));
+
+                        let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
+
+                        let contract_wasm_hash = legacy_contract.contract_wasm_hash();
+
+
+                        let updated_entity = AddressableEntity::new(
+                            PackageHash::new(legacy_contract.contract_package_hash().value()),
+                            ByteCodeHash::new(contract_wasm_hash.value()),
+                            legacy_contract.entry_points().clone(),
+                            protocol_version,
+                            purse,
+                            AssociatedKeys::default(),
+                            ActionThresholds::default(),
+                            MessageTopics::default(),
+                            EntityKind::SmartContract,
+                        );
+
+                        let named_keys = legacy_contract.take_named_keys();
+
+                        self.migrate_named_keys(contract_addr, named_keys)?;
+
+                        let maybe_previous_wasm = self.read(&Key::Hash(
+                            contract_wasm_hash.value(),
+                        ))?.and_then(|stored_value| stored_value.into_contract_wasm());
+
+                        match maybe_previous_wasm {
+                            None => {
+                                return Err(Self::Error::ValueNotFound(format!("{}", contract_wasm_hash)));
+                            }
+                            Some(contract_wasm) => {
+                                let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+                                    updated_entity.byte_code_addr(),
+                                ));
+
+                                let byte_code: ByteCode = contract_wasm.into();
+                                self.write(byte_code_key, StoredValue::ByteCode(byte_code));
+                            }
+                        }
+
+                        let entity_key = Key::contract_entity_key(contract_hash);
+                        self.write(entity_key, StoredValue::AddressableEntity(updated_entity));
+
+                        let access_key_value = CLValue::from_t(access_uref)
+                            .map_err(Self::Error::CLValue)?;
+
+                        self.write(contract_package_key, StoredValue::CLValue(access_key_value));
+                    }
+                    None => {
+                        return Err(Self::Error::ValueNotFound(format!("{}", contract_package_key)));
+                    }
+                }
+            }
+            Some(StoredValue::CLValue(_)) => return Ok(()),
+            Some(_) => return Err(Self::Error::UnexpectedStoredValueVariant),
+            None => return Err(Self::Error::MissingSystemContractHash(format!("{}", contract_hash))),
+        }
+
+
+        Ok(())
+    }
+
 
     fn system_entity(
         &mut self,
@@ -603,7 +687,7 @@ where
                         None => {
                             return Err(TrackingCopyError::MissingSystemContractHash(
                                 HANDLE_PAYMENT.to_string(),
-                            ))
+                            ));
                         }
                     };
                     EntityAddr::new_system(hash.value())

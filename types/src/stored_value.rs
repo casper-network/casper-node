@@ -454,7 +454,7 @@ impl TryFrom<StoredValue> for CLValue {
             StoredValue::CLValue(cl_value) => Ok(cl_value),
             StoredValue::Package(contract_package) => Ok(CLValue::from_t(contract_package)
                 .map_err(|_error| TypeMismatch::new("ContractPackage".to_string(), type_name))?),
-            _ => Err(TypeMismatch::new("CLValue".to_string(), type_name)),
+            _ => Err(TypeMismatch::new("StoredValue".to_string(), type_name)),
         }
     }
 }

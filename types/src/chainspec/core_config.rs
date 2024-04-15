@@ -76,6 +76,16 @@ pub struct CoreConfig {
     /// `start_protocol_version_with_strict_finality_signatures_required`.
     pub legacy_required_finality: LegacyRequiredFinality,
 
+    /// If true, the protocol upgrade will migrate ALL userland accounts to addressable entity.
+    /// If false, userland accounts will instead be left as is and will be lazily migrated
+    ///    on a per-account basis if / when that account is used during transaction execution.
+    pub migrate_legacy_accounts: bool,
+
+    /// If true, the protocol upgrade will migrate ALL userland contracts to addressable entity.
+    /// If false, userland contracts will instead be left as is and will be lazily migrated
+    ///    on a per-contract basis if / when that contract is used during transaction execution.
+    pub migrate_legacy_contracts: bool,
+
     /// Number of eras before an auction actually defines the set of validators.
     /// If you bond with a sufficient bid in era N, you will be a validator in era N +
     /// auction_delay + 1
@@ -235,6 +245,9 @@ impl CoreConfig {
 
         let balance_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
 
+        let migrate_legacy_accounts = false;
+        let migrate_legacy_contracts = false;
+
         CoreConfig {
             era_duration,
             minimum_era_height,
@@ -268,6 +281,8 @@ impl CoreConfig {
             allow_reservations,
             fee_handling,
             balance_hold_interval,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
         }
     }
 }
@@ -308,6 +323,8 @@ impl Default for CoreConfig {
             fee_handling: DEFAULT_FEE_HANDLING,
             allow_reservations: DEFAULT_ALLOW_RESERVATIONS,
             balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
+            migrate_legacy_accounts: false,
+            migrate_legacy_contracts: false,
         }
     }
 }
@@ -350,6 +367,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.fee_handling.to_bytes()?);
         buffer.extend(self.allow_reservations.to_bytes()?);
         buffer.extend(self.balance_hold_interval.to_bytes()?);
+        buffer.extend(self.migrate_legacy_accounts.to_bytes()?);
+        buffer.extend(self.migrate_legacy_contracts.to_bytes()?);
         Ok(buffer)
     }
 
@@ -388,6 +407,8 @@ impl ToBytes for CoreConfig {
             + self.fee_handling.serialized_length()
             + self.allow_reservations.serialized_length()
             + self.balance_hold_interval.serialized_length()
+            + self.migrate_legacy_accounts.serialized_length()
+            + self.migrate_legacy_contracts.serialized_length()
     }
 }
 
@@ -426,6 +447,8 @@ impl FromBytes for CoreConfig {
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_reservations, remainder) = FromBytes::from_bytes(remainder)?;
         let (balance_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (migrate_legacy_accounts, remainder) = FromBytes::from_bytes(remainder)?;
+        let (migrate_legacy_contracts, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -459,6 +482,8 @@ impl FromBytes for CoreConfig {
             fee_handling,
             allow_reservations,
             balance_hold_interval,
+            migrate_legacy_accounts,
+            migrate_legacy_contracts,
         };
         Ok((config, remainder))
     }

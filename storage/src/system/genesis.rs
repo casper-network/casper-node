@@ -132,8 +132,8 @@ impl fmt::Display for GenesisError {
 }
 
 pub struct GenesisInstaller<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     protocol_version: ProtocolVersion,
     config: GenesisConfig,
@@ -142,8 +142,8 @@ where
 }
 
 impl<S> GenesisInstaller<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     pub fn new(
         genesis_config_hash: Digest,
@@ -306,20 +306,20 @@ where
                 validators: genesis_validators.len(),
                 validator_slots: self.config.validator_slots(),
             }
-            .into());
+                .into());
         }
 
         let genesis_delegators: Vec<_> = self.config.get_bonded_delegators().collect();
 
         // Make sure all delegators have corresponding genesis validator entries
         for (validator_public_key, delegator_public_key, _, delegated_amount) in
-            genesis_delegators.iter()
+        genesis_delegators.iter()
         {
             if delegated_amount.is_zero() {
                 return Err(GenesisError::InvalidDelegatedAmount {
                     public_key: (*delegator_public_key).clone(),
                 }
-                .into());
+                    .into());
             }
 
             let orphan_condition = genesis_validators.iter().find(|genesis_validator| {
@@ -331,7 +331,7 @@ where
                     validator_public_key: (*validator_public_key).clone(),
                     delegator_public_key: (*delegator_public_key).clone(),
                 }
-                .into());
+                    .into());
             }
         }
 
@@ -355,7 +355,7 @@ where
                         public_key,
                         delegation_rate,
                     }
-                    .into());
+                        .into());
                 }
                 debug_assert_ne!(public_key, PublicKey::System);
 
@@ -401,7 +401,7 @@ where
                                     validator_public_key: (*validator_public_key).clone(),
                                     delegator_public_key: (*delegator_public_key).clone(),
                                 }
-                                .into());
+                                    .into());
                             }
                         }
                     }
@@ -570,9 +570,9 @@ where
 
         if administrative_accounts.peek().is_some()
             && administrative_accounts
-                .duplicates_by(|admin| admin.public_key())
-                .next()
-                .is_some()
+            .duplicates_by(|admin| admin.public_key())
+            .next()
+            .is_some()
         {
             // Ensure no duplicate administrator accounts are specified as this might raise errors
             // during genesis process when administrator accounts are added to associated keys.
@@ -722,15 +722,9 @@ where
             entity_kind,
         );
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
         // Genesis contracts can be versioned contracts.
         let contract_package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::new(),
                 BTreeSet::default(),
                 Groups::default(),

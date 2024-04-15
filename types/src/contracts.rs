@@ -461,7 +461,7 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -849,7 +849,6 @@ impl From<ContractPackage> for Package {
         };
 
         Package::new(
-            value.access_key,
             versions.into(),
             disabled_versions,
             value.groups,
@@ -883,13 +882,13 @@ pub struct Contract {
 }
 
 impl From<Contract>
-    for (
-        ContractPackageHash,
-        ContractWasmHash,
-        NamedKeys,
-        EntryPoints,
-        ProtocolVersion,
-    )
+for (
+    ContractPackageHash,
+    ContractWasmHash,
+    NamedKeys,
+    EntryPoints,
+    ProtocolVersion,
+)
 {
     fn from(contract: Contract) -> Self {
         (
@@ -1063,7 +1062,6 @@ pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{AccessRights, EntryPointAccess, EntryPointType, Group, Parameter, URef};
     use alloc::borrow::ToOwned;

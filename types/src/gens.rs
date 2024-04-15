@@ -54,7 +54,7 @@ use crate::{
     U256, U512,
 };
 
-pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
+pub fn u8_slice_32() -> impl Strategy<Value=[u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
         let mut res = [0u8; 32];
         res.clone_from_slice(b.as_slice());
@@ -62,7 +62,7 @@ pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     })
 }
 
-pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
+pub fn u2_slice_32() -> impl Strategy<Value=[u8; 32]> {
     array::uniform32(any::<u8>()).prop_map(|mut arr| {
         for byte in arr.iter_mut() {
             *byte &= 0b11;
@@ -71,11 +71,11 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
     })
 }
 
-pub(crate) fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
+pub(crate) fn named_keys_arb(depth: usize) -> impl Strategy<Value=NamedKeys> {
     collection::btree_map("\\PC*", key_arb(), depth).prop_map(NamedKeys::from)
 }
 
-pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
+pub fn access_rights_arb() -> impl Strategy<Value=AccessRights> {
     prop_oneof![
         Just(AccessRights::NONE),
         Just(AccessRights::READ),
@@ -88,7 +88,7 @@ pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
     ]
 }
 
-pub fn phase_arb() -> impl Strategy<Value = Phase> {
+pub fn phase_arb() -> impl Strategy<Value=Phase> {
     prop_oneof![
         Just(Phase::Payment),
         Just(Phase::Session),
@@ -96,16 +96,16 @@ pub fn phase_arb() -> impl Strategy<Value = Phase> {
     ]
 }
 
-pub fn uref_arb() -> impl Strategy<Value = URef> {
+pub fn uref_arb() -> impl Strategy<Value=URef> {
     (array::uniform32(bits::u8::ANY), access_rights_arb())
         .prop_map(|(id, access_rights)| URef::new(id, access_rights))
 }
 
-pub fn era_id_arb() -> impl Strategy<Value = EraId> {
+pub fn era_id_arb() -> impl Strategy<Value=EraId> {
     any::<u64>().prop_map(EraId::from)
 }
 
-pub fn key_arb() -> impl Strategy<Value = Key> {
+pub fn key_arb() -> impl Strategy<Value=Key> {
     prop_oneof![
         account_hash_arb().prop_map(Key::Account),
         u8_slice_32().prop_map(Key::Hash),
@@ -123,7 +123,7 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
     ]
 }
 
-pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
+pub fn colliding_key_arb() -> impl Strategy<Value=Key> {
     prop_oneof![
         u2_slice_32().prop_map(|bytes| Key::Account(AccountHash::new(bytes))),
         u2_slice_32().prop_map(Key::Hash),
@@ -133,52 +133,52 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
     ]
 }
 
-pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
+pub fn account_hash_arb() -> impl Strategy<Value=AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
 }
 
-pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {
+pub fn bid_addr_validator_arb() -> impl Strategy<Value=BidAddr> {
     u8_slice_32().prop_map(BidAddr::new_validator_addr)
 }
 
-pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
+pub fn bid_addr_delegator_arb() -> impl Strategy<Value=BidAddr> {
     let x = u8_slice_32();
     let y = u8_slice_32();
     (x, y).prop_map(BidAddr::new_delegator_addr)
 }
 
-pub fn balance_hold_addr_arb() -> impl Strategy<Value = BalanceHoldAddr> {
+pub fn balance_hold_addr_arb() -> impl Strategy<Value=BalanceHoldAddr> {
     let x = uref_arb().prop_map(|uref| uref.addr());
     let y = any::<u64>();
     (x, y).prop_map(|(x, y)| BalanceHoldAddr::new_gas(x, BlockTime::new(y)))
 }
 
-pub fn weight_arb() -> impl Strategy<Value = Weight> {
+pub fn weight_arb() -> impl Strategy<Value=Weight> {
     any::<u8>().prop_map(Weight::new)
 }
 
-pub fn account_weight_arb() -> impl Strategy<Value = account::Weight> {
+pub fn account_weight_arb() -> impl Strategy<Value=account::Weight> {
     any::<u8>().prop_map(account::Weight::new)
 }
 
-pub fn sem_ver_arb() -> impl Strategy<Value = SemVer> {
+pub fn sem_ver_arb() -> impl Strategy<Value=SemVer> {
     (any::<u32>(), any::<u32>(), any::<u32>())
         .prop_map(|(major, minor, patch)| SemVer::new(major, minor, patch))
 }
 
-pub fn protocol_version_arb() -> impl Strategy<Value = ProtocolVersion> {
+pub fn protocol_version_arb() -> impl Strategy<Value=ProtocolVersion> {
     sem_ver_arb().prop_map(ProtocolVersion::new)
 }
 
-pub fn u128_arb() -> impl Strategy<Value = U128> {
+pub fn u128_arb() -> impl Strategy<Value=U128> {
     collection::vec(any::<u8>(), 0..16).prop_map(|b| U128::from_little_endian(b.as_slice()))
 }
 
-pub fn u256_arb() -> impl Strategy<Value = U256> {
+pub fn u256_arb() -> impl Strategy<Value=U256> {
     collection::vec(any::<u8>(), 0..32).prop_map(|b| U256::from_little_endian(b.as_slice()))
 }
 
-pub fn u512_arb() -> impl Strategy<Value = U512> {
+pub fn u512_arb() -> impl Strategy<Value=U512> {
     prop_oneof![
         1 => Just(U512::zero()),
         8 => collection::vec(any::<u8>(), 0..64).prop_map(|b| U512::from_little_endian(b.as_slice())),
@@ -186,7 +186,7 @@ pub fn u512_arb() -> impl Strategy<Value = U512> {
     ]
 }
 
-pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
+pub fn cl_simple_type_arb() -> impl Strategy<Value=CLType> {
     prop_oneof![
         Just(CLType::Bool),
         Just(CLType::I32),
@@ -204,7 +204,7 @@ pub fn cl_simple_type_arb() -> impl Strategy<Value = CLType> {
     ]
 }
 
-pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
+pub fn cl_type_arb() -> impl Strategy<Value=CLType> {
     cl_simple_type_arb().prop_recursive(4, 16, 8, |element| {
         prop_oneof![
             // We want to produce basic types too
@@ -243,7 +243,7 @@ pub fn cl_type_arb() -> impl Strategy<Value = CLType> {
     })
 }
 
-pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
+pub fn cl_value_arb() -> impl Strategy<Value=CLValue> {
     // If compiler brings you here it most probably means you've added a variant to `CLType` enum
     // but forgot to add generator for it.
     let stub: Option<CLType> = None;
@@ -306,19 +306,19 @@ pub fn cl_value_arb() -> impl Strategy<Value = CLValue> {
     ]
 }
 
-pub fn result_arb() -> impl Strategy<Value = Result<u32, u32>> {
+pub fn result_arb() -> impl Strategy<Value=Result<u32, u32>> {
     result::maybe_ok(any::<u32>(), any::<u32>())
 }
 
-pub fn named_args_arb() -> impl Strategy<Value = NamedArg> {
+pub fn named_args_arb() -> impl Strategy<Value=NamedArg> {
     (".*", cl_value_arb()).prop_map(|(name, value)| NamedArg::new(name, value))
 }
 
-pub fn group_arb() -> impl Strategy<Value = Group> {
+pub fn group_arb() -> impl Strategy<Value=Group> {
     ".*".prop_map(Group::new)
 }
 
-pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
+pub fn entry_point_access_arb() -> impl Strategy<Value=EntryPointAccess> {
     prop_oneof![
         Just(EntryPointAccess::Public),
         collection::vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
@@ -326,7 +326,7 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
     ]
 }
 
-pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
+pub fn entry_point_type_arb() -> impl Strategy<Value=EntryPointType> {
     prop_oneof![
         Just(EntryPointType::Caller),
         Just(EntryPointType::Called),
@@ -334,15 +334,15 @@ pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     ]
 }
 
-pub fn parameter_arb() -> impl Strategy<Value = Parameter> {
+pub fn parameter_arb() -> impl Strategy<Value=Parameter> {
     (".*", cl_type_arb()).prop_map(|(name, cl_type)| Parameter::new(name, cl_type))
 }
 
-pub fn parameters_arb() -> impl Strategy<Value = Parameters> {
+pub fn parameters_arb() -> impl Strategy<Value=Parameters> {
     collection::vec(parameter_arb(), 0..10)
 }
 
-pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
+pub fn entry_point_arb() -> impl Strategy<Value=EntryPoint> {
     (
         ".*",
         parameters_arb(),
@@ -357,11 +357,11 @@ pub fn entry_point_arb() -> impl Strategy<Value = EntryPoint> {
         )
 }
 
-pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
+pub fn entry_points_arb() -> impl Strategy<Value=EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
-pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
+pub fn message_topics_arb() -> impl Strategy<Value=MessageTopics> {
     collection::vec(any::<String>(), 1..100).prop_map(|topic_names| {
         MessageTopics::from(
             topic_names
@@ -375,7 +375,7 @@ pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
     })
 }
 
-pub fn account_arb() -> impl Strategy<Value = Account> {
+pub fn account_arb() -> impl Strategy<Value=Account> {
     (
         account_hash_arb(),
         named_keys_arb(20),
@@ -396,7 +396,7 @@ pub fn account_arb() -> impl Strategy<Value = Account> {
         )
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+pub fn contract_package_arb() -> impl Strategy<Value=ContractPackage> {
     (
         uref_arb(),
         contract_versions_arb(),
@@ -414,7 +414,7 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
         })
 }
 
-pub fn contract_arb() -> impl Strategy<Value = Contract> {
+pub fn contract_arb() -> impl Strategy<Value=Contract> {
     (
         protocol_version_arb(),
         entry_points_arb(),
@@ -424,12 +424,12 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
     )
         .prop_map(
             |(
-                protocol_version,
-                entry_points,
-                contract_package_hash_arb,
-                contract_wasm_hash,
-                named_keys,
-            )| {
+                 protocol_version,
+                 entry_points,
+                 contract_package_hash_arb,
+                 contract_wasm_hash,
+                 named_keys,
+             )| {
                 Contract::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
@@ -441,7 +441,7 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
         )
 }
 
-pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
+pub fn addressable_entity_arb() -> impl Strategy<Value=AddressableEntity> {
     (
         protocol_version_arb(),
         entry_points_arb(),
@@ -454,15 +454,15 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
     )
         .prop_map(
             |(
-                protocol_version,
-                entry_points,
-                contract_package_hash_arb,
-                contract_wasm_hash,
-                main_purse,
-                associated_keys,
-                action_thresholds,
-                message_topics,
-            )| {
+                 protocol_version,
+                 entry_points,
+                 contract_package_hash_arb,
+                 contract_wasm_hash,
+                 main_purse,
+                 associated_keys,
+                 action_thresholds,
+                 message_topics,
+             )| {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
@@ -478,22 +478,22 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
+pub fn byte_code_arb() -> impl Strategy<Value=ByteCode> {
     collection::vec(any::<u8>(), 1..1000)
         .prop_map(|byte_code| ByteCode::new(ByteCodeKind::V1CasperWasm, byte_code))
 }
 
-pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
+pub fn contract_version_key_arb() -> impl Strategy<Value=ContractVersionKey> {
     (1..32u32, 1..1000u32)
         .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
 }
 
-pub fn entity_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
+pub fn entity_version_key_arb() -> impl Strategy<Value=EntityVersionKey> {
     (1..32u32, 1..1000u32)
         .prop_map(|(major, contract_ver)| EntityVersionKey::new(major, contract_ver))
 }
 
-pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
+pub fn contract_versions_arb() -> impl Strategy<Value=ContractVersions> {
     collection::btree_map(
         contract_version_key_arb(),
         u8_slice_32().prop_map(ContractHash::new),
@@ -501,38 +501,36 @@ pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
     )
 }
 
-pub fn entity_versions_arb() -> impl Strategy<Value = EntityVersions> {
+pub fn entity_versions_arb() -> impl Strategy<Value=EntityVersions> {
     collection::btree_map(
         entity_version_key_arb(),
         u8_slice_32().prop_map(AddressableEntityHash::new),
         1..5,
     )
-    .prop_map(EntityVersions::from)
+        .prop_map(EntityVersions::from)
 }
 
-pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<EntityVersionKey>> {
+pub fn disabled_versions_arb() -> impl Strategy<Value=BTreeSet<EntityVersionKey>> {
     collection::btree_set(entity_version_key_arb(), 0..5)
 }
 
-pub fn disabled_contract_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
+pub fn disabled_contract_versions_arb() -> impl Strategy<Value=BTreeSet<ContractVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
-pub fn groups_arb() -> impl Strategy<Value = Groups> {
+pub fn groups_arb() -> impl Strategy<Value=Groups> {
     collection::btree_map(group_arb(), collection::btree_set(uref_arb(), 1..10), 0..5)
         .prop_map(Groups::from)
 }
 
-pub fn package_arb() -> impl Strategy<Value = Package> {
+pub fn package_arb() -> impl Strategy<Value=Package> {
     (
-        uref_arb(),
         entity_versions_arb(),
         disabled_versions_arb(),
         groups_arb(),
     )
-        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+        .prop_map(|(versions, disabled_versions, groups)| {
             Package::new(
-                access_key,
                 versions,
                 disabled_versions,
                 groups,
@@ -541,7 +539,7 @@ pub fn package_arb() -> impl Strategy<Value = Package> {
         })
 }
 
-pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
+pub(crate) fn delegator_arb() -> impl Strategy<Value=Delegator> {
     (
         public_key_arb_no_system(),
         u512_arb(),
@@ -555,13 +553,13 @@ pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
         )
 }
 
-fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
+fn delegation_rate_arb() -> impl Strategy<Value=DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
 }
 
 pub(crate) fn unified_bid_arb(
     delegations_len: impl Into<SizeRange>,
-) -> impl Strategy<Value = BidKind> {
+) -> impl Strategy<Value=BidKind> {
     (
         public_key_arb_no_system(),
         uref_arb(),
@@ -572,13 +570,13 @@ pub(crate) fn unified_bid_arb(
     )
         .prop_map(
             |(
-                validator_public_key,
-                bonding_purse,
-                staked_amount,
-                delegation_rate,
-                is_locked,
-                new_delegators,
-            )| {
+                 validator_public_key,
+                 bonding_purse,
+                 staked_amount,
+                 delegation_rate,
+                 is_locked,
+                 new_delegators,
+             )| {
                 let mut bid = if is_locked {
                     Bid::locked(
                         validator_public_key,
@@ -606,11 +604,11 @@ pub(crate) fn unified_bid_arb(
         )
 }
 
-pub(crate) fn delegator_bid_arb() -> impl Strategy<Value = BidKind> {
+pub(crate) fn delegator_bid_arb() -> impl Strategy<Value=BidKind> {
     (delegator_arb()).prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
 }
 
-pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
+pub(crate) fn validator_bid_arb() -> impl Strategy<Value=BidKind> {
     (
         public_key_arb_no_system(),
         uref_arb(),
@@ -641,7 +639,7 @@ pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
         )
 }
 
-fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
+fn withdraw_arb() -> impl Strategy<Value=WithdrawPurse> {
     (
         uref_arb(),
         public_key_arb_no_system(),
@@ -654,11 +652,11 @@ fn withdraw_arb() -> impl Strategy<Value = WithdrawPurse> {
         })
 }
 
-fn withdraws_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<WithdrawPurse>> {
+fn withdraws_arb(size: impl Into<SizeRange>) -> impl Strategy<Value=Vec<WithdrawPurse>> {
     collection::vec(withdraw_arb(), size)
 }
 
-fn unbonding_arb() -> impl Strategy<Value = UnbondingPurse> {
+fn unbonding_arb() -> impl Strategy<Value=UnbondingPurse> {
     (
         uref_arb(),
         public_key_arb_no_system(),
@@ -669,13 +667,13 @@ fn unbonding_arb() -> impl Strategy<Value = UnbondingPurse> {
     )
         .prop_map(
             |(
-                bonding_purse,
-                validator_public_key,
-                unbonder_public_key,
-                era,
-                amount,
-                new_validator,
-            )| {
+                 bonding_purse,
+                 validator_public_key,
+                 unbonder_public_key,
+                 era,
+                 amount,
+                 new_validator,
+             )| {
                 UnbondingPurse::new(
                     bonding_purse,
                     validator_public_key,
@@ -688,22 +686,22 @@ fn unbonding_arb() -> impl Strategy<Value = UnbondingPurse> {
         )
 }
 
-fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<UnbondingPurse>> {
+fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value=Vec<UnbondingPurse>> {
     collection::vec(unbonding_arb(), size)
 }
 
-fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
+fn message_topic_summary_arb() -> impl Strategy<Value=MessageTopicSummary> {
     (any::<u32>(), any::<u64>()).prop_map(|(message_count, blocktime)| MessageTopicSummary {
         message_count,
         blocktime: BlockTime::new(blocktime),
     })
 }
 
-fn message_summary_arb() -> impl Strategy<Value = MessageChecksum> {
+fn message_summary_arb() -> impl Strategy<Value=MessageChecksum> {
     u8_slice_32().prop_map(MessageChecksum)
 }
 
-pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
+pub fn named_key_value_arb() -> impl Strategy<Value=NamedKeyValue> {
     (key_arb(), "test").prop_map(|(key, string)| {
         let cl_key = CLValue::from_t(key).unwrap();
         let cl_string = CLValue::from_t(string).unwrap();
@@ -711,7 +709,7 @@ pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
     })
 }
 
-pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
+pub fn stored_value_arb() -> impl Strategy<Value=StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
         account_arb().prop_map(StoredValue::Account),
@@ -732,7 +730,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         message_summary_arb().prop_map(StoredValue::Message),
         named_key_value_arb().prop_map(StoredValue::NamedKey),
     ]
-    .prop_map(|stored_value|
+        .prop_map(|stored_value|
             // The following match statement is here only to make sure
             // we don't forget to update the generator when a new variant is added.
             match stored_value {
@@ -757,18 +755,18 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             })
 }
 
-pub fn blake2b_hash_arb() -> impl Strategy<Value = Digest> {
+pub fn blake2b_hash_arb() -> impl Strategy<Value=Digest> {
     vec(any::<u8>(), 0..1000).prop_map(Digest::hash)
 }
 
-pub fn trie_pointer_arb() -> impl Strategy<Value = Pointer> {
+pub fn trie_pointer_arb() -> impl Strategy<Value=Pointer> {
     prop_oneof![
         blake2b_hash_arb().prop_map(Pointer::LeafPointer),
         blake2b_hash_arb().prop_map(Pointer::NodePointer)
     ]
 }
 
-pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep> {
+pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value=TrieMerkleProofStep> {
     const POINTERS_SIZE: usize = 32;
     const AFFIX_SIZE: usize = 6;
 
@@ -791,7 +789,7 @@ pub fn trie_merkle_proof_step_arb() -> impl Strategy<Value = TrieMerkleProofStep
     ]
 }
 
-pub fn trie_merkle_proof_arb() -> impl Strategy<Value = TrieMerkleProof<Key, StoredValue>> {
+pub fn trie_merkle_proof_arb() -> impl Strategy<Value=TrieMerkleProof<Key, StoredValue>> {
     const STEPS_SIZE: usize = 6;
 
     (

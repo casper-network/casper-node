@@ -88,8 +88,8 @@ pub struct Runtime<'a, R> {
 }
 
 impl<'a, R> Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -179,8 +179,8 @@ where
     /// misleading gas charges if one system contract calls other system contract (e.g. auction
     /// contract calls into mint to create new purses).
     pub(crate) fn charge_system_contract_call<T>(&mut self, amount: T) -> Result<(), ExecError>
-    where
-        T: Into<Gas>,
+        where
+            T: Into<Gas>,
     {
         if self.is_system_immediate_caller()? || self.host_function_flag.is_in_host_function_scope()
         {
@@ -541,15 +541,15 @@ where
                 ExecError::GasLimit
             }
             ApiError::AuctionError(auction_error)
-                if auction_error == auction::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if auction_error == auction::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             ApiError::HandlePayment(handle_payment_error)
-                if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
-            {
-                ExecError::GasLimit
-            }
+            if handle_payment_error == handle_payment::Error::GasLimit as u8 =>
+                {
+                    ExecError::GasLimit
+                }
             api_error => ExecError::Revert(api_error),
         }
     }
@@ -1031,7 +1031,7 @@ where
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
         #[cfg(feature = "test-support")]
-        let max_stack_height = wasm_config.max_stack_height;
+            let max_stack_height = wasm_config.max_stack_height;
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -1642,7 +1642,6 @@ where
     ) -> Result<(Package, URef), ExecError> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
-            access_key,
             EntityVersions::new(),
             BTreeSet::new(),
             Groups::new(),
@@ -1745,6 +1744,9 @@ where
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, ExecError> {
         if !self.context.allow_casper_add_contract_version() {
+            // NOTE: This is not a permission check on the caller,
+            // it is enforcing the rule that only legacy standard deploys (which are grandfathered)
+            // and install / upgrade transactions are allowed to call this method
             return Ok(Err(ApiError::NotAllowedToAddContractVersion));
         }
 
@@ -1759,6 +1761,18 @@ where
             return Err(ExecError::LockedEntity(package_hash));
         }
 
+        // WHAT HAPPENED TO THE PERMISSION CHECK TO MAKE SURE THE CALLER CAN UPGRADE THIS CONTRACT?
+        //
+        // STEP 1: LOAD THE CONTRACT AND CHECK IF CALLER IS IN ASSOCIATED KEYS WITH ENOUGH WEIGHT
+        //     TO UPGRADE (COMPARE TO THE ACTION THRESHOLD FOR UPGRADE ACTION).
+        // STEP 2: IF CALLER IS NOT IN CONTRACTS ASSOCIATED KEYS
+        //    CHECK FOR LEGACY UREFADDR UNDER KEY:HASH(PACKAGEADDR)
+        //    IF FOUND,
+        //      call validate_uref(that uref)
+        //    IF VALID,
+        //      create the new contract version carrying forward previous state including associated keys
+        //      BUT add the caller to the associated keys with weight == to the action threshold for upgrade
+        // ELSE, error
         let (
             main_purse,
             previous_named_keys,
@@ -1794,9 +1808,6 @@ where
             }
         }
 
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
-        named_keys.append(previous_named_keys);
-
         let byte_code_hash = self.context.new_hash_address()?;
 
         let entity_hash = self.context.new_hash_address()?;
@@ -1820,8 +1831,7 @@ where
 
         let entity_key = Key::AddressableEntity(entity_addr);
 
-        // Is this still valid??
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+        named_keys.append(previous_named_keys);
         self.context.write_named_keys(entity_addr, named_keys)?;
 
         let entity = AddressableEntity::new(
@@ -1898,7 +1908,19 @@ where
                 // Check if the calling entity must be grandfathered into the new
                 // addressable entity format
                 let account_hash = self.context.get_caller();
-                let has_access = self.context.validate_uref(&package.access_key()).is_ok();
+
+                let access_key = match self.context.read_gs(&Key::Hash(previous_entity.package_hash().value()))?
+                    .and_then(|stored_value| stored_value.into_cl_value()) {
+                    None => {
+                        return Err(ExecError::UnexpectedStoredValueVariant);
+                    }
+                    Some(cl_value) => {
+                        let ret = cl_value.to_owned();
+                        ret.into_t::<URef>().map_err(ExecError::CLValue)
+                    }
+                }?;
+
+                let has_access = self.context.validate_uref(&access_key).is_ok();
 
                 if has_access && !associated_keys.contains_key(&account_hash) {
                     previous_entity.add_associated_key(
@@ -2427,9 +2449,9 @@ where
         if !allow_unrestricted_transfers
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self
-                .context
-                .engine_config()
-                .is_administrator(&self.context.get_caller())
+            .context
+            .engine_config()
+            .is_administrator(&self.context.get_caller())
             && !self.context.engine_config().is_administrator(&target)
         {
             return Err(ExecError::DisabledUnrestrictedTransfers);
@@ -2440,8 +2462,8 @@ where
         // as the source purse has enough funds to cover the transfer.
         if amount
             > self
-                .available_balance(source, holds_epoch)?
-                .unwrap_or_default()
+            .available_balance(source, holds_epoch)?
+            .unwrap_or_default()
         {
             return Ok(Err(mint::Error::InsufficientFunds.into()));
         }
@@ -2490,10 +2512,8 @@ where
                     EntityKind::Account(target),
                 );
 
-                let access_key = self.context.new_unit_uref()?;
                 let package = {
                     let mut package = Package::new(
-                        access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
@@ -3102,8 +3122,8 @@ where
         host_function: &HostFunction<T>,
         weights: T,
     ) -> Result<(), Trap>
-    where
-        T: AsRef<[HostFunctionCost]> + Copy,
+        where
+            T: AsRef<[HostFunctionCost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
@@ -3337,70 +3357,9 @@ where
         &mut self,
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, ExecError> {
-        let maybe_legacy_contract = self.context.read_gs(&Key::Hash(contract_hash.value()))?;
-        match maybe_legacy_contract {
-            Some(StoredValue::Contract(contract)) => {
-                let contract_package_key = Key::Hash(contract.contract_package_hash().value());
-
-                let legacy_contract_package: ContractPackage =
-                    self.context.read_gs_typed(&contract_package_key)?;
-
-                let package: Package = legacy_contract_package.into();
-
-                let access_uref = &package.access_key();
-
-                let package_key = Key::Package(contract.contract_package_hash().value());
-
-                self.context
-                    .metered_write_gs_unsafe(package_key, StoredValue::Package(package))?;
-
-                let entity_main_purse = self.create_purse()?;
-
-                let associated_keys = if self.context.validate_uref(access_uref).is_ok() {
-                    AssociatedKeys::new(self.context.get_caller(), Weight::new(1))
-                } else {
-                    AssociatedKeys::default()
-                };
-
-                let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
-
-                self.context
-                    .write_named_keys(contract_addr, contract.named_keys().clone())?;
-
-                let updated_entity = AddressableEntity::new(
-                    PackageHash::new(contract.contract_package_hash().value()),
-                    ByteCodeHash::new(contract.contract_wasm_hash().value()),
-                    contract.entry_points().clone(),
-                    self.context.protocol_version(),
-                    entity_main_purse,
-                    associated_keys,
-                    ActionThresholds::default(),
-                    MessageTopics::default(),
-                    EntityKind::SmartContract,
-                );
-
-                let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(
-                    contract.contract_wasm_hash().value(),
-                ))?;
-
-                let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
-                    updated_entity.byte_code_addr(),
-                ));
-
-                let byte_code: ByteCode = previous_wasm.into();
-
-                self.context
-                    .metered_write_gs_unsafe(byte_code_key, StoredValue::ByteCode(byte_code))?;
-
-                let entity_key = Key::contract_entity_key(contract_hash);
-
-                self.context
-                    .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
-                Ok(updated_entity)
-            }
-            Some(_) => Err(ExecError::UnexpectedStoredValueVariant),
-            None => Err(ExecError::InvalidEntity(contract_hash)),
-        }
+        let protocol_version = self.context.protocol_version();
+        self.context.migrate_contract(contract_hash, protocol_version)?;
+        self.context.read_gs_typed(&Key::contract_entity_key(contract_hash))
     }
 
     fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, ExecError> {
@@ -3447,7 +3406,7 @@ where
                 let (prev_block_time, prev_count): (BlockTime, u64) = CLValue::into_t(
                     CLValue::try_from(stored_value).map_err(ExecError::TypeMismatch)?,
                 )
-                .map_err(ExecError::CLValue)?;
+                    .map_err(ExecError::CLValue)?;
                 if prev_block_time == current_blocktime {
                     prev_count
                 } else {

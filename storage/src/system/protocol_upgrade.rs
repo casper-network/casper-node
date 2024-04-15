@@ -27,6 +27,7 @@ use casper_types::{
     U512,
 };
 
+use crate::tracking_copy::TrackingCopyEntityExt;
 use crate::{
     global_state::state::StateProvider,
     tracking_copy::{TrackingCopy, TrackingCopyExt},
@@ -131,16 +132,16 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
 impl<S> ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -167,6 +168,8 @@ where
         self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
         self.handle_new_unbonding_delay(system_entity_addresses.auction())?;
         self.handle_new_round_seigniorage_rate(system_entity_addresses.mint())?;
+        self.handle_legacy_accounts_migration()?;
+        self.handle_legacy_contracts_migration()?;
         self.handle_bids_migration()?;
         self.handle_global_state_updates();
         self.handle_era_info_migration()
@@ -514,11 +517,8 @@ where
             EntityKind::Account(account_hash),
         );
 
-        let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
-
         let package = {
             let mut package = Package::new(
-                access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
@@ -789,6 +789,49 @@ where
         Ok(())
     }
 
+    /// Handle legacy account migration.
+    pub fn handle_legacy_accounts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        debug!("handle accounts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Account) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for existing_key in existing_keys {
+            match existing_key.into_account() {
+                None => {
+                    // should we skip this and keep going or error?
+                    // for now, skipping.
+                    continue;
+                }
+                Some(account_hash) => {
+                    if let Err(tce) = tc.migrate_account(account_hash, protocol_version) {
+                        return Err(ProtocolUpgradeError::TrackingCopy(tce));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Handle legacy contract migration.
+    pub fn handle_legacy_contracts_migration(&self) -> Result<(), ProtocolUpgradeError> {
+        debug!("handle contracts migration");
+        let mut tc = self.tracking_copy.borrow_mut();
+        let existing_keys = match tc.get_keys(&KeyTag::Hash) {
+            Ok(keys) => keys,
+            Err(err) => return Err(ProtocolUpgradeError::TrackingCopy(err)),
+        };
+        let protocol_version = self.config.new_protocol_version();
+        for _existing_key in existing_keys {
+            // if let Err(tce) = tc.migrate_contract(key_or_hashaddr?, protocol_version) {
+            //     return Err(ProtocolUpgradeError::TrackingCopy(tce));
+            // }
+        }
+        Ok(())
+    }
+
     /// Handle bids migration.
     pub fn handle_bids_migration(&self) -> Result<(), ProtocolUpgradeError> {
         debug!("handle bids migration");
@@ -874,7 +917,7 @@ where
                 }
                 None => {
                     // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
+                    // Most likely this chain did not yet run an auction, or recently completed a
                     // prune
                 }
             };
