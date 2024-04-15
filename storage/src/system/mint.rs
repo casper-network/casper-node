@@ -211,12 +211,17 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
-        let source_balance: U512 = match self.available_balance(source, holds_epoch)? {
+        let source_available_balance: U512 = match self.available_balance(source, holds_epoch)? {
             Some(source_balance) => source_balance,
             None => return Err(Error::SourceNotFound),
         };
-        if amount > source_balance {
+        if amount > source_available_balance {
+            // NOTE: we use AVAILABLE balance to check sufficient funds
             return Err(Error::InsufficientFunds);
+        }
+        let source_total_balance = self.total_balance(source)?;
+        if source_available_balance > source_total_balance {
+            panic!("available balance can never be greater than total balance");
         }
         if self
             .available_balance(target, HoldsEpoch::NOT_APPLICABLE)?
@@ -232,7 +237,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             }
             self.sub_approved_spending_limit(amount);
         }
-        self.write_balance(source, source_balance - amount)?;
+        // NOTE: we use TOTAL balance to determine new balance
+        let new_balance = source_total_balance - amount;
+        self.write_balance(source, new_balance)?;
         self.add_balance(target, amount)?;
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())

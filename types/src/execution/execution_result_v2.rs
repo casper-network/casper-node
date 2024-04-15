@@ -99,7 +99,7 @@ impl FromBytes for PaymentInfo {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionResultV2 {
-    /// Who initiatied this transaction.
+    /// Who initiated this transaction.
     pub initiator: InitiatorAddr,
     /// If there is no error message, this execution was processed successfully.
     /// If there is an error message, this execution failed to fully process for the stated reason.

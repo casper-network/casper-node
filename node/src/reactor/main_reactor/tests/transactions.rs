@@ -1,6 +1,8 @@
 use super::*;
+use casper_storage::data_access_layer::{ProofHandling, ProofsResult};
+use casper_types::BlockTime;
 
-use casper_types::execution::ExecutionResultV1;
+use casper_types::{bytesrepr::Bytes, execution::ExecutionResultV1, TransactionSessionKind};
 
 async fn transfer_to_account<A: Into<U512>>(
     fixture: &mut TestFixture,
@@ -20,6 +22,53 @@ async fn transfer_to_account<A: Into<U512>>(
             .with_chain_name(chain_name)
             .build()
             .unwrap(),
+    );
+
+    txn.sign(from);
+    let txn_hash = txn.hash();
+
+    fixture.inject_transaction(txn).await;
+
+    info!("transfer_to_account starting run_until_executed_transaction");
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+
+    info!("transfer_to_account finished run_until_executed_transaction");
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let exec_info = runner
+        .main_reactor()
+        .storage()
+        .read_execution_info(txn_hash)
+        .expect("Expected transaction to be included in a block.");
+
+    (
+        txn_hash,
+        exec_info.block_height,
+        exec_info
+            .execution_result
+            .expect("Exec result should have been stored."),
+    )
+}
+
+async fn send_wasm_transaction(
+    fixture: &mut TestFixture,
+    from: &SecretKey,
+    pricing: PricingMode,
+) -> (TransactionHash, u64, ExecutionResult) {
+    let chain_name = fixture.chainspec.network_config.name.clone();
+
+    let mut txn = Transaction::from(
+        TransactionV1Builder::new_session(
+            TransactionSessionKind::Standard,
+            Bytes::from(vec![1]),
+            "call",
+        )
+        .with_chain_name(chain_name)
+        .with_pricing_mode(pricing)
+        .with_initiator_addr(PublicKey::from(from))
+        .build()
+        .unwrap(),
     );
 
     txn.sign(from);
@@ -88,6 +137,7 @@ fn get_balance(
             protocol_version,
             account_key.clone(),
             balance_handling,
+            ProofHandling::NoProofs,
         ))
 }
 
@@ -196,7 +246,7 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
-        .motes()
+        .available_balance()
         .expect("Expected Alice to have a balance.");
 
     let (_txn_hash, block_height, exec_result) = transfer_to_account(
@@ -240,14 +290,14 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
 
     assert_eq!(
         alice_total_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_total_balance
     );
     assert_eq!(
         alice_available_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_available_balance
@@ -256,7 +306,7 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
     let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
     assert_eq!(
         charlie_balance
-            .motes()
+            .available_balance()
             .expect("Expected Charlie to have a balance")
             .clone(),
         TRANSFER_AMOUNT.into()
@@ -281,7 +331,10 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
         true,
     );
 
-    assert_eq!(alice_available_balance.motes(), alice_total_balance.motes());
+    assert_eq!(
+        alice_available_balance.available_balance(),
+        alice_total_balance.available_balance()
+    );
 }
 
 #[tokio::test]
@@ -390,7 +443,7 @@ async fn failed_transfer_cost_fixed_price_no_fee_no_refund() {
         get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
     assert_eq!(
         charlie_available_balance
-            .motes()
+            .available_balance()
             .expect("Expected Charlie to have a balance")
             .clone(),
         U512::from(transfer_amount) - expected_transfer_cost
@@ -424,7 +477,7 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
-        .motes()
+        .available_balance()
         .expect("Expected Alice to have a balance.");
 
     const TRANSFER_GAS: u64 = 100;
@@ -468,14 +521,14 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
 
     assert_eq!(
         alice_total_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_total_balance
     );
     assert_eq!(
         alice_available_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_available_balance
@@ -484,7 +537,7 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
     let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
     assert_eq!(
         charlie_balance
-            .motes()
+            .available_balance()
             .expect("Expected Charlie to have a balance")
             .clone(),
         TRANSFER_AMOUNT.into()
@@ -509,7 +562,10 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
         true,
     );
 
-    assert_eq!(alice_available_balance.motes(), alice_total_balance.motes());
+    assert_eq!(
+        alice_available_balance.available_balance(),
+        alice_total_balance.available_balance()
+    );
 }
 
 #[tokio::test]
@@ -587,7 +643,7 @@ async fn transfer_fee_is_burnt_no_refund() {
     let initial_total_supply = get_total_supply(&mut fixture, None);
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
-        .motes()
+        .available_balance()
         .expect("expected alice to have a balance");
 
     let transfer_amount = fixture
@@ -652,7 +708,7 @@ async fn transfer_fee_is_burnt_no_refund() {
     let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
     assert_eq!(
         charlie_balance
-            .motes()
+            .available_balance()
             .expect("Expected Charlie to have a balance")
             .clone(),
         transfer_amount.into()
@@ -661,7 +717,7 @@ async fn transfer_fee_is_burnt_no_refund() {
     info!("checking alice available balance");
     assert_eq!(
         alice_available_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_available_balance,
@@ -671,10 +727,176 @@ async fn transfer_fee_is_burnt_no_refund() {
     info!("checking alice total balance");
     assert_eq!(
         alice_total_balance
-            .motes()
+            .available_balance()
             .expect("Expected Alice to have a balance")
             .clone(),
         alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn should_have_hold_if_no_fee() {
+    const MIN_GAS_PRICE: u8 = 2;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
+    info!("run until consensus in era 1");
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    info!("checking bobs initial balance");
+    let bob_initial_balance_result = get_balance(&mut fixture, &bob_public_key, None, false);
+    assert_eq!(
+        bob_initial_balance_result
+            .total_balance()
+            .expect("should have total balance"),
+        bob_initial_balance_result
+            .available_balance()
+            .expect("should have available balance"),
+        "total and available should equal at this point"
+    );
+
+    let transfer_amount = U512::from(
+        fixture
+            .chainspec
+            .transaction_config
+            .native_transfer_minimum_motes,
+    );
+
+    // transfer from bob to charlie
+    let (_txn_hash, _block_height, exec_result) = transfer_to_account(
+        &mut fixture,
+        transfer_amount,
+        &bob_secret_key,
+        PublicKey::from(&*charlie_secret_key),
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        None,
+    )
+    .await;
+
+    assert!(exec_result_is_success(&exec_result), "{:?}", exec_result); // transaction should have succeeded.
+
+    let charlie_initial_balance_result =
+        get_balance(&mut fixture, &charlie_public_key, None, false);
+    assert_eq!(
+        *charlie_initial_balance_result
+            .total_balance()
+            .expect("should have charlie balance"),
+        transfer_amount,
+        "charlie's initial balance should equal transfer amount"
+    );
+    let bob_available_balance_result = get_balance(&mut fixture, &bob_public_key, None, false);
+
+    assert_ne!(
+        bob_available_balance_result
+            .total_balance()
+            .expect("should have total balance"),
+        bob_available_balance_result
+            .available_balance()
+            .expect("should have available balance"),
+        "total and available should NOT be equal at this point"
+    );
+
+    let chainspec_cost = fixture.chainspec.system_costs_config.mint_costs().transfer;
+    let gas_limit = Gas::new(chainspec_cost);
+    let gas_cost = Motes::from_gas(gas_limit, MIN_GAS_PRICE)
+        .expect("cost")
+        .value();
+
+    let initial_total_balance = *bob_initial_balance_result
+        .total_balance()
+        .expect("initial total");
+    let adjusted_total_balance = *bob_available_balance_result
+        .total_balance()
+        .expect("bob total bal");
+
+    assert_eq!(
+        initial_total_balance,
+        adjusted_total_balance + transfer_amount,
+        "total balance should be original total balance - transferred amount"
+    );
+
+    let initial_available_balance = *bob_initial_balance_result
+        .available_balance()
+        .expect("initial avail");
+    let adjusted_available_balance = *bob_available_balance_result
+        .available_balance()
+        .expect("bob avail bal");
+    assert_eq!(
+        initial_available_balance,
+        adjusted_available_balance + gas_cost + transfer_amount,
+        "diff from initial balance should equal available + cost + transfer_amount"
+    );
+
+    assert_exec_result_cost(exec_result, gas_cost, gas_limit);
+
+    // bobs original balance - transfer amount - cost
+    let expected_total = initial_available_balance - (transfer_amount + gas_cost);
+
+    let (_node_id, runner) = fixture.network.nodes().iter().next().unwrap();
+    let tip = runner
+        .main_reactor()
+        .storage()
+        .get_highest_complete_block()
+        .expect("should have highest block")
+        .expect("should have tip");
+
+    let tip_time: BlockTime = tip.timestamp().into();
+
+    if let BalanceResult::Success { proofs_result, .. } = bob_available_balance_result {
+        match proofs_result.clone() {
+            ProofsResult::NotRequested { mut balance_holds } => {
+                assert!(
+                    !balance_holds.is_empty(),
+                    "in no fee mode, bob should have a balance hold "
+                );
+                assert_eq!(
+                    balance_holds.len(),
+                    1,
+                    "in this mode at this point, bob should have exactly 1 block_time entry {:?}",
+                    balance_holds
+                );
+                let (block_time, holds) = balance_holds.pop_first().expect("should have entry");
+                assert_eq!(tip_time, block_time, "expected block_times to match");
+                assert_eq!(
+                    holds.len(),
+                    1,
+                    "in this mode at this point, bob should have exactly 1 hold record {:?}",
+                    holds
+                );
+                let total_held = proofs_result.total_held_amount();
+                assert_eq!(gas_cost, total_held, "held amount should equal cost");
+            }
+            ProofsResult::Proofs { .. } => {
+                panic!("did not request proofs")
+            }
+        }
+    } else {
+        panic!("should have proofs result")
+    }
+
+    assert_eq!(
+        expected_total, adjusted_available_balance,
+        "expected and actual adjusted total should match"
     );
 }
 
@@ -703,14 +925,167 @@ async fn fee_is_payed_to_proposer_no_refund() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
+    info!("run until consensus in era 1");
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    info!("checking initial balances");
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .available_balance()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .available_balance()
+        .expect("Expected Alice to have a balance.");
+
+    let transfer_amount = fixture
+        .chainspec
+        .transaction_config
+        .native_transfer_minimum_motes
+        + 100;
+
+    // transfer from bob to charlie
+    let (_txn_hash, block_height, exec_result) = transfer_to_account(
+        &mut fixture,
+        transfer_amount,
+        &bob_secret_key,
+        PublicKey::from(&*charlie_secret_key),
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        None,
+    )
+    .await;
+
+    assert!(exec_result_is_success(&exec_result)); // transaction should have succeeded.
+
+    let expected_transfer_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .mint_costs()
+        .transfer
+        .into();
+    let expected_transfer_cost = expected_transfer_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transfer_cost.into(),
+        expected_transfer_gas.into(),
+    );
+
+    let bob_available_balance =
+        get_balance(&mut fixture, &bob_public_key, Some(block_height), false);
+    if let BalanceResult::Success { proofs_result, .. } = bob_available_balance.clone() {
+        match proofs_result {
+            ProofsResult::NotRequested { balance_holds } => {
+                assert!(
+                    balance_holds.is_empty(),
+                    "in pay to proposer mode, bob should NOT have a balance hold "
+                );
+            }
+            ProofsResult::Proofs { .. } => {
+                panic!("did not request proofs")
+            }
+        }
+    } else {
+        panic!("should have proofs result")
+    }
+
+    let bob_total_balance = get_balance(&mut fixture, &bob_public_key, Some(block_height), true);
+
+    let alice_available_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+    let alice_total_balance =
+        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+
+    // since Alice was the proposer of the block, it should get back the transfer fee since
+    // FeeHandling is set to PayToProposer.
+    let bob_expected_total_balance = bob_initial_balance - transfer_amount - expected_transfer_cost;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    let alice_expected_total_balance = alice_initial_balance + expected_transfer_cost;
+    let alice_expected_available_balance = alice_expected_total_balance;
+
+    let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
+    assert_eq!(
+        charlie_balance
+            .available_balance()
+            .expect("Expected Charlie to have a balance")
+            .clone(),
+        transfer_amount.into()
+    );
+
+    println!(
+        "initial {} available {:?}",
+        bob_initial_balance, bob_available_balance
+    );
+
+    assert_eq!(
+        bob_available_balance
+            .available_balance()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(
+        bob_total_balance
+            .available_balance()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        bob_expected_total_balance
+    );
+
+    assert_eq!(
+        alice_available_balance
+            .available_balance()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(
+        alice_total_balance
+            .available_balance()
+            .expect("Expected Bob to have a balance")
+            .clone(),
+        alice_expected_total_balance
+    );
+}
+
+#[tokio::test]
+async fn native_operations_fees_are_not_refunded() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Refund {
+            refund_ratio: Ratio::new(1, 2),
+        })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+    let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
+    let charlie_public_key = PublicKey::from(&*charlie_secret_key);
+
     // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
-        .motes()
+        .total_balance()
         .expect("Expected Bob to have a balance.");
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
-        .motes()
+        .total_balance()
         .expect("Expected Alice to have a balance.");
 
     let transfer_amount = fixture
@@ -747,60 +1122,263 @@ async fn fee_is_payed_to_proposer_no_refund() {
     );
 
     let bob_available_balance =
-        get_balance(&mut fixture, &bob_public_key, Some(block_height), false);
-    let bob_total_balance = get_balance(&mut fixture, &bob_public_key, Some(block_height), true);
+        *get_balance(&mut fixture, &bob_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Bob to have a balance");
+    let bob_total_balance = *get_balance(&mut fixture, &bob_public_key, Some(block_height), true)
+        .total_balance()
+        .expect("Expected Bob to have a balance");
 
     let alice_available_balance =
-        get_balance(&mut fixture, &alice_public_key, Some(block_height), false);
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Alice to have a balance");
     let alice_total_balance =
-        get_balance(&mut fixture, &alice_public_key, Some(block_height), true);
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), true)
+            .total_balance()
+            .expect("Expected Alice to have a balance");
 
-    // since Alice was the proposer of the block, it should get back the transfer fee since
-    // FeeHandling is set to PayToProposer.
+    // Bob shouldn't get a refund since there is no refund for native transfers.
     let bob_expected_total_balance = bob_initial_balance - transfer_amount - expected_transfer_cost;
     let bob_expected_available_balance = bob_expected_total_balance;
 
+    // Alice should get the full fee since there is no refund for native transfers.
     let alice_expected_total_balance = alice_initial_balance + expected_transfer_cost;
     let alice_expected_available_balance = alice_expected_total_balance;
 
-    let charlie_balance = get_balance(&mut fixture, &charlie_public_key, Some(block_height), false);
-    assert_eq!(
-        charlie_balance
-            .motes()
-            .expect("Expected Charlie to have a balance")
-            .clone(),
-        transfer_amount.into()
-    );
+    let charlie_balance =
+        *get_balance(&mut fixture, &charlie_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Charlie to have a balance");
+    assert_eq!(charlie_balance.clone(), transfer_amount.into());
 
     assert_eq!(
-        bob_available_balance
-            .motes()
-            .expect("Expected Bob to have a balance")
-            .clone(),
+        bob_available_balance.clone(),
         bob_expected_available_balance
     );
 
-    assert_eq!(
-        bob_total_balance
-            .motes()
-            .expect("Expected Bob to have a balance")
-            .clone(),
-        bob_expected_total_balance
-    );
+    assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
 
     assert_eq!(
-        alice_available_balance
-            .motes()
-            .expect("Expected Bob to have a balance")
-            .clone(),
+        alice_available_balance.clone(),
         alice_expected_available_balance
     );
 
-    assert_eq!(
-        alice_total_balance
-            .motes()
-            .expect("Expected Bob to have a balance")
-            .clone(),
-        alice_expected_total_balance
+    assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+}
+
+#[tokio::test]
+async fn wasm_transaction_fees_are_refunded() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Refund { refund_ratio })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .total_balance()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .total_balance()
+        .expect("Expected Alice to have a balance.");
+
+    let (_txn_hash, block_height, exec_result) = send_wasm_transaction(
+        &mut fixture,
+        &bob_secret_key,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+    )
+    .await;
+
+    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+
+    let expected_transaction_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transaction_cost.into(),
+        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                      * invalid wasm. */
     );
+
+    let bob_available_balance =
+        *get_balance(&mut fixture, &bob_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Bob to have a balance");
+    let bob_total_balance = *get_balance(&mut fixture, &bob_public_key, Some(block_height), true)
+        .total_balance()
+        .expect("Expected Bob to have a balance");
+
+    let alice_available_balance =
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Alice to have a balance");
+    let alice_total_balance =
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), true)
+            .total_balance()
+            .expect("Expected Alice to have a balance");
+
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
+    // gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    let bob_expected_total_balance =
+        bob_initial_balance - expected_transaction_cost + refund_amount;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    // Alice should get the non-refunded part of the fee since it's set to pay to proposer
+    let alice_expected_total_balance =
+        alice_initial_balance + expected_transaction_cost - refund_amount;
+    let alice_expected_available_balance = alice_expected_total_balance;
+
+    assert_eq!(
+        bob_available_balance.clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+    assert_eq!(
+        alice_available_balance.clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
+}
+
+#[tokio::test]
+async fn wasm_transaction_refunds_are_burnt() {
+    const MIN_GAS_PRICE: u8 = 5;
+    const MAX_GAS_PRICE: u8 = MIN_GAS_PRICE;
+
+    let initial_stakes = InitialStakes::FromVec(vec![u128::MAX, 1]); // Node 0 is effectively guaranteed to be the proposer.
+
+    let refund_ratio = Ratio::new(1, 2);
+    let config = ConfigsOverride::default()
+        .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::Burn { refund_ratio })
+        .with_fee_handling(FeeHandling::PayToProposer)
+        .with_balance_hold_interval(TimeDiff::from_seconds(5))
+        .with_min_gas_price(MIN_GAS_PRICE)
+        .with_max_gas_price(MAX_GAS_PRICE);
+
+    let mut fixture = TestFixture::new(initial_stakes, Some(config)).await;
+
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+    let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
+    let bob_public_key = PublicKey::from(&*bob_secret_key);
+
+    // Wait for all nodes to complete era 0.
+    fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
+
+    let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
+        .total_balance()
+        .expect("Expected Bob to have a balance.");
+    let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
+        .total_balance()
+        .expect("Expected Alice to have a balance.");
+    let initial_total_supply = get_total_supply(&mut fixture, None);
+
+    let (_txn_hash, block_height, exec_result) = send_wasm_transaction(
+        &mut fixture,
+        &bob_secret_key,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+    )
+    .await;
+
+    assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
+    let expected_transaction_gas: u64 = fixture
+        .chainspec
+        .system_costs_config
+        .standard_transaction_limit();
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
+    assert_exec_result_cost(
+        exec_result,
+        expected_transaction_cost.into(),
+        Gas::new(0), /* expect that this transaction doesn't consume any gas since it has
+                      * invalid wasm. */
+    );
+
+    // Bob should get back half of the cost for the unspent gas. Since this transaction consumed 0
+    // gas, the unspent gas is equal to the limit.
+    let refund_amount: U512 = (refund_ratio * Ratio::from(expected_transaction_cost))
+        .to_integer()
+        .into();
+
+    // The refund should have been burnt. So expect the total supply should have been reduced by the
+    // refund amount that was burnt.
+    let total_supply_after_transaction = get_total_supply(&mut fixture, Some(block_height));
+    assert_eq!(
+        total_supply_after_transaction,
+        initial_total_supply - refund_amount
+    );
+
+    let bob_available_balance =
+        *get_balance(&mut fixture, &bob_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Bob to have a balance");
+    let bob_total_balance = *get_balance(&mut fixture, &bob_public_key, Some(block_height), true)
+        .total_balance()
+        .expect("Expected Bob to have a balance");
+
+    let alice_available_balance =
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), false)
+            .available_balance()
+            .expect("Expected Alice to have a balance");
+    let alice_total_balance =
+        *get_balance(&mut fixture, &alice_public_key, Some(block_height), true)
+            .total_balance()
+            .expect("Expected Alice to have a balance");
+
+    // Bob doesn't get a refund. The refund is burnt.
+    let bob_expected_total_balance = bob_initial_balance - expected_transaction_cost;
+    let bob_expected_available_balance = bob_expected_total_balance;
+
+    // Alice should get the non-refunded part of the fee since it's set to pay to proposer
+    let alice_expected_total_balance =
+        alice_initial_balance + expected_transaction_cost - refund_amount;
+    let alice_expected_available_balance = alice_expected_total_balance;
+
+    assert_eq!(
+        bob_available_balance.clone(),
+        bob_expected_available_balance
+    );
+
+    assert_eq!(bob_total_balance.clone(), bob_expected_total_balance);
+
+    assert_eq!(
+        alice_available_balance.clone(),
+        alice_expected_available_balance
+    );
+
+    assert_eq!(alice_total_balance.clone(), alice_expected_total_balance);
 }
