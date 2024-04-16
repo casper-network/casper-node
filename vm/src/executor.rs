@@ -2,13 +2,13 @@ pub mod v2;
 
 use borsh::BorshSerialize;
 use bytes::Bytes;
-use casper_storage::{tracking_copy::TrackingCopyParts, TrackingCopy};
+use casper_storage::tracking_copy::TrackingCopyParts;
 use casper_types::execution::Effects;
 use thiserror::Error;
 use vm_common::selector::Selector;
 
 use crate::{
-    storage::{Address, GlobalStateReader},
+    storage::{Address, GlobalStateReader, TrackingCopy},
     wasm_backend::{GasUsage, PreparationError},
     HostError,
 };
@@ -16,13 +16,13 @@ use crate::{
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
     /// Caller's address.
-    caller: Address,
+    pub(crate) caller: Address,
     /// Address of the contract to execute.
-    address: Address,
+    pub(crate) address: Address,
     /// Gas limit.
-    gas_limit: u64,
-    execution_kind: ExecutionKind,
-    input: Bytes,
+    pub(crate) gas_limit: u64,
+    pub(crate) execution_kind: ExecutionKind,
+    pub(crate) input: Bytes,
 }
 
 /// Builder for `ExecuteRequest`.

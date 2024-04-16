@@ -1,4 +1,4 @@
-mod runtime;
+pub(crate) mod runtime;
 
 use bytes::Bytes;
 use casper_storage::global_state::{self, state::StateReader};

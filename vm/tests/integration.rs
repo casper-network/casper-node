@@ -1,12 +1,15 @@
 use borsh::BorshSerialize;
 use bytes::Bytes;
-use casper_storage::global_state::{
-    self,
-    state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+use casper_storage::{
+    data_access_layer::{GenesisRequest, GenesisResult},
+    global_state::{
+        self,
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+    },
 };
 use casper_types::{
     execution::{Effects, TransformKindV2},
-    Digest, EntityAddr, Key,
+    ChainspecRegistry, Digest, EntityAddr, GenesisConfigBuilder, Key, ProtocolVersion,
 };
 use vm::{
     executor::{
@@ -91,6 +94,26 @@ fn cep18() {
 
     let (mut global_state, mut state_root_hash, _tempdir) =
         global_state::state::lmdb::make_temporary_global_state([]);
+
+    let genesis_config = GenesisConfigBuilder::default().build();
+
+    let genesis_request: GenesisRequest = GenesisRequest::new(
+        Digest::hash("foo"),
+        ProtocolVersion::V2_0_0,
+        genesis_config,
+        ChainspecRegistry::new_with_genesis(b"", b""),
+    );
+
+    match global_state.genesis(genesis_request) {
+        GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
+        GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
+        GenesisResult::Success {
+            post_state_hash,
+            effects: _,
+        } => {
+            state_root_hash = post_state_hash;
+        }
+    }
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_caller(DEFAULT_ACCOUNT)

@@ -28,6 +28,7 @@ macro_rules! for_each_host_function {
                 code_ptr: *const u8,
                 code_size: usize,
                 manifest_ptr: *const $crate::Manifest,
+                value: u64,
                 selector: u32,
                 input_ptr: *const u8,
                 input_size: usize,

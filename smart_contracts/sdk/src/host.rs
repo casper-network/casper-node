@@ -184,6 +184,7 @@ pub fn casper_write(key: Keyspace, value: &[u8]) -> Result<(), Error> {
 pub fn casper_create(
     code: Option<&[u8]>,
     manifest: &casper_sdk_sys::Manifest,
+    value: u64,
     selector: Option<Selector>,
     input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::CreateResult, CallError> {
@@ -201,6 +202,7 @@ pub fn casper_create(
             code_ptr,
             code_size,
             manifest_ptr.as_ptr(),
+            value,
             selector.map(|selector| selector.get()).unwrap_or(0),
             input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
             input_data.map(|s| s.len()).unwrap_or(0),

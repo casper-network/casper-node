@@ -2,6 +2,7 @@
 pub(crate) mod abi;
 
 use bytes::Bytes;
+use casper_storage::tracking_copy;
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     contracts::{ContractManifest, ContractV2, EntryPointV2},
@@ -21,7 +22,7 @@ use vm_common::{
 use crate::{
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind},
     host::abi::{CreateResult, EntryPoint, Manifest},
-    storage::{self, Address, GlobalStateReader},
+    storage::{self, runtime, Address, GlobalStateReader},
     wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
     ConfigBuilder, Executor, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
 };
@@ -188,6 +189,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
+    value: u64,
     selector: u32,
     input_ptr: u32,
     input_len: u32,
@@ -282,7 +284,18 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
     let key = Key::AddressableEntity(EntityAddr::SmartContract(contract_hash));
 
-    let owner = EntityAddr::SmartContract(caller.context().address);
+    // let owner = EntityAddr::SmartContract(caller.context().address);
+
+    // TODO: abort(str) as an alternative to trap
+    let purse_uref: URef = match runtime::mint_mint(&mut caller.context_mut().storage, 0) {
+        Ok(uref) => uref,
+        Err(mint_error) => {
+            error!(?mint_error, "Failed to create a purse");
+            return Ok(Err(HostError::CalleeTrapped(
+                TrapCode::UnreachableCodeReached,
+            )));
+        }
+    };
 
     let entry_points = entrypoints
         .iter()
@@ -300,6 +313,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         owner: caller.context().address,
         bytecode_addr,
         entry_points,
+        purse_uref,
     });
 
     caller
