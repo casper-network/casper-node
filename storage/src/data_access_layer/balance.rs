@@ -7,11 +7,14 @@ use casper_types::{
         mint::BalanceHoldAddrTag,
         HANDLE_PAYMENT,
     },
-    AccessRights, BlockTime, Digest, EntityAddr, HoldsEpoch, InitiatorAddr, Key, ProtocolVersion,
-    PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, HoldsEpoch, InitiatorAddr,
+    Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
 };
 use itertools::Itertools;
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::{Display, Formatter},
+};
 use tracing::error;
 
 use crate::{
@@ -168,122 +171,191 @@ impl From<InitiatorAddr> for BalanceIdentifier {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+pub struct GasHoldBalanceHandling {
+    handling: HoldBalanceHandling,
+    interval: TimeDiff,
+}
+
+impl GasHoldBalanceHandling {
+    /// Returns new instance.
+    pub fn new(handling: HoldBalanceHandling, interval: TimeDiff) -> Self {
+        GasHoldBalanceHandling { handling, interval }
+    }
+
+    /// Returns handling.
+    pub fn handling(&self) -> HoldBalanceHandling {
+        self.handling
+    }
+
+    /// Returns interval.
+    pub fn interval(&self) -> TimeDiff {
+        self.interval
+    }
+}
+
+impl From<(HoldBalanceHandling, TimeDiff)> for GasHoldBalanceHandling {
+    fn from(value: (HoldBalanceHandling, TimeDiff)) -> Self {
+        GasHoldBalanceHandling {
+            handling: value.0,
+            interval: value.1,
+        }
+    }
+}
+
 /// Represents a balance request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
     state_hash: Digest,
+    block_time: BlockTime,
     protocol_version: ProtocolVersion,
     identifier: BalanceIdentifier,
     balance_handling: BalanceHandling,
     proof_handling: ProofHandling,
+    gas_hold_balance_handling: GasHoldBalanceHandling,
 }
 
 impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn new(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier,
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Creates a new [`BalanceRequest`].
     pub fn from_purse(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         purse_uref: URef,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Purse(purse_uref),
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Creates a new [`BalanceRequest`].
     pub fn from_public_key(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Public(public_key),
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Creates a new [`BalanceRequest`].
     pub fn from_account_hash(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Account(account_hash),
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Creates a new [`BalanceRequest`].
     pub fn from_entity_addr(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         entity_addr: EntityAddr,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Entity(entity_addr),
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Creates a new [`BalanceRequest`].
     pub fn from_internal(
         state_hash: Digest,
+        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         balance_addr: URefAddr,
         balance_handling: BalanceHandling,
         proof_handling: ProofHandling,
+        gas_hold_balance_handling: impl Into<GasHoldBalanceHandling>,
     ) -> Self {
+        let gas_hold_balance_handling = gas_hold_balance_handling.into();
         BalanceRequest {
             state_hash,
+            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Internal(balance_addr),
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         }
     }
 
     /// Returns a state hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
+    }
+
+    /// Returns block time.
+    pub fn block_time(&self) -> BlockTime {
+        self.block_time
     }
 
     /// Protocol version.
@@ -304,6 +376,11 @@ impl BalanceRequest {
     /// Returns proof handling.
     pub fn proof_handling(&self) -> ProofHandling {
         self.proof_handling
+    }
+
+    /// Returns gas hold balance handling.
+    pub fn gas_hold_balance_handling(&self) -> GasHoldBalanceHandling {
+        self.gas_hold_balance_handling
     }
 }
 
@@ -375,6 +452,41 @@ impl ProofsResult {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum BalanceError {
+    /// Tracking copy error.
+    TrackingCopy(TrackingCopyError),
+    /// Hold created time should never be greater than its own expiry (programmer error)."
+    HoldCreatedExceedsExpiry,
+    /// Failed to calculate amortization (checked multiplication).
+    AmortizationFailure,
+}
+
+impl Display for BalanceError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BalanceError::TrackingCopy(err) => {
+                write!(f, "TrackingCopy: {:?}", err)
+            }
+            BalanceError::HoldCreatedExceedsExpiry => {
+                write!(f, "HoldCreatedExceedsExpiry: hold created time should never be greater than its own expiry (programmer error).",)
+            }
+            BalanceError::AmortizationFailure => {
+                write!(
+                    f,
+                    "AmortizationFailure: failed to calculate amortization (checked multiplication)."
+                )
+            }
+        }
+    }
+}
+
+impl From<TrackingCopyError> for BalanceError {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceError::TrackingCopy(tce)
+    }
+}
+
 /// Result enum that represents all possible outcomes of a balance request.
 #[derive(Debug, Clone)]
 pub enum BalanceResult {
@@ -391,7 +503,7 @@ pub enum BalanceResult {
         /// Proofs result.
         proofs_result: ProofsResult,
     },
-    Failure(TrackingCopyError),
+    Failure(BalanceError),
 }
 
 impl BalanceResult {
@@ -445,5 +557,11 @@ impl BalanceResult {
             BalanceResult::RootNotFound | BalanceResult::Failure(_) => false,
             BalanceResult::Success { .. } => true,
         }
+    }
+}
+
+impl From<TrackingCopyError> for BalanceResult {
+    fn from(tce: TrackingCopyError) -> Self {
+        BalanceResult::Failure(tce.into())
     }
 }

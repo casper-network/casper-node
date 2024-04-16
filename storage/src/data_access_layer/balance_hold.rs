@@ -1,4 +1,10 @@
-use crate::{data_access_layer::BalanceIdentifier, tracking_copy::TrackingCopyError};
+use crate::{
+    data_access_layer::{
+        balance::{BalanceError, GasHoldBalanceHandling},
+        BalanceIdentifier,
+    },
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
     account::AccountHash,
     execution::Effects,
@@ -67,6 +73,7 @@ pub struct BalanceHoldRequest {
     block_time: BlockTime,
     hold_kind: BalanceHoldKind,
     hold_mode: BalanceHoldMode,
+    gas_hold_balance_handling: GasHoldBalanceHandling,
 }
 
 impl BalanceHoldRequest {
@@ -80,6 +87,7 @@ impl BalanceHoldRequest {
         block_time: BlockTime,
         holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
+        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
         let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Gas);
         let hold_mode = BalanceHoldMode::Hold {
@@ -94,6 +102,7 @@ impl BalanceHoldRequest {
             block_time,
             hold_kind,
             hold_mode,
+            gas_hold_balance_handling,
         }
     }
 
@@ -107,6 +116,7 @@ impl BalanceHoldRequest {
         block_time: BlockTime,
         holds_epoch: HoldsEpoch,
         insufficient_handling: InsufficientBalanceHandling,
+        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
         let hold_kind = BalanceHoldKind::Tag(BalanceHoldAddrTag::Processing);
         let hold_mode = BalanceHoldMode::Hold {
@@ -121,6 +131,7 @@ impl BalanceHoldRequest {
             block_time,
             hold_kind,
             hold_mode,
+            gas_hold_balance_handling,
         }
     }
 
@@ -132,6 +143,7 @@ impl BalanceHoldRequest {
         hold_kind: BalanceHoldKind,
         identifier: BalanceIdentifier,
         holds_epoch: HoldsEpoch,
+        gas_hold_balance_handling: GasHoldBalanceHandling,
     ) -> Self {
         let hold_mode = BalanceHoldMode::Clear {
             identifier,
@@ -143,6 +155,7 @@ impl BalanceHoldRequest {
             block_time,
             hold_kind,
             hold_mode,
+            gas_hold_balance_handling,
         }
     }
 
@@ -170,6 +183,11 @@ impl BalanceHoldRequest {
     pub fn balance_hold_mode(&self) -> BalanceHoldMode {
         self.hold_mode.clone()
     }
+
+    /// Gas hold balance handling.
+    pub fn gas_hold_balance_handling(&self) -> GasHoldBalanceHandling {
+        self.gas_hold_balance_handling
+    }
 }
 
 /// Possible balance hold errors.
@@ -177,15 +195,22 @@ impl BalanceHoldRequest {
 #[non_exhaustive]
 pub enum BalanceHoldError {
     TrackingCopy(TrackingCopyError),
+    Balance(BalanceError),
     InsufficientBalance { remaining_balance: U512 },
     UnexpectedWildcardVariant, // programmer error
+}
+
+impl From<BalanceError> for BalanceHoldError {
+    fn from(be: BalanceError) -> Self {
+        BalanceHoldError::Balance(be)
+    }
 }
 
 impl Display for BalanceHoldError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             BalanceHoldError::TrackingCopy(err) => {
-                write!(f, "TrackingCopy: {}", err)
+                write!(f, "TrackingCopy: {:?}", err)
             }
             BalanceHoldError::InsufficientBalance { remaining_balance } => {
                 write!(f, "InsufficientBalance: {}", remaining_balance)
@@ -196,6 +221,7 @@ impl Display for BalanceHoldError {
                     "UnexpectedWildcardVariant: unsupported use of BalanceHoldKind::All"
                 )
             }
+            BalanceHoldError::Balance(be) => Display::fmt(be, f),
         }
     }
 }
@@ -328,5 +354,11 @@ impl BalanceHoldResult {
                 format!("{:?}", bhe)
             }
         }
+    }
+}
+
+impl From<BalanceError> for BalanceHoldResult {
+    fn from(be: BalanceError) -> Self {
+        BalanceHoldResult::Failure(be.into())
     }
 }

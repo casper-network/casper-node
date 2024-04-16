@@ -11,13 +11,15 @@ use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
+use casper_storage::data_access_layer::{
+    balance::BalanceHandling, BalanceRequest, GasHoldBalanceHandling, ProofHandling,
+};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr,
-    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
+    ExecutableDeployItemIdentifier, HoldBalanceHandling, HoldsEpoch, InitiatorAddr, Key, Package,
+    PackageAddr, PackageHash, PackageIdentifier, TimeDiff, Transaction, TransactionEntryPoint,
     TransactionInvocationTarget, TransactionTarget, U512,
 };
 
@@ -91,7 +93,7 @@ impl TransactionAcceptor {
             .iter()
             .map(|public_key| public_key.to_account_hash())
             .collect();
-        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
         Ok(TransactionAcceptor {
             acceptor_config,
             chainspec,
@@ -222,12 +224,19 @@ impl TransactionAcceptor {
                 let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
                 let balance_handling = BalanceHandling::Available { holds_epoch };
                 let proof_handling = ProofHandling::NoProofs;
+                let gas_hold_balance_handling: GasHoldBalanceHandling = (
+                    HoldBalanceHandling::default(),
+                    TimeDiff::from_millis(hold_interval),
+                )
+                    .into();
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
+                    block_header.timestamp().into(),
                     protocol_version,
                     entity.main_purse(),
                     balance_handling,
                     proof_handling,
+                    gas_hold_balance_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)

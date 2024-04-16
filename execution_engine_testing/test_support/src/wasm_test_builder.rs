@@ -24,12 +24,12 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
         BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
-        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
-        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
-        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
-        TotalSupplyResult, TransferRequest, TrieRequest,
+        FeeResult, FlushRequest, FlushResult, GasHoldBalanceHandling, GenesisRequest,
+        GenesisResult, ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
+        PruneResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, StepRequest, StepResult, SystemEntityRegistryPayload,
+        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
+        TotalSupplyRequest, TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -61,8 +61,8 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
-    HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    HoldBalanceHandling, HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package,
+    PackageHash, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
@@ -784,7 +784,7 @@ where
         let compute_rewards = config.core_config.compute_rewards;
         let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
-        let balance_hold_interval = config.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = config.core_config.gas_hold_interval.millis();
 
         let native_runtime_config = casper_storage::system::runtime_native::Config::new(
             TransferConfig::Unadministered,
@@ -951,7 +951,7 @@ where
             self.chainspec.core_config.compute_rewards,
             self.chainspec.core_config.max_delegators_per_validator,
             self.chainspec.core_config.minimum_delegation_amount,
-            self.chainspec.core_config.balance_hold_interval.millis(),
+            self.chainspec.core_config.gas_hold_interval.millis(),
         )
     }
 
@@ -965,7 +965,7 @@ where
         let native_runtime_config = self.native_runtime_config();
         let holds_epoch = HoldsEpoch::from_millis(
             block_time,
-            self.chainspec.core_config.balance_hold_interval.millis(),
+            self.chainspec.core_config.gas_hold_interval.millis(),
         );
 
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
@@ -1226,18 +1226,22 @@ where
         balance_identifier: BalanceIdentifier,
         block_time: u64,
     ) -> BalanceResult {
-        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let hold_interval = self.chainspec.core_config.gas_hold_interval;
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
+        let gas_hold_balance_handling =
+            GasHoldBalanceHandling::new(HoldBalanceHandling::default(), hold_interval);
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
             state_root_hash,
+            block_time.into(),
             protocol_version,
             balance_identifier,
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         );
         self.data_access_layer.balance(request)
     }
@@ -1250,16 +1254,20 @@ where
         block_time: u64,
     ) -> BalanceResult {
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let hold_interval = self.chainspec.core_config.gas_hold_interval;
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
+        let gas_hold_balance_handling =
+            GasHoldBalanceHandling::new(HoldBalanceHandling::default(), hold_interval);
         let request = BalanceRequest::from_public_key(
             state_root_hash,
+            block_time.into(),
             protocol_version,
             public_key,
             balance_handling,
             proof_handling,
+            gas_hold_balance_handling,
         );
         self.data_access_layer.balance(request)
     }

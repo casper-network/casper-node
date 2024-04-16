@@ -8,6 +8,7 @@ pub mod scratch;
 
 use itertools::Itertools;
 use num_rational::Ratio;
+use num_traits::CheckedMul;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -32,8 +33,8 @@ use casper_types::{
         },
         AUCTION, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldBalanceHandling, HoldsEpoch, Key,
+    KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
 };
 
 #[cfg(test)]
@@ -42,7 +43,7 @@ pub use self::lmdb::make_temporary_global_state;
 use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
-        balance::BalanceHandling,
+        balance::{BalanceError, BalanceHandling},
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
@@ -544,18 +545,18 @@ pub trait StateProvider {
         let mut tc = match self.tracking_copy(request.state_hash()) {
             Ok(Some(tracking_copy)) => tracking_copy,
             Ok(None) => return BalanceResult::RootNotFound,
-            Err(err) => return BalanceResult::Failure(TrackingCopyError::Storage(err)),
+            Err(err) => return TrackingCopyError::Storage(err).into(),
         };
         let protocol_version = request.protocol_version();
         let balance_identifier = request.identifier();
         let purse_key = match balance_identifier.purse_uref(&mut tc, protocol_version) {
             Ok(value) => value.into(),
-            Err(tce) => return BalanceResult::Failure(tce),
+            Err(tce) => return tce.into(),
         };
         let (purse_balance_key, purse_addr) = match tc.get_purse_balance_key(purse_key) {
             Ok(key @ Key::Balance(addr)) => (key, addr),
-            Ok(key) => return BalanceResult::Failure(TrackingCopyError::UnexpectedKeyVariant(key)),
-            Err(tce) => return BalanceResult::Failure(tce),
+            Ok(key) => return TrackingCopyError::UnexpectedKeyVariant(key).into(),
+            Err(tce) => return tce.into(),
         };
 
         let proof_handling = request.proof_handling();
@@ -566,24 +567,18 @@ pub trait StateProvider {
                 let total_balance = match tc.read(&balance_key) {
                     Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
                         Ok(val) => val,
-                        Err(cve) => return BalanceResult::Failure(TrackingCopyError::CLValue(cve)),
+                        Err(cve) => return TrackingCopyError::CLValue(cve).into(),
                     },
-                    Ok(Some(_)) => {
-                        return BalanceResult::Failure(
-                            TrackingCopyError::UnexpectedStoredValueVariant,
-                        )
-                    }
-                    Ok(None) => {
-                        return BalanceResult::Failure(TrackingCopyError::KeyNotFound(balance_key))
-                    }
-                    Err(tce) => return BalanceResult::Failure(tce),
+                    Ok(Some(_)) => return TrackingCopyError::UnexpectedStoredValueVariant.into(),
+                    Ok(None) => return TrackingCopyError::KeyNotFound(balance_key).into(),
+                    Err(tce) => return tce.into(),
                 };
                 let balance_holds = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
                     BalanceHandling::Available { holds_epoch } => {
                         match tc.get_balance_holds(purse_addr, holds_epoch) {
-                            Err(tce) => return BalanceResult::Failure(tce),
                             Ok(holds) => holds,
+                            Err(tce) => return tce.into(),
                         }
                     }
                 };
@@ -591,12 +586,65 @@ pub trait StateProvider {
                 let available_balance = if balance_holds.is_empty() {
                     total_balance
                 } else {
-                    let held = balance_holds
-                        .values()
-                        .flat_map(|holds| holds.values().copied())
-                        .collect_vec()
-                        .into_iter()
-                        .sum();
+                    let handling = request.gas_hold_balance_handling().handling();
+                    let interval = request.gas_hold_balance_handling().interval();
+                    let held = match handling {
+                        HoldBalanceHandling::Accrued => balance_holds
+                            .values()
+                            .flat_map(|holds| holds.values().copied())
+                            .collect_vec()
+                            .into_iter()
+                            .sum(),
+                        HoldBalanceHandling::Amortized => {
+                            let mut ret = U512::zero();
+                            let block_time = request.block_time().value();
+                            for (hold_created_time, holds) in &balance_holds {
+                                let hold_created_time = hold_created_time.value(); // shadow this to inner
+                                if hold_created_time > block_time {
+                                    continue;
+                                }
+                                let expiry = hold_created_time.saturating_add(interval.millis());
+                                if hold_created_time > expiry {
+                                    // this must be programmer error
+                                    return BalanceResult::Failure(
+                                        BalanceError::HoldCreatedExceedsExpiry,
+                                    );
+                                }
+                                if block_time > expiry {
+                                    continue;
+                                }
+                                // total held amount
+                                let held = Ratio::new_raw(
+                                    holds.values().copied().collect_vec().into_iter().sum(),
+                                    U512::one(),
+                                );
+                                // remaining time
+                                let remaining_time = U512::from(expiry.saturating_sub(block_time));
+                                // remaining time over total time
+                                let ratio =
+                                    Ratio::new_raw(remaining_time, U512::from(interval.millis()));
+                                /*
+                                    EXAMPLE: 1000 held for 24 hours
+                                    if 1 hours has elapsed, held amount = 1000 * (23/24) == 958
+                                    if 2 hours has elapsed, held amount = 1000 * (22/24) == 916
+                                    ...
+                                    if 23 hours has elapsed, held amount    = 1000 * (1/24) == 41
+                                    if 23.50 hours has elapsed, held amount = 1000 * (1/48) == 20
+                                    if 23.75 hours has elapsed, held amount = 1000 * (1/96) == 10
+                                                                    (54000 ms / 5184000 ms)
+                                */
+                                match held.checked_mul(&ratio) {
+                                    Some(amortized) => ret += amortized.to_integer(),
+                                    None => {
+                                        return BalanceResult::Failure(
+                                            BalanceError::AmortizationFailure,
+                                        )
+                                    }
+                                }
+                            }
+                            ret
+                        }
+                    };
                     debug_assert!(
                         total_balance >= held,
                         "it should not be possible to hold more than the total available"
@@ -617,16 +665,16 @@ pub trait StateProvider {
             ProofHandling::Proofs => {
                 let (total_balance, total_balance_proof) =
                     match tc.get_total_balance_with_proof(purse_balance_key) {
-                        Err(tce) => return BalanceResult::Failure(tce),
                         Ok((balance, proof)) => (balance, Box::new(proof)),
+                        Err(tce) => return tce.into(),
                     };
 
                 let balance_holds_with_proofs = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
                     BalanceHandling::Available { holds_epoch } => {
                         match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
-                            Err(tce) => return BalanceResult::Failure(tce),
                             Ok(holds) => holds,
+                            Err(tce) => return tce.into(),
                         }
                     }
                 };
@@ -693,17 +741,17 @@ pub trait StateProvider {
                 };
                 let balance_request = BalanceRequest::new(
                     request.state_hash(),
+                    request.block_time(),
                     request.protocol_version(),
                     identifier,
                     BalanceHandling::Available { holds_epoch },
                     ProofHandling::NoProofs,
+                    request.gas_hold_balance_handling(),
                 );
                 let balance_result = self.balance(balance_request);
                 let (total_balance, remaining_balance, purse_addr) = match balance_result {
                     BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
-                    BalanceResult::Failure(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
-                    }
+                    BalanceResult::Failure(be) => return be.into(),
                     BalanceResult::Success {
                         total_balance,
                         available_balance,
@@ -805,16 +853,16 @@ pub trait StateProvider {
                 // get updated balance
                 let balance_result = self.balance(BalanceRequest::new(
                     request.state_hash(),
+                    request.block_time(),
                     request.protocol_version(),
                     identifier,
                     BalanceHandling::Available { holds_epoch },
                     ProofHandling::NoProofs,
+                    request.gas_hold_balance_handling(),
                 ));
                 let (total_balance, available_balance) = match balance_result {
                     BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
-                    BalanceResult::Failure(tce) => {
-                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
-                    }
+                    BalanceResult::Failure(be) => return be.into(),
                     BalanceResult::Success {
                         total_balance,
                         available_balance,

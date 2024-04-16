@@ -9,6 +9,7 @@ mod fee_handling;
 pub mod genesis_config;
 mod global_state_update;
 mod highway_config;
+mod hold_balance_handling;
 mod network_config;
 mod next_upgrade;
 mod pricing_handling;
@@ -46,7 +47,8 @@ pub use core_config::DEFAULT_FEE_HANDLING;
 #[cfg(any(feature = "std", test))]
 pub use core_config::DEFAULT_REFUND_HANDLING;
 pub use core_config::{
-    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_BALANCE_HOLD_INTERVAL,
+    ConsensusProtocolName, CoreConfig, LegacyRequiredFinality, DEFAULT_GAS_HOLD_BALANCE_HANDLING,
+    DEFAULT_GAS_HOLD_INTERVAL,
 };
 pub use fee_handling::FeeHandling;
 #[cfg(any(feature = "testing", test))]
@@ -55,6 +57,7 @@ pub use genesis_config::DEFAULT_AUCTION_DELAY;
 pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
+pub use hold_balance_handling::HoldBalanceHandling;
 pub use network_config::NetworkConfig;
 pub use next_upgrade::NextUpgrade;
 pub use pricing_handling::PricingHandling;
@@ -205,7 +208,7 @@ impl Chainspec {
     pub fn balance_holds_epoch(&self, timestamp: Timestamp) -> u64 {
         timestamp
             .millis()
-            .saturating_sub(self.core_config.balance_hold_interval.millis())
+            .saturating_sub(self.core_config.gas_hold_interval.millis())
     }
 }
 

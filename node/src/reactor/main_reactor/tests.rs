@@ -24,7 +24,7 @@ use casper_storage::{
     data_access_layer::{
         balance::{BalanceHandling, BalanceResult},
         AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
-        ProofHandling, TotalSupplyRequest, TotalSupplyResult,
+        GasHoldBalanceHandling, ProofHandling, TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
@@ -344,7 +344,7 @@ impl TestFixture {
             chainspec.core_config.allow_reservations = allow_reservations;
         }
         if let Some(balance_hold_interval) = balance_hold_interval_override {
-            chainspec.core_config.balance_hold_interval = balance_hold_interval;
+            chainspec.core_config.gas_hold_interval = balance_hold_interval;
         }
 
         let mut fixture = TestFixture {
@@ -815,17 +815,19 @@ impl TestFixture {
 
         let block_time = highest_block.clone_header().timestamp();
 
-        let holds_epoch = HoldsEpoch::from_timestamp(
-            block_time,
-            self.chainspec.core_config.balance_hold_interval,
-        );
+        let holds_epoch =
+            HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.gas_hold_interval);
+
+        let gas_balance_hold_handling: GasHoldBalanceHandling = self.into();
 
         let balance_request = BalanceRequest::from_public_key(
             *highest_block.state_root_hash(),
+            block_time.into(),
             highest_block.protocol_version(),
             account_public_key,
             BalanceHandling::Available { holds_epoch },
             ProofHandling::NoProofs,
+            gas_balance_hold_handling,
         );
 
         let balance_result = runner
@@ -911,6 +913,15 @@ impl TestFixture {
         rng: TestRng,
     ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
+    }
+}
+
+impl From<&TestFixture> for GasHoldBalanceHandling {
+    fn from(value: &TestFixture) -> Self {
+        GasHoldBalanceHandling::new(
+            value.chainspec.core_config.gas_hold_balance_handling,
+            value.chainspec.core_config.gas_hold_interval,
+        )
     }
 }
 
