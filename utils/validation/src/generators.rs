@@ -451,7 +451,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 withdraw_purse_1,
                 withdraw_purse_2,
             ])
-                .into()])?,
+            .into()])?,
         );
         stored_value.insert(
             "Unbonding".to_string(),
@@ -459,7 +459,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 unbonding_purse_1,
                 unbonding_purse_2,
             ])
-                .into()])?,
+            .into()])?,
         );
 
         Fixture::ABI {

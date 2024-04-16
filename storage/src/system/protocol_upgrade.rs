@@ -27,10 +27,9 @@ use casper_types::{
     U512,
 };
 
-use crate::tracking_copy::TrackingCopyEntityExt;
 use crate::{
     global_state::state::StateProvider,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -132,16 +131,16 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
 impl<S> ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(

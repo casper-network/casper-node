@@ -23,8 +23,8 @@ use super::{args::Args, ExecError, Runtime};
 use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
-    where
-        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn invoke_index(
         &mut self,
@@ -176,7 +176,7 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::GetCallerIndex => {
                 // args(0) = pointer where a size of serialized bytes will be stored
-                let (output_size, ) = Args::parse(args)?;
+                let (output_size,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_caller, [output_size])?;
                 let ret = self.get_caller(output_size)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -184,14 +184,14 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::GetBlocktimeIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr, ) = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_blocktime, [dest_ptr])?;
                 self.get_blocktime(dest_ptr)?;
                 Ok(None)
             }
 
             FunctionIndex::GasFuncIndex => {
-                let (gas_arg, ): (u32, ) = Args::parse(args)?;
+                let (gas_arg,): (u32,) = Args::parse(args)?;
                 // Gas is special cased internal host function and for accounting purposes it isn't
                 // represented in protocol data.
                 self.gas(Gas::new(gas_arg))?;
@@ -213,7 +213,7 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::RevertFuncIndex => {
                 // args(0) = status u32
-                let (status, ) = Args::parse(args)?;
+                let (status,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.revert, [status])?;
                 Err(self.revert(status))
             }
@@ -500,7 +500,7 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::GetPhaseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr, ) = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_phase, [dest_ptr])?;
                 self.get_phase(dest_ptr)?;
                 Ok(None)
@@ -521,7 +521,7 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::GetMainPurseIndex => {
                 // args(0) = pointer to Wasm memory where to write.
-                let (dest_ptr, ) = Args::parse(args)?;
+                let (dest_ptr,) = Args::parse(args)?;
                 self.charge_host_function_call(&host_function_costs.get_main_purse, [dest_ptr])?;
                 self.get_main_purse(dest_ptr)?;
                 Ok(None)
@@ -667,11 +667,11 @@ impl<'a, R> Externals for Runtime<'a, R>
                 // limits.
                 let message_limits = self.context.engine_config().wasm_config().messages_limits();
                 for (topic_name, _) in
-                message_topics
-                    .iter()
-                    .filter(|(_, operation)| match operation {
-                        MessageTopicOperation::Add => true,
-                    })
+                    message_topics
+                        .iter()
+                        .filter(|(_, operation)| match operation {
+                            MessageTopicOperation::Add => true,
+                        })
                 {
                     if topic_name.len() > message_limits.max_topic_name_size() as usize {
                         return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
@@ -996,7 +996,7 @@ impl<'a, R> Externals for Runtime<'a, R>
 
             FunctionIndex::NewDictionaryFuncIndex => {
                 // args(0) = pointer to output size (output param)
-                let (output_size_ptr, ): (u32, ) = Args::parse(args)?;
+                let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
                 self.charge_host_function_call(
                     &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,

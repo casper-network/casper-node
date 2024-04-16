@@ -108,8 +108,8 @@ pub struct HostFunction<T> {
 }
 
 impl<T> Default for HostFunction<T>
-    where
-        T: Default,
+where
+    T: Default,
 {
     fn default() -> Self {
         HostFunction::new(DEFAULT_FIXED_COST, Default::default())
@@ -129,8 +129,8 @@ impl<T> HostFunction<T> {
 }
 
 impl<T> HostFunction<T>
-    where
-        T: Default,
+where
+    T: Default,
 {
     /// Creates a new fixed host function cost with argument weights of zero.
     pub fn fixed(cost: Cost) -> Self {
@@ -142,8 +142,8 @@ impl<T> HostFunction<T>
 }
 
 impl<T> HostFunction<T>
-    where
-        T: AsRef<[Cost]>,
+where
+    T: AsRef<[Cost]>,
 {
     /// Returns a slice containing the argument weights.
     pub fn arguments(&self) -> &[Cost] {
@@ -185,9 +185,9 @@ impl<const COUNT: usize> Zero for HostFunction<[Cost; COUNT]> {
 }
 
 impl<T> Distribution<HostFunction<T>> for Standard
-    where
-        Standard: Distribution<T>,
-        T: AsRef<[Cost]>,
+where
+    Standard: Distribution<T>,
+    T: AsRef<[Cost]>,
 {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunction<T> {
         let cost = rng.gen::<Cost>();
@@ -197,8 +197,8 @@ impl<T> Distribution<HostFunction<T>> for Standard
 }
 
 impl<T> ToBytes for HostFunction<T>
-    where
-        T: AsRef<[Cost]>,
+where
+    T: AsRef<[Cost]>,
 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
@@ -215,8 +215,8 @@ impl<T> ToBytes for HostFunction<T>
 }
 
 impl<T> FromBytes for HostFunction<T>
-    where
-        T: Default + AsMut<[Cost]>,
+where
+    T: Default + AsMut<[Cost]>,
 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (cost, mut bytes) = FromBytes::from_bytes(bytes)?;
@@ -895,7 +895,7 @@ pub mod gens {
     use crate::{HostFunction, HostFunctionCost, HostFunctionCosts};
 
     #[allow(unused)]
-    pub fn host_function_cost_arb<T: Copy + Arbitrary>() -> impl Strategy<Value=HostFunction<T>> {
+    pub fn host_function_cost_arb<T: Copy + Arbitrary>() -> impl Strategy<Value = HostFunction<T>> {
         (any::<HostFunctionCost>(), any::<T>())
             .prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
     }

@@ -502,9 +502,9 @@ fn contract_hash_fn(i: u8) -> AddressableEntityHash {
 }
 
 fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>
-    where
-        FK: Fn(u8) -> K,
-        FV: Fn(u8) -> V,
+where
+    FK: Fn(u8) -> K,
+    FV: Fn(u8) -> V,
 {
     (0..count)
         .map(|i| {
@@ -516,8 +516,8 @@ fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMa
 }
 
 fn sample_set<K: Ord, F>(fun: F, count: u8) -> BTreeSet<K>
-    where
-        F: Fn(u8) -> K,
+where
+    F: Fn(u8) -> K,
 {
     (0..count).map(fun).collect()
 }
@@ -547,12 +547,7 @@ fn sample_contract_package(
         groups_len,
     ));
 
-    Package::new(
-        versions,
-        disabled_versions,
-        groups,
-        PackageStatus::Locked,
-    )
+    Package::new(versions, disabled_versions, groups, PackageStatus::Locked)
 }
 
 fn serialize_contract_package(b: &mut Bencher) {

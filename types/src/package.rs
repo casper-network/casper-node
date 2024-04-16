@@ -189,7 +189,7 @@ pub const ENTITY_VERSION_KEY_SERIALIZED_LENGTH: usize =
 #[serde(transparent, deny_unknown_fields)]
 pub struct EntityVersions(
     #[serde(
-    with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, EntityVersionLabels>"
+        with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, EntityVersionLabels>"
     )]
     BTreeMap<EntityVersionKey, AddressableEntityHash>,
 );
@@ -201,7 +201,7 @@ impl EntityVersions {
     }
 
     /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
-    pub fn contract_hashes(&self) -> impl Iterator<Item=&AddressableEntityHash> {
+    pub fn contract_hashes(&self) -> impl Iterator<Item = &AddressableEntityHash> {
         self.0.values()
     }
 
@@ -310,7 +310,7 @@ impl Groups {
     }
 
     /// Returns an iterator over the `Key`s (i.e. the map's values).
-    pub fn keys(&self) -> impl Iterator<Item=&BTreeSet<URef>> {
+    pub fn keys(&self) -> impl Iterator<Item = &BTreeSet<URef>> {
         self.0.values()
     }
 
@@ -364,9 +364,9 @@ impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
-feature = "json-schema",
-derive(JsonSchema),
-schemars(description = "The hex-encoded address of the Package.")
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded address of the Package.")
 )]
 pub struct PackageHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
@@ -390,7 +390,7 @@ impl PackageHash {
 
     /// Formats the `PackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
+        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
