@@ -1,4 +1,3 @@
-use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{
     data_access_layer::{GenesisRequest, GenesisResult},
@@ -8,20 +7,25 @@ use casper_storage::{
     },
 };
 use casper_types::{
+    account::AccountHash,
     execution::{Effects, TransformKindV2},
-    ChainspecRegistry, Digest, EntityAddr, GenesisConfigBuilder, Key, ProtocolVersion,
+    ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfigBuilder, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, U512,
 };
-use vm::{
-    executor::{
-        v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
-        ExecuteRequest, ExecuteRequestBuilder, ExecutionKind, Executor,
-    },
-    storage::Address,
+use once_cell::sync::Lazy;
+use tempfile::TempDir;
+use vm::executor::{
+    v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
+    ExecuteRequest, ExecuteRequestBuilder, ExecutionKind, Executor,
 };
 
-const DEFAULT_ACCOUNT: Address = [42; 32];
-const ALICE: [u8; 32] = [100; 32];
-const BOB: [u8; 32] = [101; 32];
+static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap());
+static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<casper_types::PublicKey> =
+    Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
+static DEFAULT_ACCOUNT_HASH: Lazy<AccountHash> =
+    Lazy::new(|| DEFAULT_ACCOUNT_PUBLIC_KEY.to_account_hash());
+
 const CSPR: u64 = 10u64.pow(9);
 
 const VM2_TEST_CONTRACT: Bytes = Bytes::from_static(include_bytes!("../vm2-test-contract.wasm"));
@@ -34,13 +38,11 @@ const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2-trait.wasm")
 fn test_contract() {
     let mut executor = make_executor();
 
-    let (mut global_state, state_root_hash, _tempdir) =
-        global_state::state::lmdb::make_temporary_global_state([]);
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let input = ("Hello, world!".to_string(), 123456789u32);
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT)
-        .with_address(DEFAULT_ACCOUNT)
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_TEST_CONTRACT))
         .with_serialized_input(input)
@@ -59,12 +61,10 @@ fn test_contract() {
 fn harness() {
     let mut executor = make_executor();
 
-    let (mut global_state, state_root_hash, _tempdir) =
-        global_state::state::lmdb::make_temporary_global_state([]);
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT)
-        .with_address(DEFAULT_ACCOUNT)
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
         .with_serialized_input(())
@@ -92,32 +92,10 @@ fn make_executor() -> ExecutorV2 {
 fn cep18() {
     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) =
-        global_state::state::lmdb::make_temporary_global_state([]);
-
-    let genesis_config = GenesisConfigBuilder::default().build();
-
-    let genesis_request: GenesisRequest = GenesisRequest::new(
-        Digest::hash("foo"),
-        ProtocolVersion::V2_0_0,
-        genesis_config,
-        ChainspecRegistry::new_with_genesis(b"", b""),
-    );
-
-    match global_state.genesis(genesis_request) {
-        GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
-        GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
-        GenesisResult::Success {
-            post_state_hash,
-            effects: _,
-        } => {
-            state_root_hash = post_state_hash;
-        }
-    }
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT)
-        .with_address(DEFAULT_ACCOUNT)
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
         .with_serialized_input(())
@@ -151,8 +129,7 @@ fn cep18() {
         .expect("Should commit");
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT)
-        .with_address(contract_hash)
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
         .with_serialized_input((contract_hash,))
@@ -167,22 +144,57 @@ fn cep18() {
     );
 }
 
+fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
+    let default_accounts = vec![GenesisAccount::Account {
+        public_key: DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
+        balance: Motes::new(U512::from(100 * CSPR)),
+        validator: None,
+    }];
+
+    let (mut global_state, mut state_root_hash, _tempdir) =
+        global_state::state::lmdb::make_temporary_global_state([]);
+
+    let genesis_config = GenesisConfigBuilder::default()
+        .with_accounts(default_accounts)
+        .build();
+    let genesis_request: GenesisRequest = GenesisRequest::new(
+        Digest::hash("foo"),
+        ProtocolVersion::V2_0_0,
+        genesis_config,
+        ChainspecRegistry::new_with_genesis(b"", b""),
+    );
+    match global_state.genesis(genesis_request) {
+        GenesisResult::Failure(failure) => panic!("Failed to run genesis: {:?}", failure),
+        GenesisResult::Fatal(fatal) => panic!("Fatal error while running genesis: {}", fatal),
+        GenesisResult::Success {
+            post_state_hash,
+            effects: _,
+        } => {
+            state_root_hash = post_state_hash;
+        }
+    }
+    (global_state, state_root_hash, _tempdir)
+}
+
 #[test]
 fn traits() {
     let mut executor = make_executor();
-    let (mut global_state, root_hash, _tempdir) =
-        global_state::state::lmdb::make_temporary_global_state([]);
+    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT)
-        .with_address(DEFAULT_ACCOUNT)
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_TRAITS))
         .with_serialized_input(())
         .build()
         .expect("should build");
 
-    run_wasm(&mut executor, &mut global_state, root_hash, execute_request);
+    run_wasm(
+        &mut executor,
+        &mut global_state,
+        state_root_hash,
+        execute_request,
+    );
 }
 
 fn run_wasm(

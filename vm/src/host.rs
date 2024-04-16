@@ -41,7 +41,7 @@ pub(crate) fn casper_write<S: GlobalStateReader, E: Executor>(
     let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let global_state_key = match Keyspace::from_raw_parts(key_space, &key) {
-        Some(keyspace) => keyspace_to_global_state_key(caller.context().address, keyspace),
+        Some(keyspace) => keyspace_to_global_state_key(caller.context().state_address, keyspace),
         None => {
             // Unknown keyspace received, return error
             return Ok(1);
@@ -91,7 +91,7 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
     };
 
     // Convert keyspace to a global state `Key`
-    let global_state_key = keyspace_to_global_state_key(caller.context().address, keyspace);
+    let global_state_key = keyspace_to_global_state_key(caller.context().state_address, keyspace);
 
     match caller.context_mut().storage.read(&global_state_key) {
         Ok(Some(StoredValue::RawBytes(raw_bytes))) => {
@@ -310,7 +310,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         .collect();
 
     let contract = ContractV2::V2(ContractManifest {
-        owner: caller.context().address,
+        owner: caller.context().caller,
         bytecode_addr,
         entry_points,
         purse_uref,
@@ -350,7 +350,6 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
                     let execute_request = ExecuteRequestBuilder::default()
                         .with_caller(caller.context().caller)
-                        .with_address(contract_hash)
                         .with_gas_limit(gas_limit)
                         .with_target(ExecutionKind::Contract {
                             address: contract_hash,
@@ -474,8 +473,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .expect("should be remaining");
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(caller.context().address)
-        .with_address(address)
+        .with_caller(caller.context().caller)
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Contract {
             address,
@@ -569,7 +567,7 @@ pub(crate) fn casper_env_read<S: GlobalStateReader, E: Executor>(
     };
 
     let data = if path == &[CASPER_ENV_CALLER] {
-        Some(caller.context().address.to_vec())
+        Some(caller.context().caller.to_vec())
     } else {
         None
     };
@@ -598,7 +596,7 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
     dest_ptr: u32,
     dest_len: u32,
 ) -> VMResult<u32> {
-    let mut data = caller.context().address.as_slice();
+    let mut data = caller.context().caller.as_slice();
     if dest_ptr == 0 {
         Ok(dest_ptr)
     } else {

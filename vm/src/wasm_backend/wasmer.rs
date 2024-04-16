@@ -655,10 +655,12 @@ where
 
         let data = env_mut.data_mut();
 
+        // NOTE: There must be a better way than re-creating the object based on consumed fields.
+
         Context {
             caller: data.context.caller,
+            state_address: data.context.state_address,
             storage: data.context.storage.fork2(),
-            address: data.context.address,
             executor: data.context.executor.clone(),
         }
     }

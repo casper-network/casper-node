@@ -232,7 +232,7 @@ impl ConfigBuilder {
 
 impl WasmEngine {
     pub(crate) fn prepare<S: GlobalStateReader + 'static, E: Executor + 'static, C: Into<Bytes>>(
-        &mut self,
+        &self,
         wasm_bytes: C,
         context: Context<S, E>,
         config: Config,

@@ -17,11 +17,11 @@ use crate::{
 pub struct ExecuteRequest {
     /// Caller's address.
     pub(crate) caller: Address,
-    /// Address of the contract to execute.
-    pub(crate) address: Address,
     /// Gas limit.
     pub(crate) gas_limit: u64,
+    /// Target for execution.
     pub(crate) execution_kind: ExecutionKind,
+    /// Input data.
     pub(crate) input: Bytes,
 }
 
@@ -29,7 +29,6 @@ pub struct ExecuteRequest {
 #[derive(Default)]
 pub struct ExecuteRequestBuilder {
     caller: Option<Address>,
-    address: Option<Address>,
     gas_limit: Option<u64>,
     target: Option<ExecutionKind>,
     input: Option<Bytes>,
@@ -39,12 +38,6 @@ impl ExecuteRequestBuilder {
     /// Set the caller's address.
     pub fn with_caller(mut self, caller: Address) -> Self {
         self.caller = Some(caller);
-        self
-    }
-
-    /// Set the address of the contract to execute.
-    pub fn with_address(mut self, address: Address) -> Self {
-        self.address = Some(address);
         self
     }
 
@@ -77,14 +70,12 @@ impl ExecuteRequestBuilder {
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let caller = self.caller.ok_or("Caller is not set")?;
-        let address = self.address.ok_or("Address is not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
 
         Ok(ExecuteRequest {
             caller,
-            address,
             gas_limit,
             execution_kind,
             input,
@@ -114,12 +105,15 @@ impl ExecuteResult {
 }
 
 /// Target for Wasm execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionKind {
     /// Execute Wasm bytes directly.
     WasmBytes(Bytes),
     /// Execute a stored contract by its address.
     Contract {
+        /// Address of the contract.
         address: Address,
+        /// Entry point selector.
         selector: Selector,
     },
 }
@@ -136,6 +130,11 @@ pub enum ExecuteError {
     Preparation(#[from] PreparationError),
 }
 
+/// Executor trait.
+///
+/// An executor is responsible for executing Wasm contracts. This implies that the executor is able to prepare Wasm instances, execute them, and handle errors that occur during execution.
+///
+/// Trait bounds also implying that the executor has to support interior mutability, as it may need to update its internal state during execution of a single or a chain of multiple contracts.
 pub trait Executor: Clone + Send {
     fn execute<R: GlobalStateReader + 'static>(
         &self,

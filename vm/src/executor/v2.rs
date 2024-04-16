@@ -1,13 +1,14 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
 use casper_types::{contracts::ContractV2, ByteCodeAddr, EntityAddr, Key, StoredValue};
 use either::Either;
+use parking_lot::RwLock;
 use vm_common::flags::ReturnFlags;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
 use crate::{
-    storage::{GlobalStateReader, TrackingCopy},
+    storage::{Address, GlobalStateReader, TrackingCopy},
     wasm_backend::{Context, WasmInstance},
     ConfigBuilder, HostError, VMError, WasmEngine,
 };
@@ -69,6 +70,7 @@ impl ExecutorConfigBuilder {
 pub struct ExecutorV2 {
     config: ExecutorConfig,
     vm: Arc<WasmEngine>,
+    execution_stack: Arc<RwLock<VecDeque<ExecutionKind>>>,
 }
 
 impl ExecutorV2 {
@@ -78,7 +80,28 @@ impl ExecutorV2 {
         ExecutorV2 {
             config,
             vm: Arc::new(vm),
+            execution_stack: Default::default(),
         }
+    }
+
+    /// Get the context address of the currently executing contract.
+    pub(crate) fn context_address(&self) -> Option<Address> {
+        match self.execution_stack.read().back() {
+            Some(ExecutionKind::Contract { address, .. }) => Some(*address),
+            _ => None,
+        }
+    }
+
+    /// Push the execution stack.
+    pub(crate) fn push_execution_stack(&self, execution_kind: ExecutionKind) {
+        let mut execution_stack = self.execution_stack.write();
+        execution_stack.push_back(execution_kind);
+    }
+
+    /// Pop the execution stack.
+    pub(crate) fn pop_execution_stack(&self) -> Option<ExecutionKind> {
+        let mut execution_stack = self.execution_stack.write();
+        execution_stack.pop_back()
     }
 }
 
@@ -94,20 +117,19 @@ impl Executor for ExecutorV2 {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let ExecuteRequest {
-            address,
             gas_limit,
-            execution_kind: target,
+            execution_kind,
             input,
             caller,
         } = execute_request;
 
-        let (wasm_bytes, export_or_selector) = match target {
+        let (wasm_bytes, export_or_selector) = match &execution_kind {
             ExecutionKind::WasmBytes(wasm_bytes) => {
                 // self.execute_wasm(tracking_copy, address, gas_limit, wasm_bytes, input)
-                (wasm_bytes, Either::Left(DEFAULT_WASM_ENTRY_POINT))
+                (wasm_bytes.clone(), Either::Left(DEFAULT_WASM_ENTRY_POINT))
             }
             ExecutionKind::Contract { address, selector } => {
-                let key = Key::AddressableEntity(EntityAddr::SmartContract(address)); // TODO: Error handling
+                let key = Key::AddressableEntity(EntityAddr::SmartContract(*address)); // TODO: Error handling
                 let contract = tracking_copy.read(&key).expect("should read contract");
 
                 match contract {
@@ -159,15 +181,20 @@ impl Executor for ExecutorV2 {
             }
         };
 
-        let mut vm = WasmEngine::new();
+        let vm = Arc::clone(&self.vm);
 
         let mut initial_tracking_copy = tracking_copy.fork2();
 
+        let state_address = match &execution_kind {
+            ExecutionKind::Contract { address, .. } => *address,
+            ExecutionKind::WasmBytes(_wasm_bytes) => caller,
+        };
+
         let context = Context {
             caller,
-            address,
+            state_address,
             storage: tracking_copy,
-            executor: ExecutorV2::new(self.config),
+            executor: self.clone(),
         };
 
         let wasm_instance_config = ConfigBuilder::new()
@@ -178,10 +205,15 @@ impl Executor for ExecutorV2 {
 
         let mut instance = vm.prepare(wasm_bytes, context, wasm_instance_config)?;
 
+        self.push_execution_stack(execution_kind.clone());
         let (vm_result, gas_usage) = match export_or_selector {
             Either::Left(export) => instance.call_export(export),
             Either::Right(function_index) => instance.call_function(function_index),
         };
+        let top_execution_kind = self
+            .pop_execution_stack()
+            .expect("should have execution kind"); // SAFETY: We just pushed
+        debug_assert_eq!(&top_execution_kind, &execution_kind);
 
         let context = instance.teardown();
 

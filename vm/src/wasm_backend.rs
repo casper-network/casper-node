@@ -1,8 +1,13 @@
 pub(crate) mod wasmer;
+use std::{collections::VecDeque, sync::Arc};
+
 use bytes::Bytes;
+use casper_types::system;
+use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
+    executor::ExecutionKind,
     storage::{Address, GlobalStateReader, TrackingCopy},
     Config, Executor, VMError, VMResult,
 };
@@ -25,9 +30,10 @@ impl GasUsage {
 /// Container that holds all relevant modules necessary to process an execution request.
 pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
     pub(crate) caller: Address,
-    pub(crate) address: Address,
+    /// The state of the global state at the time of the call based on the currently executing contract or session address.
+    pub(crate) state_address: Address,
     pub(crate) storage: TrackingCopy<S>,
-    pub(crate) executor: E,
+    pub(crate) executor: E, // TODO: This could be part of the caller
 }
 
 #[derive(Debug, Copy, Clone)]
