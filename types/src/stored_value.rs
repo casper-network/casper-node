@@ -947,8 +947,44 @@ mod tests {
     use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
     use serde_json::Value;
-    const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = "{\"ContractPackage\":{\"access_key\":\"uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007\",\"versions\":[{\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd\"}],\"disabled_versions\":[],\"groups\":[],\"lock_status\":\"Unlocked\"}}";
-    const INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = "{\"ContractPackage\":{\"access_key\":\"uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007\",\"versions\":[{\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd\"}, {\"protocol_version_major\":1,\"contract_version\":1,\"contract_hash\":\"contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfe\"}],\"disabled_versions\":[],\"groups\":[],\"lock_status\":\"Unlocked\"}}";
+    const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }"#;
+    const INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            },
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfe"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }
+    "#;
 
     #[test]
     fn contract_package_stored_value_serializes_versions_to_flat_array() {
