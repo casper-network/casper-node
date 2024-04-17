@@ -599,17 +599,26 @@ pub trait StateProvider {
                             let mut ret = U512::zero();
                             let block_time = request.block_time().value();
                             for (hold_created_time, holds) in &balance_holds {
-                                let hold_created_time = hold_created_time.value(); // shadow this to inner
+                                let hold_created_time = hold_created_time.value();
                                 if hold_created_time > block_time {
                                     continue;
                                 }
+                                // calculate the expiry per the current chainspec setting.
+                                // this is always correct for current checks, but hypothetically:
+                                // on a chain that used amortized holds for some period of time
+                                // with a specific interval and then later changed the interval,
+                                // subsequent balance queries using the client interface
+                                // for an historical period would get a different outcome than
+                                // the actual contemporaneous outcome from that time. This is not
+                                // a "problem" per se at least from the perspective of on-chain
+                                // processing. But it would frustrate a hypothetical auditory
+                                // process attempting to check historical outcomes using a present
+                                // day node's current logic and settings. If we wanted to address
+                                // this edge case, we would need to store the interval in global
+                                // state as part of the protocol
+                                // upgrade to 2.0 and refresh it in future
+                                // upgrades if the value changes.
                                 let expiry = hold_created_time.saturating_add(interval.millis());
-                                if hold_created_time > expiry {
-                                    // this must be programmer error
-                                    return BalanceResult::Failure(
-                                        BalanceError::HoldCreatedExceedsExpiry,
-                                    );
-                                }
                                 if block_time > expiry {
                                     continue;
                                 }
@@ -649,10 +658,13 @@ pub trait StateProvider {
                         total_balance >= held,
                         "it should not be possible to hold more than the total available"
                     );
-                    if held > total_balance {
-                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                    match total_balance.checked_sub(held) {
+                        Some(available_balance) => available_balance,
+                        None => {
+                            error!(%held, %total_balance, "held amount exceeds total balance, which should never occur.");
+                            return BalanceResult::Failure(BalanceError::HeldExceedsTotal);
+                        }
                     }
-                    total_balance.checked_sub(held).unwrap_or(U512::zero())
                 };
 
                 BalanceResult::Success {

@@ -456,10 +456,10 @@ impl ProofsResult {
 pub enum BalanceError {
     /// Tracking copy error.
     TrackingCopy(TrackingCopyError),
-    /// Hold created time should never be greater than its own expiry (programmer error)."
-    HoldCreatedExceedsExpiry,
     /// Failed to calculate amortization (checked multiplication).
     AmortizationFailure,
+    /// Held amount exceeds total balance, which should never occur.
+    HeldExceedsTotal,
 }
 
 impl Display for BalanceError {
@@ -468,13 +468,16 @@ impl Display for BalanceError {
             BalanceError::TrackingCopy(err) => {
                 write!(f, "TrackingCopy: {:?}", err)
             }
-            BalanceError::HoldCreatedExceedsExpiry => {
-                write!(f, "HoldCreatedExceedsExpiry: hold created time should never be greater than its own expiry (programmer error).",)
-            }
             BalanceError::AmortizationFailure => {
                 write!(
                     f,
                     "AmortizationFailure: failed to calculate amortization (checked multiplication)."
+                )
+            }
+            BalanceError::HeldExceedsTotal => {
+                write!(
+                    f,
+                    "HeldExceedsTotal: held amount exceeds total balance, which should never occur."
                 )
             }
         }
