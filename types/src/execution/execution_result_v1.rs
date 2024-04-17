@@ -22,7 +22,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, Key, Transfer, TransferAddr, U128, U256, U512,
+    CLValue, DeployInfo, Key, TransferAddr, TransferV1, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -103,7 +103,7 @@ pub enum ExecutionResultV1 {
     Failure {
         /// The effect of executing the deploy.
         effect: ExecutionEffect,
-        /// A record of Transfers performed while executing the deploy.
+        /// A record of version 1 Transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost of executing the deploy.
         cost: U512,
@@ -465,8 +465,8 @@ pub enum TransformKindV1 {
     WriteDeployInfo(DeployInfo),
     /// Writes the given EraInfo to global state.
     WriteEraInfo(EraInfo),
-    /// Writes the given Transfer to global state.
-    WriteTransfer(Transfer),
+    /// Writes the given version 1 Transfer to global state.
+    WriteTransfer(TransferV1),
     /// Writes the given Bid to global state.
     WriteBid(Box<Bid>),
     /// Writes the given Withdraw to global state.
@@ -644,7 +644,7 @@ impl FromBytes for TransformKindV1 {
                 Ok((TransformKindV1::WriteEraInfo(era_info), remainder))
             }
             TransformTag::WriteTransfer => {
-                let (transfer, remainder) = Transfer::from_bytes(remainder)?;
+                let (transfer, remainder) = TransferV1::from_bytes(remainder)?;
                 Ok((TransformKindV1::WriteTransfer(transfer), remainder))
             }
             TransformTag::AddInt32 => {

@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, DeployHash, Digest, Key, Phase, PublicKey,
-    StoredValue, SystemEntityRegistry, TransactionHash, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, HoldsEpoch, InitiatorAddr, Key, Phase,
+    PublicKey, StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -29,7 +29,7 @@ where
     }
 
     fn get_immediate_caller(&self) -> Option<Caller> {
-        let caller = Caller::Session {
+        let caller = Caller::Initiator {
             account_hash: PublicKey::System.to_account_hash(),
         };
         Some(caller)
@@ -44,8 +44,8 @@ where
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|tce| {
-                error!(%tce, "unable to obtain system contract registry during transfer");
-                ProviderError::SystemContractRegistry
+                error!(%tce, "unable to obtain system entity registry during transfer");
+                ProviderError::SystemEntityRegistry
             })
     }
 
@@ -173,11 +173,29 @@ where
         Ok(())
     }
 
-    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
         match self
             .tracking_copy()
             .borrow_mut()
-            .get_purse_balance(Key::Balance(uref.addr()))
+            .get_total_balance(purse.into())
+        {
+            Ok(total) => Ok(total.value()),
+            Err(err) => {
+                error!(?err, "mint native total_balance");
+                Err(Error::Storage)
+            }
+        }
+    }
+
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<Option<U512>, Error> {
+        match self
+            .tracking_copy()
+            .borrow_mut()
+            .get_available_balance(Key::Balance(purse.addr()), holds_epoch)
         {
             Ok(motes) => Ok(Some(motes.value())),
             Err(_) => Err(Error::Storage),
@@ -217,34 +235,20 @@ where
         if self.phase() != Phase::Session {
             return Ok(());
         }
-        let transfer_addr = TransferAddr::new(self.address_generator().create_address());
-        let key = Key::Transfer(transfer_addr); // <-- a new key variant needed to deal w/ versioned transaction hash
-                                                //let transaction_hash = self.transaction_hash();
-        let transfer = {
-            // the below line is incorrect; new transaction hash is not currently supported here
-            // ...the transfer struct needs to be upgraded to TransactionHash
-            let deploy_hash = match self.id() {
-                Id::Transaction(transaction) => {
-                    match transaction {
-                        TransactionHash::Deploy(deploy_hash) => *deploy_hash,
-                        TransactionHash::V1(hash) => {
-                            // TODO: this is bogus...update when new transfer record is available
-                            let hash = hash.inner();
-                            DeployHash::new(*hash)
-                        }
-                    }
-                }
-                Id::Seed(seed) => DeployHash::new(Digest::hash(seed)),
-            };
-            let from: AccountHash = self.get_caller();
-            let fee: U512 = U512::zero();
-            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
+        let txn_hash = match self.id() {
+            Id::Transaction(txn_hash) => *txn_hash,
+            // we don't write transfer records for systemic transfers (step, fees, rewards, etc)
+            // so return Ok and move on.
+            Id::Seed(_) => return Ok(()),
         };
-        self.push_transfer(transfer_addr);
+        let from = InitiatorAddr::AccountHash(self.get_caller());
+        let fee = Gas::zero(); // TODO
+        let transfer = Transfer::V2(TransferV2::new(
+            txn_hash, from, maybe_to, source, target, amount, fee, id,
+        ));
 
-        self.tracking_copy()
-            .borrow_mut()
-            .write(key, StoredValue::Transfer(transfer));
+        self.push_transfer(transfer);
+
         Ok(())
     }
 }

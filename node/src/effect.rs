@@ -114,29 +114,27 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{
-    tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-    BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+use casper_binary_port::{
+    ConsensusStatus, ConsensusValidatorChanges, LastProgress, NetworkName, RecordId, Uptime,
 };
-
-use casper_storage::data_access_layer::{
-    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
-    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+use casper_storage::{
+    block_store::types::ApprovalsHashes,
+    data_access_layer::{
+        tagged_values::{TaggedValuesRequest, TaggedValuesResult},
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+    },
+    DbRawBytesSpec,
 };
 use casper_types::{
-    binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, LastProgress, NetworkName,
-        RecordId, SpeculativeExecutionResult, Uptime,
-    },
     execution::{Effects as ExecutionEffects, ExecutionResult},
-    package::Package,
     Approval, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
-    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, ProtocolVersion,
-    PublicKey, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    U512,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV2, Key, NextUpgrade, Package,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -146,13 +144,13 @@ use crate::{
             TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock},
+        contract_runtime::SpeculativeExecutionResult,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
     },
-    contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -162,9 +160,6 @@ use crate::{
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
-use casper_storage::block_store::types::ApprovalsHashes;
-
-use crate::effect::requests::TransactionBufferRequest;
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
@@ -178,7 +173,8 @@ use requests::{
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
     ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
     MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, SetNodeStopRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -926,7 +922,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn try_accept_transaction(
         self,
         transaction: Transaction,
-        speculative_exec_at_block: Option<Box<BlockHeader>>,
+        is_speculative: bool,
     ) -> Result<(), transaction_acceptor::Error>
     where
         REv: From<AcceptTransactionRequest>,
@@ -934,7 +930,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| AcceptTransactionRequest {
                 transaction,
-                speculative_exec_at_block,
+                is_speculative,
                 responder,
             },
             QueueKind::Api,
@@ -1164,7 +1160,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::GetBlockUtilizationScore {
                 era_id,
                 block_height,
-                transaction_count,
+                switch_block_utilization: transaction_count,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1534,6 +1530,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::BalanceHoldsInterval { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
     pub(crate) async fn get_block_synchronizer_status(self) -> BlockSynchronizerStatus
     where
         REv: From<BlockSynchronizerRequest>,
@@ -1686,7 +1693,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Stores the given execution results for the transactions in the given block in the linear
     /// block store.
-    pub(crate) async fn put_execution_results_to_storage(
+    pub(crate) async fn put_execution_artifacts_to_storage(
         self,
         block_hash: BlockHash,
         block_height: u64,
@@ -2283,15 +2290,15 @@ impl<REv> EffectBuilder<REv> {
     /// used for debugging & discovery purposes.
     pub(crate) async fn speculatively_execute(
         self,
-        execution_prestate: SpeculativeExecutionState,
+        block_header: Box<BlockHeader>,
         transaction: Box<Transaction>,
-    ) -> Result<SpeculativeExecutionResult, engine_state::Error>
+    ) -> SpeculativeExecutionResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
+                block_header,
                 transaction,
                 responder,
             },

@@ -73,7 +73,7 @@ impl ProtocolVersion {
     }
 
     /// Returns the inner [`SemVer`].
-    pub fn value(&self) -> SemVer {
+    pub const fn value(&self) -> SemVer {
         self.0
     }
 

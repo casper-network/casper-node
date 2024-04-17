@@ -1,8 +1,11 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_execution_engine::engine_state::WasmV1Request;
+use casper_storage::data_access_layer::BalanceIdentifier;
+use casper_types::{account::AccountHash, runtime_args, Digest, Gas, RuntimeArgs, Timestamp, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
@@ -15,6 +18,7 @@ const ARG_PURSE_NAME: &str = "purse_name";
 const ARG_DESTINATION: &str = "destination";
 
 #[ignore]
+#[allow(unused)]
 #[test]
 fn should_charge_non_main_purse() {
     // as account_1, create & fund a new purse and use that to pay for something
@@ -22,7 +26,6 @@ fn should_charge_non_main_purse() {
     const TEST_PURSE_NAME: &str = "test-purse";
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
-    let payment_purse_amount = *DEFAULT_PAYMENT;
     let account_1_funding_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let account_1_purse_funding_amount = *DEFAULT_PAYMENT;
 
@@ -40,9 +43,9 @@ fn should_charge_non_main_purse() {
         TRANSFER_MAIN_PURSE_TO_NEW_PURSE_WASM,
         runtime_args! { ARG_DESTINATION => TEST_PURSE_NAME, ARG_AMOUNT => account_1_purse_funding_amount },
     )
-    .build();
+        .build();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     builder
         .exec(setup_exec_request)
@@ -59,48 +62,71 @@ fn should_charge_non_main_purse() {
     // get purse
     let purse_key = account_1.named_keys().get(TEST_PURSE_NAME).unwrap();
     let purse = purse_key.into_uref().expect("should have uref");
-
     let purse_starting_balance = builder.get_purse_balance(purse);
 
     assert_eq!(
         purse_starting_balance, account_1_purse_funding_amount,
-        "purse should be funded with expected amount"
+        "purse should be funded with expected amount, which in this case is also == to the amount to be paid"
     );
 
+    // in this test, we're just going to pay everything in the purse to
+    // keep the math easy.
+    let amount_to_be_paid = account_1_purse_funding_amount;
     // should be able to pay for exec using new purse
-    let account_payment_exec_request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
-            .with_payment_code(
-                NAMED_PURSE_PAYMENT_WASM,
-                runtime_args! {
-                    ARG_PURSE_NAME => TEST_PURSE_NAME,
-                    ARG_AMOUNT => payment_purse_amount
-                },
-            )
-            .with_authorization_keys(&[account_1_account_hash])
-            .with_deploy_hash([3; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(ACCOUNT_1_ADDR)
+        .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
+        .with_payment_code(
+            NAMED_PURSE_PAYMENT_WASM,
+            runtime_args! {
+                ARG_PURSE_NAME => TEST_PURSE_NAME,
+                ARG_AMOUNT => amount_to_be_paid
+            },
+        )
+        .with_authorization_keys(&[account_1_account_hash])
+        .with_deploy_hash([3; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
+    let block_time = Timestamp::now().millis();
 
     builder
-        .exec(account_payment_exec_request)
+        .exec_wasm_v1(
+            WasmV1Request::new_custom_payment_from_deploy_item(
+                Digest::default(),
+                block_time.into(),
+                Gas::from(12_500_000_000_u64),
+                &deploy_item,
+            )
+            .expect("should be valid req"),
+        )
         .expect_success()
         .commit();
 
-    let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
+    let payment_purse_balance = builder.get_purse_balance_result_with_proofs(
+        DEFAULT_PROTOCOL_VERSION,
+        BalanceIdentifier::Payment,
+        block_time,
+    );
 
-    let expected_resting_balance = account_1_purse_funding_amount - transaction_fee;
+    assert!(
+        payment_purse_balance.is_success(),
+        "payment purse balance check should succeed"
+    );
+
+    let paid_amount = *payment_purse_balance
+        .available_balance()
+        .expect("should have payment amount");
+
+    assert_eq!(
+        paid_amount, amount_to_be_paid,
+        "purse resting balance should equal funding amount minus exec costs"
+    );
 
     let purse_final_balance = builder.get_purse_balance(purse);
 
     assert_eq!(
-        purse_final_balance, expected_resting_balance,
-        "purse resting balance should equal funding amount minus exec costs"
+        purse_final_balance,
+        U512::zero(),
+        "since we zero'd out the paying purse, the final balance should be zero"
     );
 }

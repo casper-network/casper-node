@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display, Formatter},
@@ -13,14 +13,14 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{crypto, CLType, TimeDiff, Timestamp, U512};
+use crate::{bytesrepr, crypto, CLType, DisplayIter, PricingMode, TimeDiff, Timestamp, U512};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[non_exhaustive]
-pub enum TransactionV1ConfigFailure {
+pub enum InvalidTransaction {
     /// Invalid chain name.
     InvalidChainName {
         /// The expected chain name.
@@ -97,14 +97,22 @@ pub enum TransactionV1ConfigFailure {
         arg_name: String,
     },
 
-    /// Given runtime arg is not expected type.
+    /// Given runtime arg is not one of the expected types.
     UnexpectedArgType {
         /// The name of the invalid arg.
         arg_name: String,
-        /// The expected type for the given runtime arg.
-        expected: CLType,
+        /// The choice of valid types for the given runtime arg.
+        expected: Vec<CLType>,
         /// The provided type of the given runtime arg.
         got: CLType,
+    },
+
+    /// Failed to deserialize the given runtime arg.
+    InvalidArg {
+        /// The name of the invalid arg.
+        arg_name: String,
+        /// The deserialization error.
+        error: bytesrepr::Error,
     },
 
     /// Insufficient transfer amount.
@@ -126,30 +134,45 @@ pub enum TransactionV1ConfigFailure {
         /// The invalid entry point.
         entry_point: TransactionEntryPoint,
     },
-
     /// The transaction has empty module bytes.
     EmptyModuleBytes,
+    /// Attempt to factor the amount over the gas_price failed.
+    GasPriceConversion {
+        /// The base amount.
+        amount: u64,
+        /// The attempted gas price.
+        gas_price: u8,
+    },
+    /// Unable to calculate gas limit.
+    UnableToCalculateGasLimit,
+    /// Unable to calculate gas cost.
+    UnableToCalculateGasCost,
+    /// Invalid combination of pricing handling and pricing mode.
+    InvalidPricingMode {
+        /// The pricing mode as specified by the transaction.
+        price_mode: PricingMode,
+    },
 }
 
-impl Display for TransactionV1ConfigFailure {
+impl Display for InvalidTransaction {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            TransactionV1ConfigFailure::InvalidChainName { expected, got } => {
+            InvalidTransaction::InvalidChainName { expected, got } => {
                 write!(
                     formatter,
                     "invalid chain name: expected {expected}, got {got}"
                 )
             }
-            TransactionV1ConfigFailure::ExcessiveSize(error) => {
+            InvalidTransaction::ExcessiveSize(error) => {
                 write!(formatter, "transaction size too large: {error}")
             }
-            TransactionV1ConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
+            InvalidTransaction::ExcessiveTimeToLive { max_ttl, got } => {
                 write!(
                     formatter,
                     "time-to-live of {got} exceeds limit of {max_ttl}"
                 )
             }
-            TransactionV1ConfigFailure::TimestampInFuture {
+            InvalidTransaction::TimestampInFuture {
                 validation_timestamp,
                 timestamp_leeway,
                 got,
@@ -160,35 +183,35 @@ impl Display for TransactionV1ConfigFailure {
                     {validation_timestamp} plus leeway of {timestamp_leeway}"
                 )
             }
-            TransactionV1ConfigFailure::InvalidBodyHash => {
+            InvalidTransaction::InvalidBodyHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the transaction body"
                 )
             }
-            TransactionV1ConfigFailure::InvalidTransactionHash => {
+            InvalidTransaction::InvalidTransactionHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the transaction"
                 )
             }
-            TransactionV1ConfigFailure::EmptyApprovals => {
+            InvalidTransaction::EmptyApprovals => {
                 write!(formatter, "the transaction has no approvals")
             }
-            TransactionV1ConfigFailure::InvalidApproval { index, error } => {
+            InvalidTransaction::InvalidApproval { index, error } => {
                 write!(
                     formatter,
                     "the transaction approval at index {index} is invalid: {error}"
                 )
             }
-            TransactionV1ConfigFailure::ExcessiveArgsLength { max_length, got } => {
+            InvalidTransaction::ExcessiveArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized transaction runtime args of {got} bytes exceeds limit of \
                     {max_length} bytes"
                 )
             }
-            TransactionV1ConfigFailure::ExcessiveApprovals {
+            InvalidTransaction::ExcessiveApprovals {
                 max_associated_keys,
                 got,
             } => {
@@ -198,7 +221,7 @@ impl Display for TransactionV1ConfigFailure {
                     associated keys {max_associated_keys}",
                 )
             }
-            TransactionV1ConfigFailure::ExceedsBlockGasLimit {
+            InvalidTransaction::ExceedsBlockGasLimit {
                 block_gas_limit,
                 got,
             } => {
@@ -207,65 +230,93 @@ impl Display for TransactionV1ConfigFailure {
                     "payment amount of {got} exceeds the block gas limit of {block_gas_limit}"
                 )
             }
-            TransactionV1ConfigFailure::MissingArg { arg_name } => {
+            InvalidTransaction::MissingArg { arg_name } => {
                 write!(formatter, "missing required runtime argument '{arg_name}'")
             }
-            TransactionV1ConfigFailure::UnexpectedArgType {
+            InvalidTransaction::UnexpectedArgType {
                 arg_name,
                 expected,
                 got,
             } => {
                 write!(
                     formatter,
-                    "expected type of '{arg_name}' runtime argument to be {expected}, but got {got}"
+                    "expected type of '{arg_name}' runtime argument to be one of {}, but got {got}",
+                    DisplayIter::new(expected)
                 )
             }
-            TransactionV1ConfigFailure::InsufficientTransferAmount { minimum, attempted } => {
+            InvalidTransaction::InvalidArg { arg_name, error } => {
+                write!(formatter, "invalid runtime argument '{arg_name}': {error}")
+            }
+            InvalidTransaction::InsufficientTransferAmount { minimum, attempted } => {
                 write!(
                     formatter,
                     "insufficient transfer amount; minimum: {minimum} attempted: {attempted}"
                 )
             }
-            TransactionV1ConfigFailure::EntryPointCannotBeCustom { entry_point } => {
+            InvalidTransaction::EntryPointCannotBeCustom { entry_point } => {
                 write!(formatter, "entry point cannot be custom: {entry_point}")
             }
-            TransactionV1ConfigFailure::EntryPointMustBeCustom { entry_point } => {
+            InvalidTransaction::EntryPointMustBeCustom { entry_point } => {
                 write!(formatter, "entry point must be custom: {entry_point}")
             }
-            TransactionV1ConfigFailure::EmptyModuleBytes => {
+            InvalidTransaction::EmptyModuleBytes => {
                 write!(formatter, "the transaction has empty module bytes")
+            }
+            InvalidTransaction::GasPriceConversion { amount, gas_price } => {
+                write!(
+                    formatter,
+                    "failed to divide the amount {} by the gas price {}",
+                    amount, gas_price
+                )
+            }
+            InvalidTransaction::UnableToCalculateGasLimit => {
+                write!(formatter, "unable to calculate gas limit",)
+            }
+            InvalidTransaction::UnableToCalculateGasCost => {
+                write!(formatter, "unable to calculate gas cost",)
+            }
+            InvalidTransaction::InvalidPricingMode { price_mode } => {
+                write!(
+                    formatter,
+                    "received a transaction with an invalid mode {price_mode}"
+                )
             }
         }
     }
 }
 
-impl From<ExcessiveSizeErrorV1> for TransactionV1ConfigFailure {
+impl From<ExcessiveSizeErrorV1> for InvalidTransaction {
     fn from(error: ExcessiveSizeErrorV1) -> Self {
-        TransactionV1ConfigFailure::ExcessiveSize(error)
+        InvalidTransaction::ExcessiveSize(error)
     }
 }
 
 #[cfg(feature = "std")]
-impl StdError for TransactionV1ConfigFailure {
+impl StdError for InvalidTransaction {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            TransactionV1ConfigFailure::InvalidApproval { error, .. } => Some(error),
-            TransactionV1ConfigFailure::InvalidChainName { .. }
-            | TransactionV1ConfigFailure::ExcessiveSize(_)
-            | TransactionV1ConfigFailure::ExcessiveTimeToLive { .. }
-            | TransactionV1ConfigFailure::TimestampInFuture { .. }
-            | TransactionV1ConfigFailure::InvalidBodyHash
-            | TransactionV1ConfigFailure::InvalidTransactionHash
-            | TransactionV1ConfigFailure::EmptyApprovals
-            | TransactionV1ConfigFailure::ExcessiveArgsLength { .. }
-            | TransactionV1ConfigFailure::ExcessiveApprovals { .. }
-            | TransactionV1ConfigFailure::ExceedsBlockGasLimit { .. }
-            | TransactionV1ConfigFailure::MissingArg { .. }
-            | TransactionV1ConfigFailure::UnexpectedArgType { .. }
-            | TransactionV1ConfigFailure::InsufficientTransferAmount { .. }
-            | TransactionV1ConfigFailure::EntryPointCannotBeCustom { .. }
-            | TransactionV1ConfigFailure::EntryPointMustBeCustom { .. }
-            | TransactionV1ConfigFailure::EmptyModuleBytes => None,
+            InvalidTransaction::InvalidApproval { error, .. } => Some(error),
+            InvalidTransaction::InvalidArg { error, .. } => Some(error),
+            InvalidTransaction::InvalidChainName { .. }
+            | InvalidTransaction::ExcessiveSize(_)
+            | InvalidTransaction::ExcessiveTimeToLive { .. }
+            | InvalidTransaction::TimestampInFuture { .. }
+            | InvalidTransaction::InvalidBodyHash
+            | InvalidTransaction::InvalidTransactionHash
+            | InvalidTransaction::EmptyApprovals
+            | InvalidTransaction::ExcessiveArgsLength { .. }
+            | InvalidTransaction::ExcessiveApprovals { .. }
+            | InvalidTransaction::ExceedsBlockGasLimit { .. }
+            | InvalidTransaction::MissingArg { .. }
+            | InvalidTransaction::UnexpectedArgType { .. }
+            | InvalidTransaction::InsufficientTransferAmount { .. }
+            | InvalidTransaction::EntryPointCannotBeCustom { .. }
+            | InvalidTransaction::EntryPointMustBeCustom { .. }
+            | InvalidTransaction::EmptyModuleBytes
+            | InvalidTransaction::GasPriceConversion { .. }
+            | InvalidTransaction::UnableToCalculateGasLimit
+            | InvalidTransaction::UnableToCalculateGasCost
+            | InvalidTransaction::InvalidPricingMode { .. } => None,
         }
     }
 }

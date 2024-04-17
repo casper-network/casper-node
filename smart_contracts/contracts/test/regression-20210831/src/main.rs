@@ -85,10 +85,10 @@ fn forwarded_undelegate_args() -> RuntimeArgs {
 }
 
 fn forwarded_activate_bid_args() -> RuntimeArgs {
-    let validator_public_key: PublicKey = runtime::get_named_arg(auction::ARG_VALIDATOR_PUBLIC_KEY);
+    let validator_public_key: PublicKey = runtime::get_named_arg(auction::ARG_VALIDATOR);
 
     runtime_args! {
-        auction::ARG_VALIDATOR_PUBLIC_KEY => validator_public_key,
+        auction::ARG_VALIDATOR => validator_public_key,
     }
 }
 
@@ -182,7 +182,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     entry_points.add_entry_point(add_bid_proxy_call_1);
 
@@ -195,7 +195,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     entry_points.add_entry_point(add_bid_proxy_call);
 
@@ -207,7 +207,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let withdraw_proxy_call = EntryPoint::new(
@@ -218,7 +218,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let delegate_proxy_call = EntryPoint::new(
@@ -230,7 +230,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let delegate_proxy_call_1 = EntryPoint::new(
@@ -242,7 +242,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let undelegate_proxy_call = EntryPoint::new(
@@ -254,7 +254,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let undelegate_proxy_call_1 = EntryPoint::new(
@@ -266,28 +266,22 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     let activate_bid_proxy_call = EntryPoint::new(
         METHOD_ACTIVATE_BID_CALL,
-        vec![Parameter::new(
-            auction::ARG_VALIDATOR_PUBLIC_KEY,
-            CLType::PublicKey,
-        )],
+        vec![Parameter::new(auction::ARG_VALIDATOR, CLType::PublicKey)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     let activate_bid_proxy_call_1 = EntryPoint::new(
         METHOD_ACTIVATE_BID_CALL_1,
-        vec![Parameter::new(
-            auction::ARG_VALIDATOR_PUBLIC_KEY,
-            CLType::PublicKey,
-        )],
+        vec![Parameter::new(auction::ARG_VALIDATOR, CLType::PublicKey)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
 
     entry_points.add_entry_point(withdraw_proxy_call);

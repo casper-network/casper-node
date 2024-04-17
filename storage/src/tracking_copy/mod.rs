@@ -62,6 +62,32 @@ pub enum TrackingCopyQueryResult {
     },
 }
 
+impl TrackingCopyQueryResult {
+    /// Is this a successful query?
+    pub fn is_success(&self) -> bool {
+        matches!(self, TrackingCopyQueryResult::Success { .. })
+    }
+
+    /// As result.
+    pub fn as_result(self) -> Result<StoredValue, TrackingCopyError> {
+        match self {
+            TrackingCopyQueryResult::RootNotFound => {
+                Err(TrackingCopyError::Storage(Error::RootNotFound))
+            }
+            TrackingCopyQueryResult::ValueNotFound(msg) => {
+                Err(TrackingCopyError::ValueNotFound(msg))
+            }
+            TrackingCopyQueryResult::CircularReference(msg) => {
+                Err(TrackingCopyError::CircularReference(msg))
+            }
+            TrackingCopyQueryResult::DepthLimit { depth } => {
+                Err(TrackingCopyError::QueryDepthLimit { depth })
+            }
+            TrackingCopyQueryResult::Success { value, .. } => Ok(value),
+        }
+    }
+}
+
 /// Struct containing state relating to a given query.
 struct Query {
     /// The key from where the search starts.
@@ -645,8 +671,8 @@ where
                 StoredValue::ByteCode(_) => {
                     return Ok(query.into_not_found_result("ByteCode value found."));
                 }
-                StoredValue::Transfer(_) => {
-                    return Ok(query.into_not_found_result("Transfer value found."));
+                StoredValue::LegacyTransfer(_) => {
+                    return Ok(query.into_not_found_result("Legacy Transfer value found."));
                 }
                 StoredValue::DeployInfo(_) => {
                     return Ok(query.into_not_found_result("DeployInfo value found."));
@@ -896,9 +922,12 @@ pub fn validate_balance_proof(
     Ok(())
 }
 
-use crate::global_state::state::{
-    lmdb::{make_temporary_global_state, LmdbGlobalStateView},
-    StateProvider,
+use crate::global_state::{
+    error::Error,
+    state::{
+        lmdb::{make_temporary_global_state, LmdbGlobalStateView},
+        StateProvider,
+    },
 };
 use tempfile::TempDir;
 

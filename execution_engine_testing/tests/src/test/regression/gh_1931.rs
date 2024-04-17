@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{RuntimeArgs, StoredValue};
 
@@ -11,9 +10,7 @@ const CONTRACT_PACKAGE_NAMED_KEY: &str = "do_nothing_package_hash";
 #[test]
 fn should_query_contract_package() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
-        .commit();
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone()).commit();
 
     let install_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_NAME, RuntimeArgs::new())

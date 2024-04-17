@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/6.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/7.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -9,15 +9,11 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-/// Utility methods for running the auction in a test or bench context.
-pub mod auction;
 mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
-
-/// Utilities for running transfers in a test or bench context.
-pub mod transfer;
+mod transfer_request_builder;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
@@ -27,16 +23,16 @@ use once_cell::sync::Lazy;
 
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
-    DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
+    account::AccountHash, testing::TestRng, ChainspecRegistry, Digest, GenesisAccount,
+    GenesisConfig, GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey,
+    SystemConfig, WasmConfig, U512,
 };
 
-pub use chainspec_config::ChainspecConfig;
-use chainspec_config::PRODUCTION_PATH;
+pub use chainspec_config::{ChainspecConfig, CHAINSPEC_SYMLINK};
 pub use deploy_item_builder::DeployItemBuilder;
-pub use execute_request_builder::ExecuteRequestBuilder;
+pub use execute_request_builder::{ExecuteRequest, ExecuteRequestBuilder};
 pub use step_request_builder::StepRequestBuilder;
+pub use transfer_request_builder::TransferRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{EntityWithNamedKeys, LmdbWasmTestBuilder, WasmTestBuilder};
 
@@ -59,7 +55,7 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 /// Ticks per year: 31536000000
 ///
 /// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(1, 4200000000000000000);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";
@@ -68,7 +64,7 @@ pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 /// Default block time.
 pub const DEFAULT_BLOCK_TIME: u64 = 0;
 /// Default gas price.
-pub const DEFAULT_GAS_PRICE: u64 = 1;
+pub const DEFAULT_GAS_PRICE: u8 = 1;
 /// Amount named argument.
 pub const ARG_AMOUNT: &str = "amount";
 /// Timestamp increment in milliseconds.
@@ -83,14 +79,15 @@ pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
 pub const DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT: u32 = 12;
 /// Default value for minimum delegation amount in motes.
 pub const DEFAULT_MINIMUM_DELEGATION_AMOUNT: u64 = 500 * 1_000_000_000;
-
 /// Default genesis config hash.
-pub static DEFAULT_GENESIS_CONFIG_HASH: Lazy<Digest> = Lazy::new(|| [42; 32].into());
+pub const DEFAULT_GENESIS_CONFIG_HASH: Digest = Digest::from_raw([42; 32]);
+
+/// Default account secret key.
+pub static DEFAULT_ACCOUNT_SECRET_KEY: Lazy<SecretKey> =
+    Lazy::new(|| SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap());
 /// Default account public key.
-pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([199; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
+pub static DEFAULT_ACCOUNT_PUBLIC_KEY: Lazy<PublicKey> =
+    Lazy::new(|| PublicKey::from(&*DEFAULT_ACCOUNT_SECRET_KEY));
 /// Default test account address.
 pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
@@ -99,9 +96,9 @@ pub static DEFAULT_ACCOUNT_ADDR: Lazy<AccountHash> =
 pub static DEFAULT_ACCOUNT_KEY: Lazy<AccountHash> =
     Lazy::new(|| AccountHash::from(&*DEFAULT_ACCOUNT_PUBLIC_KEY));
 /// Default initial balance of a test account in motes.
-pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 100_000_000_000_000_000u64;
+pub const DEFAULT_ACCOUNT_INITIAL_BALANCE: u64 = 10_000_000_000_000_000_000_u64;
 /// Minimal amount for a transfer that creates new accounts.
-pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000u64;
+pub const MINIMUM_ACCOUNT_CREATION_BALANCE: u64 = 7_500_000_000_000_000_u64;
 /// Default proposer public key.
 pub static DEFAULT_PROPOSER_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([198; SecretKey::ED25519_LENGTH]).unwrap();
@@ -115,20 +112,29 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
     let mut ret = Vec::new();
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
     ret.push(genesis_account);
     let proposer_account = GenesisAccount::account(
         DEFAULT_PROPOSER_PUBLIC_KEY.clone(),
-        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE.into()),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
     ret.push(proposer_account);
+    let rng = &mut TestRng::new();
+    for _ in 0..10 {
+        let filler_account = GenesisAccount::account(
+            PublicKey::random(rng),
+            Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
+            None,
+        );
+        ret.push(filler_account);
+    }
     ret
 });
 /// Default [`ProtocolVersion`].
-pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V2_0_0);
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V2_0_0;
 /// Default payment.
 pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
 /// Default [`WasmConfig`].
@@ -148,8 +154,6 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
         .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
         .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
-        .with_refund_handling(DEFAULT_REFUND_HANDLING)
-        .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build()
 });
 
@@ -158,16 +162,16 @@ pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
 
 /// A [`GenesisRequest`] using cost tables matching those used in Casper Mainnet.
-pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
-    ChainspecConfig::create_genesis_request_from_production_chainspec(
+pub static LOCAL_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
+    ChainspecConfig::create_genesis_request_from_local_chainspec(
         DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_PROTOCOL_VERSION,
     )
     .expect("must create the request")
 });
 /// Round seigniorage rate from the production chainspec.
 pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
-    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+    let chainspec = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK)
         .expect("must create chainspec_config");
     chainspec.core_config.round_seigniorage_rate
 });
@@ -180,7 +184,7 @@ mod tests {
 
     #[test]
     fn defaults_should_match_production_chainspec_values() {
-        let production = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH).unwrap();
+        let production = ChainspecConfig::from_chainspec_path(&*CHAINSPEC_SYMLINK).unwrap();
         // No need to test `CoreConfig::validator_slots`.
         assert_eq!(production.core_config.auction_delay, DEFAULT_AUCTION_DELAY);
         assert_eq!(

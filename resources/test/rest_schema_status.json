@@ -127,6 +127,17 @@
           "$ref": "#/definitions/BlockSynchronizerStatus"
         }
       ]
+    },
+    "latest_switch_block_hash": {
+      "description": "The hash of the latest switch block.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/BlockHash"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "additionalProperties": false,

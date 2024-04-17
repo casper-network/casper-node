@@ -17,6 +17,9 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+
 use super::{FromStrError, TopicNameHash};
 
 /// Collection of multiple messages.
@@ -128,6 +131,24 @@ pub enum MessagePayload {
     Bytes(Bytes),
 }
 
+impl MessagePayload {
+    #[cfg(any(feature = "testing", test))]
+    /// Returns a random `MessagePayload`.
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(16..128);
+        if rng.gen() {
+            MessagePayload::String(Alphanumeric.sample_string(rng, count))
+        } else {
+            MessagePayload::Bytes(
+                std::iter::repeat_with(|| rng.gen())
+                    .take(count)
+                    .collect::<Vec<u8>>()
+                    .into(),
+            )
+        }
+    }
+}
+
 impl<T> From<T> for MessagePayload
 where
     T: Into<String>,
@@ -191,7 +212,7 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
-    entity_addr: EntityAddr,
+    entity_hash: EntityAddr, // TODO: this should be EntityAddr
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
@@ -215,7 +236,7 @@ impl Message {
         block_index: u64,
     ) -> Self {
         Self {
-            entity_addr: source,
+            entity_hash: source,
             message,
             topic_name,
             topic_name_hash,
@@ -225,8 +246,8 @@ impl Message {
     }
 
     /// Returns a reference to the identity of the entity that produced the message.
-    pub fn entity_addr(&self) -> &EntityAddr {
-        &self.entity_addr
+    pub fn entity_hash(&self) -> &EntityAddr {
+        &self.entity_hash
     }
 
     /// Returns a reference to the payload of the message.
@@ -257,14 +278,14 @@ impl Message {
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the checksum record for the message in global state.
     pub fn message_key(&self) -> Key {
-        Key::message(self.entity_addr, self.topic_name_hash, self.topic_index)
+        Key::message(self.entity_hash, self.topic_name_hash, self.topic_index)
     }
 
     /// Returns a new [`Key::Message`] based on the information in the message.
     /// This key can be used to query the control record for the topic of this message in global
     /// state.
     pub fn topic_key(&self) -> Key {
-        Key::message_topic(self.entity_addr, self.topic_name_hash)
+        Key::message_topic(self.entity_hash, self.topic_name_hash)
     }
 
     /// Returns the checksum of the message.
@@ -274,12 +295,26 @@ impl Message {
 
         Ok(MessageChecksum(checksum))
     }
+
+    /// Returns a random `Message`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(16..128);
+        Self {
+            entity_hash: rng.gen(),
+            message: MessagePayload::random(rng),
+            topic_name: Alphanumeric.sample_string(rng, count),
+            topic_name_hash: rng.gen(),
+            topic_index: rng.gen(),
+            block_index: rng.gen(),
+        }
+    }
 }
 
 impl ToBytes for Message {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.append(&mut self.entity_addr.to_bytes()?);
+        buffer.append(&mut self.entity_hash.to_bytes()?);
         buffer.append(&mut self.message.to_bytes()?);
         buffer.append(&mut self.topic_name.to_bytes()?);
         buffer.append(&mut self.topic_name_hash.to_bytes()?);
@@ -289,7 +324,7 @@ impl ToBytes for Message {
     }
 
     fn serialized_length(&self) -> usize {
-        self.entity_addr.serialized_length()
+        self.entity_hash.serialized_length()
             + self.message.serialized_length()
             + self.topic_name.serialized_length()
             + self.topic_name_hash.serialized_length()
@@ -308,7 +343,7 @@ impl FromBytes for Message {
         let (block_index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
-                entity_addr,
+                entity_hash: entity_addr,
                 message,
                 topic_name,
                 topic_name_hash,
@@ -328,7 +363,7 @@ impl Distribution<Message> for Standard {
         let message = Alphanumeric.sample_string(rng, 64).into();
 
         Message {
-            entity_addr: rng.gen(),
+            entity_hash: rng.gen(),
             message,
             topic_name,
             topic_name_hash,
@@ -340,40 +375,29 @@ impl Distribution<Message> for Standard {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytesrepr, contract_messages::topics::TOPIC_NAME_HASH_LENGTH, KEY_HASH_LENGTH};
+    use crate::bytesrepr;
 
     use super::*;
 
     #[test]
     fn serialization_roundtrip() {
+        let rng = &mut TestRng::new();
+
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload: MessagePayload = "message payload".into();
+        let message_payload = MessagePayload::random(rng);
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
-        let message_payload = MessagePayload::Bytes(vec![5u8; 128].into());
-        bytesrepr::test_serialization_roundtrip(&message_payload);
-
-        let message = Message::new(
-            EntityAddr::new_contract_entity_addr([1; KEY_HASH_LENGTH]),
-            message_payload,
-            "test_topic".to_string(),
-            TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
-            10,
-            111,
-        );
+        let message = Message::random(rng);
         bytesrepr::test_serialization_roundtrip(&message);
     }
 
     #[test]
     fn json_roundtrip() {
-        let message_payload: MessagePayload = "message payload".into();
-        let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
-        let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(decoded, message_payload);
+        let rng = &mut TestRng::new();
 
-        let message_payload = MessagePayload::Bytes(vec![255u8; 32].into());
+        let message_payload = MessagePayload::random(rng);
         let json_string = serde_json::to_string_pretty(&message_payload).unwrap();
         let decoded: MessagePayload = serde_json::from_str(&json_string).unwrap();
         assert_eq!(decoded, message_payload);

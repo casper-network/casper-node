@@ -14,7 +14,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
+    AddressableEntity, CLTyped, CLValue, HoldsEpoch, Key, Phase, StoredValue, SystemEntityRegistry,
+    URef, U512,
 };
 
 use super::Runtime;
@@ -72,9 +73,9 @@ where
     }
 
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
-        self.context.system_contract_registry().map_err(|err| {
-            error!(%err, "unable to obtain system contract registry during transfer");
-            ProviderError::SystemContractRegistry
+        self.context.system_entity_registry().map_err(|err| {
+            error!(%err, "unable to obtain system entity registry during transfer");
+            ProviderError::SystemEntityRegistry
         })
     }
 
@@ -144,19 +145,18 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error> {
-        let maybe_value = self
-            .context
-            .read_gs_direct(&Key::Balance(uref.addr()))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
-        match maybe_value {
-            Some(StoredValue::CLValue(value)) => {
-                let value = CLValue::into_t(value).map_err(|_| Error::CLValue)?;
-                Ok(Some(value))
-            }
-            Some(_cl_value) => Err(Error::CLValue),
-            None => Ok(None),
-        }
+    fn total_balance(&mut self, purse: URef) -> Result<U512, Error> {
+        Runtime::total_balance(self, purse)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn available_balance(
+        &mut self,
+        purse: URef,
+        holds_epoch: HoldsEpoch,
+    ) -> Result<Option<U512>, Error> {
+        Runtime::available_balance(self, purse, holds_epoch)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
     fn write_balance(&mut self, uref: URef, balance: U512) -> Result<(), Error> {

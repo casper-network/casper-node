@@ -24,7 +24,6 @@ use casper_types::{
     },
     bytesrepr,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -39,10 +38,10 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, URef, WasmConfig,
-    U512,
+    EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
+    GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash, PackageStatus, Phase,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry,
+    Tagged, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -270,13 +269,11 @@ where
             named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
 
             // This purse is used only in FeeHandling::Accumulate setting.
-            let rewards_purse_uref = self.create_purse(U512::zero())?;
-
+            let accumulation_purse_uref = self.create_purse(U512::zero())?;
             named_keys.insert(
                 ACCUMULATION_PURSE_KEY.to_string(),
-                rewards_purse_uref.into(),
+                accumulation_purse_uref.into(),
             );
-
             named_keys
         };
 
@@ -288,7 +285,7 @@ where
             EntityKind::System(SystemEntityType::HandlePayment),
         )?;
 
-        self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
+        self.store_system_entity_registry(HANDLE_PAYMENT, contract_hash)?;
 
         Ok(contract_hash)
     }
@@ -556,7 +553,7 @@ where
             EntityKind::System(SystemEntityType::Auction),
         )?;
 
-        self.store_system_contract_registry(AUCTION, contract_hash)?;
+        self.store_system_entity_registry(AUCTION, contract_hash)?;
 
         Ok(contract_hash)
     }
@@ -750,11 +747,9 @@ where
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
         let entity_addr = match entity_kind.tag() {
-            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
-            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
-            EntityKindTag::SmartContract => {
-                EntityAddr::new_contract_entity_addr(entity_hash.value())
-            }
+            EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
+            EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
         };
 
         let entity_key: Key = entity_addr.into();
@@ -785,7 +780,7 @@ where
         contract_hash: AddressableEntityHash,
         named_keys: NamedKeys,
     ) -> Result<(), Box<GenesisError>> {
-        let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+        let entity_addr = EntityAddr::new_system(contract_hash.value());
 
         for (string, key) in named_keys.iter() {
             let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
@@ -804,7 +799,7 @@ where
         Ok(())
     }
 
-    fn store_system_contract_registry(
+    fn store_system_entity_registry(
         &self,
         contract_name: &str,
         contract_hash: AddressableEntityHash,
@@ -904,13 +899,12 @@ mod tests {
         let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
         let public_key: PublicKey = PublicKey::from(&secret_key);
 
-        let genesis_account_1 =
-            GenesisAccount::account(public_key.clone(), Motes::new(U512::from(100)), None);
+        let genesis_account_1 = GenesisAccount::account(public_key.clone(), Motes::new(100), None);
 
         bytesrepr::test_serialization_roundtrip(&genesis_account_1);
 
         let genesis_account_2 =
-            GenesisAccount::account(public_key, Motes::new(U512::from(100)), Some(rng.gen()));
+            GenesisAccount::account(public_key, Motes::new(100), Some(rng.gen()));
 
         bytesrepr::test_serialization_roundtrip(&genesis_account_2);
     }
@@ -931,7 +925,7 @@ mod tests {
         let genesis_account = GenesisAccount::delegator(
             validator_public_key,
             delegator_public_key,
-            Motes::new(U512::from(100)),
+            Motes::new(100),
             Motes::zero(),
         );
 

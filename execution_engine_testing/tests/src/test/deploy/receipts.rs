@@ -3,12 +3,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    LOCAL_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash, PublicKey,
-    SecretKey, Transfer, TransferAddr, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, Gas, InitiatorAddr, PublicKey,
+    SecretKey, Transfer, TransferV2, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -51,30 +51,19 @@ static TRANSFER_AMOUNT_3: Lazy<U512> = Lazy::new(|| U512::from(300_100_000));
 #[test]
 fn should_record_wasmless_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let id = Some(0);
+    let id = 0;
 
-    let transfer_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            TRANSFER_ARG_TARGET => *ALICE_ADDR,
-            TRANSFER_ARG_AMOUNT => *TRANSFER_AMOUNT_1,
-            TRANSFER_ARG_ID => id
-        },
-    )
-    .build();
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT_1, *ALICE_ADDR)
+        .with_transfer_id(id)
+        .build();
 
-    let deploy_hash = {
-        let deploy_items: Vec<DeployHash> = transfer_request
-            .deploys()
-            .iter()
-            .map(|deploy_item| deploy_item.deploy_hash)
-            .collect();
-        deploy_items[0]
-    };
+    let txn_hash = transfer_request.transaction_hash();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .transfer_and_commit(transfer_request)
+        .expect_success();
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -88,39 +77,35 @@ fn should_record_wasmless_transfer() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let deploy_info = builder
-        .get_deploy_info(deploy_hash)
-        .expect("should have deploy info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(deploy_info.deploy_hash, deploy_hash);
-    assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
-    assert_eq!(deploy_info.source, default_account.main_purse());
-
-    // TODO: reenable after new payment logic is added
-    // assert_eq!(deploy_info.gas, U512::from(DEFAULT_WASMLESS_TRANSFER_COST));
-
-    let transfers = deploy_info.transfers;
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer");
+    let Transfer::V2(transfer) = transfers[0].clone() else {
+        panic!("wrong transfer variant");
+    };
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
-    assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(transfer.transaction_hash, txn_hash);
+    assert_eq!(
+        transfer.from,
+        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
+    );
     assert_eq!(transfer.to, Some(*ALICE_ADDR));
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, U512::zero());
-    assert_eq!(transfer.id, id);
+    assert_eq!(transfer.gas, Gas::zero());
+    assert_eq!(transfer.id, Some(id));
 }
 
 #[ignore]
 #[test]
 fn should_record_wasm_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let transfer_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -132,14 +117,7 @@ fn should_record_wasm_transfer() {
     )
     .build();
 
-    let deploy_hash = {
-        let deploy_items: Vec<DeployHash> = transfer_request
-            .deploys()
-            .iter()
-            .map(|deploy_item| deploy_item.deploy_hash)
-            .collect();
-        deploy_items[0]
-    };
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -155,35 +133,34 @@ fn should_record_wasm_transfer() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let deploy_info = builder
-        .get_deploy_info(deploy_hash)
-        .expect("should have deploy info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(deploy_info.deploy_hash, deploy_hash);
-    assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
-    assert_eq!(deploy_info.source, default_account.main_purse());
-    assert_ne!(deploy_info.gas, U512::zero());
-
-    let transfers = deploy_info.transfers;
+    assert_ne!(execution_result.consumed(), Gas::zero());
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer");
+    let Transfer::V2(transfer) = transfers[0].clone() else {
+        panic!("wrong transfer variant");
+    };
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
-    assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(transfer.transaction_hash, txn_hash);
+    assert_eq!(
+        transfer.from,
+        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
+    );
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, U512::zero()) // TODO
+    assert_eq!(transfer.gas, Gas::zero()) // TODO
 }
 
 #[ignore]
 #[test]
 fn should_record_wasm_transfer_with_id() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let id = Some(0);
 
@@ -198,14 +175,7 @@ fn should_record_wasm_transfer_with_id() {
     )
     .build();
 
-    let deploy_hash = {
-        let deploy_items: Vec<DeployHash> = transfer_request
-            .deploys()
-            .iter()
-            .map(|deploy_item| deploy_item.deploy_hash)
-            .collect();
-        deploy_items[0]
-    };
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -221,28 +191,27 @@ fn should_record_wasm_transfer_with_id() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let deploy_info = builder
-        .get_deploy_info(deploy_hash)
-        .expect("should have deploy info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(deploy_info.deploy_hash, deploy_hash);
-    assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
-    assert_eq!(deploy_info.source, default_account.main_purse());
-    assert_ne!(deploy_info.gas, U512::zero());
-
-    let transfers = deploy_info.transfers;
+    assert_ne!(execution_result.consumed(), Gas::zero());
+    let transfers = execution_result.transfers();
     assert_eq!(transfers.len(), 1);
 
-    let transfer = builder
-        .get_transfer(transfers[0])
-        .expect("should have transfer");
+    let Transfer::V2(transfer) = transfers[0].clone() else {
+        panic!("wrong transfer variant");
+    };
 
-    assert_eq!(transfer.deploy_hash, deploy_hash);
-    assert_eq!(transfer.from, *DEFAULT_ACCOUNT_ADDR);
+    assert_eq!(transfer.transaction_hash, txn_hash);
+    assert_eq!(
+        transfer.from,
+        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
+    );
     assert_eq!(transfer.source, default_account.main_purse());
     assert_eq!(transfer.target, alice_attenuated_main_purse);
     assert_eq!(transfer.amount, *TRANSFER_AMOUNT_1);
-    assert_eq!(transfer.gas, U512::zero()); // TODO
+    assert_eq!(transfer.gas, Gas::zero()); // TODO
     assert_eq!(transfer.id, id);
 }
 
@@ -250,7 +219,7 @@ fn should_record_wasm_transfer_with_id() {
 #[test]
 fn should_record_wasm_transfers() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let alice_id = Some(0);
     let bob_id = Some(1);
@@ -274,14 +243,7 @@ fn should_record_wasm_transfers() {
     )
     .build();
 
-    let deploy_hash = {
-        let deploy_items: Vec<DeployHash> = transfer_request
-            .deploys()
-            .iter()
-            .map(|deploy_item| deploy_item.deploy_hash)
-            .collect();
-        deploy_items[0]
-    };
+    let txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(transfer_request).commit().expect_success();
 
@@ -313,79 +275,72 @@ fn should_record_wasm_transfers() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let deploy_info = builder
-        .get_deploy_info(deploy_hash)
-        .expect("should have deploy info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(deploy_info.deploy_hash, deploy_hash);
-    assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
-    assert_eq!(deploy_info.source, default_account.main_purse());
-    assert_ne!(deploy_info.gas, U512::zero());
-
+    assert_ne!(execution_result.consumed(), Gas::zero());
     const EXPECTED_LENGTH: usize = 3;
-    let transfer_addrs = deploy_info.transfers;
-    assert_eq!(transfer_addrs.len(), EXPECTED_LENGTH);
+    assert_eq!(execution_result.transfers().len(), EXPECTED_LENGTH);
     assert_eq!(
-        transfer_addrs
+        execution_result
+            .transfers()
             .iter()
             .cloned()
-            .collect::<BTreeSet<TransferAddr>>()
+            .collect::<BTreeSet<Transfer>>()
             .len(),
         EXPECTED_LENGTH
     );
 
     let transfers: BTreeSet<Transfer> = {
         let mut tmp = BTreeSet::new();
-        for transfer_addr in transfer_addrs {
-            let transfer = builder
-                .get_transfer(transfer_addr)
-                .expect("should have transfer");
-            tmp.insert(transfer);
+        for transfer in execution_result.transfers() {
+            tmp.insert(transfer.clone());
         }
         tmp
     };
 
     assert_eq!(transfers.len(), EXPECTED_LENGTH);
 
-    assert!(transfers.contains(&Transfer {
-        deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
+        transaction_hash: txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: alice_id,
-    }));
+    })));
 
-    assert!(transfers.contains(&Transfer {
-        deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
+        transaction_hash: txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: bob_id,
-    }));
+    })));
 
-    assert!(transfers.contains(&Transfer {
-        deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    assert!(transfers.contains(&Transfer::V2(TransferV2 {
+        transaction_hash: txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: carol_id,
-    }));
+    })));
 }
 
 #[ignore]
 #[test]
 fn should_record_wasm_transfers_with_subcall() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let alice_id = Some(0);
     let bob_id = Some(1);
@@ -420,14 +375,7 @@ fn should_record_wasm_transfers_with_subcall() {
     )
     .build();
 
-    let transfer_deploy_hash = {
-        let deploy_items: Vec<DeployHash> = transfer_request
-            .deploys()
-            .iter()
-            .map(|deploy_item| deploy_item.deploy_hash)
-            .collect();
-        deploy_items[0]
-    };
+    let transfer_txn_hash = transfer_request.session.transaction_hash;
 
     builder.exec(store_request).commit().expect_success();
     builder.exec(transfer_request).commit().expect_success();
@@ -478,70 +426,74 @@ fn should_record_wasm_transfers_with_subcall() {
         .main_purse()
         .with_access_rights(AccessRights::ADD);
 
-    let deploy_info = builder
-        .get_deploy_info(transfer_deploy_hash)
-        .expect("should have deploy info");
+    let execution_result = builder
+        .get_last_exec_result()
+        .expect("Expected execution results.");
 
-    assert_eq!(deploy_info.deploy_hash, transfer_deploy_hash);
-    assert_eq!(deploy_info.from, *DEFAULT_ACCOUNT_ADDR);
-    assert_eq!(deploy_info.source, default_account.main_purse());
-    assert_ne!(deploy_info.gas, U512::zero());
-
-    const EXPECTED_LENGTH: usize = 6;
-    let transfer_addrs = deploy_info.transfers;
-    assert_eq!(transfer_addrs.len(), EXPECTED_LENGTH);
+    /*
+    assert_eq!(txn_info.transaction_hash, transfer_txn_hash);
     assert_eq!(
-        transfer_addrs
+        txn_info.from,
+        InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR)
+    );
+    assert_eq!(txn_info.source, default_account.main_purse());
+    */
+
+    assert_ne!(execution_result.consumed(), Gas::zero());
+    const EXPECTED_LENGTH: usize = 6;
+    assert_eq!(execution_result.transfers().len(), EXPECTED_LENGTH);
+    assert_eq!(
+        execution_result
+            .transfers()
             .iter()
             .cloned()
-            .collect::<BTreeSet<TransferAddr>>()
+            .collect::<BTreeSet<Transfer>>()
             .len(),
         EXPECTED_LENGTH
     );
 
     let transfer_counts: BTreeMap<Transfer, usize> = {
         let mut tmp = BTreeMap::new();
-        for transfer_addr in transfer_addrs {
-            let transfer = builder
-                .get_transfer(transfer_addr)
-                .expect("should have transfer");
-            tmp.entry(transfer).and_modify(|i| *i += 1).or_insert(1);
+        for transfer in execution_result.transfers() {
+            tmp.entry(transfer.clone())
+                .and_modify(|i| *i += 1)
+                .or_insert(1);
         }
         tmp
     };
 
-    let session_expected_alice = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let session_expected_alice = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
         source: default_account.main_purse(),
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: alice_id,
-    };
+    });
 
-    let session_expected_bob = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let session_expected_bob = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
         source: default_account.main_purse(),
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: bob_id,
-    };
+    });
 
-    let session_expected_carol = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let session_expected_carol = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
         source: default_account.main_purse(),
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: carol_id,
-    };
+    });
 
     const SESSION_EXPECTED_COUNT: Option<usize> = Some(1);
     for (i, expected) in [
@@ -560,38 +512,38 @@ fn should_record_wasm_transfers_with_subcall() {
         );
     }
 
-    let stored_expected_alice = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let stored_expected_alice = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*ALICE_ADDR),
         source: contract_purse,
         target: alice_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_1,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: alice_id,
-    };
+    });
 
-    let stored_expected_bob = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let stored_expected_bob = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*BOB_ADDR),
         source: contract_purse,
         target: bob_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_2,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: bob_id,
-    };
+    });
 
-    let stored_expected_carol = Transfer {
-        deploy_hash: transfer_deploy_hash,
-        from: *DEFAULT_ACCOUNT_ADDR,
+    let stored_expected_carol = Transfer::V2(TransferV2 {
+        transaction_hash: transfer_txn_hash,
+        from: InitiatorAddr::AccountHash(*DEFAULT_ACCOUNT_ADDR),
         to: Some(*CAROL_ADDR),
         source: contract_purse,
         target: carol_attenuated_main_purse,
         amount: *TRANSFER_AMOUNT_3,
-        gas: U512::zero(),
+        gas: Gas::zero(),
         id: carol_id,
-    };
+    });
 
     const STORED_EXPECTED_COUNT: Option<usize> = Some(1);
     for (i, expected) in [

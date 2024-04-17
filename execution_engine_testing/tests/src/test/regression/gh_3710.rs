@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, convert::TryInto, iter::FromIterator};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, LOCAL_GENESIS_REQUEST,
 };
 use casper_storage::{
     data_access_layer::{PruneRequest, PruneResult},
@@ -189,7 +189,7 @@ fn distribute_rewards<S>(
 #[test]
 fn gh_3710_should_produce_era_summary_in_a_step() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
     distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
@@ -233,7 +233,7 @@ mod fixture {
 
     use casper_engine_test_support::{
         ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
-        PRODUCTION_RUN_GENESIS_REQUEST,
+        LOCAL_GENESIS_REQUEST,
     };
     use casper_types::{
         runtime_args,
@@ -255,7 +255,7 @@ mod fixture {
             return;
         }
 
-        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+        let genesis_request = LOCAL_GENESIS_REQUEST.clone();
 
         lmdb_fixture::generate_fixture(CALL_STACK_FIXTURE, genesis_request, |builder| {
             let execute_request = ExecuteRequestBuilder::standard(
@@ -281,7 +281,7 @@ mod fixture {
             return;
         }
 
-        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+        let genesis_request = LOCAL_GENESIS_REQUEST.clone();
 
         lmdb_fixture::generate_fixture(GROUPS_FIXTURE, genesis_request, |builder| {
             let execute_request = ExecuteRequestBuilder::standard(
@@ -304,7 +304,7 @@ mod fixture {
             return;
         }
         // To generate this fixture again you have to re-run this code release-1.4.13.
-        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+        let genesis_request = LOCAL_GENESIS_REQUEST.clone();
         lmdb_fixture::generate_fixture(GH_3710_FIXTURE, genesis_request, |builder| {
             super::add_validator_and_wait_for_rotation(builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 

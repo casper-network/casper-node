@@ -6,47 +6,56 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
+use itertools::Itertools;
+use num_rational::Ratio;
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
     rc::Rc,
 };
+
 use tracing::{debug, error, warn};
+
+use casper_types::{
+    addressable_entity::{EntityKindTag, NamedKeys},
+    bytesrepr::{self, ToBytes},
+    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
+    global_state::TrieMerkleProof,
+    system::{
+        self,
+        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        handle_payment::Error,
+        mint::{
+            BalanceHoldAddr, BalanceHoldAddrTag, ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY,
+            TOTAL_SUPPLY_KEY,
+        },
+        AUCTION, MINT,
+    },
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
+    PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
+};
 
 #[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
 
-use casper_types::{
-    addressable_entity::{EntityKindTag, NamedKeys},
-    bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
-    execution::{Effects, TransformError, TransformInstruction, TransformKindV2, TransformV2},
-    global_state::TrieMerkleProof,
-    system,
-    system::{
-        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-        handle_payment::ACCUMULATION_PURSE_KEY,
-        mint::{ARG_AMOUNT, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        AUCTION, HANDLE_PAYMENT, MINT,
-    },
-    AccessRights, Account, AddressableEntity, DeployHash, Digest, EntityAddr, Key, KeyTag, Phase,
-    PublicKey, RuntimeArgs, StoredValue, TransactionHash, TransactionV1Hash, U512,
-};
-
 use crate::{
     data_access_layer::{
-        bidding::{AuctionMethodRet, BiddingRequest, BiddingResult},
+        auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
+        balance::BalanceHandling,
         era_validators::EraValidatorsResult,
+        handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
+        mint::{TransferRequest, TransferRequestArgs, TransferResult},
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
-        transfer::{TransferRequest, TransferRequestArgs, TransferResult},
-        AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceIdentifier,
+        AddressableEntityRequest, AddressableEntityResult, AuctionMethod, BalanceHoldError,
+        BalanceHoldKind, BalanceHoldMode, BalanceHoldRequest, BalanceHoldResult, BalanceIdentifier,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, BlockRewardsError,
         BlockRewardsRequest, BlockRewardsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FeeError, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult,
-        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, PutTrieRequest,
-        PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, HandleRefundMode,
+        HandleRefundRequest, HandleRefundResult, InsufficientBalanceHandling, ProofHandling,
+        ProofsResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
         RoundSeigniorageRateResult, StepError, StepRequest, StepResult,
         SystemEntityRegistryPayload, SystemEntityRegistryRequest, SystemEntityRegistryResult,
         SystemEntityRegistrySelector, TotalSupplyRequest, TotalSupplyResult, TrieRequest,
@@ -66,12 +75,11 @@ use crate::{
         auction,
         auction::Auction,
         genesis::{GenesisError, GenesisInstaller},
+        handle_payment::HandlePayment,
         mint::Mint,
         protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
-        runtime_native::RuntimeNative,
-        transfer::{
-            NewTransferTargetMode, TransferArgs, TransferError, TransferRuntimeArgsBuilder,
-        },
+        runtime_native::{Id, RuntimeNative},
+        transfer::{NewTransferTargetMode, TransferError, TransferRuntimeArgsBuilder},
     },
     tracking_copy::{TrackingCopy, TrackingCopyEntityExt, TrackingCopyError, TrackingCopyExt},
 };
@@ -274,7 +282,7 @@ pub trait CommitProvider: StateProvider {
                 }
             };
 
-            crate::system::runtime_native::Id::Seed(bytes)
+            Id::Seed(bytes)
         };
 
         let config = request.config();
@@ -371,7 +379,7 @@ pub trait CommitProvider: StateProvider {
                 }
             };
 
-            crate::system::runtime_native::Id::Seed(bytes)
+            Id::Seed(bytes)
         };
 
         // this runtime uses the system's context
@@ -421,13 +429,6 @@ pub trait CommitProvider: StateProvider {
             };
         }
 
-        let administrative_accounts = match request.administrative_accounts() {
-            Some(administrative_accounts) => administrative_accounts,
-            None => {
-                return FeeResult::Failure(FeeError::AdministrativeAccountsNotFound);
-            }
-        };
-
         let tc = match self.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return FeeResult::RootNotFound,
@@ -436,305 +437,72 @@ pub trait CommitProvider: StateProvider {
             }
         };
 
-        // need the accumulation purse
-        let entity_hash = match tc.borrow_mut().get_system_entity_registry() {
-            Ok(scr) => match scr.get(HANDLE_PAYMENT).copied() {
-                Some(entity_hash) => entity_hash,
-                None => {
-                    return FeeResult::Failure(FeeError::RegistryEntryNotFound(
-                        HANDLE_PAYMENT.to_string(),
-                    ))
-                }
-            },
-            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-        };
-        let named_keys = match tc
-            .borrow_mut()
-            .get_named_keys(EntityAddr::System(entity_hash.value()))
-        {
-            Ok(named_keys) => named_keys,
-            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-        };
-
-        let accumulation_purse = match named_keys.get(ACCUMULATION_PURSE_KEY) {
-            Some(key) => {
-                if let Key::URef(uref) = key {
-                    *uref
-                } else {
-                    return FeeResult::Failure(FeeError::TrackingCopy(
-                        TrackingCopyError::UnexpectedKeyVariant(*key),
-                    ));
-                }
-            }
-            None => {
-                return FeeResult::Failure(FeeError::TrackingCopy(
-                    TrackingCopyError::NamedKeyNotFound(ACCUMULATION_PURSE_KEY.to_string()),
-                ))
-            }
-        };
-
+        let config = request.config();
         let protocol_version = request.protocol_version();
-
-        let accumulated_balance = {
-            let balance_req =
-                BalanceRequest::from_purse(state_hash, protocol_version, accumulation_purse);
-            let balance_result = self.balance(balance_req);
-            match balance_result {
-                BalanceResult::RootNotFound => {
-                    return FeeResult::RootNotFound;
-                }
-                BalanceResult::Failure(tce) => {
-                    return FeeResult::Failure(FeeError::TrackingCopy(tce));
-                }
-                BalanceResult::Success { motes, .. } => motes,
-            }
-        };
-
-        let mut current_state_hash = state_hash;
-        let mut effects = Effects::new();
-        let mut transfers = vec![];
-        let recipient_count = U512::from(administrative_accounts.len());
-
-        // distribute fees to administrators
-        // this is basically just a series of transfers from the accumulated purse to
-        // configured accounts. this is a behavior used by some (but not all) private chains.
-        if let Some(fee_portion) = accumulated_balance.checked_div(recipient_count) {
-            if fee_portion.is_zero() {
-                // If there are no fees to be paid out, it is effectively noop
-                return FeeResult::Success {
-                    effects: Effects::default(),
-                    post_state_hash: state_hash,
-                    transfers: vec![],
-                };
-            }
-
-            let system_account_key = PublicKey::System;
-            let id = {
-                let mut bytes = match request.block_time().into_bytes() {
-                    Ok(bytes) => bytes,
-                    Err(bre) => {
-                        return FeeResult::Failure(FeeError::TrackingCopy(
-                            TrackingCopyError::BytesRepr(bre),
-                        ))
-                    }
-                };
-                match &mut state_hash.into_bytes() {
-                    Ok(more_bytes) => bytes.append(more_bytes),
-                    Err(bre) => {
-                        return FeeResult::Failure(FeeError::TrackingCopy(
-                            TrackingCopyError::BytesRepr(*bre),
-                        ))
-                    }
-                };
-
-                crate::system::runtime_native::Id::Seed(bytes)
-            };
-
-            let config = request.config();
-            let block_time = request.block_time();
-            let authorization_keys = {
-                let mut auth_keys = BTreeSet::new();
-                auth_keys.insert(system_account_key.to_account_hash());
-                auth_keys
-            };
-
-            // TODO: the transfer logic needs to be tweaked once Fraser's logic w/ version handling
-            // merges
-            let tmp_hash = match TransactionV1Hash::from_bytes(&id.seed()) {
-                Ok((hash, _rem)) => TransactionHash::V1(hash),
+        let seed = {
+            let mut bytes = match request.block_time().into_bytes() {
+                Ok(bytes) => bytes,
                 Err(bre) => {
                     return FeeResult::Failure(FeeError::TrackingCopy(
                         TrackingCopyError::BytesRepr(bre),
                     ))
                 }
             };
-            for target in administrative_accounts {
-                let target_purse = match tc
-                    .borrow_mut()
-                    .get_addressable_entity_by_account_hash(protocol_version, *target)
-                {
-                    Ok(entity) => entity.main_purse(),
-                    Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
-                };
-                let args = TransferArgs::new(
-                    Some(*target),
-                    accumulation_purse,
-                    target_purse,
-                    fee_portion,
-                    None,
-                );
+            match &mut protocol_version.into_bytes() {
+                Ok(next) => bytes.append(next),
+                Err(bre) => {
+                    return FeeResult::Failure(FeeError::TrackingCopy(
+                        TrackingCopyError::BytesRepr(*bre),
+                    ))
+                }
+            };
 
-                let transfer_req = TransferRequest::new(
-                    config.clone(),
-                    current_state_hash,
-                    block_time,
-                    protocol_version,
-                    tmp_hash,
-                    system_account_key.to_account_hash(),
-                    authorization_keys.clone(),
-                    args,
-                    U512::zero(),
-                );
-                match self.transfer(transfer_req) {
-                    TransferResult::RootNotFound => return FeeResult::RootNotFound,
-                    TransferResult::Failure(transfer_error) => {
-                        return FeeResult::Failure(FeeError::Transfer(transfer_error))
+            Id::Seed(bytes)
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config.clone(),
+            protocol_version,
+            seed,
+            Rc::clone(&tc),
+            Phase::System,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return FeeResult::Failure(FeeError::TrackingCopy(tce));
+            }
+        };
+
+        let source = BalanceIdentifier::Accumulate;
+        let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+            Ok(value) => value,
+            Err(tce) => return FeeResult::Failure(FeeError::TrackingCopy(tce)),
+        };
+        // amount = None will distribute the full current balance of the accumulation purse
+        let result = runtime.distribute_accumulated_fees(source_purse, None);
+
+        match result {
+            Ok(_) => {
+                let effects = tc.borrow_mut().effects();
+                let transfers = runtime.into_transfers();
+                let post_state_hash = match self.commit(state_hash, effects.clone()) {
+                    Ok(post_state_hash) => post_state_hash,
+                    Err(gse) => {
+                        return FeeResult::Failure(FeeError::TrackingCopy(
+                            TrackingCopyError::Storage(gse),
+                        ))
                     }
-                    TransferResult::Success {
-                        effects: transfer_effects,
-                        transfers: more_transfers,
-                    } => match self.commit(current_state_hash, transfer_effects.clone()) {
-                        Ok(post_state_hash) => {
-                            current_state_hash = post_state_hash;
-                            effects.append(transfer_effects);
-                            transfers.extend(more_transfers);
-                        }
-                        Err(gse) => {
-                            return FeeResult::Failure(FeeError::TrackingCopy(
-                                TrackingCopyError::Storage(gse),
-                            ))
-                        }
-                    },
+                };
+                FeeResult::Success {
+                    effects,
+                    transfers,
+                    post_state_hash,
                 }
             }
-
-            return FeeResult::Success {
-                post_state_hash: current_state_hash,
-                effects,
-                transfers,
-            };
-        }
-        FeeResult::Failure(FeeError::NoFeesDistributed)
-    }
-
-    /// Direct biddings.
-    fn bidding(&self, request: BiddingRequest) -> BiddingResult {
-        let state_hash = request.state_hash();
-        let tc = match self.tracking_copy(state_hash) {
-            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
-            Ok(None) => return BiddingResult::RootNotFound,
-            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
-        };
-
-        let protocol_version = request.protocol_version();
-        let config = request.config();
-        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
-
-        let initiating_address = request.address();
-        let authorization_keys = request.authorization_keys();
-        let transfer_config = config.transfer_config();
-        let administrative_accounts = transfer_config.administrative_accounts();
-        let (entity, entity_named_keys, entity_access_rights) =
-            match tc.borrow_mut().resolved_entity(
-                protocol_version,
-                initiating_address,
-                authorization_keys,
-                &administrative_accounts,
-            ) {
-                Ok(ret) => ret,
-                Err(tce) => {
-                    return BiddingResult::Failure(tce);
-                }
-            };
-
-        // IMPORTANT: this runtime _must_ use the initiators's context.
-        let mut runtime = RuntimeNative::new(
-            protocol_version,
-            config.clone(),
-            id,
-            Rc::clone(&tc),
-            initiating_address,
-            entity,
-            entity_named_keys,
-            entity_access_rights,
-            U512::MAX,
-            Phase::Session,
-        );
-
-        let auction_method = request.auction_method();
-
-        let result = match auction_method {
-            AuctionMethod::ActivateBid {
-                validator_public_key,
-            } => runtime
-                .activate_bid(validator_public_key)
-                .map(|_| AuctionMethodRet::Unit)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::AddBid {
-                public_key,
-                delegation_rate,
-                amount,
-            } => runtime
-                .add_bid(public_key, delegation_rate, amount)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Api),
-            AuctionMethod::WithdrawBid { public_key, amount } => runtime
-                .withdraw_bid(public_key, amount)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::Delegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-                max_delegators_per_validator,
-                minimum_delegation_amount,
-            } => runtime
-                .delegate(
-                    delegator_public_key,
-                    validator_public_key,
-                    amount,
-                    max_delegators_per_validator,
-                    minimum_delegation_amount,
-                )
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(TrackingCopyError::Api),
-            AuctionMethod::Undelegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-            } => runtime
-                .undelegate(delegator_public_key, validator_public_key, amount)
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-            AuctionMethod::Redelegate {
-                delegator_public_key,
-                validator_public_key,
-                amount,
-                new_validator,
-                minimum_delegation_amount,
-            } => runtime
-                .redelegate(
-                    delegator_public_key,
-                    validator_public_key,
-                    amount,
-                    new_validator,
-                    minimum_delegation_amount,
-                )
-                .map(AuctionMethodRet::UpdatedAmount)
-                .map_err(|auc_err| {
-                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
-                }),
-        };
-
-        let effects = tc.borrow_mut().effects();
-
-        // commit
-        match result {
-            Ok(ret) => match self.commit(state_hash, effects.clone()) {
-                Ok(post_state_hash) => BiddingResult::Success {
-                    ret,
-                    post_state_hash,
-                    effects,
-                },
-                Err(tce) => BiddingResult::Failure(tce.into()),
-            },
-            Err(tce) => BiddingResult::Failure(tce),
+            Err(hpe) => FeeResult::Failure(FeeError::TrackingCopy(
+                TrackingCopyError::SystemContract(system::Error::HandlePayment(hpe)),
+            )),
         }
     }
 }
@@ -779,43 +547,297 @@ pub trait StateProvider {
             Err(err) => return BalanceResult::Failure(TrackingCopyError::Storage(err)),
         };
         let protocol_version = request.protocol_version();
-        let purse_uref = match request.identifier() {
-            BalanceIdentifier::Purse(purse_uref) => *purse_uref,
-            BalanceIdentifier::Public(public_key) => {
-                let account_hash = public_key.to_account_hash();
-                match tc.get_addressable_entity_by_account_hash(protocol_version, account_hash) {
-                    Ok(entity) => entity.main_purse(),
-                    Err(tce) => return BalanceResult::Failure(tce),
-                }
-            }
-            BalanceIdentifier::Account(account_hash) => {
-                match tc.get_addressable_entity_by_account_hash(protocol_version, *account_hash) {
-                    Ok(entity) => entity.main_purse(),
-                    Err(tce) => return BalanceResult::Failure(tce),
-                }
-            }
-            BalanceIdentifier::Entity(entity_addr) => {
-                match tc.get_addressable_entity(*entity_addr) {
-                    Ok(entity) => entity.main_purse(),
-                    Err(tce) => return BalanceResult::Failure(tce),
-                }
-            }
-            BalanceIdentifier::Internal(addr) => casper_types::URef::new(*addr, AccessRights::READ),
+        let balance_identifier = request.identifier();
+        let purse_key = match balance_identifier.purse_uref(&mut tc, protocol_version) {
+            Ok(value) => value.into(),
+            Err(tce) => return BalanceResult::Failure(tce),
         };
-        let purse_key = purse_uref.into();
-        // read the new hold records if any exist
-        // check their timestamps..if stale tc.prune(that item)
-        // total bal - sum(hold balance) == avail
-        match tc.get_purse_balance_key(purse_key) {
-            Ok(purse_balance_key) => match tc.get_purse_balance_with_proof(purse_balance_key) {
-                Ok((balance, proof)) => {
-                    let proof = Box::new(proof);
-                    let motes = balance.value();
-                    BalanceResult::Success { motes, proof }
+        let (purse_balance_key, purse_addr) = match tc.get_purse_balance_key(purse_key) {
+            Ok(key @ Key::Balance(addr)) => (key, addr),
+            Ok(key) => return BalanceResult::Failure(TrackingCopyError::UnexpectedKeyVariant(key)),
+            Err(tce) => return BalanceResult::Failure(tce),
+        };
+
+        let proof_handling = request.proof_handling();
+
+        match proof_handling {
+            ProofHandling::NoProofs => {
+                let balance_key = Key::Balance(purse_addr);
+                let total_balance = match tc.read(&balance_key) {
+                    Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
+                        Ok(val) => val,
+                        Err(cve) => return BalanceResult::Failure(TrackingCopyError::CLValue(cve)),
+                    },
+                    Ok(Some(_)) => {
+                        return BalanceResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        )
+                    }
+                    Ok(None) => {
+                        return BalanceResult::Failure(TrackingCopyError::KeyNotFound(balance_key))
+                    }
+                    Err(tce) => return BalanceResult::Failure(tce),
+                };
+                let balance_holds = match request.balance_handling() {
+                    BalanceHandling::Total => BTreeMap::new(),
+                    BalanceHandling::Available { holds_epoch } => {
+                        match tc.get_balance_holds(purse_addr, holds_epoch) {
+                            Err(tce) => return BalanceResult::Failure(tce),
+                            Ok(holds) => holds,
+                        }
+                    }
+                };
+
+                let available_balance = if balance_holds.is_empty() {
+                    total_balance
+                } else {
+                    let held = balance_holds
+                        .values()
+                        .flat_map(|holds| holds.values().copied())
+                        .collect_vec()
+                        .into_iter()
+                        .sum();
+                    debug_assert!(
+                        total_balance >= held,
+                        "it should not be possible to hold more than the total available"
+                    );
+                    if held > total_balance {
+                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                    }
+                    total_balance.checked_sub(held).unwrap_or(U512::zero())
+                };
+
+                BalanceResult::Success {
+                    purse_addr,
+                    total_balance,
+                    available_balance,
+                    proofs_result: ProofsResult::NotRequested { balance_holds },
                 }
-                Err(err) => BalanceResult::Failure(err),
-            },
-            Err(err) => BalanceResult::Failure(err),
+            }
+            ProofHandling::Proofs => {
+                let (total_balance, total_balance_proof) =
+                    match tc.get_total_balance_with_proof(purse_balance_key) {
+                        Err(tce) => return BalanceResult::Failure(tce),
+                        Ok((balance, proof)) => (balance, Box::new(proof)),
+                    };
+
+                let balance_holds_with_proofs = match request.balance_handling() {
+                    BalanceHandling::Total => BTreeMap::new(),
+                    BalanceHandling::Available { holds_epoch } => {
+                        match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
+                            Err(tce) => return BalanceResult::Failure(tce),
+                            Ok(holds) => holds,
+                        }
+                    }
+                };
+
+                let available_balance = if balance_holds_with_proofs.is_empty() {
+                    total_balance
+                } else {
+                    let held = balance_holds_with_proofs
+                        .values()
+                        .flat_map(|holds| holds.values().map(|(v, _)| *v))
+                        .collect_vec()
+                        .into_iter()
+                        .sum();
+
+                    debug_assert!(
+                        total_balance >= held,
+                        "it should not be possible to hold more than the total available"
+                    );
+                    if held > total_balance {
+                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
+                    }
+                    total_balance.checked_sub(held).unwrap_or(U512::zero())
+                };
+
+                BalanceResult::Success {
+                    purse_addr,
+                    total_balance,
+                    available_balance,
+                    proofs_result: ProofsResult::Proofs {
+                        total_balance_proof,
+                        balance_holds: balance_holds_with_proofs,
+                    },
+                }
+            }
+        }
+    }
+
+    /// Balance hold.
+    fn balance_hold(&self, request: BalanceHoldRequest) -> BalanceHoldResult {
+        let mut tc = match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tracking_copy)) => tracking_copy,
+            Ok(None) => return BalanceHoldResult::RootNotFound,
+            Err(err) => {
+                return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+        let hold_mode = request.balance_hold_mode();
+        match hold_mode {
+            BalanceHoldMode::Hold {
+                identifier,
+                hold_amount,
+                holds_epoch,
+                insufficient_handling,
+            } => {
+                let tag = match request.balance_hold_kind() {
+                    BalanceHoldKind::All => {
+                        return BalanceHoldResult::Failure(
+                            BalanceHoldError::UnexpectedWildcardVariant,
+                        )
+                    }
+                    BalanceHoldKind::Tag(tag) => tag,
+                };
+                let balance_request = BalanceRequest::new(
+                    request.state_hash(),
+                    request.protocol_version(),
+                    identifier,
+                    BalanceHandling::Available { holds_epoch },
+                    ProofHandling::NoProofs,
+                );
+                let balance_result = self.balance(balance_request);
+                let (total_balance, remaining_balance, purse_addr) = match balance_result {
+                    BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
+                    BalanceResult::Failure(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                    BalanceResult::Success {
+                        total_balance,
+                        available_balance,
+                        purse_addr,
+                        ..
+                    } => (total_balance, available_balance, purse_addr),
+                };
+
+                let held_amount = {
+                    if remaining_balance >= hold_amount {
+                        // the purse has sufficient balance to fully cover the hold
+                        hold_amount
+                    } else if insufficient_handling == InsufficientBalanceHandling::Noop {
+                        // the purse has insufficient balance and the insufficient
+                        // balance handling mode is noop, so get out
+                        return BalanceHoldResult::Failure(BalanceHoldError::InsufficientBalance {
+                            remaining_balance,
+                        });
+                    } else {
+                        // currently this is always the default HoldRemaining variant.
+                        // the purse holder has insufficient balance to cover the hold,
+                        // but the system will put a hold on whatever balance remains.
+                        // this is basically punitive to block an edge case resource consumption
+                        // attack whereby a malicious purse holder drains a balance to not-zero
+                        // but not-enough-to-cover-holds and then spams a bunch of transactions
+                        // knowing that they will fail due to insufficient funds, but only
+                        // after making the system do the work of processing the balance
+                        // check without penalty to themselves.
+                        remaining_balance
+                    }
+                };
+                let cl_value = match CLValue::from_t(held_amount) {
+                    Ok(cl_value) => cl_value,
+                    Err(cve) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
+                            TrackingCopyError::CLValue(cve),
+                        ))
+                    }
+                };
+
+                let block_time = request.block_time();
+                let balance_hold_addr = match tag {
+                    BalanceHoldAddrTag::Gas => BalanceHoldAddr::Gas {
+                        purse_addr,
+                        block_time,
+                    },
+                    BalanceHoldAddrTag::Processing => BalanceHoldAddr::Processing {
+                        purse_addr,
+                        block_time,
+                    },
+                };
+
+                let hold_key = Key::BalanceHold(balance_hold_addr);
+                tc.write(hold_key, StoredValue::CLValue(cl_value));
+                let holds = vec![balance_hold_addr];
+
+                let available_balance = remaining_balance.saturating_sub(held_amount);
+                let effects = tc.effects();
+                BalanceHoldResult::success(
+                    Some(holds),
+                    total_balance,
+                    available_balance,
+                    hold_amount,
+                    held_amount,
+                    effects,
+                )
+            }
+            BalanceHoldMode::Clear {
+                identifier,
+                holds_epoch,
+            } => {
+                let purse_addr = match identifier.purse_uref(&mut tc, request.protocol_version()) {
+                    Ok(source_purse) => source_purse.addr(),
+                    Err(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                };
+
+                {
+                    // clear holds
+                    let bid_kind = request.balance_hold_kind();
+                    let mut filter = vec![];
+                    let tag = BalanceHoldAddrTag::Processing;
+                    if bid_kind.matches(tag) {
+                        filter.push((
+                            BalanceHoldAddrTag::Processing,
+                            HoldsEpoch::from_block_time(request.block_time(), TimeDiff::ZERO),
+                        ));
+                    }
+                    let tag = BalanceHoldAddrTag::Gas;
+                    if bid_kind.matches(tag) {
+                        filter.push((tag, holds_epoch));
+                    }
+                    if let Err(tce) = tc.clear_expired_balance_holds(purse_addr, filter) {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce));
+                    }
+                }
+
+                // get updated balance
+                let balance_result = self.balance(BalanceRequest::new(
+                    request.state_hash(),
+                    request.protocol_version(),
+                    identifier,
+                    BalanceHandling::Available { holds_epoch },
+                    ProofHandling::NoProofs,
+                ));
+                let (total_balance, available_balance) = match balance_result {
+                    BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,
+                    BalanceResult::Failure(tce) => {
+                        return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(tce))
+                    }
+                    BalanceResult::Success {
+                        total_balance,
+                        available_balance,
+                        ..
+                    } => (total_balance, available_balance),
+                };
+                // note that hold & held in this context does not refer to remaining holds,
+                // but rather to the requested hold amount and the resulting held amount for
+                // this execution. as calls to this variant clears holds and does not create
+                // new holds, hold & held are zero and no new hold address exists.
+                let new_hold_addr = None;
+                let hold = U512::zero();
+                let held = U512::zero();
+                let effects = tc.effects();
+                BalanceHoldResult::success(
+                    new_hold_addr,
+                    total_balance,
+                    available_balance,
+                    hold,
+                    held,
+                    effects,
+                )
+            }
         }
     }
 
@@ -911,6 +933,385 @@ pub trait StateProvider {
             }
         }
         BidsResult::Success { bids }
+    }
+
+    /// Direct auction interaction for all variations of bid management.
+    fn bidding(
+        &self,
+        BiddingRequest {
+            config,
+            state_hash,
+            protocol_version,
+            auction_method,
+            transaction_hash,
+            initiator,
+            authorization_keys,
+        }: BiddingRequest,
+    ) -> BiddingResult {
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return BiddingResult::RootNotFound,
+            Err(err) => return BiddingResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let source_account_hash = initiator.account_hash();
+        let (entity, entity_named_keys, entity_access_rights) =
+            match tc.borrow_mut().resolved_entity(
+                protocol_version,
+                source_account_hash,
+                &authorization_keys,
+                &BTreeSet::default(),
+            ) {
+                Ok(ret) => ret,
+                Err(tce) => {
+                    return BiddingResult::Failure(tce);
+                }
+            };
+
+        // IMPORTANT: this runtime _must_ use the payer's context.
+        let mut runtime = RuntimeNative::new(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            source_account_hash,
+            entity,
+            entity_named_keys,
+            entity_access_rights,
+            U512::MAX,
+            Phase::Session,
+        );
+
+        let result = match auction_method {
+            AuctionMethod::ActivateBid { validator } => runtime
+                .activate_bid(validator)
+                .map(|_| AuctionMethodRet::Unit)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::AddBid {
+                public_key,
+                delegation_rate,
+                amount,
+                holds_epoch,
+            } => runtime
+                .add_bid(public_key, delegation_rate, amount, holds_epoch)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Api),
+            AuctionMethod::WithdrawBid { public_key, amount } => runtime
+                .withdraw_bid(public_key, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Delegate {
+                delegator,
+                validator,
+                amount,
+                max_delegators_per_validator,
+                minimum_delegation_amount,
+                holds_epoch,
+            } => runtime
+                .delegate(
+                    delegator,
+                    validator,
+                    amount,
+                    max_delegators_per_validator,
+                    minimum_delegation_amount,
+                    holds_epoch,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(TrackingCopyError::Api),
+            AuctionMethod::Undelegate {
+                delegator,
+                validator,
+                amount,
+            } => runtime
+                .undelegate(delegator, validator, amount)
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+            AuctionMethod::Redelegate {
+                delegator,
+                validator,
+                amount,
+                new_validator,
+                minimum_delegation_amount,
+            } => runtime
+                .redelegate(
+                    delegator,
+                    validator,
+                    amount,
+                    new_validator,
+                    minimum_delegation_amount,
+                )
+                .map(AuctionMethodRet::UpdatedAmount)
+                .map_err(|auc_err| {
+                    TrackingCopyError::SystemContract(system::Error::Auction(auc_err))
+                }),
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(ret) => BiddingResult::Success { ret, effects },
+            Err(tce) => BiddingResult::Failure(tce),
+        }
+    }
+
+    /// Handle refund.
+    fn handle_refund(
+        &self,
+        HandleRefundRequest {
+            config,
+            state_hash,
+            protocol_version,
+            transaction_hash,
+            refund_mode,
+        }: HandleRefundRequest,
+    ) -> HandleRefundResult {
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return HandleRefundResult::RootNotFound,
+            Err(err) => return HandleRefundResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            refund_mode.phase(),
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return HandleRefundResult::Failure(tce);
+            }
+        };
+
+        let result = match refund_mode {
+            HandleRefundMode::RefundAmount {
+                limit,
+                cost,
+                gas_price,
+                consumed,
+                ratio,
+                source,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let (numer, denom) = ratio.into();
+                let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    HoldsEpoch::NOT_APPLICABLE,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => Some(refund),
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                Ok(refund_amount)
+            }
+            HandleRefundMode::Refund {
+                initiator_addr,
+                limit,
+                cost,
+                gas_price,
+                consumed,
+                ratio,
+                source,
+                target,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let (numer, denom) = ratio.into();
+                let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+                let refund_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    HoldsEpoch::NOT_APPLICABLE,
+                    ratio,
+                ) {
+                    Ok((refund, _)) => refund,
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                // pay amount from source to target
+                match runtime
+                    .transfer(
+                        Some(initiator_addr.account_hash()),
+                        source_purse,
+                        target_purse,
+                        refund_amount,
+                        None,
+                        HoldsEpoch::NOT_APPLICABLE,
+                    )
+                    .map_err(|_| Error::Transfer)
+                {
+                    Ok(_) => Ok(Some(refund_amount)),
+                    Err(err) => Err(err),
+                }
+            }
+            HandleRefundMode::Burn {
+                limit,
+                gas_price,
+                cost,
+                consumed,
+                source,
+                ratio,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                let (numer, denom) = ratio.into();
+                let ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+                let burn_amount = match runtime.calculate_overpayment_and_fee(
+                    limit,
+                    gas_price,
+                    cost,
+                    consumed,
+                    source_purse,
+                    HoldsEpoch::NOT_APPLICABLE,
+                    ratio,
+                ) {
+                    Ok((amount, _)) => Some(amount),
+                    Err(hpe) => {
+                        return HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                            system::Error::HandlePayment(hpe),
+                        ));
+                    }
+                };
+                match runtime.burn(source_purse, burn_amount) {
+                    Ok(_) => Ok(burn_amount),
+                    Err(err) => Err(err),
+                }
+            }
+            HandleRefundMode::SetRefundPurse { target } => {
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleRefundResult::Failure(tce),
+                };
+                match runtime.set_refund_purse(target_purse) {
+                    Ok(_) => Ok(None),
+                    Err(err) => Err(err),
+                }
+            }
+            HandleRefundMode::ClearRefundPurse => match runtime.clear_refund_purse() {
+                Ok(_) => Ok(None),
+                Err(err) => Err(err),
+            },
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(amount) => HandleRefundResult::Success { effects, amount },
+            Err(hpe) => HandleRefundResult::Failure(TrackingCopyError::SystemContract(
+                system::Error::HandlePayment(hpe),
+            )),
+        }
+    }
+
+    /// Handle payment.
+    fn handle_fee(
+        &self,
+        HandleFeeRequest {
+            config,
+            state_hash,
+            protocol_version,
+            transaction_hash,
+            handle_fee_mode,
+        }: HandleFeeRequest,
+    ) -> HandleFeeResult {
+        let tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return HandleFeeResult::RootNotFound,
+            Err(err) => return HandleFeeResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        // this runtime uses the system's context
+        let mut runtime = match RuntimeNative::new_system_runtime(
+            config,
+            protocol_version,
+            Id::Transaction(transaction_hash),
+            Rc::clone(&tc),
+            Phase::FinalizePayment,
+        ) {
+            Ok(rt) => rt,
+            Err(tce) => {
+                return HandleFeeResult::Failure(tce);
+            }
+        };
+
+        let result = match handle_fee_mode {
+            HandleFeeMode::Pay {
+                initiator_addr,
+                amount,
+                source,
+                target,
+                holds_epoch,
+            } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleFeeResult::Failure(tce),
+                };
+                let target_purse = match target.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleFeeResult::Failure(tce),
+                };
+                runtime
+                    .transfer(
+                        Some(initiator_addr.account_hash()),
+                        source_purse,
+                        target_purse,
+                        amount,
+                        None,
+                        holds_epoch,
+                    )
+                    .map_err(|_| Error::Transfer)
+            }
+            HandleFeeMode::Burn { source, amount } => {
+                let source_purse = match source.purse_uref(&mut tc.borrow_mut(), protocol_version) {
+                    Ok(value) => value,
+                    Err(tce) => return HandleFeeResult::Failure(tce),
+                };
+                runtime.burn(source_purse, amount)
+            }
+        };
+
+        let effects = tc.borrow_mut().effects();
+
+        match result {
+            Ok(_) => HandleFeeResult::Success { effects },
+            Err(hpe) => HandleFeeResult::Failure(TrackingCopyError::SystemContract(
+                system::Error::HandlePayment(hpe),
+            )),
+        }
     }
 
     /// Gets the execution result checksum.
@@ -1207,7 +1608,7 @@ pub trait StateProvider {
             }
         };
 
-        let source_account_hash = request.address();
+        let source_account_hash = request.initiator().account_hash();
         let protocol_version = request.protocol_version();
         if let Err(tce) = tc
             .borrow_mut()
@@ -1288,11 +1689,11 @@ pub trait StateProvider {
                 }
             };
 
-        let id = crate::system::runtime_native::Id::Transaction(request.transaction_hash());
+        let id = Id::Transaction(request.transaction_hash());
         // IMPORTANT: this runtime _must_ use the payer's context.
         let mut runtime = RuntimeNative::new(
-            protocol_version,
             config.clone(),
+            protocol_version,
             id,
             Rc::clone(&tc),
             source_account_hash,
@@ -1326,17 +1727,14 @@ pub trait StateProvider {
                 }
             }
         }
-
-        let transfer_args = {
-            match runtime_args_builder.build(
-                &entity,
-                entity_named_keys,
-                protocol_version,
-                Rc::clone(&tc),
-            ) {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => return TransferResult::Failure(error),
-            }
+        let transfer_args = match runtime_args_builder.build(
+            &entity,
+            entity_named_keys,
+            protocol_version,
+            Rc::clone(&tc),
+        ) {
+            Ok(transfer_args) => transfer_args,
+            Err(error) => return TransferResult::Failure(error),
         };
         if let Err(mint_error) = runtime.transfer(
             transfer_args.to(),
@@ -1344,27 +1742,12 @@ pub trait StateProvider {
             transfer_args.target(),
             transfer_args.amount(),
             transfer_args.arg_id(),
+            request.holds_epoch(),
         ) {
             return TransferResult::Failure(TransferError::Mint(mint_error));
         }
 
         let transfers = runtime.into_transfers();
-
-        {
-            // TODO: this lexical block needs to be updated with the new versioned transaction types
-            let deploy_hash = DeployHash::new(request.transaction_hash().digest());
-            let deploy_info = casper_types::DeployInfo::new(
-                deploy_hash,
-                &transfers,
-                source_account_hash,
-                entity.main_purse(),
-                request.cost(),
-            );
-            tc.borrow_mut().write(
-                Key::DeployInfo(deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
-            );
-        }
 
         let effects = tc.borrow_mut().effects();
 

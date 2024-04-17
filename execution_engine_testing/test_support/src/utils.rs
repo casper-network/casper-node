@@ -3,17 +3,13 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::engine_state::{execution_result::ExecutionResult, Error};
+use casper_execution_engine::engine_state::{Error, WasmV1Result};
 use casper_storage::data_access_layer::GenesisRequest;
-use casper_types::{
-    Gas, GenesisAccount, GenesisConfig, GenesisConfigBuilder, DEFAULT_FEE_HANDLING,
-    DEFAULT_REFUND_HANDLING,
-};
+use casper_types::{bytesrepr::Bytes, GenesisAccount, GenesisConfig, GenesisConfigBuilder};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
@@ -97,7 +93,7 @@ fn get_compiled_wasm_paths() -> Vec<PathBuf> {
 }
 
 /// Reads a given compiled contract file based on path
-pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
+pub fn read_wasm_file<T: AsRef<Path>>(contract_file: T) -> Bytes {
     let mut attempted_paths = vec![];
 
     if contract_file.as_ref().is_relative() {
@@ -106,7 +102,7 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
             let mut filename = wasm_path.clone();
             filename.push(contract_file.as_ref());
             if let Ok(wasm_bytes) = fs::read(&filename) {
-                return wasm_bytes;
+                return Bytes::from(wasm_bytes);
             }
             attempted_paths.push(filename);
         }
@@ -114,7 +110,7 @@ pub fn read_wasm_file_bytes<T: AsRef<Path>>(contract_file: T) -> Vec<u8> {
     // Try just opening in case the arg is a valid path relative to current working dir, or is a
     // valid absolute path.
     if let Ok(wasm_bytes) = fs::read(contract_file.as_ref()) {
-        return wasm_bytes;
+        return Bytes::from(wasm_bytes);
     }
     attempted_paths.push(contract_file.as_ref().to_owned());
 
@@ -137,8 +133,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let refund_handling = DEFAULT_REFUND_HANDLING;
-    let fee_handling = DEFAULT_FEE_HANDLING;
 
     GenesisConfigBuilder::default()
         .with_accounts(accounts)
@@ -150,8 +144,6 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
         .with_round_seigniorage_rate(round_seigniorage_rate)
         .with_unbonding_delay(unbonding_delay)
         .with_genesis_timestamp_millis(genesis_timestamp_millis)
-        .with_refund_handling(refund_handling)
-        .with_fee_handling(fee_handling)
         .build()
 }
 
@@ -159,58 +151,22 @@ pub fn create_genesis_config(accounts: Vec<GenesisAccount>) -> GenesisConfig {
 pub fn create_run_genesis_request(accounts: Vec<GenesisAccount>) -> GenesisRequest {
     let config = create_genesis_config(accounts);
     GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     )
 }
 
-/// Returns a `Vec<Gas>` representing gas consts for an [`ExecutionResult`].
-pub fn get_exec_costs<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
-    exec_response: I,
-) -> Vec<Gas> {
-    exec_response
-        .into_iter()
-        .map(|res| res.as_ref().cost())
-        .collect()
-}
-
-/// Returns the success result of the `ExecutionResult`.
-/// # Panics
-/// Panics if `response` is `None`.
-pub fn get_success_result(response: &[Rc<ExecutionResult>]) -> &ExecutionResult {
-    response.get(0).expect("should have a result")
-}
-
 /// Returns an error if the `ExecutionResult` has an error.
+///
 /// # Panics
-/// Panics if the result is `None`.
-/// Panics if the result does not have a precondition failure.
-/// Panics if result.as_error() is `None`.
-pub fn get_precondition_failure(response: &[Rc<ExecutionResult>]) -> &Error {
-    let result = response.get(0).expect("should have a result");
+/// * Panics if the result does not have a precondition failure.
+/// * Panics if result.as_error() is `None`.
+pub fn get_precondition_failure(exec_result: &WasmV1Result) -> &Error {
     assert!(
-        result.has_precondition_failure(),
+        exec_result.has_precondition_failure(),
         "should be a precondition failure"
     );
-    result.as_error().expect("should have an error")
-}
-
-/// Returns a `String` concatenated from all of the error messages from the `ExecutionResult`.
-pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
-    execution_result: I,
-) -> String {
-    let errors = execution_result
-        .into_iter()
-        .enumerate()
-        .filter_map(|(i, result)| {
-            if let ExecutionResult::Failure { error, .. } = result.as_ref() {
-                Some(format!("{}: {:?}", i, error))
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    errors.join("\n")
+    exec_result.error().expect("should have an error")
 }

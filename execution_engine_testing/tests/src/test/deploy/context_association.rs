@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, LOCAL_GENESIS_REQUEST,
 };
 
 use casper_types::{
@@ -17,20 +17,18 @@ fn should_put_system_contract_hashes_to_account_context() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let request = {
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(SYSTEM_CONTRACT_HASHES_WASM, runtime_args! {})
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount})
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
-            .with_deploy_hash([1; 32])
-            .build();
+    let deploy_item = DeployItemBuilder::new()
+        .with_address(*DEFAULT_ACCOUNT_ADDR)
+        .with_session_code(SYSTEM_CONTRACT_HASHES_WASM, runtime_args! {})
+        .with_standard_payment(runtime_args! { ARG_AMOUNT => payment_purse_amount})
+        .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
+        .with_deploy_hash([1; 32])
+        .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     builder
-        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
+        .run_genesis(LOCAL_GENESIS_REQUEST.clone())
         .exec(request)
         .expect_success()
         .commit();

@@ -1,18 +1,12 @@
 use once_cell::sync::Lazy;
-use rand::Rng;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    LmdbWasmTestBuilder, TransferRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, LOCAL_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
-use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
-    MintCosts, PublicKey, RuntimeArgs, SecretKey, U512,
-};
+use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
+use casper_types::{account::AccountHash, MintCosts, PublicKey, SecretKey, U512};
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -28,34 +22,21 @@ static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> =
     Lazy::new(|| PublicKey::from(&*ACCOUNT_2_SECRET_KEY));
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| ACCOUNT_2_PUBLIC_KEY.to_account_hash());
 
-const ID_NONE: Option<u64> = None;
-
 #[ignore]
 #[test]
 fn should_transfer_to_account_with_correct_balances() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 
     // Default account to account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-           ARG_TARGET => *ACCOUNT_1_ADDR,
-           ARG_AMOUNT => U512::one(),
-           ARG_ID => ID_NONE,
-        },
-    ));
+    let transfer_request = TransferRequestBuilder::new(1, *ACCOUNT_1_ADDR).build();
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .transfer_and_commit(transfer_request)
         .expect_success();
-
-    builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,
@@ -93,57 +74,36 @@ fn should_transfer_from_default_and_then_to_another_account() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 
     // Default account to account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
     // We must first transfer the amount account 1 will transfer to account 2, along with the fee
     // account 1 will need to pay for that transfer.
-    exec_builder = exec_builder.push_deploy(transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-           ARG_TARGET => *ACCOUNT_1_ADDR,
-           ARG_AMOUNT => *TRANSFER_AMOUNT + MintCosts::default().transfer,
-           ARG_ID => ID_NONE,
-        },
-    ));
+    let transfer_request = TransferRequestBuilder::new(
+        *TRANSFER_AMOUNT + MintCosts::default().transfer,
+        *ACCOUNT_1_ADDR,
+    )
+    .build();
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .transfer_and_commit(transfer_request)
         .expect_success();
 
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-            ARG_AMOUNT => *TRANSFER_AMOUNT,
-            ARG_ID => ID_NONE,
-        },
-    ));
-
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT, *ACCOUNT_2_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .transfer_and_commit(transfer_request)
         .expect_success();
 
     // Double spend test for account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
-        *ACCOUNT_1_ADDR,
-        runtime_args! {
-            ARG_TARGET => *ACCOUNT_2_ADDR,
-            ARG_AMOUNT => *TRANSFER_AMOUNT,
-            ARG_ID => ID_NONE,
-        },
-    ));
-
+    let transfer_request = TransferRequestBuilder::new(*TRANSFER_AMOUNT, *ACCOUNT_2_ADDR)
+        .with_initiator(*ACCOUNT_1_ADDR)
+        .build();
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .transfer_and_commit(transfer_request)
         .expect_failure();
-
-    builder.write_scratch_to_db();
-    builder.flush_environment();
 
     assert_ne!(
         pre_state_hash,
@@ -186,16 +146,4 @@ fn should_transfer_from_default_and_then_to_another_account() {
         account_2_balance, *TRANSFER_AMOUNT,
         "account 2 balance should have changed"
     );
-}
-
-fn transfer(sender: AccountHash, transfer_args: RuntimeArgs) -> DeployItem {
-    let mut rng = rand::thread_rng();
-    let deploy_hash = rng.gen();
-    DeployItemBuilder::new()
-        .with_address(sender)
-        .with_empty_payment_bytes(runtime_args! {})
-        .with_transfer_args(transfer_args)
-        .with_authorization_keys(&[sender])
-        .with_deploy_hash(deploy_hash)
-        .build()
 }

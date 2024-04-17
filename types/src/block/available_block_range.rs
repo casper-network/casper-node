@@ -7,11 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
-#[cfg(test)]
-use rand::Rng;
-
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 /// An unbroken, inclusive range of blocks.
 #[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
@@ -52,8 +51,9 @@ impl AvailableBlockRange {
         self.high
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         let low = rng.gen::<u16>() as u64;
         let high = low + rng.gen::<u16>() as u64;
         Self { low, high }

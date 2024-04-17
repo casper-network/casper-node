@@ -8,10 +8,10 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_binary_port::ConsensusStatus;
 use casper_types::{
-    binary_port::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block, BlockHash,
-    BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -49,6 +49,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         available_block_range: AvailableBlockRange::RANGE_0_0,
         block_sync: BlockSynchronizerStatus::example().clone(),
         starting_state_root_hash: Digest::default(),
+        latest_switch_block_hash: Some(BlockHash::default()),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)
 });
@@ -103,6 +104,8 @@ pub struct StatusFeed {
     pub block_sync: BlockSynchronizerStatus,
     /// The state root hash of the lowest block in the available block range.
     pub starting_state_root_hash: Digest,
+    /// The hash of the latest switch block.
+    pub latest_switch_block_hash: Option<BlockHash>,
 }
 
 impl StatusFeed {
@@ -118,6 +121,7 @@ impl StatusFeed {
         available_block_range: AvailableBlockRange,
         block_sync: BlockSynchronizerStatus,
         starting_state_root_hash: Digest,
+        latest_switch_block_hash: Option<BlockHash>,
     ) -> Self {
         let (our_public_signing_key, round_length) =
             consensus_status.map_or((None, None), |consensus_status| {
@@ -139,6 +143,7 @@ impl StatusFeed {
             available_block_range,
             block_sync,
             starting_state_root_hash,
+            latest_switch_block_hash,
         }
     }
 }
@@ -206,6 +211,8 @@ pub struct GetStatusResult {
     pub available_block_range: AvailableBlockRange,
     /// The status of the block synchronizer builders.
     pub block_sync: BlockSynchronizerStatus,
+    /// The hash of the latest switch block.
+    pub latest_switch_block_hash: Option<BlockHash>,
 }
 
 impl GetStatusResult {
@@ -225,6 +232,7 @@ impl GetStatusResult {
             last_progress: status_feed.last_progress,
             available_block_range: status_feed.available_block_range,
             block_sync: status_feed.block_sync,
+            latest_switch_block_hash: status_feed.latest_switch_block_hash,
             #[cfg(not(test))]
             build_version: crate::VERSION_STRING.clone(),
 

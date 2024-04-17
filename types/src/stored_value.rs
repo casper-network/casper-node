@@ -24,7 +24,7 @@ use crate::{
     contracts::{Contract, ContractPackage},
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
@@ -37,7 +37,7 @@ enum Tag {
     ContractWasm = 2,
     Contract = 3,
     ContractPackage = 4,
-    Transfer = 5,
+    LegacyTransfer = 5,
     DeployInfo = 6,
     EraInfo = 7,
     Bid = 8,
@@ -49,7 +49,7 @@ enum Tag {
     ByteCode = 14,
     MessageTopic = 15,
     Message = 16,
-    NamedKeyValue = 17,
+    NamedKey = 17,
 }
 
 /// A value stored in Global State.
@@ -72,8 +72,8 @@ pub enum StoredValue {
     Contract(Contract),
     /// A contract package.
     ContractPackage(ContractPackage),
-    /// A `Transfer`.
-    Transfer(Transfer),
+    /// A version 1 (legacy) transfer.
+    LegacyTransfer(TransferV1),
     /// Info about a deploy.
     DeployInfo(DeployInfo),
     /// Info about an era.
@@ -141,10 +141,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns a reference to the wrapped `Transfer` if this is a `Transfer` variant.
-    pub fn as_transfer(&self) -> Option<&Transfer> {
+    /// Returns a reference to the wrapped `TransferV1` if this is a `LegacyTransfer` variant.
+    pub fn as_legacy_transfer(&self) -> Option<&TransferV1> {
         match self {
-            StoredValue::Transfer(transfer) => Some(transfer),
+            StoredValue::LegacyTransfer(transfer_v1) => Some(transfer_v1),
             _ => None,
         }
     }
@@ -273,10 +273,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns the `Transfer` if this is a `Transfer` variant.
-    pub fn into_transfer(self) -> Option<Transfer> {
+    /// Returns the `TransferV1` if this is a `LegacyTransfer` variant.
+    pub fn into_legacy_transfer(self) -> Option<TransferV1> {
         match self {
-            StoredValue::Transfer(transfer) => Some(transfer),
+            StoredValue::LegacyTransfer(transfer_v1) => Some(transfer_v1),
             _ => None,
         }
     }
@@ -347,7 +347,7 @@ impl StoredValue {
             StoredValue::ContractWasm(_) => "ContractWasm".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
             StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
-            StoredValue::Transfer(_) => "Transfer".to_string(),
+            StoredValue::LegacyTransfer(_) => "LegacyTransfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
             StoredValue::Bid(_) => "Bid".to_string(),
@@ -359,7 +359,7 @@ impl StoredValue {
             StoredValue::Package(_) => "Package".to_string(),
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
-            StoredValue::NamedKey(_) => "NamedKeyValue".to_string(),
+            StoredValue::NamedKey(_) => "NamedKey".to_string(),
         }
     }
 
@@ -370,7 +370,7 @@ impl StoredValue {
             StoredValue::ContractWasm(_) => Tag::ContractWasm,
             StoredValue::ContractPackage(_) => Tag::ContractPackage,
             StoredValue::Contract(_) => Tag::Contract,
-            StoredValue::Transfer(_) => Tag::Transfer,
+            StoredValue::LegacyTransfer(_) => Tag::LegacyTransfer,
             StoredValue::DeployInfo(_) => Tag::DeployInfo,
             StoredValue::EraInfo(_) => Tag::EraInfo,
             StoredValue::Bid(_) => Tag::Bid,
@@ -382,7 +382,7 @@ impl StoredValue {
             StoredValue::ByteCode(_) => Tag::ByteCode,
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
-            StoredValue::NamedKey(_) => Tag::NamedKeyValue,
+            StoredValue::NamedKey(_) => Tag::NamedKey,
         }
     }
 }
@@ -557,13 +557,16 @@ impl TryFrom<StoredValue> for AddressableEntity {
     }
 }
 
-impl TryFrom<StoredValue> for Transfer {
+impl TryFrom<StoredValue> for TransferV1 {
     type Error = TypeMismatch;
 
     fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
         match value {
-            StoredValue::Transfer(transfer) => Ok(transfer),
-            _ => Err(TypeMismatch::new("Transfer".to_string(), value.type_name())),
+            StoredValue::LegacyTransfer(transfer_v1) => Ok(transfer_v1),
+            _ => Err(TypeMismatch::new(
+                "LegacyTransfer".to_string(),
+                value.type_name(),
+            )),
         }
     }
 }
@@ -630,7 +633,7 @@ impl TryFrom<StoredValue> for NamedKeyValue {
 }
 
 impl ToBytes for StoredValue {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
         Ok(buffer)
@@ -646,7 +649,7 @@ impl ToBytes for StoredValue {
                 StoredValue::ContractPackage(contract_package) => {
                     contract_package.serialized_length()
                 }
-                StoredValue::Transfer(transfer) => transfer.serialized_length(),
+                StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
                 StoredValue::Bid(bid) => bid.serialized_length(),
@@ -664,33 +667,30 @@ impl ToBytes for StoredValue {
             }
     }
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         writer.push(self.tag() as u8);
         match self {
-            StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
-            StoredValue::Account(account) => account.write_bytes(writer)?,
-            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
-            StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
-            StoredValue::ContractPackage(contract_package) => {
-                contract_package.write_bytes(writer)?
-            }
-            StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
-            StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
-            StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
-            StoredValue::Bid(bid) => bid.write_bytes(writer)?,
-            StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
-            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
-            StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
-            StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
-            StoredValue::Package(package) => package.write_bytes(writer)?,
-            StoredValue::ByteCode(byte_code) => byte_code.write_bytes(writer)?,
+            StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer),
+            StoredValue::Account(account) => account.write_bytes(writer),
+            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer),
+            StoredValue::Contract(contract_header) => contract_header.write_bytes(writer),
+            StoredValue::ContractPackage(contract_package) => contract_package.write_bytes(writer),
+            StoredValue::LegacyTransfer(transfer_v1) => transfer_v1.write_bytes(writer),
+            StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer),
+            StoredValue::EraInfo(era_info) => era_info.write_bytes(writer),
+            StoredValue::Bid(bid) => bid.write_bytes(writer),
+            StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer),
+            StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer),
+            StoredValue::AddressableEntity(entity) => entity.write_bytes(writer),
+            StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer),
+            StoredValue::Package(package) => package.write_bytes(writer),
+            StoredValue::ByteCode(byte_code) => byte_code.write_bytes(writer),
             StoredValue::MessageTopic(message_topic_summary) => {
-                message_topic_summary.write_bytes(writer)?
+                message_topic_summary.write_bytes(writer)
             }
-            StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
-            StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?,
-        };
-        Ok(())
+            StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
+            StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
+        }
     }
 }
 
@@ -714,8 +714,11 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::Contract as u8 => Contract::from_bytes(remainder)
                 .map(|(contract, remainder)| (StoredValue::Contract(contract), remainder)),
-            tag if tag == Tag::Transfer as u8 => Transfer::from_bytes(remainder)
-                .map(|(transfer, remainder)| (StoredValue::Transfer(transfer), remainder)),
+            tag if tag == Tag::LegacyTransfer as u8 => {
+                TransferV1::from_bytes(remainder).map(|(transfer_v1, remainder)| {
+                    (StoredValue::LegacyTransfer(transfer_v1), remainder)
+                })
+            }
             tag if tag == Tag::DeployInfo as u8 => DeployInfo::from_bytes(remainder)
                 .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
             tag if tag == Tag::EraInfo as u8 => EraInfo::from_bytes(remainder)
@@ -746,7 +749,7 @@ impl FromBytes for StoredValue {
                 }),
             tag if tag == Tag::Message as u8 => MessageChecksum::from_bytes(remainder)
                 .map(|(checksum, remainder)| (StoredValue::Message(checksum), remainder)),
-            tag if tag == Tag::NamedKeyValue as u8 => {
+            tag if tag == Tag::NamedKey as u8 => {
                 NamedKeyValue::from_bytes(remainder).map(|(named_key_value, remainder)| {
                     (StoredValue::NamedKey(named_key_value), remainder)
                 })
@@ -760,140 +763,117 @@ mod serde_helpers {
     use super::*;
 
     #[derive(Serialize)]
-    pub(super) enum BinarySerHelper<'a> {
-        /// A CLValue.
+    pub(super) enum HumanReadableSerHelper<'a> {
         CLValue(&'a CLValue),
-        /// An account.
         Account(&'a Account),
         ContractWasm(&'a ContractWasm),
-        /// A contract.
         Contract(&'a Contract),
-        /// A `Package`.
         ContractPackage(&'a ContractPackage),
-        /// A `Transfer`.
-        Transfer(&'a Transfer),
-        /// Info about a deploy.
+        LegacyTransfer(&'a TransferV1),
         DeployInfo(&'a DeployInfo),
-        /// Info about an era.
         EraInfo(&'a EraInfo),
-        /// Variant that stores [`Bid`].
         Bid(&'a Bid),
-        /// Variant that stores withdraw information.
         Withdraw(&'a Vec<WithdrawPurse>),
-        /// Unbonding information.
         Unbonding(&'a Vec<UnbondingPurse>),
-        /// An `AddressableEntity`.
         AddressableEntity(&'a AddressableEntity),
-        /// Variant that stores [`BidKind`].
         BidKind(&'a BidKind),
-        /// Package.
         Package(&'a Package),
-        /// A record of byte code.
         ByteCode(&'a ByteCode),
-        /// Variant that stores [`MessageTopicSummary`].
         MessageTopic(&'a MessageTopicSummary),
-        /// Variant that stores a [`MessageChecksum`].
         Message(&'a MessageChecksum),
-        /// A record for NamedKey.
         NamedKey(&'a NamedKeyValue),
     }
 
     #[derive(Deserialize)]
-    pub(super) enum BinaryDeserHelper {
-        /// A CLValue.
+    pub(super) enum HumanReadableDeserHelper {
         CLValue(CLValue),
-        /// An account.
         Account(Account),
-        /// A contract wasm.
         ContractWasm(ContractWasm),
-        /// A contract.
         Contract(Contract),
-        /// A `Package`.
         ContractPackage(ContractPackage),
-        /// A `Transfer`.
-        Transfer(Transfer),
-        /// Info about a deploy.
+        LegacyTransfer(TransferV1),
         DeployInfo(DeployInfo),
-        /// Info about an era.
         EraInfo(EraInfo),
-        /// Variant that stores [`Bid`].
         Bid(Box<Bid>),
-        /// Variant that stores withdraw information.
         Withdraw(Vec<WithdrawPurse>),
-        /// Unbonding information.
         Unbonding(Vec<UnbondingPurse>),
-        /// An `AddressableEntity`.
         AddressableEntity(AddressableEntity),
-        /// Variant that stores [`BidKind`].
         BidKind(BidKind),
-        /// A record of a Package.
         Package(Package),
-        /// A record of byte code.
         ByteCode(ByteCode),
-        /// Variant that stores [`MessageTopicSummary`].
         MessageTopic(MessageTopicSummary),
-        /// Variant that stores [`MessageChecksum`].
         Message(MessageChecksum),
-        /// A record for NamedKey.
         NamedKey(NamedKeyValue),
     }
 
-    impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
+    impl<'a> From<&'a StoredValue> for HumanReadableSerHelper<'a> {
         fn from(stored_value: &'a StoredValue) -> Self {
             match stored_value {
-                StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
-                StoredValue::Account(payload) => BinarySerHelper::Account(payload),
-                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
-                StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
-                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
-                StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
-                StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
-                StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
-                StoredValue::Bid(payload) => BinarySerHelper::Bid(payload),
-                StoredValue::Withdraw(payload) => BinarySerHelper::Withdraw(payload),
-                StoredValue::Unbonding(payload) => BinarySerHelper::Unbonding(payload),
+                StoredValue::CLValue(payload) => HumanReadableSerHelper::CLValue(payload),
+                StoredValue::Account(payload) => HumanReadableSerHelper::Account(payload),
+                StoredValue::ContractWasm(payload) => HumanReadableSerHelper::ContractWasm(payload),
+                StoredValue::Contract(payload) => HumanReadableSerHelper::Contract(payload),
+                StoredValue::ContractPackage(payload) => {
+                    HumanReadableSerHelper::ContractPackage(payload)
+                }
+                StoredValue::LegacyTransfer(payload) => {
+                    HumanReadableSerHelper::LegacyTransfer(payload)
+                }
+                StoredValue::DeployInfo(payload) => HumanReadableSerHelper::DeployInfo(payload),
+                StoredValue::EraInfo(payload) => HumanReadableSerHelper::EraInfo(payload),
+                StoredValue::Bid(payload) => HumanReadableSerHelper::Bid(payload),
+                StoredValue::Withdraw(payload) => HumanReadableSerHelper::Withdraw(payload),
+                StoredValue::Unbonding(payload) => HumanReadableSerHelper::Unbonding(payload),
                 StoredValue::AddressableEntity(payload) => {
-                    BinarySerHelper::AddressableEntity(payload)
+                    HumanReadableSerHelper::AddressableEntity(payload)
                 }
-                StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
-                StoredValue::Package(payload) => BinarySerHelper::Package(payload),
-                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
+                StoredValue::BidKind(payload) => HumanReadableSerHelper::BidKind(payload),
+                StoredValue::Package(payload) => HumanReadableSerHelper::Package(payload),
+                StoredValue::ByteCode(payload) => HumanReadableSerHelper::ByteCode(payload),
                 StoredValue::MessageTopic(message_topic_summary) => {
-                    BinarySerHelper::MessageTopic(message_topic_summary)
+                    HumanReadableSerHelper::MessageTopic(message_topic_summary)
                 }
-                StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
-                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
+                StoredValue::Message(message_digest) => {
+                    HumanReadableSerHelper::Message(message_digest)
+                }
+                StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
             }
         }
     }
 
-    impl From<BinaryDeserHelper> for StoredValue {
-        fn from(helper: BinaryDeserHelper) -> Self {
+    impl From<HumanReadableDeserHelper> for StoredValue {
+        fn from(helper: HumanReadableDeserHelper) -> Self {
             match helper {
-                BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
-                BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
-                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
-                BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
-                BinaryDeserHelper::ContractPackage(payload) => {
+                HumanReadableDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
+                HumanReadableDeserHelper::Account(payload) => StoredValue::Account(payload),
+                HumanReadableDeserHelper::ContractWasm(payload) => {
+                    StoredValue::ContractWasm(payload)
+                }
+                HumanReadableDeserHelper::Contract(payload) => StoredValue::Contract(payload),
+                HumanReadableDeserHelper::ContractPackage(payload) => {
                     StoredValue::ContractPackage(payload)
                 }
-                BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),
-                BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
-                BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
-                BinaryDeserHelper::Bid(bid) => StoredValue::Bid(bid),
-                BinaryDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
-                BinaryDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
-                BinaryDeserHelper::AddressableEntity(payload) => {
+                HumanReadableDeserHelper::LegacyTransfer(payload) => {
+                    StoredValue::LegacyTransfer(payload)
+                }
+                HumanReadableDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
+                HumanReadableDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
+                HumanReadableDeserHelper::Bid(bid) => StoredValue::Bid(bid),
+                HumanReadableDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
+                HumanReadableDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
+                HumanReadableDeserHelper::AddressableEntity(payload) => {
                     StoredValue::AddressableEntity(payload)
                 }
-                BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
-                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
-                BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
-                BinaryDeserHelper::MessageTopic(message_topic_summary) => {
+                HumanReadableDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                HumanReadableDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
+                HumanReadableDeserHelper::Package(payload) => StoredValue::Package(payload),
+                HumanReadableDeserHelper::MessageTopic(message_topic_summary) => {
                     StoredValue::MessageTopic(message_topic_summary)
                 }
-                BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
-                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
+                HumanReadableDeserHelper::Message(message_digest) => {
+                    StoredValue::Message(message_digest)
+                }
+                HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
             }
         }
     }
@@ -902,7 +882,7 @@ mod serde_helpers {
 impl Serialize for StoredValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serde_helpers::BinarySerHelper::from(self).serialize(serializer)
+            serde_helpers::HumanReadableSerHelper::from(self).serialize(serializer)
         } else {
             let bytes = self
                 .to_bytes()
@@ -915,7 +895,7 @@ impl Serialize for StoredValue {
 impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
-            let json_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
+            let json_helper = serde_helpers::HumanReadableDeserHelper::deserialize(deserializer)?;
             Ok(StoredValue::from(json_helper))
         } else {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
@@ -927,11 +907,18 @@ impl<'de> Deserialize<'de> for StoredValue {
 
 #[cfg(test)]
 mod tests {
+    use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
 
-    use crate::{bytesrepr, gens};
-
     proptest! {
+        #[test]
+        fn json_contract_package_serialization(v in gens::contract_package_arb()) {
+            let stored_value = StoredValue::ContractPackage(v);
+            let json_str = serde_json::to_string(&stored_value).unwrap();
+            let deserialized = serde_json::from_str::<StoredValue>(&json_str).unwrap();
+            assert_eq!(stored_value, deserialized);
+        }
+
         #[test]
         fn serialization_roundtrip(v in gens::stored_value_arb()) {
             bytesrepr::test_serialization_roundtrip(&v);

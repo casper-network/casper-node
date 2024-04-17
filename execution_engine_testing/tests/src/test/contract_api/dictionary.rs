@@ -1,18 +1,19 @@
+use std::{convert::TryFrom, path::PathBuf};
+
 use casper_engine_test_support::{
     utils::create_genesis_config, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    TransferRequestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, LOCAL_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error as EngineError, execution::ExecError};
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
-    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
-    RuntimeArgs, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, AccessRights,
+    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
+    StoredValue,
 };
-use std::{convert::TryFrom, path::PathBuf};
 
 use dictionary_call::{NEW_DICTIONARY_ITEM_KEY, NEW_DICTIONARY_VALUE};
 
@@ -26,17 +27,10 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -45,7 +39,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
 
     builder
         .exec(install_contract_request)
@@ -114,7 +108,7 @@ fn query_dictionary_item(
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
-                        )
+                        );
                     }
                 };
 
@@ -234,9 +228,8 @@ fn should_not_write_with_read_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -286,10 +279,8 @@ fn should_not_read_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -367,9 +358,8 @@ fn should_not_write_with_forged_uref() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -405,9 +395,8 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -442,9 +431,8 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -460,17 +448,10 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 fn dictionary_put_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -481,11 +462,10 @@ fn dictionary_put_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -501,17 +481,10 @@ fn dictionary_put_should_fail_with_large_item_key() {
 fn dictionary_get_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
-    let fund_request = ExecuteRequestBuilder::transfer(
-        *DEFAULT_ACCOUNT_ADDR,
-        runtime_args! {
-            mint::ARG_TARGET => ACCOUNT_1_ADDR,
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_ID => <Option<u64>>::None,
-        },
-    )
-    .build();
+    let fund_request =
+        TransferRequestBuilder::new(MINIMUM_ACCOUNT_CREATION_BALANCE, ACCOUNT_1_ADDR).build();
 
     let install_contract_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -522,11 +495,10 @@ fn dictionary_get_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder.transfer_and_commit(fund_request).expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -542,7 +514,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
 fn should_query_dictionary_items_with_test_builder() {
     let genesis_account = GenesisAccount::account(
         DEFAULT_ACCOUNT_PUBLIC_KEY.clone(),
-        Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
+        Motes::new(DEFAULT_ACCOUNT_INITIAL_BALANCE),
         None,
     );
 
@@ -550,22 +522,22 @@ fn should_query_dictionary_items_with_test_builder() {
     accounts.extend((*DEFAULT_ACCOUNTS).clone());
     let genesis_config = create_genesis_config(accounts);
     let genesis_request = GenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
+        DEFAULT_GENESIS_CONFIG_HASH,
+        DEFAULT_PROTOCOL_VERSION,
         genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     let dictionary_code = PathBuf::from(DICTIONARY_WASM);
     let deploy_item = DeployItemBuilder::new()
-        .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
+        .with_standard_payment(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
         .with_session_code(dictionary_code, RuntimeArgs::new())
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
         .with_deploy_hash([42; 32])
         .build();
 
-    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(&deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(genesis_request).commit();
@@ -664,7 +636,7 @@ fn should_query_dictionary_items_with_test_builder() {
 #[test]
 fn should_be_able_to_perform_dictionary_read() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let dictionary_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, DICTIONARY_READ, RuntimeArgs::new())
@@ -680,7 +652,7 @@ fn should_be_able_to_perform_dictionary_read() {
 #[test]
 fn should_be_able_to_perform_read_from_key() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
+    builder.run_genesis(LOCAL_GENESIS_REQUEST.clone());
 
     let read_from_key_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, READ_FROM_KEY, RuntimeArgs::new())

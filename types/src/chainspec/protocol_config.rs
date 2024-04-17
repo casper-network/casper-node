@@ -9,13 +9,13 @@ use std::{collections::BTreeMap, str::FromStr};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Key, ProtocolVersion, StoredValue,
+    Key, ProtocolVersion, StoredValue, Timestamp,
 };
 
 use crate::{ActivationPoint, GlobalStateUpdate};
 
 /// Configuration values associated with the protocol.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ProtocolConfig {
     /// Protocol version.
@@ -101,6 +101,17 @@ impl FromBytes for ProtocolConfig {
             global_state_update,
         };
         Ok((protocol_config, remainder))
+    }
+}
+
+impl Default for ProtocolConfig {
+    fn default() -> Self {
+        ProtocolConfig {
+            activation_point: ActivationPoint::Genesis(Timestamp::now()),
+            global_state_update: None,
+            hard_reset: true,
+            version: ProtocolVersion::V2_0_0,
+        }
     }
 }
 

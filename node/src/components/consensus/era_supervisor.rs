@@ -30,8 +30,9 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
+use casper_binary_port::{ConsensusStatus, ConsensusValidatorChanges};
+
 use casper_types::{
-    binary_port::{ConsensusStatus, ConsensusValidatorChanges},
     Approval, AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest,
     DisplayIter, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash,
     ValidatorChange,

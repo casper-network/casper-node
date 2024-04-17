@@ -2,6 +2,7 @@ mod addressable_entity_identifier;
 mod approval;
 mod approvals_hash;
 mod deploy;
+mod error;
 mod execution_info;
 mod initiator_addr;
 #[cfg(any(feature = "std", test))]
@@ -20,11 +21,12 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transfer_target;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
-#[cfg(feature = "std")]
-use std::error::Error as StdError;
+#[cfg(any(feature = "std", test))]
+use std::hash::Hash;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -40,23 +42,25 @@ use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(feature = "json-schema")]
+use crate::URef;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, SecretKey, Timestamp,
+    Digest, Phase, SecretKey, TimeDiff, Timestamp,
 };
-#[cfg(feature = "json-schema")]
-use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
+#[cfg(any(feature = "std", test))]
+use crate::{Chainspec, Gas, Motes};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
 pub use deploy::{
-    Deploy, DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployHash, DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-    TransferTarget,
+    Deploy, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InvalidDeploy,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use error::InvalidTransaction;
 pub use execution_info::ExecutionInfo;
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
@@ -74,12 +78,13 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionCategory, TransactionV1, TransactionV1Body, TransactionV1ConfigFailure,
+    InvalidTransactionV1, TransactionCategory, TransactionV1, TransactionV1Body,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
     TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transfer_target::TransferTarget;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -95,10 +100,9 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
         "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
     )
     .unwrap();
-    let to = Some(AccountHash::new([40; ACCOUNT_HASH_LENGTH]));
     let id = Some(999);
 
-    let v1_txn = TransactionV1Builder::new_transfer(source, target, 30_000_000_000_u64, to, id)
+    let v1_txn = TransactionV1Builder::new_transfer(30_000_000_000_u64, Some(source), target, id)
         .unwrap()
         .with_chain_name("casper-example")
         .with_timestamp(*Timestamp::example())
@@ -108,46 +112,6 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
         .unwrap();
     Transaction::V1(v1_txn)
 });
-
-/// A representation of the way in which a transaction failed validation checks.
-#[derive(Debug)]
-pub enum TransactionConfigFailure {
-    /// Error details for the Deploy variant.
-    Deploy(DeployConfigFailure),
-    /// Error details for the TransactionV1 variant.
-    V1(TransactionV1ConfigFailure),
-}
-
-impl From<DeployConfigFailure> for TransactionConfigFailure {
-    fn from(value: DeployConfigFailure) -> Self {
-        Self::Deploy(value)
-    }
-}
-
-impl From<TransactionV1ConfigFailure> for TransactionConfigFailure {
-    fn from(value: TransactionV1ConfigFailure) -> Self {
-        Self::V1(value)
-    }
-}
-
-#[cfg(feature = "std")]
-impl StdError for TransactionConfigFailure {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            TransactionConfigFailure::Deploy(deploy) => deploy.source(),
-            TransactionConfigFailure::V1(v1) => v1.source(),
-        }
-    }
-}
-
-impl Display for TransactionConfigFailure {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            TransactionConfigFailure::Deploy(deploy) => write!(f, "{}", deploy),
-            TransactionConfigFailure::V1(v1) => write!(f, "{}", v1),
-        }
-    }
-}
 
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -175,9 +139,41 @@ impl Transaction {
         }
     }
 
+    /// Body hash.
+    pub fn body_hash(&self) -> Digest {
+        match self {
+            Transaction::Deploy(deploy) => *deploy.header().body_hash(),
+            Transaction::V1(v1) => *v1.header().body_hash(),
+        }
+    }
+
+    /// Size estimate.
+    pub fn size_estimate(&self) -> usize {
+        match self {
+            Transaction::Deploy(deploy) => deploy.serialized_length(),
+            Transaction::V1(v1) => v1.serialized_length(),
+        }
+    }
+
+    /// Timestamp.
+    pub fn timestamp(&self) -> Timestamp {
+        match self {
+            Transaction::Deploy(deploy) => deploy.header().timestamp(),
+            Transaction::V1(v1) => v1.header().timestamp(),
+        }
+    }
+
+    /// Time to live.
+    pub fn ttl(&self) -> TimeDiff {
+        match self {
+            Transaction::Deploy(deploy) => deploy.header().ttl(),
+            Transaction::V1(v1) => v1.header().ttl(),
+        }
+    }
+
     /// Returns `Ok` if the given transaction is valid. Verification procedure is delegated to the
     /// implementation of the particular variant of the transaction.
-    pub fn verify(&self) -> Result<(), TransactionConfigFailure> {
+    pub fn verify(&self) -> Result<(), InvalidTransaction> {
         match self {
             Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
             Transaction::V1(v1) => v1.verify().map_err(Into::into),
@@ -304,35 +300,44 @@ impl Transaction {
         }
     }
 
-    /// Is this a native mint transaction.
-    pub fn is_native_mint(&self) -> bool {
+    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
+    pub fn is_native(&self) -> bool {
         match self {
             Transaction::Deploy(deploy) => deploy.is_transfer(),
-            Transaction::V1(transaction_v1) => match transaction_v1.target() {
-                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
-                TransactionTarget::Native => {
-                    &TransactionEntryPoint::Transfer == transaction_v1.entry_point()
-                }
-            },
+            Transaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
         }
     }
 
-    /// Is this a native auction transaction.
-    pub fn is_native_auction(&self) -> bool {
+    /// Is this a transaction that should be sent to the v1 execution engine?
+    pub fn is_v1_wasm(&self) -> bool {
         match self {
-            Transaction::Deploy(_) => false,
-            Transaction::V1(transaction_v1) => match transaction_v1.target() {
-                TransactionTarget::Stored { .. } | TransactionTarget::Session { .. } => false,
-                TransactionTarget::Native => match transaction_v1.entry_point() {
-                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
-                    TransactionEntryPoint::AddBid
-                    | TransactionEntryPoint::WithdrawBid
-                    | TransactionEntryPoint::Delegate
-                    | TransactionEntryPoint::Undelegate
-                    | TransactionEntryPoint::Redelegate
-                    | TransactionEntryPoint::ActivateBid => true,
-                },
-            },
+            Transaction::Deploy(deploy) => !deploy.is_transfer(),
+            Transaction::V1(v1) => v1.is_v1_wasm(),
+        }
+    }
+
+    /// Should this transaction use standard payment processing?
+    pub fn is_standard_payment(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.payment().is_standard_payment(Phase::Payment),
+            Transaction::V1(v1) => {
+                if let PricingMode::Classic {
+                    standard_payment, ..
+                } = v1.pricing_mode()
+                {
+                    *standard_payment
+                } else {
+                    true
+                }
+            }
+        }
+    }
+
+    /// Should this transaction start in the initiating accounts context?
+    pub fn is_account_session(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_account_session(),
+            Transaction::V1(v1) => v1.is_account_session(),
         }
     }
 
@@ -386,6 +391,75 @@ impl Transaction {
     }
 }
 
+/// Self discloses category.
+pub trait Categorized {
+    /// What category does this instance belong in.
+    fn category(&self) -> TransactionCategory;
+}
+
+impl Categorized for Transaction {
+    fn category(&self) -> TransactionCategory {
+        match self {
+            Transaction::Deploy(deploy) => deploy.category(),
+            Transaction::V1(v1) => v1.category(),
+        }
+    }
+}
+
+/// Calculates gas limit.
+#[cfg(any(feature = "std", test))]
+pub trait GasLimited {
+    /// The error type.
+    type Error;
+
+    /// The minimum allowed gas price (aka the floor).
+    const GAS_PRICE_FLOOR: u8 = 1;
+
+    /// Returns a gas cost based upon the gas_limit, the gas price,
+    /// and the chainspec settings.
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error>;
+
+    /// Returns the gas / computation limit prior to execution.
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error>;
+
+    /// Returns the gas price tolerance.
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error>;
+}
+
+#[cfg(any(feature = "std", test))]
+impl GasLimited for Transaction {
+    type Error = InvalidTransaction;
+
+    fn gas_cost(&self, chainspec: &Chainspec, gas_price: u8) -> Result<Motes, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_cost(chainspec, gas_price)
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1
+                .gas_cost(chainspec, gas_price)
+                .map_err(InvalidTransaction::from),
+        }
+    }
+
+    fn gas_limit(&self, chainspec: &Chainspec) -> Result<Gas, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_limit(chainspec)
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1.gas_limit(chainspec).map_err(InvalidTransaction::from),
+        }
+    }
+
+    fn gas_price_tolerance(&self) -> Result<u8, Self::Error> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .gas_price_tolerance()
+                .map_err(InvalidTransaction::from),
+            Transaction::V1(v1) => v1.gas_price_tolerance().map_err(InvalidTransaction::from),
+        }
+    }
+}
+
 impl From<Deploy> for Transaction {
     fn from(deploy: Deploy) -> Self {
         Self::Deploy(deploy)
@@ -399,19 +473,6 @@ impl From<TransactionV1> for Transaction {
 }
 
 impl ToBytes for Transaction {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            Transaction::Deploy(deploy) => {
-                DEPLOY_TAG.write_bytes(writer)?;
-                deploy.write_bytes(writer)
-            }
-            Transaction::V1(txn) => {
-                V1_TAG.write_bytes(writer)?;
-                txn.write_bytes(writer)
-            }
-        }
-    }
-
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -424,6 +485,19 @@ impl ToBytes for Transaction {
                 Transaction::Deploy(deploy) => deploy.serialized_length(),
                 Transaction::V1(txn) => txn.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            Transaction::Deploy(deploy) => {
+                DEPLOY_TAG.write_bytes(writer)?;
+                deploy.write_bytes(writer)
+            }
+            Transaction::V1(txn) => {
+                V1_TAG.write_bytes(writer)?;
+                txn.write_bytes(writer)
+            }
+        }
     }
 }
 
@@ -450,6 +524,21 @@ impl Display for Transaction {
             Transaction::Deploy(deploy) => Display::fmt(deploy, formatter),
             Transaction::V1(txn) => Display::fmt(txn, formatter),
         }
+    }
+}
+
+/// Proptest generators for [`Transaction`].
+#[cfg(any(feature = "testing", feature = "gens", test))]
+pub mod gens {
+    use proptest::{
+        array,
+        prelude::{Arbitrary, Strategy},
+    };
+
+    use super::*;
+
+    pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
+        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }
 }
 

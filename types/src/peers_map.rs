@@ -9,14 +9,12 @@ use alloc::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use core::iter;
-
-#[cfg(test)]
-use rand::Rng;
-
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use core::iter;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 
 /// Node peer entry.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -30,7 +28,7 @@ pub struct PeerEntry {
 }
 
 impl PeerEntry {
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
             node_id: rng.random_string(10..20),
@@ -76,8 +74,9 @@ impl Peers {
         self.0
     }
 
-    #[cfg(test)]
-    pub(crate) fn random(rng: &mut TestRng) -> Self {
+    /// Random.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
         let count = rng.gen_range(0..10);
         let peers = iter::repeat(())
             .map(|_| PeerEntry::random(rng))
