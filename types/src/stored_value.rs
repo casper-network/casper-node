@@ -59,7 +59,7 @@ enum Tag {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "serde_helpers::BinarySerHelper")
+    schemars(with = "serde_helpers::HumanReadableSerHelper")
 )]
 pub enum StoredValue {
     /// A CLValue.
