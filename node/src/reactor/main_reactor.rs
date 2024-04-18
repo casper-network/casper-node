@@ -39,7 +39,7 @@ use crate::{
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
-        network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
+        network::{self, GossipedAddress, Identity as NetworkIdentity, Network, Ticket},
         proposed_block_validator::{self, ProposedBlockValidator},
         rest_server::RestServer,
         rpc_server::RpcServer,
@@ -392,8 +392,8 @@ impl reactor::Reactor for MainReactor {
             MainEvent::NetworkPeerProvidingData(NetResponseIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: Properly handle ticket.
-            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message),
+                ticket,
+            }) => reactor::handle_get_response(self, effect_builder, rng, sender, message, ticket),
             MainEvent::AddressGossiper(event) => reactor::wrap_effects(
                 MainEvent::AddressGossiper,
                 self.address_gossiper
@@ -432,10 +432,10 @@ impl reactor::Reactor for MainReactor {
                 self.consensus
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::ConsensusDemand(demand) => reactor::wrap_effects(
+            MainEvent::ConsensusRequestMessageIncoming(request_message) => reactor::wrap_effects(
                 MainEvent::Consensus,
                 self.consensus
-                    .handle_event(effect_builder, rng, demand.into()),
+                    .handle_event(effect_builder, rng, request_message.into()),
             ),
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {
@@ -560,6 +560,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::BlockGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket,
             }) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
@@ -568,6 +569,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedBlock {
                         block: Arc::new(*item),
                         sender,
+                        ticket,
                     },
                 ),
             ),
@@ -583,6 +585,7 @@ impl reactor::Reactor for MainReactor {
                         block_accumulator::Event::ReceivedBlock {
                             block,
                             sender: peer,
+                            ticket: Ticket::stub(),
                         },
                     ),
                 )
@@ -602,6 +605,7 @@ impl reactor::Reactor for MainReactor {
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
                     finality_signature,
                     sender,
+                    ticket: incoming.ticket,
                 };
                 reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
@@ -646,7 +650,11 @@ impl reactor::Reactor for MainReactor {
                 Effects::new()
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(
-                GossiperAnnouncement::NewItemBody { item, sender },
+                GossiperAnnouncement::NewItemBody {
+                    item,
+                    sender,
+                    ticket,
+                },
             ) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
                 self.block_accumulator.handle_event(
@@ -655,6 +663,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature: item,
                         sender,
+                        ticket,
                     },
                 ),
             ),
@@ -678,6 +687,7 @@ impl reactor::Reactor for MainReactor {
                     block_accumulator::Event::ReceivedFinalitySignature {
                         finality_signature,
                         sender: peer,
+                        ticket: Ticket::stub(),
                     },
                 ),
             ),
@@ -702,6 +712,7 @@ impl reactor::Reactor for MainReactor {
                     deploy,
                     source,
                     maybe_responder: Some(responder),
+                    ticket: Ticket::stub(),
                 };
                 reactor::wrap_effects(
                     MainEvent::DeployAcceptor,
@@ -785,6 +796,7 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket,
             }) => reactor::wrap_effects(
                 MainEvent::DeployAcceptor,
                 self.deploy_acceptor.handle_event(
@@ -794,6 +806,7 @@ impl reactor::Reactor for MainReactor {
                         deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
+                        ticket,
                     },
                 ),
             ),
@@ -864,21 +877,17 @@ impl reactor::Reactor for MainReactor {
                 self.contract_runtime
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::TrieDemand(demand) => reactor::wrap_effects(
-                MainEvent::ContractRuntime,
-                self.contract_runtime
-                    .handle_event(effect_builder, rng, demand.into()),
-            ),
             MainEvent::TrieResponseIncoming(TrieResponseIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: Sensibly process ticket.
+                ticket,
             }) => reactor::handle_fetch_response::<Self, TrieOrChunk>(
                 self,
                 effect_builder,
                 rng,
                 sender,
                 &message.0,
+                ticket,
             ),
 
             // STORAGE

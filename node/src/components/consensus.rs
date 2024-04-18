@@ -41,7 +41,7 @@ use crate::{
             PeerBehaviorAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
-        incoming::{ConsensusDemand, ConsensusMessageIncoming},
+        incoming::{ConsensusMessageIncoming, ConsensusRequestMessageIncoming},
         requests::{
             ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
             DeployBufferRequest, NetworkInfoRequest, NetworkRequest,
@@ -257,9 +257,9 @@ pub(crate) enum Event {
     /// A variant used with failpoints - when a message arrives, we fire this event with a delay,
     /// and it also causes the message to be handled.
     DelayedIncoming(ConsensusMessageIncoming),
-    /// An incoming demand message.
+    /// An incoming request message.
     #[from]
-    DemandIncoming(ConsensusDemand),
+    RequestMessageIncoming(ConsensusRequestMessageIncoming),
     /// A scheduled event to be handled by a specified era.
     Timer {
         era_id: EraId,
@@ -358,8 +358,12 @@ impl Display for Event {
             }) => {
                 write!(f, "delayed message from {:?}: {}", sender, message)
             }
-            Event::DemandIncoming(demand) => {
-                write!(f, "demand from {:?}: {}", demand.sender, demand.request_msg)
+            Event::RequestMessageIncoming(incoming) => {
+                write!(
+                    f,
+                    "request message from {:?}: {}",
+                    incoming.sender, incoming.message
+                )
             }
             Event::Timer {
                 era_id,
@@ -436,7 +440,7 @@ pub(crate) trait ReactorEventT:
     + From<Event>
     + Send
     + From<NetworkRequest<Message>>
-    + From<ConsensusDemand>
+    + From<ConsensusRequestMessageIncoming>
     + From<NetworkInfoRequest>
     + From<DeployBufferRequest>
     + From<ConsensusAnnouncement>
@@ -454,7 +458,7 @@ impl<REv> ReactorEventT for REv where
     REv: ReactorEvent
         + From<Event>
         + Send
-        + From<ConsensusDemand>
+        + From<ConsensusRequestMessageIncoming>
         + From<NetworkRequest<Message>>
         + From<NetworkInfoRequest>
         + From<DeployBufferRequest>
@@ -508,21 +512,19 @@ where
                             })
                         })
                 } else {
-                    let rv = self.handle_message(effect_builder, rng, sender, *message);
-                    drop(ticket); // TODO: drop ticket in `handle_message` effect instead
-                    rv
+                    self.handle_message(effect_builder, rng, sender, *message, ticket)
                 }
             }
             Event::DelayedIncoming(ConsensusMessageIncoming {
                 sender,
                 message,
-                ticket: _, // TODO: drop ticket in `handle_message` effect instead
-            }) => self.handle_message(effect_builder, rng, sender, *message),
-            Event::DemandIncoming(ConsensusDemand {
+                ticket,
+            }) => self.handle_message(effect_builder, rng, sender, *message, ticket),
+            Event::RequestMessageIncoming(ConsensusRequestMessageIncoming {
                 sender,
-                request_msg: demand,
-                auto_closing_responder,
-            }) => self.handle_demand(effect_builder, rng, sender, demand, auto_closing_responder),
+                message,
+                ticket,
+            }) => self.handle_request_message(effect_builder, rng, sender, message, ticket),
             Event::NewBlockPayload(new_block_payload) => {
                 self.handle_new_block_payload(effect_builder, rng, new_block_payload)
             }

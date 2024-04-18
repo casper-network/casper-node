@@ -119,6 +119,7 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
                 deploy,
                 source,
                 maybe_responder,
+                ticket: _, // not handled in tests.
             } => self.accept(effect_builder, deploy, source, maybe_responder),
             Event::PutToStorageResult {
                 event_metadata,

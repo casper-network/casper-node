@@ -8,6 +8,7 @@ use derive_more::From;
 use casper_types::EraId;
 
 use crate::{
+    components::network::Ticket,
     effect::requests::BlockAccumulatorRequest,
     types::{Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, NodeId},
 };
@@ -24,6 +25,7 @@ pub(crate) enum Event {
     ReceivedBlock {
         block: Arc<Block>,
         sender: NodeId,
+        ticket: Ticket,
     },
     CreatedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
@@ -31,6 +33,7 @@ pub(crate) enum Event {
     ReceivedFinalitySignature {
         finality_signature: Box<FinalitySignature>,
         sender: NodeId,
+        ticket: Ticket,
     },
     ExecutedBlock {
         meta_block: MetaBlock,
@@ -60,7 +63,11 @@ impl Display for Event {
                     sender, block_hash
                 )
             }
-            Event::ReceivedBlock { block, sender } => {
+            Event::ReceivedBlock {
+                block,
+                sender,
+                ticket: _,
+            } => {
                 write!(f, "received {} from {}", block, sender)
             }
             Event::CreatedFinalitySignature { finality_signature } => {
@@ -69,6 +76,7 @@ impl Display for Event {
             Event::ReceivedFinalitySignature {
                 finality_signature,
                 sender,
+                ticket: _,
             } => {
                 write!(f, "received {} from {}", finality_signature, sender)
             }

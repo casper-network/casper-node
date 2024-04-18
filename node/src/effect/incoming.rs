@@ -12,19 +12,23 @@ use serde::Serialize;
 
 use crate::{
     components::{consensus, fetcher::Tag, gossiper, network::Ticket},
-    protocol::Message,
     types::{FinalitySignature, NodeId, TrieOrChunkIdDisplay},
 };
-
-use super::AutoClosingResponder;
 
 /// An envelope for an incoming message, attaching a sender address and a backpressure ticket.
 #[derive(DataSize, Debug, Serialize)]
 pub struct MessageIncoming<M> {
+    /// Sender of the incoming message.
     pub(crate) sender: NodeId,
+    /// Actual message, deserialized.
     pub(crate) message: Box<M>,
+    /// A ticket representing the "work" for processing the incoming message.
+    ///
+    /// Only drop this once no more resources are consumed, as doing so will signal the peer to
+    /// start sending another message. If a response is generated, consider using
+    /// [`crate::effect::EffectBuilder::send_message_and_drop_ticket`].
     #[serde(skip)]
-    pub(crate) ticket: Arc<Ticket>,
+    pub(crate) ticket: Ticket,
 }
 
 impl<M> Display for MessageIncoming<M>
@@ -36,28 +40,12 @@ where
     }
 }
 
-/// An envelope for an incoming demand, attaching a sender address and responder.
-#[derive(DataSize, Debug, Serialize)]
-pub struct DemandIncoming<M> {
-    /// The sender from which the demand originated.
-    pub(crate) sender: NodeId,
-    /// The wrapped demand.
-    pub(crate) request_msg: Box<M>,
-    /// Responder to send the answer down through.
-    pub(crate) auto_closing_responder: AutoClosingResponder<Message>,
-}
-
-impl<M> Display for DemandIncoming<M>
-where
-    M: Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "demand from {}: {}", self.sender, self.request_msg)
-    }
-}
-
 /// A new consensus message arrived.
 pub(crate) type ConsensusMessageIncoming = MessageIncoming<consensus::ConsensusMessage>;
+
+/// A request for consensus protocol data that should be answered.
+pub(crate) type ConsensusRequestMessageIncoming =
+    MessageIncoming<consensus::ConsensusRequestMessage>;
 
 /// A new message from a gossiper arrived.
 pub(crate) type GossiperIncoming<T> = MessageIncoming<gossiper::Message<T>>;
@@ -70,12 +58,6 @@ pub(crate) type NetResponseIncoming = MessageIncoming<NetResponse>;
 
 /// A new message requesting a trie arrived.
 pub(crate) type TrieRequestIncoming = MessageIncoming<TrieRequest>;
-
-/// A demand for a trie that should be answered.
-pub(crate) type TrieDemand = DemandIncoming<TrieRequest>;
-
-/// A demand for consensus protocol data that should be answered.
-pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMessage>;
 
 /// A new message responding to a trie request arrived.
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;

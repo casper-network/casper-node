@@ -5,7 +5,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use futures::future::BoxFuture;
 use juliet::ChannelId;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
@@ -19,7 +18,7 @@ use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use super::{connection_id::ConnectionId, Ticket};
-use crate::{effect::EffectBuilder, types::NodeId, utils::opt_display::OptDisplay};
+use crate::{types::NodeId, utils::opt_display::OptDisplay};
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -387,24 +386,6 @@ pub(crate) trait Payload:
 pub(crate) trait FromIncoming<P> {
     /// Creates a new value from a received payload.
     fn from_incoming(sender: NodeId, payload: P, ticket: Ticket) -> Self;
-
-    /// Tries to convert a payload into a demand.
-    ///
-    /// This function can optionally be called before `from_incoming` to attempt to convert an
-    /// incoming payload into a potential demand.
-
-    // TODO: Replace both this and `from_incoming` with a single function that returns an
-    //       appropriate `Either`.
-    fn try_demand_from_incoming(
-        _effect_builder: EffectBuilder<Self>,
-        _sender: NodeId,
-        payload: P,
-    ) -> Result<(Self, BoxFuture<'static, Option<P>>), P>
-    where
-        Self: Sized + Send,
-    {
-        Err(payload)
-    }
 }
 
 #[cfg(test)]

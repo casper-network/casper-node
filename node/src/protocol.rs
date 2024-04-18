@@ -7,7 +7,6 @@ use std::{
 
 use derive_more::From;
 use fmt::Debug;
-use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 
@@ -18,13 +17,10 @@ use crate::{
         gossiper,
         network::{Channel, FromIncoming, GossipedAddress, MessageKind, Payload, Ticket},
     },
-    effect::{
-        incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand,
-            TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
-        },
-        AutoClosingResponder, EffectBuilder,
+    effect::incoming::{
+        ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+        GossiperIncoming, NetRequest, NetRequestIncoming, NetResponse, NetResponseIncoming,
+        TrieRequest, TrieRequestIncoming, TrieResponse, TrieResponseIncoming,
     },
     types::{Block, Deploy, FinalitySignature, NodeId},
 };
@@ -35,7 +31,7 @@ pub(crate) enum Message {
     /// Consensus component message.
     #[from]
     Consensus(consensus::ConsensusMessage),
-    /// Consensus component demand.
+    /// Consensus component request.
     #[from]
     ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
@@ -243,7 +239,7 @@ impl Display for Message {
 impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
-        + From<ConsensusDemand>
+        + From<ConsensusRequestMessageIncoming>
         + From<GossiperIncoming<Block>>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<FinalitySignature>>
@@ -251,12 +247,10 @@ where
         + From<NetRequestIncoming>
         + From<NetResponseIncoming>
         + From<TrieRequestIncoming>
-        + From<TrieDemand>
         + From<TrieResponseIncoming>
         + From<FinalitySignatureIncoming>,
 {
     fn from_incoming(sender: NodeId, payload: Message, ticket: Ticket) -> Self {
-        let ticket = Arc::new(ticket);
         match payload {
             Message::Consensus(message) => ConsensusMessageIncoming {
                 sender,
@@ -264,10 +258,12 @@ where
                 ticket,
             }
             .into(),
-            Message::ConsensusRequest(_message) => {
-                // TODO: Remove this once from_incoming and try_demand_from_incoming are unified.
-                unreachable!("called from_incoming with a consensus request")
+            Message::ConsensusRequest(message) => ConsensusRequestMessageIncoming {
+                sender,
+                message: Box::new(message),
+                ticket,
             }
+            .into(),
             Message::BlockGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
@@ -423,41 +419,6 @@ where
                 ticket,
             }
             .into(),
-        }
-    }
-
-    fn try_demand_from_incoming(
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-        payload: Message,
-    ) -> Result<(Self, BoxFuture<'static, Option<Message>>), Message>
-    where
-        Self: Sized + Send,
-    {
-        match payload {
-            Message::GetRequest {
-                tag: Tag::TrieOrChunk,
-                serialized_id,
-            } => {
-                let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
-                    sender,
-                    request_msg: Box::new(TrieRequest(serialized_id)),
-                    auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
-                });
-
-                Ok((ev, fut.boxed()))
-            }
-            Message::ConsensusRequest(request_msg) => {
-                let (ev, fut) =
-                    effect_builder.create_request_parts(move |responder| ConsensusDemand {
-                        sender,
-                        request_msg: Box::new(request_msg),
-                        auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
-                    });
-
-                Ok((ev, fut.boxed()))
-            }
-            _ => Err(payload),
         }
     }
 }

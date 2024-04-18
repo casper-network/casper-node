@@ -752,7 +752,8 @@ async fn run_equivocator_network() {
         // Filter out all incoming and outgoing consensus message traffic.
         let now = Timestamp::now();
         match &event {
-            MainEvent::ConsensusMessageIncoming(_) | MainEvent::ConsensusDemand(_) => {
+            MainEvent::ConsensusMessageIncoming(_)
+            | MainEvent::ConsensusRequestMessageIncoming(_) => {
                 // delayed.
             }
             MainEvent::NetworkRequest(req) if matches!(req.payload(), Message::Consensus(_)) => {

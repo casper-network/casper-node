@@ -10,6 +10,7 @@ use std::{
 };
 
 use casper_types::PublicKey;
+use datasize::DataSize;
 use juliet::rpc::IncomingRequest;
 use openssl::ssl::Ssl;
 use strum::EnumCount;
@@ -80,11 +81,13 @@ pub(super) fn create_rpc_builder(
 ///
 /// Dropping it will cause an "ACK", which in the Juliet transport's case is an empty response, to
 /// be sent. Cancellations or responses with actual payloads are not used at this time.
-#[derive(Debug)]
+#[derive(DataSize, Debug)]
 pub(crate) struct Ticket {
     /// The underlying request.
+    #[data_size(skip)]
     opt_request: Option<Box<IncomingRequest>>,
     /// A weak reference to the networking metrics.
+    #[data_size(skip)]
     net_metrics: Weak<Metrics>,
 }
 
@@ -102,9 +105,20 @@ impl Ticket {
     }
 
     /// Creates a new dummy ticket for testing.
+    ///
+    /// Unlike [`standin`], it is perfectly fine to use in testing.
     #[cfg(test)]
     #[inline(always)]
     pub(crate) fn create_dummy() -> Self {
+        Self::stub()
+    }
+
+    /// Creates a new ticket that does nothing.
+    ///
+    /// This method indicates a "hole" in the pass-through chain of `Ticket`s and its usage should
+    /// ultimately be removed.
+    #[inline(always)]
+    pub(crate) fn stub() -> Self {
         Ticket {
             opt_request: None,
             net_metrics: Weak::new(),

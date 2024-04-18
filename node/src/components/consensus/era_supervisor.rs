@@ -46,16 +46,16 @@ use crate::{
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
             Event, HighwayProtocol, NewBlockPayload, ReactorEventT, TimerId, ValidationResult, Zug,
         },
-        network::blocklist::BlocklistJustification,
+        network::{blocklist::BlocklistJustification, Ticket},
     },
     consensus::ValidationError,
     effect::{
         announcements::FatalAnnouncement,
         requests::{ContractRuntimeRequest, ProposedBlockValidationRequest, StorageRequest},
-        AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
     failpoints::Failpoint,
-    fatal, protocol,
+    fatal,
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
         DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
@@ -698,14 +698,22 @@ impl EraSupervisor {
         rng: &mut NodeRng,
         sender: NodeId,
         msg: ConsensusMessage,
+        ticket: Ticket,
     ) -> Effects<Event> {
         match msg {
             ConsensusMessage::Protocol { era_id, payload } => {
                 trace!(era = era_id.value(), "received a consensus message");
 
-                self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
-                    consensus.handle_message(rng, sender, payload, Timestamp::now())
-                })
+                let rv =
+                    self.delegate_to_era(effect_builder, rng, era_id, move |consensus, rng| {
+                        consensus.handle_message(rng, sender, payload, Timestamp::now())
+                    });
+
+                // TODO: This is suboptimal, but best effort, until more fine-grained threading of
+                //       tickets through consensus is implemented.
+                drop(ticket);
+
+                rv
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => match self.current_era() {
                 None => Effects::new(),
@@ -714,35 +722,44 @@ impl EraSupervisor {
                         || !self.open_eras.contains_key(&era_id)
                     {
                         trace!(era = era_id.value(), "not handling message; era too old");
+                        drop(ticket);
                         return Effects::new();
                     }
-                    self.iter_past(era_id, PAST_EVIDENCE_ERAS)
+
+                    let rv = self
+                        .iter_past(era_id, PAST_EVIDENCE_ERAS)
                         .flat_map(|e_id| {
                             self.delegate_to_era(effect_builder, rng, e_id, |consensus, _| {
                                 consensus.send_evidence(sender, &pub_key)
                             })
                         })
-                        .collect()
+                        .collect();
+
+                    // TODO: As above, requires more fine-grained threading of tickets.
+                    drop(ticket);
+
+                    rv
                 }
             },
         }
     }
 
-    pub(super) fn handle_demand<REv: ReactorEventT>(
+    pub(super) fn handle_request_message<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         sender: NodeId,
-        request: Box<ConsensusRequestMessage>,
-        auto_closing_responder: AutoClosingResponder<protocol::Message>,
+        message: Box<ConsensusRequestMessage>,
+        ticket: Ticket,
     ) -> Effects<Event> {
-        let ConsensusRequestMessage { era_id, payload } = *request;
+        let ConsensusRequestMessage { era_id, payload } = *message;
 
         trace!(era = era_id.value(), "received a consensus request");
         match self.open_eras.get_mut(&era_id) {
             None => {
                 self.log_missing_era(era_id);
-                auto_closing_responder.respond_none().ignore()
+                drop(ticket);
+                Effects::new()
             }
             Some(era) => {
                 let (outcomes, response) =
@@ -752,12 +769,16 @@ impl EraSupervisor {
                     self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes);
                 if let Some(payload) = response {
                     effects.extend(
-                        auto_closing_responder
-                            .respond(ConsensusMessage::Protocol { era_id, payload }.into())
+                        effect_builder
+                            .send_message_and_drop_ticket(
+                                sender,
+                                ConsensusMessage::Protocol { era_id, payload }.into(),
+                                ticket,
+                            )
                             .ignore(),
                     );
                 } else {
-                    effects.extend(auto_closing_responder.respond_none().ignore());
+                    drop(ticket);
                 }
                 effects
             }

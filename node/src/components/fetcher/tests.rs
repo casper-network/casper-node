@@ -16,18 +16,17 @@ use casper_types::testing::TestRng;
 use super::*;
 use crate::{
     components::{
-        consensus::ConsensusRequestMessage,
         deploy_acceptor, fetcher,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        network::{GossipedAddress, Identity as NetworkIdentity},
+        network::{GossipedAddress, Identity as NetworkIdentity, Ticket},
         storage::{self, Storage},
     },
     effect::{
         announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement},
         incoming::{
-            ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequestIncoming, NetResponse, NetResponseIncoming,
+            TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::{AcceptDeployRequest, MarkBlockCompletedRequest},
     },
@@ -118,8 +117,6 @@ enum Event {
     #[from]
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
-    TrieDemand(TrieDemand),
-    #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
     GossiperIncomingDeploy(GossiperIncoming<Deploy>),
@@ -136,7 +133,7 @@ enum Event {
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
-    ConsensusDemandIncoming(DemandIncoming<ConsensusRequestMessage>),
+    ConsensusRequestMessageIncoming(ConsensusRequestMessageIncoming),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
 }
@@ -227,6 +224,7 @@ impl ReactorTrait for Reactor {
                     deploy,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    ticket: Ticket::create_dummy(),
                 };
                 reactor::wrap_effects(
                     Event::FakeDeployAcceptor,
@@ -250,8 +248,7 @@ impl ReactorTrait for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::TrieDemand(_)
-            | Event::ContractRuntimeRequest(_)
+            Event::ContractRuntimeRequest(_)
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
             | Event::GossiperIncomingDeploy(_)
@@ -261,7 +258,7 @@ impl ReactorTrait for Reactor {
             | Event::TrieRequestIncoming(_)
             | Event::TrieResponseIncoming(_)
             | Event::ConsensusMessageIncoming(_)
-            | Event::ConsensusDemandIncoming(_)
+            | Event::ConsensusRequestMessageIncoming(_)
             | Event::FinalitySignatureIncoming(_)
             | Event::FetchedNewBlockAnnouncement(_)
             | Event::FetchedNewFinalitySignatureAnnouncement(_)
@@ -356,6 +353,7 @@ impl Reactor {
                         deploy,
                         source: Source::Peer(response.sender),
                         maybe_responder: None,
+                        ticket: Ticket::create_dummy(),
                     }),
                 )
             }

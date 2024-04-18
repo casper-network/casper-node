@@ -12,7 +12,7 @@ use casper_types::{
 
 use super::Source;
 use crate::{
-    components::deploy_acceptor::Error,
+    components::{deploy_acceptor::Error, network::Ticket},
     effect::Responder,
     types::{BlockHeader, Deploy},
 };
@@ -47,6 +47,8 @@ pub(crate) enum Event {
         deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
+        #[serde(skip)]
+        ticket: Ticket,
     },
     /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
     PutToStorageResult {

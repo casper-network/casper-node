@@ -72,7 +72,7 @@ use crate::{
     components::{
         block_accumulator, deploy_acceptor,
         fetcher::{self, FetchItem},
-        network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        network::{blocklist::BlocklistJustification, Identity as NetworkIdentity, Ticket},
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
@@ -956,6 +956,7 @@ fn handle_fetch_response<R, I>(
     rng: &mut NodeRng,
     sender: NodeId,
     serialized_item: &[u8],
+    ticket: Ticket,
 ) -> Effects<<R as Reactor>::Event>
 where
     I: FetchItem,
@@ -964,14 +965,20 @@ where
 {
     match fetcher::Event::<I>::from_get_response_serialized_item(sender, serialized_item) {
         Some(fetcher_event) => {
-            Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into())
+            let effects =
+                Reactor::dispatch_event(reactor, effect_builder, rng, fetcher_event.into());
+
+            // We have processed the response, drop the ticket before evaluating effects.
+            drop(ticket);
+
+            effects
         }
         None => effect_builder
             .announce_block_peer_with_justification(
                 sender,
                 BlocklistJustification::SentBadItem { tag: I::TAG },
             )
-            .ignore(),
+            .ignore(), // Implicitly drops `ticket`.
     }
 }
 
@@ -981,6 +988,7 @@ fn handle_get_response<R>(
     rng: &mut NodeRng,
     sender: NodeId,
     message: Box<NetResponse>,
+    ticket: Ticket,
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
@@ -1004,6 +1012,7 @@ where
             rng,
             sender,
             serialized_item,
+            ticket,
         ),
         NetResponse::LegacyDeploy(ref serialized_item) => handle_fetch_response::<R, LegacyDeploy>(
             reactor,
@@ -1011,16 +1020,23 @@ where
             rng,
             sender,
             serialized_item,
+            ticket,
         ),
-        NetResponse::Block(ref serialized_item) => {
-            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
-        }
+        NetResponse::Block(ref serialized_item) => handle_fetch_response::<R, Block>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+            ticket,
+        ),
         NetResponse::BlockHeader(ref serialized_item) => handle_fetch_response::<R, BlockHeader>(
             reactor,
             effect_builder,
             rng,
             sender,
             serialized_item,
+            ticket,
         ),
         NetResponse::FinalitySignature(ref serialized_item) => {
             handle_fetch_response::<R, FinalitySignature>(
@@ -1029,6 +1045,7 @@ where
                 rng,
                 sender,
                 serialized_item,
+                ticket,
             )
         }
         NetResponse::SyncLeap(ref serialized_item) => handle_fetch_response::<R, SyncLeap>(
@@ -1037,6 +1054,7 @@ where
             rng,
             sender,
             serialized_item,
+            ticket,
         ),
         NetResponse::ApprovalsHashes(ref serialized_item) => {
             handle_fetch_response::<R, ApprovalsHashes>(
@@ -1045,6 +1063,7 @@ where
                 rng,
                 sender,
                 serialized_item,
+                ticket,
             )
         }
         NetResponse::BlockExecutionResults(ref serialized_item) => {
@@ -1054,6 +1073,7 @@ where
                 rng,
                 sender,
                 serialized_item,
+                ticket,
             )
         }
     }

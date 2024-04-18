@@ -40,6 +40,8 @@ use item_provider::ItemProvider;
 pub(crate) use message::Message;
 use metrics::Metrics;
 
+use super::network::Ticket;
+
 /// The component which gossips to peers and handles incoming gossip messages from peers.
 #[allow(clippy::type_complexity)]
 pub(crate) struct Gossiper<const ID_IS_COMPLETE_ITEM: bool, T>
@@ -271,6 +273,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         item_id: T::Id,
         sender: NodeId,
         action: GossipAction,
+        ticket: Ticket,
     ) -> Effects<Event<T>>
     where
         REv: From<NetworkRequest<Message<T>>> + From<GossiperAnnouncement<T>> + Send,
@@ -303,7 +306,11 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
                     item_id: item_id.clone(),
                     is_already_held: should_gossip.is_already_held,
                 };
-                effects.extend(effect_builder.send_message(sender, reply).ignore());
+                effects.extend(
+                    effect_builder
+                        .send_message_and_drop_ticket(sender, reply, ticket)
+                        .ignore(),
+                );
                 effects
             }
             GossipAction::GetRemainder { .. } => {
@@ -315,7 +322,9 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
                     item_id: item_id.clone(),
                     is_already_held: false,
                 };
-                let mut effects = effect_builder.send_message(sender, reply).ignore();
+                let mut effects = effect_builder
+                    .send_message_and_drop_ticket(sender, reply, ticket)
+                    .ignore();
                 let item_id_clone = item_id.clone();
                 effects.extend(
                     effect_builder
@@ -336,7 +345,9 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
                     item_id: item_id.clone(),
                     is_already_held: true,
                 };
-                let mut effects = effect_builder.send_message(sender, reply).ignore();
+                let mut effects = effect_builder
+                    .send_message_and_drop_ticket(sender, reply, ticket)
+                    .ignore();
 
                 if action == GossipAction::AnnounceFinished {
                     effects.extend(
@@ -366,6 +377,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         item_id: T::Id,
         is_already_held: bool,
         sender: NodeId,
+        ticket: Ticket,
     ) -> Effects<Event<T>>
     where
         REv: From<NetworkRequest<Message<T>>>
@@ -397,6 +409,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
                             item_id: cloned_id,
                             requester: sender,
                             maybe_item,
+                            ticket,
                         },
                     ),
                 );
@@ -436,12 +449,15 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         effect_builder: EffectBuilder<REv>,
         item: Box<T>,
         requester: NodeId,
+        ticket: Ticket,
     ) -> Effects<Event<T>>
     where
         REv: From<NetworkRequest<Message<T>>> + Send,
     {
         let message = Message::Item(item);
-        effect_builder.send_message(requester, message).ignore()
+        effect_builder
+            .send_message_and_drop_ticket(requester, message, ticket)
+            .ignore()
     }
 
     /// Handles the `None` case when attempting to get the item from storage.
@@ -470,6 +486,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         effect_builder: EffectBuilder<REv>,
         item_id: T::Id,
         requester: NodeId,
+        ticket: Ticket,
     ) -> Effects<Event<T>>
     where
         REv: From<StorageRequest> + Send,
@@ -489,6 +506,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
                 item_id,
                 requester,
                 maybe_item,
+                ticket,
             }
         })
     }
@@ -498,6 +516,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         effect_builder: EffectBuilder<REv>,
         item: Box<T>,
         sender: NodeId,
+        ticket: Ticket,
     ) -> Effects<Event<T>>
     where
         REv: From<GossiperAnnouncement<T>> + Send,
@@ -513,7 +532,7 @@ impl<const ID_IS_COMPLETE_ITEM: bool, T: GossipItem + 'static> Gossiper<ID_IS_CO
         }
 
         let mut effects = effect_builder
-            .announce_item_body_received_via_gossip(item, sender)
+            .announce_item_body_received_via_gossip(item, sender, ticket)
             .ignore();
         effects.extend(
             effect_builder
@@ -569,85 +588,93 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let effects = match event {
-            Event::BeginGossipRequest(BeginGossipRequest {
-                item_id,
-                source,
-                target,
-                responder,
-            }) => {
-                let mut effects =
-                    self.handle_item_received(effect_builder, item_id, source, target);
-                effects.extend(responder.respond(()).ignore());
-                effects
-            }
-            Event::ItemReceived {
-                item_id,
-                source,
-                target,
-            } => self.handle_item_received(effect_builder, item_id, source, target),
-            Event::GossipedTo {
-                item_id,
-                requested_count,
-                peers,
-            } => self.gossiped_to(effect_builder, item_id, requested_count, peers),
-            Event::CheckGossipTimeout { item_id, peer } => {
-                self.check_gossip_timeout(effect_builder, item_id, peer)
-            }
-            Event::CheckGetFromPeerTimeout { item_id, peer } => {
-                self.check_get_from_peer_timeout(effect_builder, item_id, peer)
-            }
-            Event::Incoming(GossiperIncoming::<T> {
-                sender,
-                message,
-                ticket: _, // TODO: Sensibly process ticket.
-            }) => match *message {
-                Message::Gossip(item_id) => {
-                    Self::is_stored(effect_builder, item_id.clone()).event(move |result| {
-                        Event::IsStoredResult {
+        let effects =
+            match event {
+                Event::BeginGossipRequest(BeginGossipRequest {
+                    item_id,
+                    source,
+                    target,
+                    responder,
+                }) => {
+                    let mut effects =
+                        self.handle_item_received(effect_builder, item_id, source, target);
+                    effects.extend(responder.respond(()).ignore());
+                    effects
+                }
+                Event::ItemReceived {
+                    item_id,
+                    source,
+                    target,
+                } => self.handle_item_received(effect_builder, item_id, source, target),
+                Event::GossipedTo {
+                    item_id,
+                    requested_count,
+                    peers,
+                } => self.gossiped_to(effect_builder, item_id, requested_count, peers),
+                Event::CheckGossipTimeout { item_id, peer } => {
+                    self.check_gossip_timeout(effect_builder, item_id, peer)
+                }
+                Event::CheckGetFromPeerTimeout { item_id, peer } => {
+                    self.check_get_from_peer_timeout(effect_builder, item_id, peer)
+                }
+                Event::Incoming(GossiperIncoming::<T> {
+                    sender,
+                    message,
+                    ticket,
+                }) => match *message {
+                    Message::Gossip(item_id) => Self::is_stored(effect_builder, item_id.clone())
+                        .event(move |result| Event::IsStoredResult {
                             item_id,
                             sender,
                             result,
-                        }
-                    })
+                            ticket,
+                        }),
+                    Message::GossipResponse {
+                        item_id,
+                        is_already_held,
+                    } => self.handle_gossip_response(
+                        effect_builder,
+                        item_id,
+                        is_already_held,
+                        sender,
+                        ticket,
+                    ),
+                    Message::GetItem(item_id) => {
+                        self.handle_get_item_request(effect_builder, item_id, sender, ticket)
+                    }
+                    Message::Item(item) => {
+                        self.handle_item_received_from_peer(effect_builder, item, sender, ticket)
+                    }
+                },
+                Event::CheckItemReceivedTimeout { item_id } => {
+                    self.check_item_received_timeout(effect_builder, item_id)
                 }
-                Message::GossipResponse {
+                Event::IsStoredResult {
                     item_id,
-                    is_already_held,
-                } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
-                Message::GetItem(item_id) => {
-                    self.handle_get_item_request(effect_builder, item_id, sender)
+                    sender,
+                    result: is_stored_locally,
+                    ticket,
+                } => {
+                    let action = if self.table.has_entry(&item_id) || !is_stored_locally {
+                        // TODO: Ticket, do something?
+                        self.table.new_data_id(&item_id, sender)
+                    } else {
+                        // We're not already handling this item, and we do have the full item
+                        // stored, so don't initiate gossiping for it.
+                        GossipAction::Noop
+                    };
+                    self.handle_gossip(effect_builder, item_id, sender, action, ticket)
                 }
-                Message::Item(item) => {
-                    self.handle_item_received_from_peer(effect_builder, item, sender)
-                }
-            },
-            Event::CheckItemReceivedTimeout { item_id } => {
-                self.check_item_received_timeout(effect_builder, item_id)
-            }
-            Event::IsStoredResult {
-                item_id,
-                sender,
-                result: is_stored_locally,
-            } => {
-                let action = if self.table.has_entry(&item_id) || !is_stored_locally {
-                    self.table.new_data_id(&item_id, sender)
-                } else {
-                    // We're not already handling this item, and we do have the full item stored, so
-                    // don't initiate gossiping for it.
-                    GossipAction::Noop
-                };
-                self.handle_gossip(effect_builder, item_id, sender, action)
-            }
-            Event::GetFromStorageResult {
-                item_id,
-                requester,
-                maybe_item,
-            } => match maybe_item {
-                Some(item) => Self::got_from_storage(effect_builder, item, requester),
-                None => self.failed_to_get_from_storage(effect_builder, item_id),
-            },
-        };
+                Event::GetFromStorageResult {
+                    item_id,
+                    requester,
+                    maybe_item,
+                    ticket,
+                } => match maybe_item {
+                    Some(item) => Self::got_from_storage(effect_builder, item, requester, ticket),
+                    None => self.failed_to_get_from_storage(effect_builder, item_id),
+                },
+            };
         self.update_gossip_table_metrics();
         effects
     }
@@ -707,24 +734,32 @@ where
             Event::Incoming(GossiperIncoming::<T> {
                 sender,
                 message,
-                ticket: _, // TODO: Properly handle `ticket`.
+                ticket,
             }) => match *message {
                 Message::Gossip(item_id) => {
                     let target = <T as SmallGossipItem>::id_as_item(&item_id).gossip_target();
                     let action = self.table.new_complete_data(&item_id, Some(sender), target);
-                    self.handle_gossip(effect_builder, item_id, sender, action)
+                    self.handle_gossip(effect_builder, item_id, sender, action, ticket)
                 }
                 Message::GossipResponse {
                     item_id,
                     is_already_held,
-                } => self.handle_gossip_response(effect_builder, item_id, is_already_held, sender),
+                } => self.handle_gossip_response(
+                    effect_builder,
+                    item_id,
+                    is_already_held,
+                    sender,
+                    ticket,
+                ),
                 Message::GetItem(item_id) => {
                     debug!(%item_id, %sender, "unexpected get request for small item");
+                    drop(ticket);
                     Effects::new()
                 }
                 Message::Item(item) => {
                     let item_id = item.gossip_id();
                     debug!(%item_id, %sender, "unexpected get response for small item");
+                    drop(ticket);
                     Effects::new()
                 }
             },
@@ -740,6 +775,7 @@ where
                 item_id,
                 requester,
                 maybe_item,
+                ticket: _,
             } => {
                 error!(
                     %item_id, %requester, ?maybe_item,

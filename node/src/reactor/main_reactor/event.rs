@@ -29,8 +29,8 @@ use crate::{
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming, GossiperIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+            GossiperIncoming, NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming,
             TrieResponseIncoming,
         },
         requests::{
@@ -122,7 +122,7 @@ pub(crate) enum MainEvent {
     #[from]
     ConsensusMessageIncoming(ConsensusMessageIncoming),
     #[from]
-    ConsensusDemand(ConsensusDemand),
+    ConsensusRequestMessageIncoming(ConsensusRequestMessageIncoming),
     #[from]
     ConsensusAnnouncement(#[serde(skip_serializing)] ConsensusAnnouncement),
     #[from]
@@ -230,8 +230,6 @@ pub(crate) enum MainEvent {
     #[from]
     TrieRequestIncoming(TrieRequestIncoming),
     #[from]
-    TrieDemand(TrieDemand),
-    #[from]
     TrieResponseIncoming(TrieResponseIncoming),
     #[from]
     Storage(storage::Event),
@@ -330,14 +328,13 @@ impl ReactorEvent for MainEvent {
             }
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
-            MainEvent::ConsensusDemand(_) => "ConsensusDemand",
+            MainEvent::ConsensusRequestMessageIncoming(_) => "ConsensusRequestMessageIncoming",
             MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
             MainEvent::NetworkPeerProvidingData(_) => "NetResponseIncoming",
             MainEvent::TrieRequestIncoming(_) => "TrieRequestIncoming",
-            MainEvent::TrieDemand(_) => "TrieDemand",
             MainEvent::TrieResponseIncoming(_) => "TrieResponseIncoming",
             MainEvent::FinalitySignatureIncoming(_) => "FinalitySignatureIncoming",
             MainEvent::ContractRuntime(_) => "ContractRuntime",
@@ -520,14 +517,13 @@ impl Display for MainEvent {
                 write!(f, "finality signature fetcher announcement: {}", ann)
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
+            MainEvent::ConsensusRequestMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerProvidingData(inner) => Display::fmt(inner, f),
             MainEvent::TrieRequestIncoming(inner) => Display::fmt(inner, f),
-            MainEvent::TrieDemand(inner) => Display::fmt(inner, f),
             MainEvent::TrieResponseIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ContractRuntime(inner) => Display::fmt(inner, f),

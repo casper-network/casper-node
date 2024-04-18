@@ -33,9 +33,8 @@ use crate::{
             GossiperAnnouncement,
         },
         incoming::{
-            ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
-            NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
-            TrieResponseIncoming,
+            ConsensusMessageIncoming, ConsensusRequestMessageIncoming, FinalitySignatureIncoming,
+            NetRequestIncoming, NetResponseIncoming, TrieRequestIncoming, TrieResponseIncoming,
         },
         requests::AcceptDeployRequest,
     },
@@ -105,7 +104,7 @@ impl<T: Unhandled> From<T> for Event {
     }
 }
 
-impl Unhandled for ConsensusDemand {}
+impl Unhandled for ConsensusRequestMessageIncoming {}
 impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
@@ -115,7 +114,6 @@ impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
 impl Unhandled for NetResponseIncoming {}
 impl Unhandled for TrieRequestIncoming {}
-impl Unhandled for TrieDemand {}
 impl Unhandled for TrieResponseIncoming {}
 impl Unhandled for FinalitySignatureIncoming {}
 
@@ -271,6 +269,7 @@ impl reactor::Reactor for Reactor {
                     deploy,
                     source: Source::Client,
                     maybe_responder: Some(responder),
+                    ticket: Ticket::create_dummy(),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -292,6 +291,7 @@ impl reactor::Reactor for Reactor {
             Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
+                ticket: _, // The fake deploy acceptor does not do any ticket handling
             }) => reactor::wrap_effects(
                 Event::DeployAcceptor,
                 self.fake_deploy_acceptor.handle_event(
@@ -301,6 +301,7 @@ impl reactor::Reactor for Reactor {
                         deploy: Arc::new(*item),
                         source: Source::Peer(sender),
                         maybe_responder: None,
+                        ticket: Ticket::create_dummy(),
                     },
                 ),
             ),
@@ -632,7 +633,7 @@ async fn should_not_gossip_old_stored_item_again() {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Box::new(Message::Gossip(deploy.gossip_id())),
-                ticket: Arc::new(Ticket::create_dummy()),
+                ticket: Ticket::create_dummy(),
             });
             effect_builder
                 .into_inner()
@@ -705,7 +706,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
             let event = Event::DeployGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Box::new(message),
-                ticket: Arc::new(Ticket::create_dummy()),
+                ticket: Ticket::create_dummy(),
             });
             effect_builder
                 .into_inner()

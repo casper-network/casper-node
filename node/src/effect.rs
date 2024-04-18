@@ -257,11 +257,6 @@ impl<T: Debug> AutoClosingResponder<T> {
     pub(crate) async fn respond(self, data: T) {
         self.into_inner().respond(Some(data)).await
     }
-
-    /// Send `None` to the origin of the request.
-    pub(crate) async fn respond_none(self) {
-        self.into_inner().respond(None).await
-    }
 }
 
 impl<T> Drop for AutoClosingResponder<T> {
@@ -711,6 +706,23 @@ impl<REv> EffectBuilder<REv> {
         //       delivery.
     }
 
+    /// Sends a network message, drops a ticket upon successful sending.
+    ///
+    /// Similar to `send_message`, except a [`Ticket`] is passed as well, which will be dropped as
+    /// soon as `send_message` returns (but no earlier).
+    pub(crate) async fn send_message_and_drop_ticket<P>(
+        self,
+        dest: NodeId,
+        payload: P,
+        ticket: Ticket,
+    ) where
+        REv: From<NetworkRequest<P>>,
+    {
+        self.send_message(dest, payload).await;
+
+        drop(ticket);
+    }
+
     /// Sends a network message with best effort.
     ///
     /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer will
@@ -846,21 +858,7 @@ impl<REv> EffectBuilder<REv> {
         REv: FromIncoming<P> + From<NetworkRequest<P>> + Send,
         P: 'static + Send,
     {
-        // TODO: Remove demands entirely as they are no longer needed with tickets.
-        let reactor_event =
-            match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
-                Ok((rev, demand_has_been_satisfied)) => {
-                    tokio::spawn(async move {
-                        if let Some(answer) = demand_has_been_satisfied.await {
-                            self.send_message(sender, answer).await;
-                        }
-
-                        drop(ticket);
-                    });
-                    rev
-                }
-                Err(payload) => <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket),
-            };
+        let reactor_event = <REv as FromIncoming<P>>::from_incoming(sender, payload, ticket);
 
         self.event_queue
             .schedule::<REv>(reactor_event, QueueKind::MessageIncoming)
@@ -887,16 +885,23 @@ impl<REv> EffectBuilder<REv> {
 
     /// Announces that a gossiper has received a full item, where the item's ID is NOT the complete
     /// item.
+    ///
+    /// The associated [`Ticket`] is the ticket from the message received containing the item.
     pub(crate) async fn announce_item_body_received_via_gossip<T: GossipItem>(
         self,
         item: Box<T>,
         sender: NodeId,
+        ticket: Ticket,
     ) where
         REv: From<GossiperAnnouncement<T>>,
     {
         self.event_queue
             .schedule(
-                GossiperAnnouncement::NewItemBody { item, sender },
+                GossiperAnnouncement::NewItemBody {
+                    item,
+                    sender,
+                    ticket,
+                },
                 QueueKind::Gossip,
             )
             .await;

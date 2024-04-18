@@ -22,7 +22,7 @@ use crate::{
         diagnostics_port::FileSerializer,
         fetcher::FetchItem,
         gossiper::GossipItem,
-        network::blocklist::BlocklistJustification,
+        network::{blocklist::BlocklistJustification, Ticket},
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
@@ -310,7 +310,11 @@ pub(crate) enum GossiperAnnouncement<T: GossipItem> {
     NewCompleteItem(T::Id),
 
     /// A new item has been received where the item's ID is NOT the complete item.
-    NewItemBody { item: Box<T>, sender: NodeId },
+    NewItemBody {
+        item: Box<T>,
+        sender: NodeId,
+        ticket: Ticket,
+    },
 
     /// Finished gossiping about the indicated item.
     FinishedGossiping(T::Id),
@@ -323,7 +327,11 @@ impl<T: GossipItem> Display for GossiperAnnouncement<T> {
                 write!(f, "new gossiped item {} from sender {}", item_id, sender)
             }
             GossiperAnnouncement::NewCompleteItem(item) => write!(f, "new complete item {}", item),
-            GossiperAnnouncement::NewItemBody { item, sender } => {
+            GossiperAnnouncement::NewItemBody {
+                item,
+                sender,
+                ticket: _,
+            } => {
                 write!(f, "new item body {} from {}", item.gossip_id(), sender)
             }
             GossiperAnnouncement::FinishedGossiping(item_id) => {
