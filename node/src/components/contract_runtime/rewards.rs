@@ -100,6 +100,7 @@ impl RewardsInfo {
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
         activation_era_id: EraId,
+        maybe_upgraded_validators: Option<&BTreeMap<PublicKey, U512>>,
         signature_rewards_max_delay: u64,
         executable_block: ExecutableBlock,
     ) -> Result<Self, RewardsError> {
@@ -126,7 +127,10 @@ impl RewardsInfo {
                     .saturating_sub(signature_rewards_max_delay)
             }
         };
-        let range_to_fetch = cited_block_height_start..executable_block.height;
+
+        // We need just one block from before the upgrade to determine the validators in
+        // the following era.
+        let range_to_fetch = cited_block_height_start.saturating_sub(1)..executable_block.height;
 
         let mut cited_blocks =
             collect_past_blocks_batched(effect_builder, range_to_fetch.clone()).await?;
@@ -138,8 +142,14 @@ impl RewardsInfo {
             "blocks fetched",
         );
 
-        let eras_info =
-            Self::create_eras_info(effect_builder, current_era_id, cited_blocks.iter()).await?;
+        let eras_info = Self::create_eras_info(
+            effect_builder,
+            activation_era_id,
+            current_era_id,
+            maybe_upgraded_validators,
+            cited_blocks.iter(),
+        )
+        .await?;
 
         cited_blocks.push(CitedBlock::from_executable_block(
             executable_block,
@@ -167,7 +177,9 @@ impl RewardsInfo {
     /// hash to query to have such information (which may not be from the same era).
     async fn create_eras_info<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
+        activation_era_id: EraId,
         current_era_id: EraId,
+        maybe_upgraded_validators: Option<&BTreeMap<PublicKey, U512>>,
         mut cited_blocks: impl Iterator<Item = &CitedBlock>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
         let oldest_block = cited_blocks.next();
@@ -205,22 +217,28 @@ impl RewardsInfo {
 
         let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
             .then(|(era_id, protocol_version, state_root_hash)| async move {
-                let era_validators_result = effect_builder
-                    .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
-                        state_root_hash,
-                        protocol_version,
-                    ))
-                    .await;
-                let msg = format!("{}", era_validators_result);
-                let weights = era_validators_result
-                    .take_era_validators()
-                    .ok_or(msg)
-                    .map_err(RewardsError::FailedToFetchEra)?
-                    // We consume the map to not clone the value:
-                    .into_iter()
-                    .find(|(key, _)| key == &era_id)
-                    .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
-                    .1;
+                let weights = if let (true, Some(upgraded_validators)) =
+                    (era_id == activation_era_id, maybe_upgraded_validators)
+                {
+                    upgraded_validators.clone()
+                } else {
+                    let era_validators_result = effect_builder
+                        .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
+                            state_root_hash,
+                            protocol_version,
+                        ))
+                        .await;
+                    let msg = format!("{}", era_validators_result);
+                    era_validators_result
+                        .take_era_validators()
+                        .ok_or(msg)
+                        .map_err(RewardsError::FailedToFetchEra)?
+                        // We consume the map to not clone the value:
+                        .into_iter()
+                        .find(|(key, _)| key == &era_id)
+                        .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
+                        .1
+                };
 
                 let total_supply_request =
                     TotalSupplyRequest::new(state_root_hash, protocol_version);
@@ -382,6 +400,11 @@ pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>
             effect_builder,
             chainspec.protocol_version(),
             chainspec.protocol_config.activation_point.era_id(),
+            chainspec
+                .protocol_config
+                .global_state_update
+                .as_ref()
+                .and_then(|gsu| gsu.validators.as_ref()),
             chainspec.core_config.signature_rewards_max_delay,
             executable_block,
         )
