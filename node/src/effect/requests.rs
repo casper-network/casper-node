@@ -24,8 +24,7 @@ use casper_storage::{
         tagged_values::{TaggedValuesRequest, TaggedValuesResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
-        QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-        TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        QueryRequest, QueryResult, TrieRequest, TrieResult,
     },
     DbRawBytesSpec,
 };
@@ -778,18 +777,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<BalanceResult>,
     },
-    /// Get the total supply on the chain.
-    GetTotalSupply {
-        #[serde(skip_serializing)]
-        request: TotalSupplyRequest,
-        responder: Responder<TotalSupplyResult>,
-    },
-    /// Get the round seigniorage rate.
-    GetRoundSeigniorageRate {
-        #[serde(skip_serializing)]
-        request: RoundSeigniorageRateRequest,
-        responder: Responder<RoundSeigniorageRateResult>,
-    },
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
@@ -871,22 +858,6 @@ impl Display for ContractRuntimeRequest {
                 request: balance_request,
                 ..
             } => write!(formatter, "balance request: {:?}", balance_request),
-            ContractRuntimeRequest::GetTotalSupply {
-                request: total_supply_request,
-                ..
-            } => {
-                write!(formatter, "get total supply: {:?}", total_supply_request)
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                ..
-            } => {
-                write!(
-                    formatter,
-                    "get round seigniorage rate: {:?}",
-                    round_seigniorage_rate_request
-                )
-            }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }

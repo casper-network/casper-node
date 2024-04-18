@@ -91,6 +91,7 @@ pub(super) async fn exec_or_requeue<REv>(
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
+                data_access_layer.clone(),
                 chainspec.as_ref(),
                 executable_block.clone(),
             )
