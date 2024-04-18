@@ -836,7 +836,10 @@ impl OutgoingHandler {
                     break until;
                 }
                 Err(OutgoingError::FailedToCompleteHandshake(err)) => {
-                    debug!(%err, "failed to complete handshake");
+                    rate_limited!(
+                        FAILED_HANDSHAKE,
+                        |dropped| info!(%err, dropped, "failed to complete handshake")
+                    );
                     break Instant::now() + ctx.cfg.significant_error_backoff.into();
                 }
                 Err(OutgoingError::LoopbackEncountered) => {
