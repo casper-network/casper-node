@@ -114,7 +114,7 @@ mod tests {
 
             // casper_call(address, value, selector!("nme"), ());
 
-            let cep18_handle = TokenContract::create(constructor).expect("Should create");
+            let cep18_handle = TokenContract::create(0, constructor).expect("Should create");
 
             {
                 // As a builder that allows you to specify value to pass etc.

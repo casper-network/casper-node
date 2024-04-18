@@ -61,13 +61,14 @@ fn test_contract() {
 fn harness() {
     let mut executor = make_executor();
 
-    let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let execute_request = ExecuteRequestBuilder::default()
         .with_caller(DEFAULT_ACCOUNT_HASH.value())
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
         .with_serialized_input(())
+        .with_value(1000)
         .build()
         .expect("should build");
 
@@ -99,6 +100,7 @@ fn cep18() {
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
         .with_serialized_input(())
+        .with_value(0)
         .build()
         .expect("should build");
 
@@ -133,6 +135,7 @@ fn cep18() {
         .with_gas_limit(1_000_000)
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
         .with_serialized_input((contract_hash,))
+        .with_value(0)
         .build()
         .expect("should build");
 

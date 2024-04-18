@@ -9,7 +9,7 @@ use casper_sdk::{log, Contract};
 pub fn call() {
     log!("Hello");
     let constructor = TokenContractRef::new("my token name".to_string());
-    let _result = TokenContract::create(constructor);
+    let _result = TokenContract::create(0, constructor);
     log!("CEP18 succeeded");
 }
 

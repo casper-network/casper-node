@@ -14,8 +14,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeyAddr, NamedKeys},
     execution::Effects,
-    AddressableEntity, AddressableEntityHash, ContextAccessRights, EntityAddr, Key, Phase,
-    ProtocolVersion, PublicKey, SystemEntityRegistry, URef, U512,
+    AddressableEntity, AddressableEntityHash, ContextAccessRights, EntityAddr, HoldsEpoch, Key,
+    Phase, ProtocolVersion, PublicKey, SystemEntityRegistry, URef, U512,
 };
 use parking_lot::RwLock;
 
@@ -181,6 +181,24 @@ pub(crate) fn mint_mint<R: GlobalStateReader>(
     dispatch_system_contract(tracking_copy, id, "mint", |mut runtime| {
         runtime.mint(initial_value)
     })
+}
+
+pub(crate) fn mint_transfer<R: GlobalStateReader>(
+    tracking_copy: &mut TrackingCopy<R>,
+    maybe_to: Option<AccountHash>,
+    source: URef,
+    target: URef,
+    amount: impl Into<U512>,
+    id: Option<u64>,
+    holds_epoch: HoldsEpoch,
+) -> Result<(), casper_types::system::mint::Error> {
+    let amount: U512 = amount.into();
+    dispatch_system_contract(
+        tracking_copy,
+        Id::Seed(vec![1, 2, 3]),
+        "mint",
+        |mut runtime| runtime.transfer(maybe_to, source, target, amount, id, holds_epoch),
+    )
 }
 
 #[cfg(test)]

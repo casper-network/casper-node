@@ -65,6 +65,9 @@ Example paths:
                 alloc_ctx: *const core::ffi::c_void,
             ) -> *mut u8;
             pub fn casper_env_caller(dest: *mut u8, dest_len: usize,) -> *const u8;
+            pub fn casper_env_value() -> u64;
+            #[doc = r"Get balance of an entity by its address."]
+            pub fn casper_env_balance(entity_kind: u32, entity_addr: *const u8, entity_addr_len: usize,) -> u64;
         }
     };
 }

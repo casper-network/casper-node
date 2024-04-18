@@ -10,7 +10,7 @@ use executor::Executor;
 use storage::GlobalStateReader;
 use thiserror::Error;
 use vm_common::flags::ReturnFlags;
-use wasm_backend::{wasmer::WasmerInstance, Context, GasUsage, PreparationError, WasmInstance};
+use wasm_backend::{wasmer::WasmerInstance, Context, PreparationError, WasmInstance};
 
 const CALLEE_SUCCEED: u32 = 0;
 const CALLEE_REVERTED: u32 = 1;

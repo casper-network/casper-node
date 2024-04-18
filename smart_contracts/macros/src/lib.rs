@@ -20,6 +20,8 @@ struct MethodAttribute {
     /// Explicitly mark method as private so it's not externally callable.
     #[darling(default)]
     private: bool,
+    #[darling(default)]
+    payable: bool,
 }
 
 #[derive(Debug, FromAttributes)]
@@ -76,7 +78,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
-            fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
+            fn create<T:casper_sdk::ToCallData>(value: u64, call_data: T) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
                     #(#dynamic_manifest,)*
                     #name::MANIFEST.as_slice(),
@@ -93,11 +95,11 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
 
                 let input_data = call_data.input_data();
 
-                let create_result = casper_sdk::host::casper_create(None, &manifest, 0, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
+                let create_result = casper_sdk::host::casper_create(None, &manifest, value, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))?;
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
 
-            fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
+            fn default_create(value: u64) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
                     #(#dynamic_manifest,)*
                     #name::MANIFEST.as_slice(),
@@ -110,7 +112,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                     entry_points: entry_points_allocated.as_ptr(),
                     entry_points_size: entry_points_allocated.len(),
                 };
-                let create_result = casper_sdk::host::casper_create(None, &manifest, 0, None, None)?;
+                let create_result = casper_sdk::host::casper_create(None, &manifest, value, None, None)?;
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
         }

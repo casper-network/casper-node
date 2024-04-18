@@ -2,12 +2,13 @@
 pub(crate) mod abi;
 
 use bytes::Bytes;
-use casper_storage::tracking_copy;
+use casper_storage::tracking_copy::{self, TrackingCopyExt};
 use casper_types::{
+    account::AccountHash,
     addressable_entity::NamedKeyAddr,
     contracts::{ContractManifest, ContractV2, EntryPointV2},
     ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, Key, Package,
-    PackageStatus, StoredValue, URef,
+    PackageStatus, StoredValue, URef, U512,
 };
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
@@ -356,6 +357,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                             selector: Selector::new(selector),
                         })
                         .with_input(input_data.unwrap_or_default())
+                        .with_value(value)
                         .build()
                         .expect("should build");
 
@@ -479,6 +481,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
             address,
             selector: Selector::new(selector),
         })
+        .with_value(value)
         .with_input(input_data)
         .build()
         .expect("should build");
@@ -605,4 +608,81 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
         caller.memory_write(dest_ptr, &data)?;
         Ok(dest_ptr + (data.len() as u32))
     }
+}
+
+pub(crate) fn casper_env_value<S: GlobalStateReader, E: Executor>(
+    caller: impl Caller<S, E>,
+) -> u64 {
+    caller.context().value
+}
+
+const CASPER_ENV_BALANCE_ACCOUNT: u32 = 0;
+const CASPER_ENV_BALANCE_CONTRACT: u32 = 1;
+
+pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
+    entity_kind: u32,
+    entity_addr_ptr: u32,
+    entity_addr_len: u32,
+) -> VMResult<u64> {
+    let entity_key = match entity_kind {
+        CASPER_ENV_BALANCE_ACCOUNT => {
+            if entity_addr_len != 32 {
+                return Ok(0);
+            }
+            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
+
+            let account_key = Key::Account(account_hash);
+            match caller.context_mut().storage.read(&account_key) {
+                Ok(Some(StoredValue::CLValue(clvalue))) => {
+                    let entity_key = clvalue.into_t::<Key>().expect("should be a key");
+                    entity_key
+                }
+                Ok(Some(other_entity)) => {
+                    panic!("Unexpected entity type: {:?}", other_entity)
+                }
+                Ok(None) => return Ok(0),
+                Err(error) => panic!("Error while reading from storage; aborting key={account_key:?} error={error:?}"),
+                _ => return Ok(0),
+            }
+        }
+        CASPER_ENV_BALANCE_CONTRACT => {
+            if entity_addr_len != 32 {
+                return Ok(0);
+            }
+            let hash_bytes = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            Key::AddressableEntity(EntityAddr::SmartContract(hash_bytes.try_into().unwrap()))
+        }
+        _ => return Ok(0),
+    };
+
+    let purse = match caller.context_mut().storage.read(&entity_key) {
+        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
+            addressable_entity.main_purse()
+        }
+        Ok(Some(StoredValue::ContractV2(contract_v2))) => {
+            // TODO: Remove once 2.0 integration is done with v2 support.
+            match contract_v2 {
+                ContractV2::V2(contract) => contract.purse_uref,
+                _ => panic!("Expected ContractV2::V2"),
+            }
+        }
+        Ok(Some(other_entity)) => {
+            panic!("Unexpected entity type: {:?}", other_entity)
+        }
+        Ok(None) => return Ok(0),
+        Err(error) => {
+            panic!("Error while reading from storage; aborting key={entity_key:?} error={error:?}")
+        }
+    };
+
+    let total_balance = caller
+        .context_mut()
+        .storage
+        .get_total_balance(Key::URef(purse))
+        .expect("Total balance");
+    assert!(total_balance.value() <= U512::from(u64::MAX));
+    let total_balance: u64 = total_balance.value().as_u64();
+    Ok(total_balance)
 }

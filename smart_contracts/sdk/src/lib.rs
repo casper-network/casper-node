@@ -14,7 +14,7 @@ use std::{io, marker::PhantomData, ptr::NonNull};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
-use host::CallResult;
+use host::{CallResult, EntityKind};
 use types::{Address, CallError};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -67,8 +67,11 @@ pub trait Contract {
     type Ref: ContractRef;
 
     fn name() -> &'static str;
-    fn create<T: ToCallData>(call_data: T) -> Result<ContractHandle<Self::Ref>, CallError>;
-    fn default_create() -> Result<ContractHandle<Self::Ref>, CallError>;
+    fn create<T: ToCallData>(
+        value: u64,
+        call_data: T,
+    ) -> Result<ContractHandle<Self::Ref>, CallError>;
+    fn default_create(value: u64) -> Result<ContractHandle<Self::Ref>, CallError>;
 }
 
 #[derive(Debug)]
@@ -188,6 +191,11 @@ impl<T: ContractRef> ContractHandle<T> {
     pub fn contract_address(&self) -> Address {
         self.contract_address
     }
+
+    /// Returns the balance of the contract.
+    pub fn balance(&self) -> u64 {
+        host::get_balance_of(EntityKind::Contract(&self.contract_address))
+    }
 }
 
 pub struct CallBuilder<T: ContractRef> {
@@ -239,6 +247,47 @@ impl<T: ContractRef> CallBuilder<T> {
         let call_data = func(inst);
         let call_result = host::call(&self.address, self.value.unwrap_or(0), call_data)?;
         Ok(call_result.into_return_value())
+    }
+}
+
+pub struct ContractBuilder<T: Contract> {
+    value: Option<u64>,
+    marker: PhantomData<T>,
+}
+
+impl<T: Contract> ContractBuilder<T> {
+    pub fn new() -> Self {
+        ContractBuilder {
+            value: None,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn with_value(mut self, value: u64) -> Self {
+        self.value = Some(value);
+        self
+    }
+
+    pub fn create<'a, CallData: ToCallData>(
+        &self,
+        func: impl FnOnce() -> CallData,
+    ) -> Result<ContractHandle<T::Ref>, CallError>
+    where
+        CallData::Return<'a>: BorshDeserialize,
+    {
+        let value = self.value.unwrap_or(0);
+        let call_data = func();
+        T::create(value, call_data)
+    }
+
+    pub fn default_create<'a, CallData: ToCallData>(
+        &self,
+    ) -> Result<ContractHandle<T::Ref>, CallError>
+    where
+        CallData::Return<'a>: BorshDeserialize + Clone,
+    {
+        let value = self.value.unwrap_or(0);
+        T::default_create(value)
     }
 }
 

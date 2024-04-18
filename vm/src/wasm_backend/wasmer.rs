@@ -546,6 +546,40 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_env_value",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_env_value(wasmer_caller)
+                    },
+                ),
+            );
+
+            imports.define(
+                "env",
+                "casper_env_balance",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
+                     entity_kind,
+                     entity_addr,
+                     entity_addr_len| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_env_balance(
+                            wasmer_caller,
+                            entity_kind,
+                            entity_addr,
+                            entity_addr_len,
+                        )
+                    },
+                ),
+            );
+
             imports
         };
 
@@ -662,6 +696,7 @@ where
             state_address: data.context.state_address,
             storage: data.context.storage.fork2(),
             executor: data.context.executor.clone(),
+            value: data.context.value,
         }
     }
 }

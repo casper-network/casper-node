@@ -389,6 +389,26 @@ pub fn get_caller() -> Address {
     unsafe { addr.assume_init() }
 }
 
+/// Enum representing either an account or a contract.
+pub enum EntityKind<'a> {
+    Account(&'a [u8; 32]),
+    Contract(&'a [u8; 32]),
+}
+
+/// Get the balance of an account or contract.
+pub fn get_balance_of(entity_kind: EntityKind) -> u64 {
+    let (kind, addr) = match entity_kind {
+        EntityKind::Account(addr) => (0, addr),
+        EntityKind::Contract(addr) => (1, addr),
+    };
+    unsafe { casper_sdk_sys::casper_env_balance(kind, addr.as_ptr(), addr.len()) }
+}
+
+/// Get the value passed to the contract.
+pub fn get_value() -> u64 {
+    unsafe { casper_sdk_sys::casper_env_value() }
+}
+
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;

@@ -29,9 +29,12 @@ impl GasUsage {
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
+    /// The address of the account that is currently executing the contract or session code.
     pub(crate) caller: Address,
     /// The state of the global state at the time of the call based on the currently executing contract or session address.
     pub(crate) state_address: Address,
+    /// The amount of tokens that were send to the contract's purse at the time of the call.
+    pub(crate) value: u64,
     pub(crate) storage: TrackingCopy<S>,
     pub(crate) executor: E, // TODO: This could be part of the caller
 }

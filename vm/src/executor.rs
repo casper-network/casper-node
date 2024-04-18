@@ -23,6 +23,8 @@ pub struct ExecuteRequest {
     pub(crate) execution_kind: ExecutionKind,
     /// Input data.
     pub(crate) input: Bytes,
+    /// Value transferred to the contract.
+    pub(crate) value: u64,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -32,6 +34,7 @@ pub struct ExecuteRequestBuilder {
     gas_limit: Option<u64>,
     target: Option<ExecutionKind>,
     input: Option<Bytes>,
+    value: Option<u64>,
 }
 
 impl ExecuteRequestBuilder {
@@ -67,18 +70,26 @@ impl ExecuteRequestBuilder {
         self.with_input(input)
     }
 
+    /// Pass value to be sent to the contract.
+    pub fn with_value(mut self, value: u64) -> Self {
+        self.value = Some(value);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let caller = self.caller.ok_or("Caller is not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
+        let value = self.value.ok_or("Value is not set")?;
 
         Ok(ExecuteRequest {
             caller,
             gas_limit,
             execution_kind,
             input,
+            value,
         })
     }
 }

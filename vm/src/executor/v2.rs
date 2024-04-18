@@ -1,14 +1,17 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
-use casper_types::{contracts::ContractV2, ByteCodeAddr, EntityAddr, Key, StoredValue};
+use casper_types::{
+    account::AccountHash, contracts::ContractV2, ByteCodeAddr, EntityAddr, HoldsEpoch, Key,
+    StoredValue,
+};
 use either::Either;
 use parking_lot::RwLock;
 use vm_common::flags::ReturnFlags;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
 use crate::{
-    storage::{Address, GlobalStateReader, TrackingCopy},
+    storage::{runtime, Address, GlobalStateReader, TrackingCopy},
     wasm_backend::{Context, WasmInstance},
     ConfigBuilder, HostError, VMError, WasmEngine,
 };
@@ -121,7 +124,26 @@ impl Executor for ExecutorV2 {
             execution_kind,
             input,
             caller,
+            value,
         } = execute_request;
+
+        // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.
+        // let caller_entity_addr = EntityAddr::new_account(caller);
+        let stored_value = tracking_copy
+            .read(&Key::Account(AccountHash::new(caller)))
+            .expect("should read account")
+            .expect("should have account");
+        let cl_value = stored_value
+            .into_cl_value()
+            .expect("should be addressable entity");
+        let key = cl_value.into_t::<Key>().expect("should be key");
+        let stored_value = tracking_copy
+            .read(&key)
+            .expect("should read account")
+            .expect("should have account");
+        let addressable_entity = stored_value
+            .into_addressable_entity()
+            .expect("should be addressable entity");
 
         let (wasm_bytes, export_or_selector) = match &execution_kind {
             ExecutionKind::WasmBytes(wasm_bytes) => {
@@ -134,6 +156,8 @@ impl Executor for ExecutorV2 {
 
                 match contract {
                     Some(StoredValue::ContractV2(ContractV2::V2(manifest))) => {
+                        // source_uref = Some(manifest.purse_uref);
+
                         let wasm_key = match manifest.bytecode_addr {
                             ByteCodeAddr::V1CasperWasm(wasm_hash) => {
                                 Key::ByteCode(ByteCodeAddr::V1CasperWasm(wasm_hash))
@@ -169,6 +193,26 @@ impl Executor for ExecutorV2 {
                             entry_point.function_index
                         };
 
+                        if value != 0 {
+                            // let purse_uref = source_uref.expect("should have purse uref");
+                            let maybe_to = None;
+                            let source = addressable_entity.main_purse();
+                            let target = manifest.purse_uref;
+                            let amount = value;
+                            let id = None;
+                            let holds_epoch = HoldsEpoch::NOT_APPLICABLE;
+                            runtime::mint_transfer(
+                                &mut tracking_copy,
+                                maybe_to,
+                                source,
+                                target,
+                                amount,
+                                id,
+                                holds_epoch,
+                            )
+                            .expect("Mint transfer to succeed");
+                        }
+
                         (Bytes::from(wasm_bytes), Either::Right(function_index))
                     }
                     Some(_stored_contract) => {
@@ -192,6 +236,7 @@ impl Executor for ExecutorV2 {
 
         let context = Context {
             caller,
+            value,
             state_address,
             storage: tracking_copy,
             executor: self.clone(),

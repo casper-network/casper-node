@@ -13,7 +13,7 @@ use contract::{NFTContract, NFTContractRef};
 pub fn call() {
     log!("Hello");
     let constructor = NFTContractRef::new("my token name".to_string(), 100);
-    let _result = NFTContract::create(constructor);
+    let _result = NFTContract::create(0, constructor);
     log!("CEP78 succeeded");
 }
 

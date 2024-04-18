@@ -10,7 +10,8 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    host, log, revert,
+    host::{self, EntityKind},
+    log, revert,
     types::{Address, CallError, ResultCode},
     Contract,
 };
@@ -79,6 +80,37 @@ impl Harness {
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
         }
+    }
+
+    #[casper(constructor, payable)]
+    pub fn payable_constructor() -> Self {
+        log!(
+            "👋 Hello from payable constructor value={}",
+            host::get_value()
+        );
+        Self {
+            counter: 0,
+            greeting: INITIAL_GREETING.to_string(),
+            address_inside_constructor: Some(host::get_caller()),
+        }
+    }
+
+    #[casper(constructor, payable)]
+    pub fn payable_failing_constructor() -> Self {
+        log!(
+            "👋 Hello from payable failign constructor value={}",
+            host::get_value()
+        );
+        revert!();
+    }
+
+    #[casper(constructor, payable)]
+    pub fn payable_trapping_constructor() -> Self {
+        log!(
+            "👋 Hello from payable trapping constructor value={}",
+            host::get_value()
+        );
+        panic!("This will revert the execution of this constructor and won't create a new package")
     }
 
     pub fn get_greeting(&self) -> &str {
@@ -166,10 +198,31 @@ impl Harness {
     pub fn into_greeting(self) -> String {
         self.greeting
     }
+
+    #[casper(payable)]
+    pub fn payable_entrypoint(&mut self) -> Result<(), CustomError> {
+        log!("This is a payable entrypoint value={}", host::get_value());
+        Ok(())
+    }
+
+    #[casper(payable, revert_on_error)]
+    pub fn payable_failing_entrypoint(&self) -> Result<(), CustomError> {
+        log!(
+            "This is a payable entrypoint with value={}",
+            host::get_value()
+        );
+        if host::get_value() == 123 {
+            Err(CustomError::Foo)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[casper(export)]
 pub fn call() {
+    use casper_sdk::ContractBuilder;
+
     log!("calling create");
 
     let session_caller = host::get_caller();
@@ -178,13 +231,11 @@ pub fn call() {
     // Constructor without args
 
     {
-        let contract_handle = Harness::create(HarnessRef::initialize()).expect("Should create");
+        let contract_handle = Harness::create(0, HarnessRef::initialize()).expect("Should create");
         log!("success");
         log!("contract_address: {:?}", contract_handle.contract_address());
 
         // Verify that the address captured inside constructor is not the same as caller.
-        // let get_address_inside_constructor = <HarnessRef as
-        // ContractRef>::new().get_address_inside_constructor();
         let greeting_result = contract_handle
             .call(|harness| harness.get_greeting())
             .expect("Should call");
@@ -288,7 +339,7 @@ pub fn call() {
     // Constructor with args
 
     {
-        let contract_handle = Harness::create(HarnessRef::constructor_with_args("World".into()))
+        let contract_handle = Harness::create(0, HarnessRef::constructor_with_args("World".into()))
             .expect("Should create");
         log!("success 2");
         log!("contract_address: {:?}", contract_handle.contract_address());
@@ -300,17 +351,65 @@ pub fn call() {
     }
 
     {
-        let error = Harness::create(HarnessRef::failing_constructor("World".to_string()))
+        let error = Harness::create(0, HarnessRef::failing_constructor("World".to_string()))
             .expect_err(
                 "
         Constructor that reverts should fail to create",
             );
         assert_eq!(error, CallError::CalleeReverted);
 
-        let error = Harness::create(HarnessRef::trapping_constructor())
+        let error = Harness::create(0, HarnessRef::trapping_constructor())
             .expect_err("Constructor that traps should fail to create");
         assert_eq!(error, CallError::CalleeTrapped);
     }
+
+    //
+    // Check payable entrypoints
+    //
+
+    {
+        let contract_handle = ContractBuilder::<Harness>::new()
+            .with_value(1)
+            .create(|| HarnessRef::payable_constructor())
+            .expect("Should create");
+        Harness::create(0, HarnessRef::constructor_with_args("Payable".to_string()))
+            .expect("Should create");
+        assert_eq!(contract_handle.balance(), 1);
+
+        log!("success 2");
+        log!("contract_address: {:?}", contract_handle.contract_address());
+
+        // Transferring 500 motes before payable entrypoint is executed
+
+        let result_1 = contract_handle
+            .build_call()
+            .with_value(500)
+            .call(|harness| harness.payable_entrypoint())
+            .expect("Should call");
+        assert_eq!(result_1, Ok(()));
+
+        // Transferring 499 motes before payable entrypoint is executed
+
+        let result_2 = contract_handle
+            .build_call()
+            .with_value(499)
+            .call(|harness| harness.payable_entrypoint())
+            .expect("Should call");
+        assert_eq!(result_2, Ok(()));
+
+        // Check balance after two successful calls
+        assert_eq!(contract_handle.balance(), 500 + 499);
+
+        let result_3 = contract_handle
+            .build_call()
+            .with_value(123)
+            .call(|harness| harness.payable_failing_entrypoint())
+            .expect("Should call");
+        assert_eq!(result_3, Err(CustomError::Foo));
+        // Check balance after failed call, should be the same as before
+        assert_eq!(contract_handle.balance(), 500 + 499);
+    }
+
     log!("👋 Goodbye");
 }
 
