@@ -772,8 +772,6 @@ impl FromBytes for StoredValue {
 mod serde_helpers {
     use core::fmt;
 
-    use crate::serde_helpers::contract_package::HumanReadableContractPackage;
-
     use super::*;
 
     pub struct InvalidHumanReadableDeser(String);
@@ -794,7 +792,7 @@ mod serde_helpers {
         Account(&'a Account),
         ContractWasm(&'a ContractWasm),
         Contract(&'a Contract),
-        ContractPackage(HumanReadableContractPackage),
+        ContractPackage(&'a ContractPackage),
         LegacyTransfer(&'a TransferV1),
         DeployInfo(&'a DeployInfo),
         EraInfo(&'a EraInfo),
@@ -817,7 +815,7 @@ mod serde_helpers {
         Account(Account),
         ContractWasm(ContractWasm),
         Contract(Contract),
-        ContractPackage(HumanReadableContractPackage),
+        ContractPackage(ContractPackage),
         LegacyTransfer(TransferV1),
         DeployInfo(DeployInfo),
         EraInfo(EraInfo),
@@ -841,7 +839,7 @@ mod serde_helpers {
                 StoredValue::ContractWasm(payload) => HumanReadableSerHelper::ContractWasm(payload),
                 StoredValue::Contract(payload) => HumanReadableSerHelper::Contract(payload),
                 StoredValue::ContractPackage(payload) => {
-                    HumanReadableSerHelper::ContractPackage(payload.into())
+                    HumanReadableSerHelper::ContractPackage(payload)
                 }
                 StoredValue::LegacyTransfer(payload) => {
                     HumanReadableSerHelper::LegacyTransfer(payload)
@@ -869,10 +867,9 @@ mod serde_helpers {
         }
     }
 
-    impl TryFrom<HumanReadableDeserHelper> for StoredValue {
-        type Error = InvalidHumanReadableDeser;
-        fn try_from(value: HumanReadableDeserHelper) -> Result<Self, Self::Error> {
-            let res = match value {
+    impl From<HumanReadableDeserHelper> for StoredValue {
+        fn from(helper: HumanReadableDeserHelper) -> Self {
+            match helper {
                 HumanReadableDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
                 HumanReadableDeserHelper::Account(payload) => StoredValue::Account(payload),
                 HumanReadableDeserHelper::ContractWasm(payload) => {
@@ -880,14 +877,7 @@ mod serde_helpers {
                 }
                 HumanReadableDeserHelper::Contract(payload) => StoredValue::Contract(payload),
                 HumanReadableDeserHelper::ContractPackage(payload) => {
-                    ContractPackage::try_from(payload)
-                        .map(StoredValue::ContractPackage)
-                        .map_err(|error| {
-                            InvalidHumanReadableDeser(format!(
-                                "Failed to deserialize ContractPackage: {}",
-                                error
-                            ))
-                        })?
+                    StoredValue::ContractPackage(payload)
                 }
                 HumanReadableDeserHelper::LegacyTransfer(payload) => {
                     StoredValue::LegacyTransfer(payload)
@@ -910,8 +900,7 @@ mod serde_helpers {
                     StoredValue::Message(message_digest)
                 }
                 HumanReadableDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
-            };
-            Ok(res)
+            }
         }
     }
 }
@@ -933,7 +922,7 @@ impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let json_helper = serde_helpers::HumanReadableDeserHelper::deserialize(deserializer)?;
-            StoredValue::try_from(json_helper).map_err(|error| de::Error::custom(error.to_string()))
+            Ok(StoredValue::from(json_helper))
         } else {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
             bytesrepr::deserialize::<StoredValue>(bytes)

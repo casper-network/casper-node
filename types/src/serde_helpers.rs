@@ -126,6 +126,7 @@ pub mod contract_package {
 
     #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
     #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+    #[cfg_attr(feature = "json-schema", schemars(rename = "ContractVersion"))]
     pub struct HumanReadableContractVersion {
         protocol_version_major: ProtocolVersionMajor,
         contract_version: ContractVersion,
@@ -135,6 +136,7 @@ pub mod contract_package {
     /// Helper struct for deserializing/serializing `ContractPackage` from and to JSON.
     #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
     #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+    #[cfg_attr(feature = "json-schema", schemars(rename = "ContractPackage"))]
     pub struct HumanReadableContractPackage {
         access_key: URef,
         versions: Vec<HumanReadableContractVersion>,
