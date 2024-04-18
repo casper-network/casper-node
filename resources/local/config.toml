@@ -231,7 +231,7 @@ error_timeout = '10 seconds'
 use_validator_broadcast = true
 
 # Whether to enable the use of optimized gossip peer selection for a subset of items.
-use_mixed_gossip = true
+use_mixed_gossip = false
 
 # Identity of a node
 #
