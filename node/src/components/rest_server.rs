@@ -33,7 +33,6 @@ use once_cell::sync::OnceCell;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
-use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{Component, ComponentState, InitializedComponent};
@@ -289,33 +288,25 @@ where
         let builder = utils::start_listening(&cfg.address)?;
         let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
 
-        let server_join_handle = match cfg.cors_origin.as_str() {
-            "" => Some(tokio::spawn(http_server::run(
+        let server_join_handle = if cfg.cors_origin.is_empty() {
+            Some(tokio::spawn(http_server::run(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
                 local_addr.clone(),
-            ))),
-            "*" => Some(tokio::spawn(http_server::run_with_cors(
+            )))
+        } else {
+            Some(tokio::spawn(http_server::run_with_cors(
                 builder,
                 effect_builder,
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
                 local_addr.clone(),
-                CorsOrigin::Any,
-            ))),
-            _ => Some(tokio::spawn(http_server::run_with_cors(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_receiver,
-                cfg.qps_limit,
-                local_addr.clone(),
-                CorsOrigin::Specified(cfg.cors_origin.clone()),
-            ))),
+                cfg.cors_origin.clone(),
+            )))
         };
 
         let network_name = self.network_name.clone();
