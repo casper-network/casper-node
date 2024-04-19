@@ -18,6 +18,7 @@ use casper_types::{
     Phase, ProtocolVersion, PublicKey, SystemEntityRegistry, URef, U512,
 };
 use parking_lot::RwLock;
+use rand::Rng;
 
 use crate::{
     executor::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor},
@@ -172,11 +173,17 @@ impl Executor for NativeExecutor {
     }
 }
 
+fn make_random_seed() -> Id {
+    let mut rng = rand::thread_rng();
+    let seed: [u8; 32] = rng.gen();
+    Id::Seed(seed.to_vec())
+}
+
 pub(crate) fn mint_mint<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
     initial_value: impl Into<U512>,
 ) -> Result<URef, casper_types::system::mint::Error> {
-    let id: Id = Id::Seed(vec![1, 2, 3]);
+    let id = make_random_seed();
     let initial_value: U512 = initial_value.into();
     dispatch_system_contract(tracking_copy, id, "mint", |mut runtime| {
         runtime.mint(initial_value)
@@ -193,12 +200,9 @@ pub(crate) fn mint_transfer<R: GlobalStateReader>(
     holds_epoch: HoldsEpoch,
 ) -> Result<(), casper_types::system::mint::Error> {
     let amount: U512 = amount.into();
-    dispatch_system_contract(
-        tracking_copy,
-        Id::Seed(vec![1, 2, 3]),
-        "mint",
-        |mut runtime| runtime.transfer(maybe_to, source, target, amount, id, holds_epoch),
-    )
+    dispatch_system_contract(tracking_copy, make_random_seed(), "mint", |mut runtime| {
+        runtime.transfer(maybe_to, source, target, amount, id, holds_epoch)
+    })
 }
 
 #[cfg(test)]

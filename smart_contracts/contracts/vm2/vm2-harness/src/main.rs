@@ -397,8 +397,8 @@ pub fn call() {
             .expect("Should call");
         assert_eq!(result_2, Ok(()));
 
-        // Check balance after two successful calls
-        assert_eq!(contract_handle.balance(), 500 + 499);
+        // Check balance after payable constructor and two successful calls
+        assert_eq!(contract_handle.balance(), 1 + 500 + 499);
 
         let result_3 = contract_handle
             .build_call()
@@ -407,7 +407,7 @@ pub fn call() {
             .expect("Should call");
         assert_eq!(result_3, Err(CustomError::Foo));
         // Check balance after failed call, should be the same as before
-        assert_eq!(contract_handle.balance(), 500 + 499);
+        assert_eq!(contract_handle.balance(), 1 + 500 + 499);
     }
 
     log!("👋 Goodbye");
