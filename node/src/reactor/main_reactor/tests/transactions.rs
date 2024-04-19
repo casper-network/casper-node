@@ -128,11 +128,6 @@ fn get_balance(
             ),
         }
     };
-    let gas_hold_balance_handling: GasHoldBalanceHandling = (
-        fixture.chainspec.core_config.gas_hold_balance_handling,
-        fixture.chainspec.core_config.gas_hold_interval,
-    )
-        .into();
     runner
         .main_reactor()
         .contract_runtime()
@@ -144,7 +139,6 @@ fn get_balance(
             account_key.clone(),
             balance_handling,
             ProofHandling::NoProofs,
-            gas_hold_balance_handling,
         ))
 }
 

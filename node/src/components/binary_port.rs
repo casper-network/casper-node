@@ -20,17 +20,16 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceHandling,
         tagged_values::{TaggedValuesRequest, TaggedValuesResult, TaggedValuesSelection},
-        BalanceIdentifier, BalanceRequest, BalanceResult, GasHoldBalanceHandling, ProofHandling,
-        ProofsResult, QueryRequest, QueryResult, TrieRequest,
+        BalanceIdentifier, BalanceRequest, BalanceResult, ProofHandling, ProofsResult,
+        QueryRequest, QueryResult, TrieRequest,
     },
     global_state::trie::TrieRaw,
 };
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier,
-    HoldBalanceHandling, HoldsEpoch, Key, Peers, ProtocolVersion, SignedBlock, StoredValue,
-    TimeDiff, Timestamp, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch,
+    Key, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
 };
 
 use datasize::DataSize;
@@ -419,7 +418,6 @@ where
                 header.timestamp(),
                 purse_identifier,
                 protocol_version,
-                chainspec.core_config.gas_hold_balance_handling,
                 chainspec.core_config.gas_hold_interval,
             )
             .await
@@ -438,7 +436,6 @@ where
                 timestamp,
                 purse_identifier,
                 protocol_version,
-                chainspec.core_config.gas_hold_balance_handling,
                 chainspec.core_config.gas_hold_interval,
             )
             .await
@@ -528,7 +525,6 @@ async fn get_balance<REv>(
     timestamp: Timestamp,
     purse_identifier: PurseIdentifier,
     protocol_version: ProtocolVersion,
-    gas_hold_handling: HoldBalanceHandling,
     gas_hold_interval: TimeDiff,
 ) -> BinaryResponse
 where
@@ -548,7 +544,6 @@ where
     let balance_handling = BalanceHandling::Available {
         holds_epoch: HoldsEpoch::from_timestamp(timestamp, gas_hold_interval),
     };
-    let gas_hold_balance_handling = GasHoldBalanceHandling::new(gas_hold_handling);
 
     let balance_req = BalanceRequest::new(
         state_root_hash,
@@ -557,7 +552,6 @@ where
         balance_id,
         balance_handling,
         ProofHandling::Proofs,
-        gas_hold_balance_handling,
     );
     match effect_builder.get_balance(balance_req).await {
         BalanceResult::RootNotFound => {

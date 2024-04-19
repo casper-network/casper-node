@@ -34,8 +34,8 @@ use casper_types::{
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{
-            self, ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_INTERVAL_KEY,
-            ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
+            self, ARG_ROUND_SEIGNIORAGE_RATE, MINT_GAS_HOLD_HANDLING_KEY,
+            MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY,
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
@@ -228,6 +228,23 @@ where
             total_supply_uref
         };
 
+        let gas_hold_handling_uref =
+            {
+                let gas_hold_handling = self.config.gas_hold_balance_handling().tag();
+                let gas_hold_handling_uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                self.tracking_copy.borrow_mut().write(
+                    gas_hold_handling_uref.into(),
+                    StoredValue::CLValue(CLValue::from_t(gas_hold_handling).map_err(|_| {
+                        GenesisError::CLValue(MINT_GAS_HOLD_HANDLING_KEY.to_string())
+                    })?),
+                );
+                gas_hold_handling_uref
+            };
+
         let gas_hold_interval_uref =
             {
                 let gas_hold_interval = self.config.gas_hold_interval_millis();
@@ -252,6 +269,10 @@ where
                 round_seigniorage_rate_uref.into(),
             );
             named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), total_supply_uref.into());
+            named_keys.insert(
+                MINT_GAS_HOLD_HANDLING_KEY.to_string(),
+                gas_hold_handling_uref.into(),
+            );
             named_keys.insert(
                 MINT_GAS_HOLD_INTERVAL_KEY.to_string(),
                 gas_hold_interval_uref.into(),

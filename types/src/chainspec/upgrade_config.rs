@@ -1,7 +1,10 @@
 use num_rational::Ratio;
 use std::collections::BTreeMap;
 
-use crate::{ChainspecRegistry, Digest, EraId, FeeHandling, Key, ProtocolVersion, StoredValue};
+use crate::{
+    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolVersion,
+    StoredValue,
+};
 
 /// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +13,7 @@ pub struct ProtocolUpgradeConfig {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
+    new_gas_hold_handling: Option<HoldBalanceHandling>,
     new_gas_hold_interval: Option<u64>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -29,6 +33,7 @@ impl ProtocolUpgradeConfig {
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         activation_point: Option<EraId>,
+        new_gas_hold_handling: Option<HoldBalanceHandling>,
         new_gas_hold_interval: Option<u64>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
@@ -44,6 +49,7 @@ impl ProtocolUpgradeConfig {
             current_protocol_version,
             new_protocol_version,
             activation_point,
+            new_gas_hold_handling,
             new_gas_hold_interval,
             new_validator_slots,
             new_auction_delay,
@@ -74,6 +80,11 @@ impl ProtocolUpgradeConfig {
     /// Returns activation point in eras.
     pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
+    }
+
+    /// Returns new gas hold handling if specified.
+    pub fn new_gas_hold_handling(&self) -> Option<HoldBalanceHandling> {
+        self.new_gas_hold_handling
     }
 
     /// Returns new auction delay if specified.

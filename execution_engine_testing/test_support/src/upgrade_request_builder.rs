@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_types::{
-    ChainspecRegistry, Digest, EraId, FeeHandling, Key, ProtocolUpgradeConfig, ProtocolVersion,
-    StoredValue,
+    ChainspecRegistry, Digest, EraId, FeeHandling, HoldBalanceHandling, Key, ProtocolUpgradeConfig,
+    ProtocolVersion, StoredValue,
 };
 
 /// Builds an `UpgradeConfig`.
@@ -13,6 +13,7 @@ pub struct UpgradeRequestBuilder {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
+    new_gas_hold_handling: Option<HoldBalanceHandling>,
     new_gas_hold_interval: Option<u64>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
@@ -48,7 +49,13 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    /// Sets `new_validator_slots`.
+    /// Sets `with_new_gas_hold_handling`.
+    pub fn with_new_gas_hold_handling(mut self, gas_hold_handling: HoldBalanceHandling) -> Self {
+        self.new_gas_hold_handling = Some(gas_hold_handling);
+        self
+    }
+
+    /// Sets `with_new_gas_hold_interval`.
     pub fn with_new_gas_hold_interval(mut self, gas_hold_interval: u64) -> Self {
         self.new_gas_hold_interval = Some(gas_hold_interval);
         self
@@ -121,6 +128,7 @@ impl UpgradeRequestBuilder {
             self.current_protocol_version,
             self.new_protocol_version,
             self.activation_point,
+            self.new_gas_hold_handling,
             self.new_gas_hold_interval,
             self.new_validator_slots,
             self.new_auction_delay,
@@ -141,6 +149,7 @@ impl Default for UpgradeRequestBuilder {
             current_protocol_version: Default::default(),
             new_protocol_version: Default::default(),
             activation_point: None,
+            new_gas_hold_handling: None,
             new_gas_hold_interval: None,
             new_validator_slots: None,
             new_auction_delay: None,

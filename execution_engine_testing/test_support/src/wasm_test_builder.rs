@@ -24,12 +24,12 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceIdentifier, BalanceRequest, BalanceResult,
         BiddingRequest, BiddingResult, BidsRequest, BlockRewardsRequest, BlockRewardsResult,
         BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FeeRequest,
-        FeeResult, FlushRequest, FlushResult, GasHoldBalanceHandling, GenesisRequest,
-        GenesisResult, ProofHandling, ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest,
-        PruneResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, StepRequest, StepResult, SystemEntityRegistryPayload,
-        SystemEntityRegistryRequest, SystemEntityRegistryResult, SystemEntityRegistrySelector,
-        TotalSupplyRequest, TotalSupplyResult, TransferRequest, TrieRequest,
+        FeeResult, FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProofHandling,
+        ProtocolUpgradeRequest, ProtocolUpgradeResult, PruneRequest, PruneResult, QueryRequest,
+        QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult, StepRequest,
+        StepResult, SystemEntityRegistryPayload, SystemEntityRegistryRequest,
+        SystemEntityRegistryResult, SystemEntityRegistrySelector, TotalSupplyRequest,
+        TotalSupplyResult, TransferRequest, TrieRequest,
     },
     global_state::{
         state::{
@@ -61,8 +61,8 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
     ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
-    HoldBalanceHandling, HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package,
-    PackageHash, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
@@ -1230,8 +1230,6 @@ where
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
-        let gas_hold_balance_handling = GasHoldBalanceHandling::new(HoldBalanceHandling::default());
-
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
             state_root_hash,
@@ -1240,7 +1238,6 @@ where
             balance_identifier,
             balance_handling,
             proof_handling,
-            gas_hold_balance_handling,
         );
         self.data_access_layer.balance(request)
     }
@@ -1257,7 +1254,6 @@ where
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
-        let gas_hold_balance_handling = GasHoldBalanceHandling::new(HoldBalanceHandling::default());
         let request = BalanceRequest::from_public_key(
             state_root_hash,
             block_time.into(),
@@ -1265,7 +1261,6 @@ where
             public_key,
             balance_handling,
             proof_handling,
-            gas_hold_balance_handling,
         );
         self.data_access_layer.balance(request)
     }

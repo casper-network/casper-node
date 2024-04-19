@@ -24,7 +24,7 @@ use casper_storage::{
     data_access_layer::{
         balance::{BalanceHandling, BalanceResult},
         AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
-        GasHoldBalanceHandling, ProofHandling, TotalSupplyRequest, TotalSupplyResult,
+        ProofHandling, TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
@@ -818,8 +818,6 @@ impl TestFixture {
         let holds_epoch =
             HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.gas_hold_interval);
 
-        let gas_balance_hold_handling: GasHoldBalanceHandling = self.into();
-
         let balance_request = BalanceRequest::from_public_key(
             *highest_block.state_root_hash(),
             block_time.into(),
@@ -827,7 +825,6 @@ impl TestFixture {
             account_public_key,
             BalanceHandling::Available { holds_epoch },
             ProofHandling::NoProofs,
-            gas_balance_hold_handling,
         );
 
         let balance_result = runner
@@ -913,12 +910,6 @@ impl TestFixture {
         rng: TestRng,
     ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
         self.network.crank_until_stopped(rng)
-    }
-}
-
-impl From<&TestFixture> for GasHoldBalanceHandling {
-    fn from(value: &TestFixture) -> Self {
-        GasHoldBalanceHandling::new(value.chainspec.core_config.gas_hold_balance_handling)
     }
 }
 

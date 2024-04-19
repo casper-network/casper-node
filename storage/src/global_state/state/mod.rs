@@ -606,20 +606,22 @@ pub trait StateProvider {
             }
         };
 
-        let gas_hold_handling = request.gas_hold_balance_handling().handling();
-        let gas_hold_interval = match request
-            .gas_hold_balance_handling()
-            .gas_hold_interval(&mut tc)
-        {
-            Ok(interval) => interval,
+        let gas_hold_handling = match tc.get_balance_hold_config(BalanceHoldAddrTag::Gas) {
+            Ok(ret) => ret.into(),
             Err(tce) => return tce.into(),
         };
+
+        let processing_hold_handling =
+            match tc.get_balance_hold_config(BalanceHoldAddrTag::Processing) {
+                Ok(ret) => ret.into(),
+                Err(tce) => return tce.into(),
+            };
 
         let available_balance = match &proofs_result.available_balance(
             request.block_time(),
             total_balance,
             gas_hold_handling,
-            gas_hold_interval,
+            processing_hold_handling,
         ) {
             Ok(available_balance) => *available_balance,
             Err(be) => return BalanceResult::Failure(be.clone()),
@@ -667,7 +669,6 @@ pub trait StateProvider {
                     identifier,
                     BalanceHandling::Available { holds_epoch },
                     ProofHandling::NoProofs,
-                    request.gas_hold_balance_handling(),
                 );
                 let balance_result = self.balance(balance_request);
                 let (total_balance, remaining_balance, purse_addr) = match balance_result {
@@ -779,7 +780,6 @@ pub trait StateProvider {
                     identifier,
                     BalanceHandling::Available { holds_epoch },
                     ProofHandling::NoProofs,
-                    request.gas_hold_balance_handling(),
                 ));
                 let (total_balance, available_balance) = match balance_result {
                     BalanceResult::RootNotFound => return BalanceHoldResult::RootNotFound,

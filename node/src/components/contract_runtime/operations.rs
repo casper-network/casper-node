@@ -289,7 +289,6 @@ pub fn execute_finalized_block(
             balance_identifier.clone(),
             balance_handling,
             ProofHandling::NoProofs,
-            gas_hold_balance_handling,
         ));
 
         let allow_execution = {

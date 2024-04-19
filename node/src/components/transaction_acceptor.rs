@@ -11,15 +11,13 @@ use prometheus::Registry;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_storage::data_access_layer::{
-    balance::BalanceHandling, BalanceRequest, GasHoldBalanceHandling, ProofHandling,
-};
+use casper_storage::data_access_layer::{balance::BalanceHandling, BalanceRequest, ProofHandling};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
     Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, HoldBalanceHandling, HoldsEpoch, InitiatorAddr, Key, Package,
-    PackageAddr, PackageHash, PackageIdentifier, TimeDiff, Transaction, TransactionEntryPoint,
+    ExecutableDeployItemIdentifier, HoldsEpoch, InitiatorAddr, Key, Package, PackageAddr,
+    PackageHash, PackageIdentifier, Transaction, TransactionEntryPoint,
     TransactionInvocationTarget, TransactionTarget, U512,
 };
 
@@ -224,11 +222,6 @@ impl TransactionAcceptor {
                 let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
                 let balance_handling = BalanceHandling::Available { holds_epoch };
                 let proof_handling = ProofHandling::NoProofs;
-                let gas_hold_balance_handling: GasHoldBalanceHandling = (
-                    HoldBalanceHandling::default(),
-                    TimeDiff::from_millis(hold_interval),
-                )
-                    .into();
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
                     block_header.timestamp().into(),
@@ -236,7 +229,6 @@ impl TransactionAcceptor {
                     entity.main_purse(),
                     balance_handling,
                     proof_handling,
-                    gas_hold_balance_handling,
                 );
                 effect_builder
                     .get_balance(balance_request)
