@@ -16,8 +16,8 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
-    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, HoldsEpoch, InitiatorAddr, Key, Phase,
-    PublicKey, StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
+    AccessRights, AddressableEntity, CLTyped, CLValue, Gas, InitiatorAddr, Key, Phase, PublicKey,
+    StoredValue, SystemEntityRegistry, Transfer, TransferV2, URef, U512,
 };
 
 impl<S> RuntimeProvider for RuntimeNative<S>
@@ -183,18 +183,18 @@ where
         }
     }
 
-    fn available_balance(
-        &mut self,
-        purse: URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Option<U512>, Error> {
+    fn available_balance(&mut self, purse: URef) -> Result<Option<U512>, Error> {
         match self
             .tracking_copy()
             .borrow_mut()
-            .get_available_balance(Key::Balance(purse.addr()), holds_epoch)
+            .get_available_balance(Key::Balance(purse.addr()))
         {
             Ok(motes) => Ok(Some(motes.value())),
-            Err(_) => Err(Error::Storage),
+            Err(err) => {
+                println!("{:?}", err);
+                error!(?err, "mint native available_balance");
+                Err(Error::Storage)
+            }
         }
     }
 

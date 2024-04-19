@@ -346,8 +346,11 @@ impl From<&Chainspec> for GenesisConfig {
             .activation_point
             .genesis_timestamp()
             .map_or(0, |timestamp| timestamp.millis());
+        let gas_hold_balance_handling = chainspec.core_config.gas_hold_balance_handling;
         let gas_hold_interval_millis = chainspec.core_config.gas_hold_interval.millis();
 
+        // TODO: maybe construct this instead of accreting the values
+        //GenesisConfigBuilder::new(account,..)
         GenesisConfigBuilder::default()
             .with_accounts(chainspec.network_config.accounts_config.clone().into())
             .with_wasm_config(chainspec.wasm_config)
@@ -358,6 +361,7 @@ impl From<&Chainspec> for GenesisConfig {
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
+            .with_gas_hold_balance_handling(gas_hold_balance_handling)
             .with_gas_hold_interval_millis(gas_hold_interval_millis)
             .build()
     }

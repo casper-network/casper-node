@@ -43,6 +43,7 @@ use casper_storage::{
     system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
     tracking_copy::TrackingCopyExt,
 };
+
 use casper_types::{
     account::AccountHash,
     addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
@@ -59,9 +60,9 @@ use casper_types::{
         },
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, BlockTime, ByteCode, ByteCodeAddr,
-    ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts,
-    HoldsEpoch, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr, BlockTime, ByteCode,
+    ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas,
+    HandlePaymentCosts, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
     ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
     SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
@@ -552,7 +553,8 @@ impl LmdbWasmTestBuilder {
         transfer_request.set_state_hash_and_config(pre_state_hash, self.native_runtime_config());
         let transfer_result = self.data_access_layer.transfer(transfer_request);
         let gas = Gas::new(self.chainspec.system_costs_config.mint_costs().transfer);
-        let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas).unwrap();
+        let execution_result = WasmV1Result::from_transfer_result(transfer_result, gas)
+            .expect("transfer result should map to wasm v1 result");
         let effects = execution_result.effects().clone();
         self.effects.push(effects.clone());
         self.exec_results.push(execution_result);
@@ -963,10 +965,6 @@ where
         block_time: u64,
     ) -> FeeResult {
         let native_runtime_config = self.native_runtime_config();
-        let holds_epoch = HoldsEpoch::from_millis(
-            block_time,
-            self.chainspec.core_config.gas_hold_interval.millis(),
-        );
 
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let fee_req = FeeRequest::new(
@@ -974,7 +972,6 @@ where
             pre_state_hash,
             protocol_version,
             block_time.into(),
-            holds_epoch,
         );
         let fee_result = self.data_access_layer.distribute_fees(fee_req);
 
@@ -1151,6 +1148,45 @@ where
         self
     }
 
+    /// Sets blocktime into global state.
+    pub fn with_block_time(&mut self, block_time: BlockTime) -> &mut Self {
+        if let Some(state_root_hash) = self.post_state_hash {
+            let mut tracking_copy = self
+                .data_access_layer
+                .tracking_copy(state_root_hash)
+                .expect("should not error on checkout")
+                .expect("should checkout tracking copy");
+
+            let cl_value = CLValue::from_t(block_time.value()).expect("should get cl value");
+            tracking_copy.write(
+                Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+                StoredValue::CLValue(cl_value),
+            );
+            self.commit_transforms(state_root_hash, tracking_copy.effects());
+            //
+            // // reacquire root hash
+            // if let Some(new_state_root_hash) = self.post_state_hash {
+            //     assert_ne!(
+            //         state_root_hash, new_state_root_hash,
+            //         "root hash should have changed"
+            //     );
+            //     let mut tracking_copy = self
+            //         .data_access_layer
+            //         .tracking_copy(new_state_root_hash)
+            //         .expect("should not error on checkout")
+            //         .expect("should checkout tracking copy");
+            //     let value = tracking_copy
+            //         .read(&Key::BlockGlobal(BlockGlobalAddr::BlockTime))
+            //         .expect("should not error")
+            //         .expect("block time record should exist");
+            //
+            //     println!("{:?}", value);
+            // }
+        }
+
+        self
+    }
+
     /// Returns the engine state.
     pub fn get_engine_state(&self) -> &ExecutionEngineV1 {
         &self.execution_engine
@@ -1224,16 +1260,12 @@ where
         &self,
         protocol_version: ProtocolVersion,
         balance_identifier: BalanceIdentifier,
-        block_time: u64,
     ) -> BalanceResult {
-        let hold_interval = self.chainspec.core_config.gas_hold_interval;
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
-        let balance_handling = BalanceHandling::Available { holds_epoch };
+        let balance_handling = BalanceHandling::Available;
         let proof_handling = ProofHandling::Proofs;
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
             state_root_hash,
-            block_time.into(),
             protocol_version,
             balance_identifier,
             balance_handling,
@@ -1247,16 +1279,12 @@ where
         &self,
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
-        block_time: u64,
     ) -> BalanceResult {
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let hold_interval = self.chainspec.core_config.gas_hold_interval;
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
-        let balance_handling = BalanceHandling::Available { holds_epoch };
+        let balance_handling = BalanceHandling::Available;
         let proof_handling = ProofHandling::Proofs;
         let request = BalanceRequest::from_public_key(
             state_root_hash,
-            block_time.into(),
             protocol_version,
             public_key,
             balance_handling,
@@ -1493,7 +1521,7 @@ where
     pub fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
         let state_root_hash = self.get_post_state_hash();
 
-        let mut tracking_copy = self
+        let tracking_copy = self
             .data_access_layer
             .tracking_copy(state_root_hash)
             .unwrap()

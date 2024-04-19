@@ -88,13 +88,13 @@ impl ToBytes for BalanceHoldAddrTag {
         Ok(buffer)
     }
 
+    fn serialized_length(&self) -> usize {
+        Self::BALANCE_HOLD_ADDR_TAG_LENGTH
+    }
+
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         writer.push(*self as u8);
         Ok(())
-    }
-
-    fn serialized_length(&self) -> usize {
-        Self::BALANCE_HOLD_ADDR_TAG_LENGTH
     }
 }
 

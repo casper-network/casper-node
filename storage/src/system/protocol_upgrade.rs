@@ -740,20 +740,17 @@ where
                     .borrow_mut()
                     .write(uref_key, stored_value);
                 // next, add the Key::URef to the mint's named keys
-                let entry_key = {
-                    let named_key_entry =
-                        NamedKeyAddr::new_from_string(entity_addr, name.to_string()).map_err(
-                            |_| {
-                                ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
-                            },
-                        )?;
-                    Key::NamedKey(named_key_entry)
-                };
                 let entry_value = {
                     let named_key_value =
-                        NamedKeyValue::from_concrete_values(entry_key, name.to_string())
+                        NamedKeyValue::from_concrete_values(uref_key, name.to_string())
                             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
                     StoredValue::NamedKey(named_key_value)
+                };
+                let entry_key = {
+                    let named_key_entry =
+                        NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                            .map_err(|_| ProtocolUpgradeError::Bytesrepr(name.to_string()))?;
+                    Key::NamedKey(named_key_entry)
                 };
 
                 self.tracking_copy

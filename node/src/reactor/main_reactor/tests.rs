@@ -39,7 +39,7 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, Key, Motes, NextUpgrade,
     PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
     StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
     TransactionV1Builder, ValidatorConfig, U512,
@@ -813,17 +813,11 @@ impl TestFixture {
             .read_highest_block()
             .expect("should have block");
 
-        let block_time = highest_block.clone_header().timestamp();
-
-        let holds_epoch =
-            HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.gas_hold_interval);
-
         let balance_request = BalanceRequest::from_public_key(
             *highest_block.state_root_hash(),
-            block_time.into(),
             highest_block.protocol_version(),
             account_public_key,
-            BalanceHandling::Available { holds_epoch },
+            BalanceHandling::Available,
             ProofHandling::NoProofs,
         );
 

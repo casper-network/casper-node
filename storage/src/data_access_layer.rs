@@ -11,6 +11,7 @@ pub mod auction;
 pub mod balance;
 mod balance_hold;
 pub mod bids;
+mod block_global;
 pub mod block_rewards;
 pub mod era_validators;
 mod execution_results_checksum;
@@ -41,6 +42,7 @@ pub use balance_hold::{
     InsufficientBalanceHandling,
 };
 pub use bids::{BidsRequest, BidsResult};
+pub use block_global::{BlockGlobalKind, BlockGlobalRequest, BlockGlobalResult};
 pub use block_rewards::{BlockRewardsError, BlockRewardsRequest, BlockRewardsResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{
@@ -120,8 +122,8 @@ where
         self.state.flush(request)
     }
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
-        self.state.checkout(state_hash)
+    fn empty_root(&self) -> Digest {
+        self.state.empty_root()
     }
 
     fn tracking_copy(
@@ -134,8 +136,8 @@ where
         }
     }
 
-    fn empty_root(&self) -> Digest {
-        self.state.empty_root()
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
+        self.state.checkout(state_hash)
     }
 
     fn trie(&self, request: TrieRequest) -> TrieResult {

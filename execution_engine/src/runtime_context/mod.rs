@@ -31,10 +31,10 @@ use casper_types::{
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess,
-    HoldsEpoch, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash,
-    Transfer, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
+    KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, URef,
+    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::ExecError};
@@ -438,25 +438,12 @@ where
     /// Reads the available balance of a purse [`URef`].
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
-    pub(crate) fn available_balance(
-        &mut self,
-        purse_uref: &URef,
-        holds_epoch: HoldsEpoch,
-    ) -> Result<Motes, ExecError> {
+    pub(crate) fn available_balance(&mut self, purse_uref: &URef) -> Result<Motes, ExecError> {
         let key = Key::URef(*purse_uref);
         self.tracking_copy
             .borrow_mut()
-            .get_available_balance(key, holds_epoch)
+            .get_available_balance(key)
             .map_err(ExecError::TrackingCopy)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn write_balance(
-        &mut self,
-        purse_uref: URef,
-        cl_value: CLValue,
-    ) -> Result<(), ExecError> {
-        self.metered_write_gs_unsafe(Key::Balance(purse_uref.addr()), cl_value)
     }
 
     /// Read a stored value under a [`Key`].

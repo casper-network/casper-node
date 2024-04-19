@@ -7,8 +7,8 @@ use casper_types::{
         mint::BalanceHoldAddrTag,
         HANDLE_PAYMENT,
     },
-    AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, HoldsEpoch, InitiatorAddr,
-    Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
+    AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, InitiatorAddr, Key,
+    ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
 };
 use itertools::Itertools;
 use num_rational::Ratio;
@@ -32,7 +32,7 @@ pub enum BalanceHandling {
     #[default]
     Total,
     /// Adjust for balance holds (if any).
-    Available { holds_epoch: HoldsEpoch },
+    Available,
 }
 
 /// Merkle proof handling options.
@@ -254,7 +254,6 @@ impl From<(HoldBalanceHandling, u64)> for GasHoldBalanceHandling {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BalanceRequest {
     state_hash: Digest,
-    block_time: BlockTime,
     protocol_version: ProtocolVersion,
     identifier: BalanceIdentifier,
     balance_handling: BalanceHandling,
@@ -265,7 +264,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn new(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         identifier: BalanceIdentifier,
         balance_handling: BalanceHandling,
@@ -273,7 +271,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier,
             balance_handling,
@@ -284,7 +281,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn from_purse(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         purse_uref: URef,
         balance_handling: BalanceHandling,
@@ -292,7 +288,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Purse(purse_uref),
             balance_handling,
@@ -303,7 +298,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn from_public_key(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         public_key: PublicKey,
         balance_handling: BalanceHandling,
@@ -311,7 +305,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Public(public_key),
             balance_handling,
@@ -322,7 +315,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn from_account_hash(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
         balance_handling: BalanceHandling,
@@ -330,7 +322,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Account(account_hash),
             balance_handling,
@@ -341,7 +332,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn from_entity_addr(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         entity_addr: EntityAddr,
         balance_handling: BalanceHandling,
@@ -349,7 +339,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Entity(entity_addr),
             balance_handling,
@@ -360,7 +349,6 @@ impl BalanceRequest {
     /// Creates a new [`BalanceRequest`].
     pub fn from_internal(
         state_hash: Digest,
-        block_time: BlockTime,
         protocol_version: ProtocolVersion,
         balance_addr: URefAddr,
         balance_handling: BalanceHandling,
@@ -368,7 +356,6 @@ impl BalanceRequest {
     ) -> Self {
         BalanceRequest {
             state_hash,
-            block_time,
             protocol_version,
             identifier: BalanceIdentifier::Internal(balance_addr),
             balance_handling,
@@ -379,11 +366,6 @@ impl BalanceRequest {
     /// Returns a state hash.
     pub fn state_hash(&self) -> Digest {
         self.state_hash
-    }
-
-    /// Returns block time.
-    pub fn block_time(&self) -> BlockTime {
-        self.block_time
     }
 
     /// Protocol version.
