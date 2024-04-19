@@ -1,6 +1,7 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use casper_storage::{
+    address_generator,
     data_access_layer::mint,
     system::{
         self,
@@ -15,7 +16,7 @@ use casper_types::{
     addressable_entity::{NamedKeyAddr, NamedKeys},
     execution::Effects,
     AddressableEntity, AddressableEntityHash, ContextAccessRights, EntityAddr, HoldsEpoch, Key,
-    Phase, ProtocolVersion, PublicKey, SystemEntityRegistry, URef, U512,
+    Phase, ProtocolVersion, PublicKey, SystemEntityRegistry, TransactionHash, URef, U512,
 };
 use parking_lot::RwLock;
 use rand::Rng;
@@ -29,7 +30,8 @@ use super::{Address, GlobalStateReader, TrackingCopy};
 
 fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     tracking_copy: &mut TrackingCopy<R>,
-    id: Id,
+    transaction_hash: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
     system_contract: &str,
     func: impl FnOnce(RuntimeNative<R>) -> Ret,
 ) -> Ret {
@@ -74,7 +76,8 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
         let runtime = RuntimeNative::new(
             config,
             protocol_version,
-            id,
+            Id::Transaction(transaction_hash),
+            address_generator,
             Rc::clone(&forked_tracking_copy),
             address,
             addressable_entity,
@@ -108,6 +111,7 @@ impl Executor for NativeExecutor {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
+        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let system_entity_registry = {
@@ -173,36 +177,56 @@ impl Executor for NativeExecutor {
     }
 }
 
-fn make_random_seed() -> Id {
-    let mut rng = rand::thread_rng();
-    let seed: [u8; 32] = rng.gen();
-    Id::Seed(seed.to_vec())
+pub(crate) struct MintArgs {
+    pub(crate) initial_balance: U512,
 }
 
 pub(crate) fn mint_mint<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    initial_value: impl Into<U512>,
+    transaction_hash: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    args: MintArgs,
 ) -> Result<URef, casper_types::system::mint::Error> {
-    let id = make_random_seed();
-    let initial_value: U512 = initial_value.into();
-    dispatch_system_contract(tracking_copy, id, "mint", |mut runtime| {
-        runtime.mint(initial_value)
-    })
+    dispatch_system_contract(
+        tracking_copy,
+        transaction_hash,
+        address_generator,
+        "mint",
+        |mut runtime| runtime.mint(args.initial_balance),
+    )
+}
+
+pub(crate) struct MintTransferArgs {
+    pub(crate) maybe_to: Option<AccountHash>,
+    pub(crate) source: URef,
+    pub(crate) target: URef,
+    pub(crate) amount: U512,
+    pub(crate) id: Option<u64>,
+    pub(crate) holds_epoch: HoldsEpoch,
 }
 
 pub(crate) fn mint_transfer<R: GlobalStateReader>(
     tracking_copy: &mut TrackingCopy<R>,
-    maybe_to: Option<AccountHash>,
-    source: URef,
-    target: URef,
-    amount: impl Into<U512>,
-    id: Option<u64>,
-    holds_epoch: HoldsEpoch,
+    id: TransactionHash,
+    address_generator: Arc<RwLock<AddressGenerator>>,
+    args: MintTransferArgs,
 ) -> Result<(), casper_types::system::mint::Error> {
-    let amount: U512 = amount.into();
-    dispatch_system_contract(tracking_copy, make_random_seed(), "mint", |mut runtime| {
-        runtime.transfer(maybe_to, source, target, amount, id, holds_epoch)
-    })
+    dispatch_system_contract(
+        tracking_copy,
+        id,
+        address_generator,
+        "mint",
+        |mut runtime| {
+            runtime.transfer(
+                args.maybe_to,
+                args.source,
+                args.target,
+                args.amount,
+                args.id,
+                args.holds_epoch,
+            )
+        },
+    )
 }
 
 #[cfg(test)]
@@ -217,7 +241,7 @@ mod tests {
     };
     use casper_types::{
         AddressableEntityHash, ChainspecRegistry, Digest, GenesisConfigBuilder, HoldsEpoch,
-        SystemEntityRegistry,
+        SystemEntityRegistry, TransactionV1Hash,
     };
 
     use super::*;
@@ -252,9 +276,20 @@ mod tests {
             .expect("Obtaining root hash succeed")
             .expect("Root hash exists");
 
+        let mut rng = rand::thread_rng();
+        let transaction_hash_bytes: [u8; 32] = rng.gen();
+        let transaction_hash: TransactionHash =
+            TransactionHash::V1(TransactionV1Hash::from_raw(transaction_hash_bytes));
+        let id = Id::Transaction(transaction_hash);
+        let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
+            &id.seed(),
+            Phase::Session,
+        )));
+
         let ret = dispatch_system_contract(
             &mut tracking_copy,
-            Id::Seed(vec![1, 2, 3]),
+            transaction_hash,
+            Arc::clone(&address_generator),
             "mint",
             |mut runtime| runtime.mint(U512::from(1000u64)),
         );
@@ -263,7 +298,8 @@ mod tests {
 
         let ret = dispatch_system_contract(
             &mut tracking_copy,
-            Id::Seed(vec![1, 2, 3]),
+            transaction_hash,
+            Arc::clone(&address_generator),
             "mint",
             |mut runtime| runtime.total_balance(uref),
         );

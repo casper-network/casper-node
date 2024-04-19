@@ -12,7 +12,7 @@ use casper_types::{
 };
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
-use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32};
+use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
 use tracing::error;
 use vm_common::{
     flags::{EntryPointFlags, ReturnFlags},
@@ -23,7 +23,11 @@ use vm_common::{
 use crate::{
     executor::{ExecuteError, ExecuteRequestBuilder, ExecuteResult, ExecutionKind},
     host::abi::{CreateResult, EntryPoint, Manifest},
-    storage::{self, runtime, Address, GlobalStateReader},
+    storage::{
+        self,
+        runtime::{self, MintArgs},
+        Address, GlobalStateReader,
+    },
     wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
     ConfigBuilder, Executor, HostError, HostResult, TrapCode, VMError, VMResult, WasmEngine,
 };
@@ -288,7 +292,16 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     // let owner = EntityAddr::SmartContract(caller.context().address);
 
     // TODO: abort(str) as an alternative to trap
-    let purse_uref: URef = match runtime::mint_mint(&mut caller.context_mut().storage, 0) {
+    let address_generator = Arc::clone(&caller.context().address_generator);
+    let transaction_hash = caller.context().transaction_hash;
+    let purse_uref: URef = match runtime::mint_mint(
+        &mut caller.context_mut().storage,
+        transaction_hash,
+        address_generator,
+        MintArgs {
+            initial_balance: U512::zero(),
+        },
+    ) {
         Ok(uref) => uref,
         Err(mint_error) => {
             error!(?mint_error, "Failed to create a purse");
@@ -358,16 +371,17 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                         })
                         .with_input(input_data.unwrap_or_default())
                         .with_value(value)
+                        .with_transaction_hash(caller.context().transaction_hash)
                         .build()
                         .expect("should build");
 
                     let tracking_copy_for_ctor = caller.context().storage.fork2();
 
-                    match caller
-                        .context()
-                        .executor
-                        .execute(tracking_copy_for_ctor, execute_request)
-                    {
+                    match caller.context().executor.execute(
+                        tracking_copy_for_ctor,
+                        Arc::clone(&caller.context().address_generator),
+                        execute_request,
+                    ) {
                         Ok(ExecuteResult {
                             host_error,
                             output,
@@ -483,14 +497,15 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         })
         .with_value(value)
         .with_input(input_data)
+        .with_transaction_hash(caller.context().transaction_hash)
         .build()
         .expect("should build");
 
-    let (gas_usage, host_result) = match caller
-        .context()
-        .executor
-        .execute(tracking_copy, execute_request)
-    {
+    let (gas_usage, host_result) = match caller.context().executor.execute(
+        tracking_copy,
+        Arc::clone(&caller.context().address_generator),
+        execute_request,
+    ) {
         Ok(ExecuteResult {
             host_error,
             output,

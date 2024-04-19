@@ -112,6 +112,7 @@ where
         let cl_value: CLValue = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         let uref = self
             .address_generator()
+            .write()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.extend_access_rights(&[uref]);
         // we are creating this key now, thus we know it is a Key::URef and we grant the creator

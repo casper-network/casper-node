@@ -34,7 +34,7 @@ pub mod heap_meter {
 pub mod count_meter {
     use std::collections::BTreeSet;
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct Count;
 
     impl<K, V> super::Meter<K, V> for Count {

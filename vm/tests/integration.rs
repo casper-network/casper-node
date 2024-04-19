@@ -1,18 +1,24 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
 use casper_storage::{
+    address_generator::Address,
     data_access_layer::{GenesisRequest, GenesisResult},
     global_state::{
         self,
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
+    system::runtime_native::Id,
+    AddressGenerator,
 };
 use casper_types::{
     account::AccountHash,
     execution::{Effects, TransformKindV2},
-    ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfigBuilder, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, U512,
+    ChainspecRegistry, Digest, EntityAddr, GenesisAccount, GenesisConfigBuilder, Key, Motes, Phase,
+    ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash, U512,
 };
 use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use tempfile::TempDir;
 use vm::executor::{
     v2::{ExecutorConfigBuilder, ExecutorKind, ExecutorV2},
@@ -34,6 +40,22 @@ const VM2_CEP18: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18.wasm"))
 const VM2_CEP18_CALLER: Bytes = Bytes::from_static(include_bytes!("../vm2-cep18-caller.wasm"));
 const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2-trait.wasm"));
 
+const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
+const TRANSACTION_HASH: TransactionHash =
+    TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
+fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
+    let mut rng = rand::thread_rng();
+    let id = Id::Transaction(TRANSACTION_HASH);
+    let address_generator = Arc::new(RwLock::new(AddressGenerator::new(
+        &id.seed(),
+        Phase::Session,
+    )));
+    Arc::new(RwLock::new(AddressGenerator::new(
+        &id.seed(),
+        Phase::Session,
+    )))
+}
+
 #[test]
 fn test_contract() {
     let mut executor = make_executor();
@@ -52,6 +74,7 @@ fn test_contract() {
     let _effects = run_wasm(
         &mut executor,
         &mut global_state,
+        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -69,12 +92,14 @@ fn harness() {
         .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
         .with_serialized_input(())
         .with_value(1000)
+        .with_transaction_hash(TRANSACTION_HASH)
         .build()
         .expect("should build");
 
     run_wasm(
         &mut executor,
         &mut global_state,
+        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -107,6 +132,7 @@ fn cep18() {
     let effects_1 = run_wasm(
         &mut executor,
         &mut global_state,
+        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -142,6 +168,7 @@ fn cep18() {
     let _effects_2 = run_wasm(
         &mut executor,
         &mut global_state,
+        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -195,6 +222,7 @@ fn traits() {
     run_wasm(
         &mut executor,
         &mut global_state,
+        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -203,6 +231,7 @@ fn traits() {
 fn run_wasm(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,
+    address_generator: Arc<RwLock<AddressGenerator>>,
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
 ) -> Effects {
@@ -212,7 +241,7 @@ fn run_wasm(
         .expect("Root hash exists");
 
     let result = executor
-        .execute(tracking_copy, execute_request)
+        .execute(tracking_copy, address_generator, execute_request)
         .expect("Succeed");
 
     result.effects().clone()

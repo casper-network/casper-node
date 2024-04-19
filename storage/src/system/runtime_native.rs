@@ -8,7 +8,8 @@ use casper_types::{
     ContextAccessRights, FeeHandling, Key, Phase, ProtocolVersion, PublicKey, RefundHandling,
     StoredValue, TransactionHash, Transfer, URef, U512,
 };
-use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use parking_lot::RwLock;
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc, sync::Arc};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Config {
@@ -228,9 +229,9 @@ impl Id {
 
 pub struct RuntimeNative<S> {
     config: Config,
-    id: Id,
 
-    address_generator: AddressGenerator,
+    id: Id,
+    address_generator: Arc<RwLock<AddressGenerator>>,
     protocol_version: ProtocolVersion,
 
     tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
@@ -252,6 +253,7 @@ where
         config: Config,
         protocol_version: ProtocolVersion,
         id: Id,
+        address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         address: AccountHash,
         addressable_entity: AddressableEntity,
@@ -260,11 +262,10 @@ where
         remaining_spending_limit: U512,
         phase: Phase,
     ) -> Self {
-        let seed = id.seed();
-        let address_generator = AddressGenerator::new(&seed, phase);
         let transfers = vec![];
         RuntimeNative {
             config,
+
             id,
             address_generator,
             protocol_version,
@@ -286,11 +287,10 @@ where
         config: Config,
         protocol_version: ProtocolVersion,
         id: Id,
+        address_generator: Arc<RwLock<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<S>>>,
         phase: Phase,
     ) -> Result<Self, TrackingCopyError> {
-        let seed = id.seed();
-        let address_generator = AddressGenerator::new(&seed, phase);
         let transfers = vec![];
         let (addressable_entity, named_keys, access_rights) =
             tracking_copy.borrow_mut().system_entity(protocol_version)?;
@@ -313,8 +313,8 @@ where
         })
     }
 
-    pub fn address_generator(&mut self) -> &mut AddressGenerator {
-        &mut self.address_generator
+    pub fn address_generator(&mut self) -> Arc<RwLock<AddressGenerator>> {
+        Arc::clone(&self.address_generator)
     }
 
     pub fn config(&self) -> &Config {

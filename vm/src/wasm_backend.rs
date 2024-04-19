@@ -2,7 +2,8 @@ pub(crate) mod wasmer;
 use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
-use casper_types::system;
+use casper_storage::AddressGenerator;
+use casper_types::{system, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
 
@@ -37,6 +38,8 @@ pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
     pub(crate) value: u64,
     pub(crate) storage: TrackingCopy<S>,
     pub(crate) executor: E, // TODO: This could be part of the caller
+    pub(crate) transaction_hash: TransactionHash,
+    pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
 }
 
 #[derive(Debug, Copy, Clone)]

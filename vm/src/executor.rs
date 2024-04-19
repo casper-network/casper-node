@@ -1,9 +1,12 @@
 pub mod v2;
 
+use std::sync::Arc;
+
 use borsh::BorshSerialize;
 use bytes::Bytes;
-use casper_storage::tracking_copy::TrackingCopyParts;
-use casper_types::execution::Effects;
+use casper_storage::{tracking_copy::TrackingCopyParts, AddressGenerator};
+use casper_types::{execution::Effects, TransactionHash};
+use parking_lot::RwLock;
 use thiserror::Error;
 use vm_common::selector::Selector;
 
@@ -25,6 +28,8 @@ pub struct ExecuteRequest {
     pub(crate) input: Bytes,
     /// Value transferred to the contract.
     pub(crate) value: u64,
+    /// Transaction hash.
+    pub(crate) transaction_hash: TransactionHash,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -35,6 +40,7 @@ pub struct ExecuteRequestBuilder {
     target: Option<ExecutionKind>,
     input: Option<Bytes>,
     value: Option<u64>,
+    transaction_hash: Option<TransactionHash>,
 }
 
 impl ExecuteRequestBuilder {
@@ -76,6 +82,11 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    pub fn with_transaction_hash(mut self, transaction_hash: TransactionHash) -> Self {
+        self.transaction_hash = Some(transaction_hash);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let caller = self.caller.ok_or("Caller is not set")?;
@@ -83,6 +94,7 @@ impl ExecuteRequestBuilder {
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
         let value = self.value.ok_or("Value is not set")?;
+        let transaction_hash = self.transaction_hash.ok_or("Transaction hash is not set")?;
 
         Ok(ExecuteRequest {
             caller,
@@ -90,6 +102,7 @@ impl ExecuteRequestBuilder {
             execution_kind,
             input,
             value,
+            transaction_hash,
         })
     }
 }
@@ -150,6 +163,7 @@ pub trait Executor: Clone + Send {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
+        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
 }

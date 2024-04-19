@@ -900,6 +900,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "once_cell",
+ "parking_lot 0.12.1",
  "proptest",
  "rand",
  "rand_chacha",

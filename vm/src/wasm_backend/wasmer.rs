@@ -697,6 +697,8 @@ where
             storage: data.context.storage.fork2(),
             executor: data.context.executor.clone(),
             value: data.context.value,
+            address_generator: Arc::clone(&data.context.address_generator),
+            transaction_hash: data.context.transaction_hash,
         }
     }
 }

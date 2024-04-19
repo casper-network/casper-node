@@ -1,6 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
+use casper_storage::{address_generator, AddressGenerator};
 use casper_types::{
     account::AccountHash, contracts::ContractV2, ByteCodeAddr, EntityAddr, HoldsEpoch, Key,
     StoredValue,
@@ -11,7 +12,10 @@ use vm_common::flags::ReturnFlags;
 
 use super::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor};
 use crate::{
-    storage::{runtime, Address, GlobalStateReader, TrackingCopy},
+    storage::{
+        runtime::{self, MintTransferArgs},
+        Address, GlobalStateReader, TrackingCopy,
+    },
     wasm_backend::{Context, WasmInstance},
     ConfigBuilder, HostError, VMError, WasmEngine,
 };
@@ -117,6 +121,7 @@ impl Executor for ExecutorV2 {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
+        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let ExecuteRequest {
@@ -125,6 +130,7 @@ impl Executor for ExecutorV2 {
             input,
             caller,
             value,
+            transaction_hash,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.
@@ -195,20 +201,29 @@ impl Executor for ExecutorV2 {
 
                         if value != 0 {
                             // let purse_uref = source_uref.expect("should have purse uref");
-                            let maybe_to = None;
-                            let source = addressable_entity.main_purse();
-                            let target = manifest.purse_uref;
-                            let amount = value;
-                            let id = None;
-                            let holds_epoch = HoldsEpoch::NOT_APPLICABLE;
+
+                            let args = {
+                                let maybe_to = None;
+                                let source = addressable_entity.main_purse();
+                                let target = manifest.purse_uref;
+                                let amount = value;
+                                let id = None;
+                                let holds_epoch = HoldsEpoch::NOT_APPLICABLE;
+                                MintTransferArgs {
+                                    maybe_to,
+                                    source,
+                                    target,
+                                    amount: amount.into(),
+                                    id,
+                                    holds_epoch,
+                                }
+                            };
+
                             runtime::mint_transfer(
                                 &mut tracking_copy,
-                                maybe_to,
-                                source,
-                                target,
-                                amount,
-                                id,
-                                holds_epoch,
+                                transaction_hash,
+                                Arc::clone(&address_generator),
+                                args,
                             )
                             .expect("Mint transfer to succeed");
                         }
@@ -240,6 +255,8 @@ impl Executor for ExecutorV2 {
             state_address,
             storage: tracking_copy,
             executor: self.clone(),
+            address_generator: Arc::clone(&address_generator),
+            transaction_hash,
         };
 
         let wasm_instance_config = ConfigBuilder::new()
