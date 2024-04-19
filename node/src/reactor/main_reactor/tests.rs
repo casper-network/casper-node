@@ -918,10 +918,7 @@ impl TestFixture {
 
 impl From<&TestFixture> for GasHoldBalanceHandling {
     fn from(value: &TestFixture) -> Self {
-        GasHoldBalanceHandling::new(
-            value.chainspec.core_config.gas_hold_balance_handling,
-            value.chainspec.core_config.gas_hold_interval,
-        )
+        GasHoldBalanceHandling::new(value.chainspec.core_config.gas_hold_balance_handling)
     }
 }
 

@@ -1230,8 +1230,7 @@ where
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
-        let gas_hold_balance_handling =
-            GasHoldBalanceHandling::new(HoldBalanceHandling::default(), hold_interval);
+        let gas_hold_balance_handling = GasHoldBalanceHandling::new(HoldBalanceHandling::default());
 
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
@@ -1258,8 +1257,7 @@ where
         let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
-        let gas_hold_balance_handling =
-            GasHoldBalanceHandling::new(HoldBalanceHandling::default(), hold_interval);
+        let gas_hold_balance_handling = GasHoldBalanceHandling::new(HoldBalanceHandling::default());
         let request = BalanceRequest::from_public_key(
             state_root_hash,
             block_time.into(),

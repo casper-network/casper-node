@@ -10,6 +10,7 @@ pub struct ProtocolUpgradeConfig {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
+    new_gas_hold_interval: Option<u64>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period_millis: Option<u64>,
@@ -28,6 +29,7 @@ impl ProtocolUpgradeConfig {
         current_protocol_version: ProtocolVersion,
         new_protocol_version: ProtocolVersion,
         activation_point: Option<EraId>,
+        new_gas_hold_interval: Option<u64>,
         new_validator_slots: Option<u32>,
         new_auction_delay: Option<u64>,
         new_locked_funds_period_millis: Option<u64>,
@@ -42,6 +44,7 @@ impl ProtocolUpgradeConfig {
             current_protocol_version,
             new_protocol_version,
             activation_point,
+            new_gas_hold_interval,
             new_validator_slots,
             new_auction_delay,
             new_locked_funds_period_millis,
@@ -71,6 +74,11 @@ impl ProtocolUpgradeConfig {
     /// Returns activation point in eras.
     pub fn activation_point(&self) -> Option<EraId> {
         self.activation_point
+    }
+
+    /// Returns new auction delay if specified.
+    pub fn new_gas_hold_interval(&self) -> Option<u64> {
+        self.new_gas_hold_interval
     }
 
     /// Returns new validator slots if specified.

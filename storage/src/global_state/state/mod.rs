@@ -6,9 +6,7 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use itertools::Itertools;
 use num_rational::Ratio;
-use num_traits::CheckedMul;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -33,8 +31,8 @@ use casper_types::{
         },
         AUCTION, MINT,
     },
-    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldBalanceHandling, HoldsEpoch, Key,
-    KeyTag, Phase, PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
+    Account, AddressableEntity, CLValue, Digest, EntityAddr, HoldsEpoch, Key, KeyTag, Phase,
+    PublicKey, RuntimeArgs, StoredValue, TimeDiff, U512,
 };
 
 #[cfg(test)]
@@ -43,7 +41,7 @@ pub use self::lmdb::make_temporary_global_state;
 use crate::{
     data_access_layer::{
         auction::{AuctionMethodRet, BiddingRequest, BiddingResult},
-        balance::{BalanceError, BalanceHandling},
+        balance::BalanceHandling,
         era_validators::EraValidatorsResult,
         handle_fee::{HandleFeeMode, HandleFeeRequest, HandleFeeResult},
         mint::{TransferRequest, TransferRequestArgs, TransferResult},
@@ -189,7 +187,7 @@ pub trait CommitProvider: StateProvider {
         };
 
         let protocol_upgrader: ProtocolUpgrader<Self> =
-            ProtocolUpgrader::new(request.config().clone(), tc.clone());
+            ProtocolUpgrader::new(request.config().clone(), pre_state_hash, tc.clone());
 
         if let Err(err) = protocol_upgrader.upgrade(pre_state_hash) {
             return err.into();
@@ -559,18 +557,15 @@ pub trait StateProvider {
             Err(tce) => return tce.into(),
         };
 
-        let proof_handling = request.proof_handling();
-
-        match proof_handling {
+        let (total_balance, proofs_result) = match request.proof_handling() {
             ProofHandling::NoProofs => {
-                let balance_key = Key::Balance(purse_addr);
-                let total_balance = match tc.read(&balance_key) {
+                let total_balance = match tc.read(&purse_balance_key) {
                     Ok(Some(StoredValue::CLValue(cl_value))) => match cl_value.into_t::<U512>() {
                         Ok(val) => val,
                         Err(cve) => return TrackingCopyError::CLValue(cve).into(),
                     },
                     Ok(Some(_)) => return TrackingCopyError::UnexpectedStoredValueVariant.into(),
-                    Ok(None) => return TrackingCopyError::KeyNotFound(balance_key).into(),
+                    Ok(None) => return TrackingCopyError::KeyNotFound(purse_balance_key).into(),
                     Err(tce) => return tce.into(),
                 };
                 let balance_holds = match request.balance_handling() {
@@ -582,97 +577,7 @@ pub trait StateProvider {
                         }
                     }
                 };
-
-                let available_balance = if balance_holds.is_empty() {
-                    total_balance
-                } else {
-                    let handling = request.gas_hold_balance_handling().handling();
-                    let interval = request.gas_hold_balance_handling().interval();
-                    let held = match handling {
-                        HoldBalanceHandling::Accrued => balance_holds
-                            .values()
-                            .flat_map(|holds| holds.values().copied())
-                            .collect_vec()
-                            .into_iter()
-                            .sum(),
-                        HoldBalanceHandling::Amortized => {
-                            let mut ret = U512::zero();
-                            let block_time = request.block_time().value();
-                            for (hold_created_time, holds) in &balance_holds {
-                                let hold_created_time = hold_created_time.value();
-                                if hold_created_time > block_time {
-                                    continue;
-                                }
-                                // calculate the expiry per the current chainspec setting.
-                                // this is always correct for current checks, but hypothetically:
-                                // on a chain that used amortized holds for some period of time
-                                // with a specific interval and then later changed the interval,
-                                // subsequent balance queries using the client interface
-                                // for an historical period would get a different outcome than
-                                // the actual contemporaneous outcome from that time. This is not
-                                // a "problem" per se at least from the perspective of on-chain
-                                // processing. But it would frustrate a hypothetical auditory
-                                // process attempting to check historical outcomes using a present
-                                // day node's current logic and settings. If we wanted to address
-                                // this edge case, we would need to store the interval in global
-                                // state as part of the protocol
-                                // upgrade to 2.0 and refresh it in future
-                                // upgrades if the value changes.
-                                let expiry = hold_created_time.saturating_add(interval.millis());
-                                if block_time > expiry {
-                                    continue;
-                                }
-                                // total held amount
-                                let held = Ratio::new_raw(
-                                    holds.values().copied().collect_vec().into_iter().sum(),
-                                    U512::one(),
-                                );
-                                // remaining time
-                                let remaining_time = U512::from(expiry.saturating_sub(block_time));
-                                // remaining time over total time
-                                let ratio =
-                                    Ratio::new_raw(remaining_time, U512::from(interval.millis()));
-                                /*
-                                    EXAMPLE: 1000 held for 24 hours
-                                    if 1 hours has elapsed, held amount = 1000 * (23/24) == 958
-                                    if 2 hours has elapsed, held amount = 1000 * (22/24) == 916
-                                    ...
-                                    if 23 hours has elapsed, held amount    = 1000 * (1/24) == 41
-                                    if 23.50 hours has elapsed, held amount = 1000 * (1/48) == 20
-                                    if 23.75 hours has elapsed, held amount = 1000 * (1/96) == 10
-                                                                    (54000 ms / 5184000 ms)
-                                */
-                                match held.checked_mul(&ratio) {
-                                    Some(amortized) => ret += amortized.to_integer(),
-                                    None => {
-                                        return BalanceResult::Failure(
-                                            BalanceError::AmortizationFailure,
-                                        )
-                                    }
-                                }
-                            }
-                            ret
-                        }
-                    };
-                    debug_assert!(
-                        total_balance >= held,
-                        "it should not be possible to hold more than the total available"
-                    );
-                    match total_balance.checked_sub(held) {
-                        Some(available_balance) => available_balance,
-                        None => {
-                            error!(%held, %total_balance, "held amount exceeds total balance, which should never occur.");
-                            return BalanceResult::Failure(BalanceError::HeldExceedsTotal);
-                        }
-                    }
-                };
-
-                BalanceResult::Success {
-                    purse_addr,
-                    total_balance,
-                    available_balance,
-                    proofs_result: ProofsResult::NotRequested { balance_holds },
-                }
+                (total_balance, ProofsResult::NotRequested { balance_holds })
             }
             ProofHandling::Proofs => {
                 let (total_balance, total_balance_proof) =
@@ -681,7 +586,7 @@ pub trait StateProvider {
                         Err(tce) => return tce.into(),
                     };
 
-                let balance_holds_with_proofs = match request.balance_handling() {
+                let balance_holds = match request.balance_handling() {
                     BalanceHandling::Total => BTreeMap::new(),
                     BalanceHandling::Available { holds_epoch } => {
                         match tc.get_balance_holds_with_proof(purse_addr, holds_epoch) {
@@ -691,36 +596,40 @@ pub trait StateProvider {
                     }
                 };
 
-                let available_balance = if balance_holds_with_proofs.is_empty() {
-                    total_balance
-                } else {
-                    let held = balance_holds_with_proofs
-                        .values()
-                        .flat_map(|holds| holds.values().map(|(v, _)| *v))
-                        .collect_vec()
-                        .into_iter()
-                        .sum();
-
-                    debug_assert!(
-                        total_balance >= held,
-                        "it should not be possible to hold more than the total available"
-                    );
-                    if held > total_balance {
-                        error!(%held, %total_balance, "holds somehow exceed total balance, which should never occur.");
-                    }
-                    total_balance.checked_sub(held).unwrap_or(U512::zero())
-                };
-
-                BalanceResult::Success {
-                    purse_addr,
+                (
                     total_balance,
-                    available_balance,
-                    proofs_result: ProofsResult::Proofs {
+                    ProofsResult::Proofs {
                         total_balance_proof,
-                        balance_holds: balance_holds_with_proofs,
+                        balance_holds,
                     },
-                }
+                )
             }
+        };
+
+        let gas_hold_handling = request.gas_hold_balance_handling().handling();
+        let gas_hold_interval = match request
+            .gas_hold_balance_handling()
+            .gas_hold_interval(&mut tc)
+        {
+            Ok(interval) => interval,
+            Err(tce) => return tce.into(),
+        };
+
+        let available_balance = match &proofs_result.available_balance(
+            request.block_time(),
+            total_balance,
+            gas_hold_handling,
+            gas_hold_interval,
+        ) {
+            Ok(available_balance) => *available_balance,
+            Err(be) => return BalanceResult::Failure(be.clone()),
+        };
+
+        BalanceResult::Success {
+            purse_addr,
+            total_balance,
+            available_balance,
+            proofs_result,
         }
     }
 

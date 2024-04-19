@@ -4,15 +4,17 @@ use casper_types::{
     global_state::TrieMerkleProof,
     system::{
         handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-        mint::BalanceHoldAddrTag,
-        HANDLE_PAYMENT,
+        mint::{BalanceHoldAddrTag, MINT_GAS_HOLD_INTERVAL_KEY},
+        HANDLE_PAYMENT, MINT,
     },
     AccessRights, BlockTime, Digest, EntityAddr, HoldBalanceHandling, HoldsEpoch, InitiatorAddr,
     Key, ProtocolVersion, PublicKey, StoredValue, TimeDiff, URef, URefAddr, U512,
 };
 use itertools::Itertools;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 use std::{
-    collections::BTreeMap,
+    collections::{btree_map::Entry, BTreeMap},
     fmt::{Display, Formatter},
 };
 use tracing::error;
@@ -174,13 +176,12 @@ impl From<InitiatorAddr> for BalanceIdentifier {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct GasHoldBalanceHandling {
     handling: HoldBalanceHandling,
-    interval: TimeDiff,
 }
 
 impl GasHoldBalanceHandling {
     /// Returns new instance.
-    pub fn new(handling: HoldBalanceHandling, interval: TimeDiff) -> Self {
-        GasHoldBalanceHandling { handling, interval }
+    pub fn new(handling: HoldBalanceHandling) -> Self {
+        GasHoldBalanceHandling { handling }
     }
 
     /// Returns handling.
@@ -189,17 +190,42 @@ impl GasHoldBalanceHandling {
     }
 
     /// Returns interval.
-    pub fn interval(&self) -> TimeDiff {
-        self.interval
+    pub fn gas_hold_interval<S>(
+        &self,
+        tc: &mut TrackingCopy<S>,
+    ) -> Result<TimeDiff, TrackingCopyError>
+    where
+        S: StateReader<Key, StoredValue, Error = crate::global_state::error::Error>,
+    {
+        let system_contract_registry = tc.get_system_entity_registry()?;
+
+        let entity_hash = system_contract_registry.get(MINT).ok_or_else(|| {
+            error!("Missing system mint contract hash");
+            TrackingCopyError::MissingSystemContractHash(MINT.to_string())
+        })?;
+
+        let named_keys = tc.get_named_keys(EntityAddr::System(entity_hash.value()))?;
+        let named_key = named_keys.get(MINT_GAS_HOLD_INTERVAL_KEY).ok_or(
+            TrackingCopyError::NamedKeyNotFound(MINT_GAS_HOLD_INTERVAL_KEY.to_string()),
+        )?;
+        let _uref = named_key
+            .as_uref()
+            .ok_or(TrackingCopyError::UnexpectedKeyVariant(*named_key))?;
+
+        match tc.read(named_key) {
+            Ok(Some(StoredValue::CLValue(cl_value))) => {
+                let interval = cl_value.into_t().map_err(TrackingCopyError::CLValue)?;
+                Ok(TimeDiff::from_millis(interval))
+            }
+            Ok(_) => Err(TrackingCopyError::UnexpectedStoredValueVariant),
+            Err(tce) => Err(tce),
+        }
     }
 }
 
 impl From<(HoldBalanceHandling, TimeDiff)> for GasHoldBalanceHandling {
     fn from(value: (HoldBalanceHandling, TimeDiff)) -> Self {
-        GasHoldBalanceHandling {
-            handling: value.0,
-            interval: value.1,
-        }
+        GasHoldBalanceHandling { handling: value.0 }
     }
 }
 
@@ -384,12 +410,141 @@ impl BalanceRequest {
     }
 }
 
+pub trait AvailableBalanceChecker {
+    /// Calculate and return available balance.
+    #[allow(clippy::result_unit_err)]
+    fn available_balance(
+        &self,
+        block_time: BlockTime,
+        total_balance: U512,
+        handling: HoldBalanceHandling,
+        interval: TimeDiff,
+    ) -> Result<U512, BalanceError> {
+        if self.is_empty() {
+            return Ok(total_balance);
+        }
+        let held = match handling {
+            HoldBalanceHandling::Accrued => self.accrued(),
+            HoldBalanceHandling::Amortized => {
+                let mut held = U512::zero();
+                let block_time = block_time.value();
+                let interval = interval.millis();
+
+                for (hold_created_time, holds) in self.holds() {
+                    let hold_created_time = hold_created_time.value();
+                    if hold_created_time > block_time {
+                        continue;
+                    }
+                    let expiry = hold_created_time.saturating_add(interval);
+                    if block_time > expiry {
+                        continue;
+                    }
+                    // total held amount
+                    let held_ratio = Ratio::new_raw(
+                        holds.values().copied().collect_vec().into_iter().sum(),
+                        U512::one(),
+                    );
+                    // remaining time
+                    let remaining_time = U512::from(expiry.saturating_sub(block_time));
+                    // remaining time over total time
+                    let ratio = Ratio::new_raw(remaining_time, U512::from(interval));
+                    /*
+                        EXAMPLE: 1000 held for 24 hours
+                        if 1 hours has elapsed, held amount = 1000 * (23/24) == 958
+                        if 2 hours has elapsed, held amount = 1000 * (22/24) == 916
+                        ...
+                        if 23 hours has elapsed, held amount    = 1000 * (1/24) == 41
+                        if 23.50 hours has elapsed, held amount = 1000 * (1/48) == 20
+                        if 23.75 hours has elapsed, held amount = 1000 * (1/96) == 10
+                                                        (54000 ms / 5184000 ms)
+                    */
+                    match held_ratio.checked_mul(&ratio) {
+                        Some(amortized) => held += amortized.to_integer(),
+                        None => return Err(BalanceError::AmortizationFailure),
+                    }
+                }
+                held
+            }
+        };
+        debug_assert!(
+            total_balance >= held,
+            "it should not be possible to hold more than the total available"
+        );
+        match total_balance.checked_sub(held) {
+            Some(available_balance) => Ok(available_balance),
+            None => {
+                error!(%held, %total_balance, "held amount exceeds total balance, which should never occur.");
+                Err(BalanceError::HeldExceedsTotal)
+            }
+        }
+    }
+
+    /// Return accrued amount.
+    fn accrued(&self) -> U512;
+
+    /// Return holds.
+    fn holds(&self) -> BTreeMap<BlockTime, BalanceHolds>;
+
+    /// Return true if empty.
+    fn is_empty(&self) -> bool;
+}
+
 /// Balance holds with Merkle proofs.
 pub type BalanceHolds = BTreeMap<BalanceHoldAddrTag, U512>;
+
+impl AvailableBalanceChecker for BTreeMap<BlockTime, BalanceHolds> {
+    fn accrued(&self) -> U512 {
+        self.values()
+            .flat_map(|holds| holds.values().copied())
+            .collect_vec()
+            .into_iter()
+            .sum()
+    }
+
+    fn holds(&self) -> BTreeMap<BlockTime, BalanceHolds> {
+        self.clone()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
 
 /// Balance holds with Merkle proofs.
 pub type BalanceHoldsWithProof =
     BTreeMap<BalanceHoldAddrTag, (U512, TrieMerkleProof<Key, StoredValue>)>;
+
+impl AvailableBalanceChecker for BTreeMap<BlockTime, BalanceHoldsWithProof> {
+    fn accrued(&self) -> U512 {
+        self.values()
+            .flat_map(|holds| holds.values().map(|(v, _)| *v))
+            .collect_vec()
+            .into_iter()
+            .sum()
+    }
+
+    fn holds(&self) -> BTreeMap<BlockTime, BalanceHolds> {
+        let mut ret: BTreeMap<BlockTime, BalanceHolds> = BTreeMap::new();
+        for (block_time, holds_with_proof) in self {
+            let mut holds: BTreeMap<BalanceHoldAddrTag, U512> = BTreeMap::new();
+            for (addr, (held, _)) in holds_with_proof {
+                match holds.entry(*addr) {
+                    Entry::Vacant(v) => v.insert(*held),
+                    Entry::Occupied(mut o) => &mut o.insert(*held),
+                };
+            }
+            match ret.entry(*block_time) {
+                Entry::Vacant(v) => v.insert(holds),
+                Entry::Occupied(mut o) => &mut o.insert(holds),
+            };
+        }
+        ret
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofsResult {
@@ -448,6 +603,25 @@ impl ProofsResult {
                 .collect_vec()
                 .into_iter()
                 .sum(),
+        }
+    }
+
+    /// Returns the available balance, calculated using imputed values.
+    #[allow(clippy::result_unit_err)]
+    pub fn available_balance(
+        &self,
+        block_time: BlockTime,
+        total_balance: U512,
+        handling: HoldBalanceHandling,
+        interval: TimeDiff,
+    ) -> Result<U512, BalanceError> {
+        match self {
+            ProofsResult::NotRequested { balance_holds } => {
+                balance_holds.available_balance(block_time, total_balance, handling, interval)
+            }
+            ProofsResult::Proofs { balance_holds, .. } => {
+                balance_holds.available_balance(block_time, total_balance, handling, interval)
+            }
         }
     }
 }

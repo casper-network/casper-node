@@ -192,6 +192,7 @@ impl Chainspec {
             current_protocol_version,
             self.protocol_config.version,
             Some(era_id),
+            Some(self.core_config.gas_hold_interval.millis()),
             Some(self.core_config.validator_slots),
             Some(self.core_config.auction_delay),
             Some(self.core_config.locked_funds_period.millis()),

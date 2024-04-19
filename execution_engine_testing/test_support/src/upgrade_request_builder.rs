@@ -13,6 +13,7 @@ pub struct UpgradeRequestBuilder {
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
     activation_point: Option<EraId>,
+    new_gas_hold_interval: Option<u64>,
     new_validator_slots: Option<u32>,
     new_auction_delay: Option<u64>,
     new_locked_funds_period_millis: Option<u64>,
@@ -44,6 +45,12 @@ impl UpgradeRequestBuilder {
     /// Sets `new_protocol_version` to the given [`ProtocolVersion`].
     pub fn with_new_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
         self.new_protocol_version = protocol_version;
+        self
+    }
+
+    /// Sets `new_validator_slots`.
+    pub fn with_new_gas_hold_interval(mut self, gas_hold_interval: u64) -> Self {
+        self.new_gas_hold_interval = Some(gas_hold_interval);
         self
     }
 
@@ -114,6 +121,7 @@ impl UpgradeRequestBuilder {
             self.current_protocol_version,
             self.new_protocol_version,
             self.activation_point,
+            self.new_gas_hold_interval,
             self.new_validator_slots,
             self.new_auction_delay,
             self.new_locked_funds_period_millis,
@@ -133,6 +141,7 @@ impl Default for UpgradeRequestBuilder {
             current_protocol_version: Default::default(),
             new_protocol_version: Default::default(),
             activation_point: None,
+            new_gas_hold_interval: None,
             new_validator_slots: None,
             new_auction_delay: None,
             new_locked_funds_period_millis: None,

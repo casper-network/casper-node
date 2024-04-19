@@ -548,8 +548,7 @@ where
     let balance_handling = BalanceHandling::Available {
         holds_epoch: HoldsEpoch::from_timestamp(timestamp, gas_hold_interval),
     };
-    let gas_hold_balance_handling =
-        GasHoldBalanceHandling::new(gas_hold_handling, gas_hold_interval);
+    let gas_hold_balance_handling = GasHoldBalanceHandling::new(gas_hold_handling);
 
     let balance_req = BalanceRequest::new(
         state_root_hash,
