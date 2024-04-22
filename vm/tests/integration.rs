@@ -56,6 +56,14 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     )))
 }
 
+fn base_execute_builder() -> ExecuteRequestBuilder {
+    ExecuteRequestBuilder::default()
+        .with_caller(DEFAULT_ACCOUNT_HASH.value())
+        .with_gas_limit(1_000_000)
+        .with_value(1000)
+        .with_transaction_hash(TRANSACTION_HASH)
+}
+
 #[test]
 fn test_contract() {
     let mut executor = make_executor();
@@ -63,9 +71,7 @@ fn test_contract() {
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let input = ("Hello, world!".to_string(), 123456789u32);
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
-        .with_gas_limit(1_000_000)
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_TEST_CONTRACT))
         .with_serialized_input(input)
         .build()
@@ -86,13 +92,9 @@ fn harness() {
 
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
-        .with_gas_limit(1_000_000)
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
         .with_serialized_input(())
-        .with_value(1000)
-        .with_transaction_hash(TRANSACTION_HASH)
         .build()
         .expect("should build");
 
@@ -120,9 +122,7 @@ fn cep18() {
 
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
-        .with_gas_limit(1_000_000)
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
         .with_serialized_input(())
         .with_value(0)
@@ -156,9 +156,7 @@ fn cep18() {
         .commit(state_root_hash, effects_1)
         .expect("Should commit");
 
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
-        .with_gas_limit(1_000_000)
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
         .with_serialized_input((contract_hash,))
         .with_value(0)
@@ -211,9 +209,7 @@ fn traits() {
     let mut executor = make_executor();
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
-    let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
-        .with_gas_limit(1_000_000)
+    let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_TRAITS))
         .with_serialized_input(())
         .build()
