@@ -117,14 +117,14 @@ fn get_balance(
         .expect("failure to read block header")
         .unwrap();
     let state_hash = *block_header.state_root_hash();
+    let block_time = block_header.timestamp().into();
     let balance_handling = if get_total {
         BalanceHandling::Total
     } else {
-        let block_time = block_header.timestamp().into();
         BalanceHandling::Available {
             holds_epoch: HoldsEpoch::from_block_time(
                 block_time,
-                fixture.chainspec.core_config.balance_hold_interval,
+                fixture.chainspec.core_config.gas_hold_interval,
             ),
         }
     };
@@ -134,6 +134,7 @@ fn get_balance(
         .data_access_layer()
         .balance(BalanceRequest::from_public_key(
             state_hash,
+            block_time,
             protocol_version,
             account_key.clone(),
             balance_handling,

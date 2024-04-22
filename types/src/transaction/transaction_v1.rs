@@ -6,7 +6,7 @@ mod transaction_v1_category;
 mod transaction_v1_hash;
 mod transaction_v1_header;
 
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::string::ToString;
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -31,13 +31,15 @@ use super::{
 };
 #[cfg(any(feature = "std", test))]
 use super::{GasLimited, InitiatorAddrAndSecretKey};
+#[cfg(any(feature = "std", test))]
+use crate::chainspec::Chainspec;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::chainspec::PricingHandling;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransactionRuntime,
     TransactionSessionKind,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{chainspec::Chainspec, chainspec::PricingHandling};
 
 #[cfg(any(feature = "std", test))]
 use crate::{Gas, Motes, TransactionConfig, U512};

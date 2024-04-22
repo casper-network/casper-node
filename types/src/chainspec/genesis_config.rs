@@ -12,7 +12,8 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AdministratorAccount, Chainspec, GenesisAccount, Motes, PublicKey, SystemConfig, WasmConfig,
+    AdministratorAccount, Chainspec, GenesisAccount, HoldBalanceHandling, Motes, PublicKey,
+    SystemConfig, WasmConfig,
 };
 
 /// Default number of validator slots.
@@ -33,6 +34,11 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
+/// Default gas hold interval in milliseconds.
+pub const DEFAULT_GAS_HOLD_INTERVAL_MILLIS: u64 = 24 * 60 * 60 * 60;
+
+/// Default gas hold balance handling.
+pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Accrued;
 
 /// Represents the details of a genesis process.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +52,8 @@ pub struct GenesisConfig {
     round_seigniorage_rate: Ratio<u64>,
     unbonding_delay: u64,
     genesis_timestamp_millis: u64,
+    gas_hold_balance_handling: HoldBalanceHandling,
+    gas_hold_interval_millis: u64,
 }
 
 impl GenesisConfig {
@@ -68,6 +76,8 @@ impl GenesisConfig {
         round_seigniorage_rate: Ratio<u64>,
         unbonding_delay: u64,
         genesis_timestamp_millis: u64,
+        gas_hold_balance_handling: HoldBalanceHandling,
+        gas_hold_interval_millis: u64,
     ) -> GenesisConfig {
         GenesisConfig {
             accounts,
@@ -79,6 +89,8 @@ impl GenesisConfig {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            gas_hold_balance_handling,
+            gas_hold_interval_millis,
         }
     }
 
@@ -158,6 +170,16 @@ impl GenesisConfig {
     pub fn genesis_timestamp_millis(&self) -> u64 {
         self.genesis_timestamp_millis
     }
+
+    /// Returns gas hold balance handling.
+    pub fn gas_hold_balance_handling(&self) -> HoldBalanceHandling {
+        self.gas_hold_balance_handling
+    }
+
+    /// Returns gas hold interval expressed in milliseconds.
+    pub fn gas_hold_interval_millis(&self) -> u64 {
+        self.gas_hold_interval_millis
+    }
 }
 
 #[cfg(any(feature = "testing", test))]
@@ -185,6 +207,8 @@ impl Distribution<GenesisConfig> for Standard {
         let unbonding_delay = rng.gen();
 
         let genesis_timestamp_millis = rng.gen();
+        let gas_hold_balance_handling = rng.gen();
+        let gas_hold_interval_millis = rng.gen();
 
         GenesisConfig {
             accounts,
@@ -196,6 +220,8 @@ impl Distribution<GenesisConfig> for Standard {
             round_seigniorage_rate,
             unbonding_delay,
             genesis_timestamp_millis,
+            gas_hold_balance_handling,
+            gas_hold_interval_millis,
         }
     }
 }
@@ -215,6 +241,8 @@ pub struct GenesisConfigBuilder {
     round_seigniorage_rate: Option<Ratio<u64>>,
     unbonding_delay: Option<u64>,
     genesis_timestamp_millis: Option<u64>,
+    gas_hold_balance_handling: Option<HoldBalanceHandling>,
+    gas_hold_interval_millis: Option<u64>,
 }
 
 impl GenesisConfigBuilder {
@@ -277,6 +305,12 @@ impl GenesisConfigBuilder {
         self
     }
 
+    /// Sets the gas hold interval config option expressed as milliseconds.
+    pub fn with_gas_hold_interval_millis(mut self, gas_hold_interval_millis: u64) -> Self {
+        self.gas_hold_interval_millis = Some(gas_hold_interval_millis);
+        self
+    }
+
     /// Builds a new [`GenesisConfig`] object.
     pub fn build(self) -> GenesisConfig {
         GenesisConfig {
@@ -295,6 +329,12 @@ impl GenesisConfigBuilder {
             genesis_timestamp_millis: self
                 .genesis_timestamp_millis
                 .unwrap_or(DEFAULT_GENESIS_TIMESTAMP_MILLIS),
+            gas_hold_balance_handling: self
+                .gas_hold_balance_handling
+                .unwrap_or(DEFAULT_GAS_HOLD_BALANCE_HANDLING),
+            gas_hold_interval_millis: self
+                .gas_hold_interval_millis
+                .unwrap_or(DEFAULT_GAS_HOLD_INTERVAL_MILLIS),
         }
     }
 }
@@ -306,6 +346,7 @@ impl From<&Chainspec> for GenesisConfig {
             .activation_point
             .genesis_timestamp()
             .map_or(0, |timestamp| timestamp.millis());
+        let gas_hold_interval_millis = chainspec.core_config.gas_hold_interval.millis();
 
         GenesisConfigBuilder::default()
             .with_accounts(chainspec.network_config.accounts_config.clone().into())
@@ -317,6 +358,7 @@ impl From<&Chainspec> for GenesisConfig {
             .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
             .with_unbonding_delay(chainspec.core_config.unbonding_delay)
             .with_genesis_timestamp_millis(genesis_timestamp_millis)
+            .with_gas_hold_interval_millis(gas_hold_interval_millis)
             .build()
     }
 }

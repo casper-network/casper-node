@@ -10,9 +10,9 @@ use casper_storage::{
         balance::BalanceHandling, AuctionMethod, BalanceHoldKind, BalanceHoldRequest,
         BalanceIdentifier, BalanceRequest, BiddingRequest, BlockRewardsRequest, BlockRewardsResult,
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, EvictItem, FeeRequest,
-        FeeResult, FlushRequest, HandleFeeMode, HandleFeeRequest, HandleRefundMode,
-        HandleRefundRequest, InsufficientBalanceHandling, ProofHandling, PruneRequest, PruneResult,
-        StepRequest, StepResult, TransferRequest,
+        FeeResult, FlushRequest, GasHoldBalanceHandling, HandleFeeMode, HandleFeeRequest,
+        HandleRefundMode, HandleRefundRequest, InsufficientBalanceHandling, ProofHandling,
+        PruneRequest, PruneResult, StepRequest, StepResult, TransferRequest,
     },
     global_state::state::{
         lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, ScratchProvider,
@@ -89,12 +89,17 @@ pub fn execute_finalized_block(
     let mut artifacts = Vec::with_capacity(executable_block.transactions.len());
 
     // set up accounting variables / settings
-    let holds_epoch =
-        HoldsEpoch::from_block_time(block_time, chainspec.core_config.balance_hold_interval);
-    let balance_handling = BalanceHandling::Available { holds_epoch };
     let insufficient_balance_handling = InsufficientBalanceHandling::HoldRemaining;
     let refund_handling = chainspec.core_config.refund_handling;
     let fee_handling = chainspec.core_config.fee_handling;
+    let gas_hold_interval = chainspec.core_config.gas_hold_interval;
+    let gas_hold_balance_handling: GasHoldBalanceHandling = (
+        chainspec.core_config.gas_hold_balance_handling,
+        gas_hold_interval,
+    )
+        .into();
+    let holds_epoch = HoldsEpoch::from_block_time(block_time, gas_hold_interval);
+    let balance_handling = BalanceHandling::Available { holds_epoch };
 
     // get scratch state, which must be used for all processing and post processing data
     // requirements.
@@ -279,6 +284,7 @@ pub fn execute_finalized_block(
 
         let initial_balance_result = scratch_state.balance(BalanceRequest::new(
             state_root_hash,
+            block_time,
             protocol_version,
             balance_identifier.clone(),
             balance_handling,
@@ -304,6 +310,7 @@ pub fn execute_finalized_block(
                     block_time,
                     holds_epoch,
                     insufficient_balance_handling,
+                    gas_hold_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
@@ -416,6 +423,7 @@ pub fn execute_finalized_block(
                 BalanceHoldKind::All,
                 balance_identifier.clone(),
                 holds_epoch,
+                gas_hold_balance_handling,
             );
             let hold_result = scratch_state.balance_hold(hold_request);
             state_root_hash =
@@ -500,6 +508,7 @@ pub fn execute_finalized_block(
                     block_time,
                     holds_epoch,
                     insufficient_balance_handling,
+                    gas_hold_balance_handling,
                 );
                 let hold_result = scratch_state.balance_hold(hold_request);
                 state_root_hash =
