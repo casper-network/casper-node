@@ -98,6 +98,7 @@ impl AuctionMethod {
                 runtime_args,
                 chainspec.core_config.minimum_delegation_amount,
             ),
+            TransactionEntryPoint::AddAssociatedKey => todo!(),
         }
     }
 

@@ -25,6 +25,7 @@ use super::BlockPayload;
 pub struct FinalizedBlock {
     pub(crate) mint: Vec<TransactionHash>,
     pub(crate) auction: Vec<TransactionHash>,
+    pub(crate) entity: Vec<TransactionHash>,
     pub(crate) install_upgrade: Vec<TransactionHash>,
     pub(crate) standard: Vec<TransactionHash>,
     pub(crate) rewarded_signatures: RewardedSignatures,
@@ -59,6 +60,7 @@ impl FinalizedBlock {
         FinalizedBlock {
             mint: block_payload.mint().map(|(x, _)| x).copied().collect(),
             auction: block_payload.auction().map(|(x, _)| x).copied().collect(),
+            entity: block_payload.entity().map(|(x, _)| x).copied().collect(),
             install_upgrade: block_payload
                 .install_upgrade()
                 .map(|(x, _)| x)
@@ -151,6 +153,7 @@ impl From<BlockV2> for FinalizedBlock {
         FinalizedBlock {
             mint: block.mint().copied().collect(),
             auction: block.auction().copied().collect(),
+            entity: block.entity().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             timestamp: block.timestamp(),
@@ -225,6 +228,7 @@ mod tests {
             ret.insert(TransactionCategory::Mint, vec![]);
             ret.insert(TransactionCategory::InstallUpgrade, vec![]);
             ret.insert(TransactionCategory::Auction, vec![]);
+            ret.insert(TransactionCategory::Entity, vec![]);
             ret
         };
         let block_payload = BlockPayload::new(transactions, vec![], Default::default(), false);

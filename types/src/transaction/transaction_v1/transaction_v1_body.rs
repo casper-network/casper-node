@@ -110,7 +110,9 @@ impl TransactionV1Body {
             return false;
         }
         match self.entry_point {
-            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => false,
+            TransactionEntryPoint::Custom(_)
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddAssociatedKey => false,
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::ActivateBid
@@ -131,9 +133,18 @@ impl TransactionV1Body {
         }
     }
 
+    /// Returns true if this transaction is a native entity interaction.
+    pub fn is_native_entity(&self) -> bool {
+        TransactionTarget::Native == self.target
+            && TransactionEntryPoint::AddAssociatedKey == self.entry_point
+    }
+
     /// Returns true if this transaction goes into the misc / standard category.
     pub fn is_standard(&self) -> bool {
-        !self.is_native_mint() && !self.is_native_auction() && !self.is_install_or_upgrade()
+        !self.is_native_mint()
+            && !self.is_native_auction()
+            && !self.is_install_or_upgrade()
+            && !self.is_native_entity()
     }
 
     /// Consumes `self`, returning its constituent parts.
@@ -194,6 +205,9 @@ impl TransactionV1Body {
                 TransactionEntryPoint::ActivateBid => {
                     arg_handling::has_valid_activate_bid_args(&self.args)
                 }
+                TransactionEntryPoint::AddAssociatedKey => {
+                    todo!()
+                }
             },
             TransactionTarget::Stored { .. } => match &self.entry_point {
                 TransactionEntryPoint::Custom(_) => Ok(()),
@@ -203,7 +217,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => {
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::AddAssociatedKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction targeting stored entity/package must have custom entry point"
@@ -227,7 +242,8 @@ impl TransactionV1Body {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => {
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::AddAssociatedKey => {
                     debug!(
                         entry_point = %self.entry_point,
                         "transaction with session code must have custom entry point"
@@ -248,6 +264,7 @@ impl TransactionV1Body {
             TransactionCategory::Standard => Self::random_standard(rng),
             TransactionCategory::Auction => Self::random_staking(rng),
             TransactionCategory::Mint => Self::random_transfer(rng),
+            TransactionCategory::Entity => todo!(),
         }
     }
 

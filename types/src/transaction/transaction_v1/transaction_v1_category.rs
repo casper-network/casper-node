@@ -32,17 +32,20 @@ pub enum TransactionCategory {
     Auction = 2,
     /// Install or Upgrade.
     InstallUpgrade = 3,
+    /// Entity
+    Entity = 4,
 }
 
 impl TransactionCategory {
     /// Returns a random transaction category.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0u32..4) {
+        match rng.gen_range(0u32..5) {
             0 => Self::Mint,
             1 => Self::Auction,
             2 => Self::InstallUpgrade,
             3 => Self::Standard,
+            4 => Self::Entity,
             _ => unreachable!(),
         }
     }
@@ -51,10 +54,11 @@ impl TransactionCategory {
 impl fmt::Display for TransactionCategory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionCategory::Standard => write!(f, "Standard"),
-            TransactionCategory::Mint => write!(f, "Mint"),
-            TransactionCategory::Auction => write!(f, "Auction"),
-            TransactionCategory::InstallUpgrade => write!(f, "InstallUpgrade"),
+            Self::Standard => write!(f, "Standard"),
+            Self::Mint => write!(f, "Mint"),
+            Self::Auction => write!(f, "Auction"),
+            Self::InstallUpgrade => write!(f, "InstallUpgrade"),
+            Self::Entity => write!(f, "Entity"),
         }
     }
 }

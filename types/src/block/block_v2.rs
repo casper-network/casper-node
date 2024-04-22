@@ -43,7 +43,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let transfer_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
         [20; Digest::LENGTH],
     )))];
-    let non_transfer_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+    let auction_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
         Digest::from([21; Digest::LENGTH]),
     ))];
     let installer_upgrader_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
@@ -52,6 +52,9 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let other_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
         [23; Digest::LENGTH],
     )))];
+    let entity_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+        Digest::from([24; Digest::LENGTH]),
+    ))];
     let rewarded_signatures = RewardedSignatures::default();
     let current_gas_price = 1u8;
     BlockV2::new(
@@ -66,7 +69,8 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         protocol_version,
         proposer,
         transfer_hashes,
-        non_transfer_native_hashes,
+        auction_native_hashes,
+        entity_native_hashes,
         installer_upgrader_hashes,
         other_hashes,
         rewarded_signatures,
@@ -106,6 +110,7 @@ impl BlockV2 {
         proposer: PublicKey,
         mint: Vec<TransactionHash>,
         auction: Vec<TransactionHash>,
+        entity: Vec<TransactionHash>,
         install_upgrade: Vec<TransactionHash>,
         standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
@@ -115,6 +120,7 @@ impl BlockV2 {
             proposer,
             mint,
             auction,
+            entity,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -246,9 +252,14 @@ impl BlockV2 {
         self.body.mint()
     }
 
-    /// Returns the hashes of the non-transfer, native transactions within the block.
+    /// Returns the hashes of the auction, native transactions within the block.
     pub fn auction(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.auction()
+    }
+
+    /// Returns the hashes of the entity, native transactions within the block.
+    pub fn entity(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.entity()
     }
 
     /// Returns the hashes of the installer/upgrader transactions within the block.

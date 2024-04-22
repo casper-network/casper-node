@@ -140,6 +140,8 @@ max_transaction_size = 1_048_576
 block_max_mint_count = 500
 # Maximum number of auction transactions allowed in a block.
 block_max_auction_count = 100
+# Maximum number of entity transactions allowed in a block.
+block_max_entity_count = 50
 # Maximum number of installer/upgrader transactions allowed in a block.
 block_max_install_upgrade_count = 2
 # Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.

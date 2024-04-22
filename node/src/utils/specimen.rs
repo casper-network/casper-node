@@ -685,6 +685,10 @@ impl LargestSpecimen for BlockV2 {
             TransactionHash::largest_specimen(estimator, cache);
             estimator.parameter::<usize>("max_auctions_per_block")
         ];
+        let entity_hashes = vec![
+            TransactionHash::largest_specimen(estimator, cache);
+            estimator.parameter::<usize>("max_entities_per_block")
+        ];
         let install_upgrade_hashes =
             vec![
                 TransactionHash::largest_specimen(estimator, cache);
@@ -709,6 +713,7 @@ impl LargestSpecimen for BlockV2 {
             LargestSpecimen::largest_specimen(estimator, cache),
             transfer_hashes,
             staking_hashes,
+            entity_hashes,
             install_upgrade_hashes,
             standard_hashes,
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -835,6 +840,13 @@ impl LargestSpecimen for BlockPayload {
             vec![
                 large_txn_hash_with_approvals.clone();
                 estimator.parameter::<usize>("max_auctions_per_block")
+            ],
+        );
+        transactions.insert(
+            TransactionCategory::Entity,
+            vec![
+                large_txn_hash_with_approvals.clone();
+                estimator.parameter::<usize>("max_entities_per_block")
             ],
         );
         transactions.insert(

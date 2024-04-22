@@ -217,6 +217,11 @@ impl TransactionV1 {
         self.body().is_native_auction()
     }
 
+    /// Returns true is this transaction is a native entity interaction.
+    pub fn is_native_entity(&self) -> bool {
+        self.body().is_native_entity()
+    }
+
     /// Returns true if this transaction is a smart contract installer or upgrader.
     pub fn is_install_or_upgrade(&self) -> bool {
         self.body().is_install_or_upgrade()
@@ -586,6 +591,7 @@ impl TransactionV1 {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate => TransactionCategory::Auction,
+                TransactionEntryPoint::AddAssociatedKey => TransactionCategory::Entity,
             },
             TransactionTarget::Stored { .. } => TransactionCategory::Standard,
             TransactionTarget::Session { kind, .. } => match kind {
@@ -649,7 +655,9 @@ impl GasLimited for TransactionV1 {
                     } else if self.is_native_auction() {
                         let entry_point = self.body().entry_point();
                         let amount = match entry_point {
-                            TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer => {
+                            TransactionEntryPoint::Custom(_)
+                            | TransactionEntryPoint::Transfer
+                            | TransactionEntryPoint::AddAssociatedKey => {
                                 return Err(InvalidTransactionV1::EntryPointCannotBeCustom {
                                     entry_point: entry_point.clone(),
                                 })
@@ -667,6 +675,8 @@ impl GasLimited for TransactionV1 {
                         amount as u64
                     } else if self.is_install_or_upgrade() {
                         costs.install_upgrade_limit()
+                    } else if self.is_native_entity() {
+                        todo!()
                     } else {
                         costs.standard_transaction_limit()
                     }

@@ -435,6 +435,7 @@ impl TransactionBuffer {
         let mut have_hit_standard_limit = false;
         let mut have_hit_install_upgrade_limit = false;
         let mut have_hit_auction_limit = false;
+        let mut have_hit_entity_limit = false;
 
         let mut buckets = self.buckets(current_era_gas_price);
         let mut body_hashes_queue: VecDeque<_> = buckets.keys().cloned().collect();
@@ -454,7 +455,8 @@ impl TransactionBuffer {
                 );
             }
 
-            let Some((transaction_hash,footprint)) = buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
+            let Some((transaction_hash, footprint)) =
+                buckets.get_mut(&body_hash).and_then(Vec::<_>::pop)
             else {
                 continue;
             };
@@ -473,6 +475,9 @@ impl TransactionBuffer {
                 continue;
             }
             if footprint.is_auction() && have_hit_auction_limit {
+                continue;
+            }
+            if footprint.is_entity() && have_hit_entity_limit {
                 continue;
             }
 
@@ -504,23 +509,19 @@ impl TransactionBuffer {
                         }
                         AddError::Count(category) => {
                             match category {
-                                TransactionCategory::Mint => {
-                                    have_hit_mint_limit = true;
-                                }
-                                TransactionCategory::Auction => {
-                                    have_hit_auction_limit = true;
-                                }
-                                TransactionCategory::Standard => {
-                                    have_hit_standard_limit = true;
-                                }
+                                TransactionCategory::Mint => have_hit_mint_limit = true,
+                                TransactionCategory::Auction => have_hit_auction_limit = true,
+                                TransactionCategory::Standard => have_hit_standard_limit = true,
                                 TransactionCategory::InstallUpgrade => {
                                     have_hit_install_upgrade_limit = true;
                                 }
+                                TransactionCategory::Entity => have_hit_entity_limit = true,
                             }
                             if have_hit_standard_limit
                                 && have_hit_auction_limit
                                 && have_hit_install_upgrade_limit
                                 && have_hit_mint_limit
+                                && have_hit_entity_limit
                             {
                                 info!(
                                     ?transaction_hash,

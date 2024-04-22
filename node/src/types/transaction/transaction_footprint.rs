@@ -88,6 +88,11 @@ impl TransactionFootprint {
         matches!(self.category, TransactionCategory::InstallUpgrade)
     }
 
+    /// Is entity.
+    pub(crate) fn is_entity(&self) -> bool {
+        matches!(self.category, TransactionCategory::Entity)
+    }
+
     pub(crate) fn gas_price_tolerance(&self) -> u8 {
         self.gas_price_tolerance
     }

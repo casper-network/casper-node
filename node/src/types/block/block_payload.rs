@@ -63,6 +63,17 @@ impl BlockPayload {
         ret.into_iter()
     }
 
+    /// Returns the hashes and approvals of the entity transactions within the block.
+    pub fn entity(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
+        let mut ret = Vec::new();
+        if let Some(transactions) = self.transactions.get(&TransactionCategory::Entity) {
+            for transaction in transactions {
+                ret.push(transaction)
+            }
+        }
+        ret.into_iter()
+    }
+
     /// Returns the hashes and approvals of the install / upgrade transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &(TransactionHash, BTreeSet<Approval>)> {
         let mut ret = vec![];

@@ -26,6 +26,8 @@ pub struct BlockBodyV2 {
     pub(super) mint: Vec<TransactionHash>,
     /// The hashes of the auction transactions within the block.
     pub(super) auction: Vec<TransactionHash>,
+    /// The hashes of the entity transactions within the block.
+    pub(super) entity: Vec<TransactionHash>,
     /// The hashes of the installer/upgrader transactions within the block.
     pub(super) install_upgrade: Vec<TransactionHash>,
     /// The hashes of all other transactions within the block.
@@ -47,6 +49,7 @@ impl BlockBodyV2 {
         proposer: PublicKey,
         mint: Vec<TransactionHash>,
         auction: Vec<TransactionHash>,
+        entity: Vec<TransactionHash>,
         install_upgrade: Vec<TransactionHash>,
         standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
@@ -55,6 +58,7 @@ impl BlockBodyV2 {
             proposer,
             mint,
             auction,
+            entity,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -78,6 +82,11 @@ impl BlockBodyV2 {
         self.auction.iter()
     }
 
+    /// Returns the hashes of the entity transactions within the block.
+    pub fn entity(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.entity.iter()
+    }
+
     /// Returns the hashes of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
         self.install_upgrade.iter()
@@ -92,6 +101,7 @@ impl BlockBodyV2 {
     pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
         self.mint()
             .chain(self.auction())
+            .chain(self.entity())
             .chain(self.install_upgrade())
             .chain(self.standard())
     }
@@ -126,6 +136,7 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             mint,
             auction,
+            entity,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -136,6 +147,7 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             mint,
             auction,
+            entity,
             install_upgrade,
             standard,
             rewarded_signatures,
@@ -143,6 +155,7 @@ impl PartialEq for BlockBodyV2 {
         *proposer == other.proposer
             && *mint == other.mint
             && *auction == other.auction
+            && *entity == other.entity
             && *install_upgrade == other.install_upgrade
             && *standard == other.standard
             && *rewarded_signatures == other.rewarded_signatures
@@ -153,11 +166,12 @@ impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block body proposed by {}, {} mint, {} auction, {} \
-            installer/upgraders, {} others",
+            "block body proposed by {}, {} mint, {} auction, {} entity, \
+            {} installer/upgraders, {} others",
             self.proposer,
             self.mint.len(),
             self.auction.len(),
+            self.entity.len(),
             self.install_upgrade.len(),
             self.standard.len()
         )
@@ -169,6 +183,7 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.write_bytes(writer)?;
         self.mint.write_bytes(writer)?;
         self.auction.write_bytes(writer)?;
+        self.entity.write_bytes(writer)?;
         self.install_upgrade.write_bytes(writer)?;
         self.standard.write_bytes(writer)?;
         self.rewarded_signatures.write_bytes(writer)?;
@@ -185,6 +200,7 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.serialized_length()
             + self.mint.serialized_length()
             + self.auction.serialized_length()
+            + self.entity.serialized_length()
             + self.install_upgrade.serialized_length()
             + self.standard.serialized_length()
             + self.rewarded_signatures.serialized_length()
@@ -196,6 +212,7 @@ impl FromBytes for BlockBodyV2 {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (mint, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
         let (auction, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
+        let (entity, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
         let (install_upgrade, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
         let (standard, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
         let (rewarded_signatures, bytes) = RewardedSignatures::from_bytes(bytes)?;
@@ -203,6 +220,7 @@ impl FromBytes for BlockBodyV2 {
             proposer,
             mint,
             auction,
+            entity,
             install_upgrade,
             standard,
             rewarded_signatures,

@@ -84,6 +84,7 @@ impl AppendableBlock {
             TransactionCategory::InstallUpgrade => {
                 self.transaction_config.block_max_install_upgrade_count
             }
+            TransactionCategory::Entity => self.transaction_config.block_max_entity_count,
         };
         // check total count by category
         let category = footprint.category;

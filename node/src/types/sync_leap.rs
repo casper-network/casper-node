@@ -2354,6 +2354,11 @@ mod tests {
                 iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
                     .take(count)
                     .collect();
+            let count = self.rng.gen_range(0..6);
+            let entity_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
 
             let next = BlockV2::new(
                 *self.block.hash(),
@@ -2368,6 +2373,7 @@ mod tests {
                 PublicKey::random(self.rng),
                 transfer_hashes,
                 staking_hashes,
+                entity_hashes,
                 install_upgrade_hashes,
                 standard_hashes,
                 Default::default(),

@@ -16,7 +16,7 @@ use crate::testing::TestRng;
 use crate::{
     alloc::string::ToString,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::{auction, mint},
+    system::{auction, entity, mint},
 };
 
 const CUSTOM_TAG: u8 = 0;
@@ -27,6 +27,7 @@ const DELEGATE_TAG: u8 = 4;
 const UNDELEGATE_TAG: u8 = 5;
 const REDELEGATE_TAG: u8 = 6;
 const ACTIVATE_BID_TAG: u8 = 7;
+const ADD_ASSOCIATED_KEY_TAG: u8 = 8;
 
 /// The entry point of a [`Transaction`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -134,18 +135,29 @@ pub enum TransactionEntryPoint {
     )]
     Redelegate,
 
-    /// The `activate bid` native entry point, used to reactivate an inactive bid.
+    /// The `activate_bid` native entry point, used to reactivate an inactive bid.
     ///
     /// Requires the following runtime args:
     ///   * "validator_public_key": `PublicKey`
     #[cfg_attr(
         feature = "json-schema",
         schemars(
-            description = "The `activate_bid` native entry point, used to used to reactivate an \
+            description = "The `activate_bid` native entry point, used to reactivate an \
             inactive bid."
         )
     )]
     ActivateBid,
+
+    /// The `add_associated_key` native entry point, used to add a key.
+    ///
+    /// Requires the following runtime args:
+    ///   * "associated_key": `???`
+    ///   * "weight": `???`
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(description = "The `add_associated_key` native entry point, used to add a key.")
+    )]
+    AddAssociatedKey,
 }
 
 impl TransactionEntryPoint {
@@ -161,6 +173,7 @@ impl TransactionEntryPoint {
             UNDELEGATE_TAG => TransactionEntryPoint::Undelegate,
             REDELEGATE_TAG => TransactionEntryPoint::Redelegate,
             ACTIVATE_BID_TAG => TransactionEntryPoint::ActivateBid,
+            ADD_ASSOCIATED_KEY_TAG => TransactionEntryPoint::AddAssociatedKey,
             _ => unreachable!(),
         }
     }
@@ -171,7 +184,8 @@ impl TransactionEntryPoint {
             TransactionEntryPoint::AddBid
             | TransactionEntryPoint::Delegate
             | TransactionEntryPoint::Custom(_)
-            | TransactionEntryPoint::Transfer => true,
+            | TransactionEntryPoint::Transfer
+            | TransactionEntryPoint::AddAssociatedKey => true,
             TransactionEntryPoint::WithdrawBid
             | TransactionEntryPoint::Undelegate
             | TransactionEntryPoint::Redelegate
@@ -193,6 +207,7 @@ impl Display for TransactionEntryPoint {
             TransactionEntryPoint::Undelegate => write!(formatter, "undelegate"),
             TransactionEntryPoint::Redelegate => write!(formatter, "redelegate"),
             TransactionEntryPoint::ActivateBid => write!(formatter, "activate_bid"),
+            TransactionEntryPoint::AddAssociatedKey => write!(formatter, "add_associated_key"),
         }
     }
 }
@@ -211,6 +226,7 @@ impl ToBytes for TransactionEntryPoint {
             TransactionEntryPoint::Undelegate => UNDELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::Redelegate => REDELEGATE_TAG.write_bytes(writer),
             TransactionEntryPoint::ActivateBid => ACTIVATE_BID_TAG.write_bytes(writer),
+            TransactionEntryPoint::AddAssociatedKey => ADD_ASSOCIATED_KEY_TAG.write_bytes(writer),
         }
     }
 
@@ -230,7 +246,8 @@ impl ToBytes for TransactionEntryPoint {
                 | TransactionEntryPoint::Delegate
                 | TransactionEntryPoint::Undelegate
                 | TransactionEntryPoint::Redelegate
-                | TransactionEntryPoint::ActivateBid => 0,
+                | TransactionEntryPoint::ActivateBid
+                | TransactionEntryPoint::AddAssociatedKey => 0,
             }
     }
 }
@@ -250,6 +267,7 @@ impl FromBytes for TransactionEntryPoint {
             UNDELEGATE_TAG => Ok((TransactionEntryPoint::Undelegate, remainder)),
             REDELEGATE_TAG => Ok((TransactionEntryPoint::Redelegate, remainder)),
             ACTIVATE_BID_TAG => Ok((TransactionEntryPoint::ActivateBid, remainder)),
+            ADD_ASSOCIATED_KEY_TAG => Ok((TransactionEntryPoint::AddAssociatedKey, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -257,28 +275,17 @@ impl FromBytes for TransactionEntryPoint {
 
 impl From<&str> for TransactionEntryPoint {
     fn from(value: &str) -> Self {
-        if value.to_lowercase() == mint::METHOD_TRANSFER {
-            return TransactionEntryPoint::Transfer;
+        match value.to_lowercase().as_ref() {
+            mint::METHOD_TRANSFER => TransactionEntryPoint::Transfer,
+            auction::METHOD_ACTIVATE_BID => TransactionEntryPoint::ActivateBid,
+            auction::METHOD_ADD_BID => TransactionEntryPoint::AddBid,
+            auction::METHOD_WITHDRAW_BID => TransactionEntryPoint::WithdrawBid,
+            auction::METHOD_DELEGATE => TransactionEntryPoint::Delegate,
+            auction::METHOD_UNDELEGATE => TransactionEntryPoint::Undelegate,
+            auction::METHOD_REDELEGATE => TransactionEntryPoint::Redelegate,
+            entity::METHOD_ADD_ASSOCIATED_KEY => TransactionEntryPoint::AddAssociatedKey,
+            _ => TransactionEntryPoint::Custom(value.to_string()),
         }
-        if value.to_lowercase() == auction::METHOD_ACTIVATE_BID {
-            return TransactionEntryPoint::ActivateBid;
-        }
-        if value.to_lowercase() == auction::METHOD_ADD_BID {
-            return TransactionEntryPoint::AddBid;
-        }
-        if value.to_lowercase() == auction::METHOD_WITHDRAW_BID {
-            return TransactionEntryPoint::WithdrawBid;
-        }
-        if value.to_lowercase() == auction::METHOD_DELEGATE {
-            return TransactionEntryPoint::Delegate;
-        }
-        if value.to_lowercase() == auction::METHOD_UNDELEGATE {
-            return TransactionEntryPoint::Undelegate;
-        }
-        if value.to_lowercase() == auction::METHOD_REDELEGATE {
-            return TransactionEntryPoint::Redelegate;
-        }
-        TransactionEntryPoint::Custom(value.to_string())
     }
 }
 

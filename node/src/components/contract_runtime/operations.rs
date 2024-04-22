@@ -392,7 +392,7 @@ pub fn execute_finalized_block(
                                 .map_err(|_| BlockExecutionError::RootNotFound(state_root_hash))?;
                         }
                         Err(ire) => {
-                            debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1  request");
+                            debug!(%transaction_hash, ?category, ?ire, "unable to get wasm v1 request");
                             artifact_builder.with_invalid_wasm_v1_request(&ire);
                         }
                     };
@@ -402,6 +402,7 @@ pub fn execute_finalized_block(
                             .observe(wasm_v1_start.elapsed().as_secs_f64());
                     }
                 }
+                TransactionCategory::Entity => todo!(),
             }
         } else {
             debug!(%transaction_hash, "not eligible for execution");
@@ -904,6 +905,7 @@ pub fn execute_finalized_block(
         (*proposer).clone(),
         executable_block.mint,
         executable_block.auction,
+        executable_block.entity,
         executable_block.install_upgrade,
         executable_block.standard,
         executable_block.rewarded_signatures,

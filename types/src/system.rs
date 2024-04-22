@@ -1,6 +1,7 @@
 //! System modules, formerly known as "system contracts"
 pub mod auction;
 mod caller;
+pub mod entity;
 mod error;
 pub mod handle_payment;
 pub mod mint;

@@ -101,6 +101,7 @@ fn create_valid_transaction(
             strict_timestamp,
             with_ttl,
         )),
+        TransactionCategory::Entity => todo!(),
     }
 }
 

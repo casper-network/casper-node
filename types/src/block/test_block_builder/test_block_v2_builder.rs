@@ -172,10 +172,11 @@ impl TestBlockV2Builder {
         let protocol_version = protocol_version;
         let proposer = proposer.unwrap_or_else(|| PublicKey::random(rng));
 
-        let mut transfer_hashes = vec![];
-        let mut staking_hashes = vec![];
-        let mut install_upgrade_hashes = vec![];
-        let mut standard_hashes = vec![];
+        let mut transfer_hashes = Vec::new();
+        let mut staking_hashes = Vec::new();
+        let mut install_upgrade_hashes = Vec::new();
+        let mut standard_hashes = Vec::new();
+        let mut entity_hashes = Vec::new();
         for txn in txns {
             let txn_hash = txn.hash();
             match txn {
@@ -198,6 +199,7 @@ impl TestBlockV2Builder {
                         | TransactionEntryPoint::Undelegate
                         | TransactionEntryPoint::Redelegate
                         | TransactionEntryPoint::ActivateBid => staking_hashes.push(txn_hash),
+                        TransactionEntryPoint::AddAssociatedKey => entity_hashes.push(txn_hash),
                     },
                     TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
                     TransactionTarget::Session { kind, .. } => match kind {
@@ -226,6 +228,7 @@ impl TestBlockV2Builder {
             proposer,
             transfer_hashes,
             staking_hashes,
+            entity_hashes,
             install_upgrade_hashes,
             standard_hashes,
             rewarded_signatures,

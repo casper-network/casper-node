@@ -23,8 +23,10 @@ pub struct ExecutableBlock {
     pub(crate) transactions: Vec<Transaction>,
     /// The hashes of the transfer transactions within the `FinalizedBlock`.
     pub(crate) mint: Vec<TransactionHash>,
-    /// The hashes of the non-transfer, native transactions within the `FinalizedBlock`.
+    /// The hashes of the auction, native transactions within the `FinalizedBlock`.
     pub(crate) auction: Vec<TransactionHash>,
+    /// The hashes of the entity, native transactions within the `FinalizedBlock`.
+    pub(crate) entity: Vec<TransactionHash>,
     /// The hashes of the installer/upgrader transactions within the `FinalizedBlock`.
     pub(crate) install_upgrade: Vec<TransactionHash>,
     /// The hashes of all other transactions within the `FinalizedBlock`.
@@ -51,6 +53,7 @@ impl ExecutableBlock {
             transactions,
             mint: finalized_block.mint,
             auction: finalized_block.auction,
+            entity: finalized_block.entity,
             install_upgrade: finalized_block.install_upgrade,
             standard: finalized_block.standard,
             rewards: None,
@@ -75,6 +78,7 @@ impl ExecutableBlock {
             transactions,
             mint: block.mint().copied().collect(),
             auction: block.auction().copied().collect(),
+            entity: block.entity().copied().collect(),
             install_upgrade: block.install_upgrade().copied().collect(),
             standard: block.standard().copied().collect(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
