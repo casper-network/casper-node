@@ -372,16 +372,20 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                         .with_input(input_data.unwrap_or_default())
                         .with_value(value)
                         .with_transaction_hash(caller.context().transaction_hash)
+                        // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+                        .with_shared_address_generator(Arc::clone(
+                            &caller.context().address_generator,
+                        ))
                         .build()
                         .expect("should build");
 
                     let tracking_copy_for_ctor = caller.context().storage.fork2();
 
-                    match caller.context().executor.execute(
-                        tracking_copy_for_ctor,
-                        Arc::clone(&caller.context().address_generator),
-                        execute_request,
-                    ) {
+                    match caller
+                        .context()
+                        .executor
+                        .execute(tracking_copy_for_ctor, execute_request)
+                    {
                         Ok(ExecuteResult {
                             host_error,
                             output,
@@ -498,14 +502,16 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .with_value(value)
         .with_input(input_data)
         .with_transaction_hash(caller.context().transaction_hash)
+        // We're using shared address generator there as we need to preserve and advance the state of deterministic address generator across chain of calls.
+        .with_shared_address_generator(Arc::clone(&caller.context().address_generator))
         .build()
         .expect("should build");
 
-    let (gas_usage, host_result) = match caller.context().executor.execute(
-        tracking_copy,
-        Arc::clone(&caller.context().address_generator),
-        execute_request,
-    ) {
+    let (gas_usage, host_result) = match caller
+        .context()
+        .executor
+        .execute(tracking_copy, execute_request)
+    {
         Ok(ExecuteResult {
             host_error,
             output,

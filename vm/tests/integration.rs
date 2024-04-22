@@ -43,6 +43,7 @@ const VM2_TRAITS: Bytes = Bytes::from_static(include_bytes!("../vm2-trait.wasm")
 const TRANSACTION_HASH_BYTES: [u8; 32] = [55; 32];
 const TRANSACTION_HASH: TransactionHash =
     TransactionHash::V1(TransactionV1Hash::from_raw(TRANSACTION_HASH_BYTES));
+
 fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
     let mut rng = rand::thread_rng();
     let id = Id::Transaction(TRANSACTION_HASH);
@@ -71,16 +72,19 @@ fn test_contract() {
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
     let input = ("Hello, world!".to_string(), 123456789u32);
+
+    let address_generator = make_address_generator();
+
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_TEST_CONTRACT))
         .with_serialized_input(input)
+        .with_shared_address_generator(address_generator)
         .build()
         .expect("should build");
 
     let _effects = run_wasm(
         &mut executor,
         &mut global_state,
-        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -92,16 +96,18 @@ fn harness() {
 
     let (mut global_state, state_root_hash, _tempdir) = make_global_state_with_genesis();
 
+    let address_generator = make_address_generator();
+
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_HARNESS))
         .with_serialized_input(())
+        .with_shared_address_generator(address_generator)
         .build()
         .expect("should build");
 
     run_wasm(
         &mut executor,
         &mut global_state,
-        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -122,17 +128,19 @@ fn cep18() {
 
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
 
+    let address_generator = make_address_generator();
+
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18))
         .with_serialized_input(())
         .with_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
 
     let effects_1 = run_wasm(
         &mut executor,
         &mut global_state,
-        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -160,13 +168,13 @@ fn cep18() {
         .with_target(ExecutionKind::WasmBytes(VM2_CEP18_CALLER))
         .with_serialized_input((contract_hash,))
         .with_value(0)
+        .with_shared_address_generator(Arc::clone(&address_generator))
         .build()
         .expect("should build");
 
     let _effects_2 = run_wasm(
         &mut executor,
         &mut global_state,
-        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -208,17 +216,18 @@ fn make_global_state_with_genesis() -> (LmdbGlobalState, Digest, TempDir) {
 fn traits() {
     let mut executor = make_executor();
     let (mut global_state, mut state_root_hash, _tempdir) = make_global_state_with_genesis();
+    let address_generator = make_address_generator();
 
     let execute_request = base_execute_builder()
         .with_target(ExecutionKind::WasmBytes(VM2_TRAITS))
         .with_serialized_input(())
+        .with_shared_address_generator(address_generator)
         .build()
         .expect("should build");
 
     run_wasm(
         &mut executor,
         &mut global_state,
-        make_address_generator(),
         state_root_hash,
         execute_request,
     );
@@ -227,7 +236,6 @@ fn traits() {
 fn run_wasm(
     executor: &mut ExecutorV2,
     global_state: &mut LmdbGlobalState,
-    address_generator: Arc<RwLock<AddressGenerator>>,
     pre_state_hash: Digest,
     execute_request: ExecuteRequest,
 ) -> Effects {
@@ -237,7 +245,7 @@ fn run_wasm(
         .expect("Root hash exists");
 
     let result = executor
-        .execute(tracking_copy, address_generator, execute_request)
+        .execute(tracking_copy, execute_request)
         .expect("Succeed");
 
     result.effects().clone()

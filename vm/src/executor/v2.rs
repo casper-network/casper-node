@@ -121,7 +121,6 @@ impl Executor for ExecutorV2 {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
-        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let ExecuteRequest {
@@ -131,6 +130,7 @@ impl Executor for ExecutorV2 {
             caller,
             value,
             transaction_hash,
+            address_generator,
         } = execute_request;
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.

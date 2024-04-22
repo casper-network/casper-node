@@ -30,6 +30,10 @@ pub struct ExecuteRequest {
     pub(crate) value: u64,
     /// Transaction hash.
     pub(crate) transaction_hash: TransactionHash,
+    /// Address generator.
+    ///
+    /// This can be either seeded and created as part of the builder or shared across chain of execution requests.
+    pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,
 }
 
 /// Builder for `ExecuteRequest`.
@@ -41,6 +45,7 @@ pub struct ExecuteRequestBuilder {
     input: Option<Bytes>,
     value: Option<u64>,
     transaction_hash: Option<TransactionHash>,
+    address_generator: Option<Arc<RwLock<AddressGenerator>>>,
 }
 
 impl ExecuteRequestBuilder {
@@ -87,6 +92,25 @@ impl ExecuteRequestBuilder {
         self
     }
 
+    /// Set the address generator.
+    ///
+    /// This can be either seeded and created as part of the builder or shared across chain of execution requests.
+    pub fn with_address_generator(mut self, address_generator: AddressGenerator) -> Self {
+        self.address_generator = Some(Arc::new(RwLock::new(address_generator)));
+        self
+    }
+
+    /// Set the shared address generator.
+    ///
+    /// This is useful when the address generator is shared across a chain of multiple execution requests.
+    pub fn with_shared_address_generator(
+        mut self,
+        address_generator: Arc<RwLock<AddressGenerator>>,
+    ) -> Self {
+        self.address_generator = Some(address_generator);
+        self
+    }
+
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
         let caller = self.caller.ok_or("Caller is not set")?;
@@ -95,6 +119,9 @@ impl ExecuteRequestBuilder {
         let input = self.input.ok_or("Input is not set")?;
         let value = self.value.ok_or("Value is not set")?;
         let transaction_hash = self.transaction_hash.ok_or("Transaction hash is not set")?;
+        let address_generator = self
+            .address_generator
+            .ok_or("Address generator is not set")?;
 
         Ok(ExecuteRequest {
             caller,
@@ -103,6 +130,7 @@ impl ExecuteRequestBuilder {
             input,
             value,
             transaction_hash,
+            address_generator,
         })
     }
 }
@@ -163,7 +191,6 @@ pub trait Executor: Clone + Send {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         tracking_copy: TrackingCopy<R>,
-        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError>;
 }

@@ -111,7 +111,6 @@ impl Executor for NativeExecutor {
     fn execute<R: GlobalStateReader + 'static>(
         &self,
         mut tracking_copy: TrackingCopy<R>,
-        address_generator: Arc<RwLock<AddressGenerator>>,
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let system_entity_registry = {
