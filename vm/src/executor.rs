@@ -5,7 +5,7 @@ use std::sync::Arc;
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use casper_storage::{tracking_copy::TrackingCopyParts, AddressGenerator};
-use casper_types::{execution::Effects, TransactionHash};
+use casper_types::{execution::Effects, Key, TransactionHash};
 use parking_lot::RwLock;
 use thiserror::Error;
 use vm_common::selector::Selector;
@@ -18,8 +18,16 @@ use crate::{
 
 /// Request to execute a Wasm contract.
 pub struct ExecuteRequest {
-    /// Caller's address.
-    pub(crate) caller: Address,
+    /// Initiator's address.
+    pub(crate) initiator: Address,
+    /// Caller's address key.
+    ///
+    /// Either a `[`Key::Account`]` or a `[`Key::AddressableEntity`].
+    pub(crate) caller_key: Key,
+    /// Callee's address key.
+    ///
+    /// Either a `[`Key::Account`]` or a `[`Key::AddressableEntity`].
+    pub(crate) callee_key: Key,
     /// Gas limit.
     pub(crate) gas_limit: u64,
     /// Target for execution.
@@ -39,7 +47,9 @@ pub struct ExecuteRequest {
 /// Builder for `ExecuteRequest`.
 #[derive(Default)]
 pub struct ExecuteRequestBuilder {
-    caller: Option<Address>,
+    initiator: Option<Address>,
+    caller_key: Option<Key>,
+    callee_key: Option<Key>,
     gas_limit: Option<u64>,
     target: Option<ExecutionKind>,
     input: Option<Bytes>,
@@ -49,9 +59,21 @@ pub struct ExecuteRequestBuilder {
 }
 
 impl ExecuteRequestBuilder {
-    /// Set the caller's address.
-    pub fn with_caller(mut self, caller: Address) -> Self {
-        self.caller = Some(caller);
+    /// Set the initiator's address.
+    pub fn with_initiator(mut self, initiator: Address) -> Self {
+        self.initiator = Some(initiator);
+        self
+    }
+
+    /// Set the caller's key.
+    pub fn with_caller_key(mut self, caller_key: Key) -> Self {
+        self.caller_key = Some(caller_key);
+        self
+    }
+
+    /// Set the callee's key.
+    pub fn with_callee_key(mut self, callee_key: Key) -> Self {
+        self.callee_key = Some(callee_key);
         self
     }
 
@@ -113,7 +135,9 @@ impl ExecuteRequestBuilder {
 
     /// Build the `ExecuteRequest`.
     pub fn build(self) -> Result<ExecuteRequest, &'static str> {
-        let caller = self.caller.ok_or("Caller is not set")?;
+        let initiator = self.initiator.ok_or("Initiator is not set")?;
+        let caller_key = self.caller_key.ok_or("Caller is not set")?;
+        let callee_key = self.callee_key.ok_or("Callee is not set")?;
         let gas_limit = self.gas_limit.ok_or("Gas limit is not set")?;
         let execution_kind = self.target.ok_or("Target is not set")?;
         let input = self.input.ok_or("Input is not set")?;
@@ -124,7 +148,9 @@ impl ExecuteRequestBuilder {
             .ok_or("Address generator is not set")?;
 
         Ok(ExecuteRequest {
-            caller,
+            initiator,
+            caller_key,
+            callee_key,
             gas_limit,
             execution_kind,
             input,

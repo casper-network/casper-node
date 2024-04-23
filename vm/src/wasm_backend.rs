@@ -3,7 +3,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 use bytes::Bytes;
 use casper_storage::AddressGenerator;
-use casper_types::{system, TransactionHash};
+use casper_types::{system, AddressableEntity, Key, TransactionHash, URef};
 use parking_lot::RwLock;
 use thiserror::Error;
 
@@ -30,13 +30,17 @@ impl GasUsage {
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub(crate) struct Context<S: GlobalStateReader, E: Executor> {
-    /// The address of the account that is currently executing the contract or session code.
-    pub(crate) caller: Address,
+    /// The address of the account that initiated the contract or session code.
+    pub(crate) initiator: Address,
+    /// The address of the addressable entity that is currently executing the contract or session code.
+    pub(crate) caller: Key,
+    /// The address of the addressable entity that is being called.
+    pub(crate) callee: Key,
     /// The state of the global state at the time of the call based on the currently executing contract or session address.
-    pub(crate) state_address: Address,
+    // pub(crate) state_address: Address,
     /// The amount of tokens that were send to the contract's purse at the time of the call.
     pub(crate) value: u64,
-    pub(crate) storage: TrackingCopy<S>,
+    pub(crate) tracking_copy: TrackingCopy<S>,
     pub(crate) executor: E, // TODO: This could be part of the caller
     pub(crate) transaction_hash: TransactionHash,
     pub(crate) address_generator: Arc<RwLock<AddressGenerator>>,

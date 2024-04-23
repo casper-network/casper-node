@@ -409,6 +409,12 @@ pub fn get_value() -> u64 {
     unsafe { casper_sdk_sys::casper_env_value() }
 }
 
+/// Transfer tokens from the current contract to another account or contract.
+pub fn casper_transfer(target: &Address, amount: u64) -> bool {
+    let ret = unsafe { casper_sdk_sys::casper_transfer(target.as_ptr(), target.len(), amount) };
+    ret == 1
+}
+
 #[cfg(test)]
 mod tests {
     use bytes::Bytes;

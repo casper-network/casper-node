@@ -10,6 +10,7 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
+    collections::Map,
     host::{self, EntityKind},
     log, revert,
     types::{Address, CallError, ResultCode},
@@ -17,12 +18,14 @@ use casper_sdk::{
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
+const BALANCES_PREFIX: &str = "b";
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 pub struct Harness {
     counter: u64,
     greeting: String,
     address_inside_constructor: Option<Address>,
+    balances: Map<Address, u64>,
 }
 
 #[repr(u32)]
@@ -41,6 +44,7 @@ impl Default for Harness {
             counter: 0,
             greeting: "Default value".to_string(),
             address_inside_constructor: None,
+            balances: Map::new(BALANCES_PREFIX),
         }
     }
 }
@@ -55,6 +59,7 @@ impl Harness {
             counter: 0,
             greeting: format!("Hello, {who}!"),
             address_inside_constructor: Some(host::get_caller()),
+            balances: Map::new(BALANCES_PREFIX),
         }
     }
 
@@ -79,6 +84,7 @@ impl Harness {
             counter: 0,
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
+            balances: Map::new(BALANCES_PREFIX),
         }
     }
 
@@ -92,6 +98,7 @@ impl Harness {
             counter: 0,
             greeting: INITIAL_GREETING.to_string(),
             address_inside_constructor: Some(host::get_caller()),
+            balances: Map::new(BALANCES_PREFIX),
         }
     }
 
@@ -216,6 +223,39 @@ impl Harness {
         } else {
             Ok(())
         }
+    }
+
+    #[casper(payable, revert_on_error)]
+    pub fn deposit(&mut self) -> Result<(), CustomError> {
+        let caller = host::get_caller();
+        let value = host::get_value();
+        log!("Depositing {value} from {caller:?}");
+        let current_balance = self.balances.get(&caller).unwrap_or(0);
+        self.balances.insert(&caller, &(current_balance + value));
+        Ok(())
+    }
+
+    #[casper(payable, revert_on_error)]
+    pub fn withdraw(&mut self, amount: u64) -> Result<(), CustomError> {
+        let caller = host::get_caller();
+        log!("Withdrawing {amount} from {caller:?}");
+        let current_balance = self.balances.get(&caller).unwrap_or(0);
+        if current_balance < amount {
+            return Err(CustomError::WithBody("Insufficient balance".into()));
+        }
+        if !host::casper_transfer(&caller, amount) {
+            return Err(CustomError::WithBody("Transfer failed".into()));
+        }
+        self.balances.insert(&caller, &(current_balance - amount));
+        Ok(())
+    }
+
+    pub fn balance(&self) -> u64 {
+        if host::get_value() != 0 {
+            panic!("This function is not payable");
+        }
+        let caller = host::get_caller();
+        self.balances.get(&caller).unwrap_or(0)
     }
 }
 
@@ -408,6 +448,68 @@ pub fn call() {
         assert_eq!(result_3, Err(CustomError::Foo));
         // Check balance after failed call, should be the same as before
         assert_eq!(contract_handle.balance(), 1 + 500 + 499);
+    }
+
+    // Deposit and withdraw
+    // 1. wasm (caller = A, callee = B)
+    //   2. create (caller = B, callee = C)
+    //   3. call (caller = B, callee = C)
+    //     4. create (caller = C, callee = D)
+    //     5. call (caller = C, callee = D)
+
+    {
+        log!("Current caller {:?}", host::get_caller());
+
+        let contract_handle = ContractBuilder::<Harness>::new()
+            .with_value(0)
+            .create(|| HarnessRef::payable_constructor())
+            .expect("Should create");
+
+        let caller = host::get_caller();
+
+        {
+            let account_balance_before = host::get_balance_of(EntityKind::Account(&caller));
+            contract_handle
+                .build_call()
+                .with_value(100)
+                .call(|harness| harness.deposit())
+                .expect("Should call")
+                .expect("Should succeed");
+            contract_handle
+                .build_call()
+                .with_value(25)
+                .call(|harness| harness.deposit())
+                .expect("Should call")
+                .expect("Should succeed");
+            let account_balance_after = host::get_balance_of(EntityKind::Account(&caller));
+            assert_eq!(account_balance_after, account_balance_before - 125);
+        }
+
+        let current_contract_balance = contract_handle
+            .build_call()
+            .call(|harness| harness.balance())
+            .expect("Should call");
+        assert_eq!(current_contract_balance, 100 + 25);
+
+        {
+            let account_balance_before = host::get_balance_of(EntityKind::Account(&caller));
+            contract_handle
+                .build_call()
+                .call(|harness| harness.withdraw(50))
+                .expect("Should call")
+                .expect("Should succeed");
+            let account_balance_after = host::get_balance_of(EntityKind::Account(&caller));
+            assert_ne!(account_balance_after, account_balance_before);
+            assert_eq!(account_balance_after, account_balance_before + 50);
+
+            let current_deposit_balance = contract_handle
+                .build_call()
+                .call(|harness| harness.balance())
+                .expect("Should call");
+            assert_eq!(current_deposit_balance, 100 + 25 - 50);
+
+            assert_eq!(contract_handle.balance(), 100 + 25 - 50);
+        }
     }
 
     log!("👋 Goodbye");

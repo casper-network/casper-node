@@ -59,7 +59,9 @@ fn make_address_generator() -> Arc<RwLock<AddressGenerator>> {
 
 fn base_execute_builder() -> ExecuteRequestBuilder {
     ExecuteRequestBuilder::default()
-        .with_caller(DEFAULT_ACCOUNT_HASH.value())
+        .with_initiator(DEFAULT_ACCOUNT_HASH.value())
+        .with_caller_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
+        .with_callee_key(Key::Account(DEFAULT_ACCOUNT_HASH.clone()))
         .with_gas_limit(1_000_000)
         .with_value(1000)
         .with_transaction_hash(TRANSACTION_HASH)
@@ -104,7 +106,6 @@ fn harness() {
         .with_shared_address_generator(address_generator)
         .build()
         .expect("should build");
-
     run_wasm(
         &mut executor,
         &mut global_state,

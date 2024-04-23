@@ -1,5 +1,6 @@
 //! Implementation of all host functions.
 pub(crate) mod abi;
+pub(crate) mod utils;
 
 use bytes::Bytes;
 use casper_storage::tracking_copy::{self, TrackingCopyExt};
@@ -7,8 +8,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeyAddr,
     contracts::{ContractManifest, ContractV2, EntryPointV2},
-    ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, Key, Package,
-    PackageStatus, StoredValue, URef, U512,
+    ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, HoldsEpoch,
+    Key, Package, PackageStatus, StoredValue, URef, U512,
 };
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
@@ -25,7 +26,7 @@ use crate::{
     host::abi::{CreateResult, EntryPoint, Manifest},
     storage::{
         self,
-        runtime::{self, MintArgs},
+        runtime::{self, MintArgs, MintTransferArgs},
         Address, GlobalStateReader,
     },
     wasm_backend::{Caller, Context, MeteringPoints, WasmInstance},
@@ -46,7 +47,15 @@ pub(crate) fn casper_write<S: GlobalStateReader, E: Executor>(
     let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let global_state_key = match Keyspace::from_raw_parts(key_space, &key) {
-        Some(keyspace) => keyspace_to_global_state_key(caller.context().state_address, keyspace),
+        Some(keyspace) => keyspace_to_global_state_key(caller.context(), keyspace),
+        None => {
+            // Unknown keyspace received, return error
+            return Ok(1);
+        }
+    };
+
+    let global_state_key = match global_state_key {
+        Some(global_state_key) => global_state_key,
         None => {
             // Unknown keyspace received, return error
             return Ok(1);
@@ -57,7 +66,7 @@ pub(crate) fn casper_write<S: GlobalStateReader, E: Executor>(
 
     caller
         .context_mut()
-        .storage
+        .tracking_copy
         .write(global_state_key, StoredValue::RawBytes(value));
 
     Ok(0)
@@ -96,9 +105,15 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
     };
 
     // Convert keyspace to a global state `Key`
-    let global_state_key = keyspace_to_global_state_key(caller.context().state_address, keyspace);
+    let global_state_key = match keyspace_to_global_state_key(caller.context(), keyspace) {
+        Some(global_state_key) => global_state_key,
+        None => {
+            // Unknown keyspace received, return error
+            return Ok(1);
+        }
+    };
 
-    match caller.context_mut().storage.read(&global_state_key) {
+    match caller.context_mut().tracking_copy.read(&global_state_key) {
         Ok(Some(StoredValue::RawBytes(raw_bytes))) => {
             let out_ptr: u32 = if cb_alloc != 0 {
                 caller.alloc(cb_alloc, raw_bytes.len(), alloc_ctx)?
@@ -135,17 +150,33 @@ pub(crate) fn casper_read<S: GlobalStateReader, E: Executor>(
     }
 }
 
-fn keyspace_to_global_state_key<'a>(address: [u8; 32], keyspace: Keyspace<'a>) -> Key {
-    match keyspace {
-        Keyspace::State => casper_types::Key::State(EntityAddr::SmartContract(address)),
+fn keyspace_to_global_state_key<'a, S: GlobalStateReader, E: Executor>(
+    context: &Context<S, E>,
+    keyspace: Keyspace<'a>,
+) -> Option<Key> {
+    let entity_addr = match context.callee {
+        Key::Account(account_hash) => EntityAddr::new_account(account_hash.value()),
+        Key::AddressableEntity(addressable_entity_hash) => {
+            EntityAddr::new_smart_contract(addressable_entity_hash.value())
+        }
+        other => {
+            // This should never happen, as the caller is always an account or a smart contract.
+            return None;
+        }
+    };
+
+    let global_state_key = match keyspace {
+        Keyspace::State => Key::State(entity_addr),
         Keyspace::Context(payload) => {
             let digest = Digest::hash(payload);
             casper_types::Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-                EntityAddr::SmartContract(address),
+                entity_addr,
                 digest.value(),
             ))
         }
-    }
+    };
+
+    Some(global_state_key)
 }
 
 pub(crate) fn casper_copy_input<S: GlobalStateReader, E: Executor>(
@@ -269,7 +300,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     let package_hash: Address = rng.gen(); // TODO: Do we need packages at all in new VM?
     let contract_hash: Address = rng.gen();
 
-    caller.context_mut().storage.write(
+    caller.context_mut().tracking_copy.write(
         Key::Package(package_hash),
         StoredValue::Package(contract_package),
     );
@@ -280,14 +311,14 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     let bytecode = ByteCode::new(ByteCodeKind::V1CasperWasm, code.clone().into());
     let bytecode_addr = ByteCodeAddr::V1CasperWasm(wasm_hash.value());
 
-    caller.context_mut().storage.write(
+    caller.context_mut().tracking_copy.write(
         Key::ByteCode(bytecode_addr),
         StoredValue::ByteCode(bytecode),
     );
 
     // 3. Store addressable entity
 
-    let key = Key::AddressableEntity(EntityAddr::SmartContract(contract_hash));
+    let addressable_entity_key = Key::AddressableEntity(EntityAddr::SmartContract(contract_hash));
 
     // let owner = EntityAddr::SmartContract(caller.context().address);
 
@@ -295,7 +326,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
     let address_generator = Arc::clone(&caller.context().address_generator);
     let transaction_hash = caller.context().transaction_hash;
     let purse_uref: URef = match runtime::mint_mint(
-        &mut caller.context_mut().storage,
+        &mut caller.context_mut().tracking_copy,
         transaction_hash,
         address_generator,
         MintArgs {
@@ -324,7 +355,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         .collect();
 
     let contract = ContractV2::V2(ContractManifest {
-        owner: caller.context().caller,
+        // owner: caller.context().caller,
         bytecode_addr,
         entry_points,
         purse_uref,
@@ -332,8 +363,8 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
     caller
         .context_mut()
-        .storage
-        .write(key, StoredValue::ContractV2(contract));
+        .tracking_copy
+        .write(addressable_entity_key, StoredValue::ContractV2(contract));
 
     let initial_state = match constructor_selector {
         Some(constructor_selector) => {
@@ -363,7 +394,9 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                         .expect("should be remaining");
 
                     let execute_request = ExecuteRequestBuilder::default()
-                        .with_caller(caller.context().caller)
+                        .with_initiator(caller.context().initiator)
+                        .with_caller_key(caller.context().callee)
+                        .with_callee_key(addressable_entity_key)
                         .with_gas_limit(gas_limit)
                         .with_target(ExecutionKind::Contract {
                             address: contract_hash,
@@ -379,7 +412,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
                         .build()
                         .expect("should build");
 
-                    let tracking_copy_for_ctor = caller.context().storage.fork2();
+                    let tracking_copy_for_ctor = caller.context().tracking_copy.fork2();
 
                     match caller
                         .context()
@@ -402,7 +435,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
                             caller
                                 .context_mut()
-                                .storage
+                                .tracking_copy
                                 .merge_raw_parts(tracking_copy_parts);
 
                             output
@@ -435,7 +468,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
         let key = Key::State(smart_contract_addr);
         caller
             .context_mut()
-            .storage
+            .tracking_copy
             .write(key, StoredValue::RawBytes(state.into()));
     }
 
@@ -484,7 +517,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
     let address: Address = address.try_into().unwrap(); // TODO: Error handling
     let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
 
-    let tracking_copy = caller.context().storage.fork2();
+    let tracking_copy = caller.context().tracking_copy.fork2();
 
     // Take the gas spent so far and use it as a limit for the new VM.
     let gas_limit = caller
@@ -493,7 +526,11 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
         .expect("should be remaining");
 
     let execute_request = ExecuteRequestBuilder::default()
-        .with_caller(caller.context().caller)
+        .with_initiator(caller.context().initiator)
+        .with_caller_key(caller.context().callee)
+        .with_callee_key(Key::AddressableEntity(EntityAddr::new_smart_contract(
+            address,
+        )))
         .with_gas_limit(gas_limit)
         .with_target(ExecutionKind::Contract {
             address,
@@ -536,7 +573,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
                 None => {
                     caller
                         .context_mut()
-                        .storage
+                        .tracking_copy
                         .merge_raw_parts(tracking_copy_parts);
                     Ok(())
                 }
@@ -590,8 +627,9 @@ pub(crate) fn casper_env_read<S: GlobalStateReader, E: Executor>(
         Err(error) => todo!("handle error {:?}", error),
     };
 
-    let data = if path == &[CASPER_ENV_CALLER] {
-        Some(caller.context().caller.to_vec())
+    let data: Option<Address> = if path == &[CASPER_ENV_CALLER] {
+        // Some(caller.context().caller.to_vec())
+        todo!("Not really using this one")
     } else {
         None
     };
@@ -620,7 +658,13 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
     dest_ptr: u32,
     dest_len: u32,
 ) -> VMResult<u32> {
-    let mut data = caller.context().caller.as_slice();
+    // TODO: Decide whether we want to return the full address and entity kind or just the 32 bytes "unified".
+    let data = match &caller.context().caller {
+        Key::Account(account_hash) => account_hash.value(),
+        Key::AddressableEntity(entity_addr) => entity_addr.value(),
+        other => panic!("Unexpected caller: {:?}", other),
+    };
+    let mut data = &data[..];
     if dest_ptr == 0 {
         Ok(dest_ptr)
     } else {
@@ -655,7 +699,7 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
             let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
 
             let account_key = Key::Account(account_hash);
-            match caller.context_mut().storage.read(&account_key) {
+            match caller.context_mut().tracking_copy.read(&account_key) {
                 Ok(Some(StoredValue::CLValue(clvalue))) => {
                     let entity_key = clvalue.into_t::<Key>().expect("should be a key");
                     entity_key
@@ -678,7 +722,7 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
         _ => return Ok(0),
     };
 
-    let purse = match caller.context_mut().storage.read(&entity_key) {
+    let purse = match caller.context_mut().tracking_copy.read(&entity_key) {
         Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
             addressable_entity.main_purse()
         }
@@ -700,10 +744,135 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
 
     let total_balance = caller
         .context_mut()
-        .storage
+        .tracking_copy
         .get_total_balance(Key::URef(purse))
         .expect("Total balance");
     assert!(total_balance.value() <= U512::from(u64::MAX));
     let total_balance: u64 = total_balance.value().as_u64();
     Ok(total_balance)
+}
+
+pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
+    mut caller: impl Caller<S, E>,
+    target_address_ptr: u32,
+    target_address_len: u32,
+    amount: u64,
+) -> VMResult<u32> {
+    if target_address_len != 32 {
+        assert!(false, "Invalid target address length");
+        return Ok(0); // fail
+    }
+    let target_address = caller.memory_read(target_address_ptr, target_address_len as usize)?;
+    let target_address: Address = target_address.try_into().unwrap();
+
+    let callee_purse = match caller.context().callee {
+        account_key @ Key::Account(_account_hash) => {
+            match caller
+                .context_mut()
+                .tracking_copy
+                .read(&account_key)
+                .expect("should read account")
+            {
+                Some(StoredValue::CLValue(indirect)) => {
+                    // is it an account?
+                    let key = indirect.into_t::<Key>().expect("should be key");
+                    let stored_value = caller
+                        .context_mut()
+                        .tracking_copy
+                        .read(&key)
+                        .expect("should read account")
+                        .expect("should have account");
+                    let addressable_entity = stored_value
+                        .into_addressable_entity()
+                        .expect("should be addressable entity");
+                    addressable_entity.main_purse()
+                }
+                Some(other) => panic!("should be cl value but got {other:?}"),
+                None => panic!("Expected account to exist"),
+            }
+        }
+        addressable_entity_key @ Key::AddressableEntity(_entity_addr) => {
+            match caller
+                .context_mut()
+                .tracking_copy
+                .read(&addressable_entity_key)
+                .expect("should read account")
+            {
+                Some(StoredValue::AddressableEntity(addressable_entity)) => {
+                    addressable_entity.main_purse()
+                }
+                Some(StoredValue::ContractV2(contract_v2)) => match contract_v2 {
+                    ContractV2::V2(contract) => contract.purse_uref,
+                },
+                Some(other) => panic!("should be addressable entity but got {other:?}"),
+                None => todo!(),
+            }
+        }
+        other => panic!("should be account or addressable entity but got {other:?}"),
+    };
+
+    let account_key = Key::Account(AccountHash::new(target_address));
+
+    let entity_key = match caller.context_mut().tracking_copy.read(&account_key) {
+        Ok(Some(StoredValue::CLValue(clvalue))) => {
+            let entity_key = clvalue.into_t::<Key>().expect("should be a key");
+            entity_key
+        }
+        Ok(Some(other_entity)) => {
+            panic!("Unexpected entity type: {:?}", other_entity)
+        }
+        Ok(None) => panic!("Assumes account exists"),
+        Err(error) => {
+            panic!("Error while reading from storage; aborting key={account_key:?} error={error:?}")
+        }
+    };
+
+    let target_purse = match caller.context_mut().tracking_copy.read(&entity_key) {
+        Ok(Some(StoredValue::Account(account))) => {
+            panic!("Expected AddressableEntity but got {:?}", account)
+        }
+        Ok(Some(StoredValue::ContractV2(contract_v2))) => {
+            panic!("Expected AddressableEntity but got {:?}", contract_v2);
+        }
+        Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
+            addressable_entity.main_purse()
+        }
+        Ok(Some(other_entity)) => {
+            panic!("Unexpected entity type: {:?}", other_entity)
+        }
+        Ok(None) => {
+            panic!("Addressable entity not found for key={entity_key:?}");
+        }
+        Err(error) => {
+            panic!("Error while reading from storage; aborting key={entity_key:?} error={error:?}")
+        }
+    };
+
+    // 1. wasm [caller = A, callee = B]
+    //  1a. create [caller = B, callee = C]
+    //  1b. call [caller = B, callee = C]
+
+    // TODO: Add test to transfer tokens to a user from a smart contract invoked from a wasm session (that would have stack depth of 3).
+    // let source_purse = caller.context().callee;
+
+    let transaction_hash = caller.context().transaction_hash;
+    let address_generator = Arc::clone(&caller.context().address_generator);
+    let args = MintTransferArgs {
+        source: callee_purse,
+        target: target_purse,
+        amount: U512::from(amount),
+        maybe_to: None,
+        id: None,
+        holds_epoch: HoldsEpoch::NOT_APPLICABLE,
+    };
+
+    runtime::mint_transfer(
+        &mut caller.context_mut().tracking_copy,
+        transaction_hash,
+        address_generator,
+        args,
+    )
+    .expect("Should transfer");
+
+    Ok(1)
 }

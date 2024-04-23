@@ -3,8 +3,8 @@ use std::{collections::VecDeque, sync::Arc};
 use bytes::Bytes;
 use casper_storage::{address_generator, AddressGenerator};
 use casper_types::{
-    account::AccountHash, contracts::ContractV2, ByteCodeAddr, EntityAddr, HoldsEpoch, Key,
-    StoredValue,
+    account::AccountHash, addressable_entity, contracts::ContractV2, system, AddressableEntityHash,
+    ByteCodeAddr, EntityAddr, HoldsEpoch, Key, PackageHash, StoredValue,
 };
 use either::Either;
 use parking_lot::RwLock;
@@ -124,10 +124,12 @@ impl Executor for ExecutorV2 {
         execute_request: ExecuteRequest,
     ) -> Result<ExecuteResult, ExecuteError> {
         let ExecuteRequest {
+            initiator,
+            caller_key,
+            callee_key,
             gas_limit,
             execution_kind,
             input,
-            caller,
             value,
             transaction_hash,
             address_generator,
@@ -135,21 +137,30 @@ impl Executor for ExecutorV2 {
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.
         // let caller_entity_addr = EntityAddr::new_account(caller);
-        let stored_value = tracking_copy
-            .read(&Key::Account(AccountHash::new(caller)))
-            .expect("should read account")
-            .expect("should have account");
-        let cl_value = stored_value
-            .into_cl_value()
-            .expect("should be addressable entity");
-        let key = cl_value.into_t::<Key>().expect("should be key");
-        let stored_value = tracking_copy
-            .read(&key)
-            .expect("should read account")
-            .expect("should have account");
-        let addressable_entity = stored_value
-            .into_addressable_entity()
-            .expect("should be addressable entity");
+        let caller_addressable_entity = {
+            let stored_value = tracking_copy
+                .read(&caller_key)
+                .expect("should read account")
+                .expect("should have account");
+            match stored_value {
+                StoredValue::CLValue(addressable_entity_key) => {
+                    let key = addressable_entity_key
+                        .into_t::<Key>()
+                        .expect("should be key");
+                    let stored_value = tracking_copy
+                        .read(&key)
+                        .expect("should read account")
+                        .expect("should have account");
+                    stored_value
+                        .into_addressable_entity()
+                        .expect("should be addressable entity")
+                }
+                StoredValue::AddressableEntity(addressable_entity) => addressable_entity,
+                other => panic!("should be account or contract received {other:?}"),
+            }
+        };
+
+        let source_purse = caller_addressable_entity.main_purse();
 
         let (wasm_bytes, export_or_selector) = match &execution_kind {
             ExecutionKind::WasmBytes(wasm_bytes) => {
@@ -204,7 +215,7 @@ impl Executor for ExecutorV2 {
 
                             let args = {
                                 let maybe_to = None;
-                                let source = addressable_entity.main_purse();
+                                let source = source_purse;
                                 let target = manifest.purse_uref;
                                 let amount = value;
                                 let id = None;
@@ -244,16 +255,19 @@ impl Executor for ExecutorV2 {
 
         let mut initial_tracking_copy = tracking_copy.fork2();
 
-        let state_address = match &execution_kind {
-            ExecutionKind::Contract { address, .. } => *address,
-            ExecutionKind::WasmBytes(_wasm_bytes) => caller,
+        let callee_key = match &execution_kind {
+            ExecutionKind::Contract { address, .. } => {
+                Key::AddressableEntity(EntityAddr::SmartContract(*address))
+            }
+            ExecutionKind::WasmBytes(_wasm_bytes) => Key::Account(AccountHash::new(initiator)),
         };
 
         let context = Context {
-            caller,
+            initiator: initiator,
+            caller: caller_key,
+            callee: callee_key,
             value,
-            state_address,
-            storage: tracking_copy,
+            tracking_copy,
             executor: self.clone(),
             address_generator: Arc::clone(&address_generator),
             transaction_hash,
@@ -280,7 +294,7 @@ impl Executor for ExecutorV2 {
         let context = instance.teardown();
 
         let Context {
-            storage: final_tracking_copy,
+            tracking_copy: final_tracking_copy,
             ..
         } = context;
 

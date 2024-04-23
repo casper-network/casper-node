@@ -68,6 +68,7 @@ Example paths:
             pub fn casper_env_value() -> u64;
             #[doc = r"Get balance of an entity by its address."]
             pub fn casper_env_balance(entity_kind: u32, entity_addr: *const u8, entity_addr_len: usize,) -> u64;
+            pub fn casper_transfer(address: *const u8, address_len: usize, amount: u64,) -> u32;
         }
     };
 }

@@ -1081,7 +1081,7 @@ impl FromBytes for EntryPointV2 {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ContractManifest {
-    pub owner: HashAddr,
+    // pub owner: HashAddr,
     pub bytecode_addr: ByteCodeAddr,
     pub entry_points: Vec<EntryPointV2>,
     pub purse_uref: URef,
@@ -1095,13 +1095,12 @@ impl ToBytes for ContractManifest {
     }
 
     fn serialized_length(&self) -> usize {
-        self.owner.serialized_length()
-            + self.entry_points.serialized_length()
-            + self.purse_uref.serialized_length()
+        // self.owner.serialized_length() +
+        self.entry_points.serialized_length() + self.purse_uref.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.owner.write_bytes(writer)?;
+        // self.owner.write_bytes(writer)?;
         self.bytecode_addr.write_bytes(writer)?;
         self.entry_points.write_bytes(writer)?;
         self.purse_uref.write_bytes(writer)?;
@@ -1111,13 +1110,13 @@ impl ToBytes for ContractManifest {
 
 impl FromBytes for ContractManifest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (owner, bytes) = HashAddr::from_bytes(bytes)?;
+        // let (owner, bytes) = HashAddr::from_bytes(bytes)?;
         let (bytecode_addr, bytes) = ByteCodeAddr::from_bytes(bytes)?;
         let (entry_points, bytes) = Vec::<EntryPointV2>::from_bytes(bytes)?;
         let (purse_uref, bytes) = URef::from_bytes(bytes)?;
         Ok((
             ContractManifest {
-                owner,
+                // owner,
                 bytecode_addr,
                 entry_points,
                 purse_uref,

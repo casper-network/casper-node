@@ -580,6 +580,19 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_transfer",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>, address_ptr, address_len, amount| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_transfer(wasmer_caller, address_ptr, address_len, amount)
+                    },
+                ),
+            );
+
             imports
         };
 
@@ -692,13 +705,14 @@ where
         // NOTE: There must be a better way than re-creating the object based on consumed fields.
 
         Context {
+            initiator: data.context.initiator,
             caller: data.context.caller,
-            state_address: data.context.state_address,
-            storage: data.context.storage.fork2(),
-            executor: data.context.executor.clone(),
+            callee: data.context.callee,
             value: data.context.value,
-            address_generator: Arc::clone(&data.context.address_generator),
+            tracking_copy: data.context.tracking_copy.fork2(),
+            executor: data.context.executor.clone(),
             transaction_hash: data.context.transaction_hash,
+            address_generator: Arc::clone(&data.context.address_generator),
         }
     }
 }
