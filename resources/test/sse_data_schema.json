@@ -3316,6 +3316,7 @@
         "initiator",
         "limit",
         "payment",
+        "size_estimate",
         "transfers"
       ],
       "properties": {
@@ -3371,6 +3372,12 @@
           "items": {
             "$ref": "#/definitions/Transfer"
           }
+        },
+        "size_estimate": {
+          "description": "The size estimate of the transaction",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         },
         "effects": {
           "description": "The effects of executing this transaction.",
