@@ -9,6 +9,7 @@ mod dictionary_item_identifier;
 mod error_code;
 mod get_request;
 mod global_state_query_result;
+mod error;
 mod information_request;
 mod minimal_block_info;
 mod node_status;

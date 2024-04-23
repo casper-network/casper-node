@@ -472,6 +472,7 @@ name = "casper-binary-port"
 version = "1.0.0"
 dependencies = [
  "bincode",
+ "bytes",
  "casper-types",
  "once_cell",
  "rand",
@@ -481,6 +482,7 @@ dependencies = [
  "serde_json",
  "serde_test",
  "thiserror",
+ "tokio-util 0.6.10",
 ]
 
 [[package]]
