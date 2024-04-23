@@ -21,7 +21,8 @@ use crate::{
 };
 
 use super::{
-    fee_handling::FeeHandling, pricing_handling::PricingHandling, refund_handling::RefundHandling,
+    fee_handling::FeeHandling, hold_balance_handling::HoldBalanceHandling,
+    pricing_handling::PricingHandling, refund_handling::RefundHandling,
 };
 
 /// Default value for maximum associated keys configuration option.
@@ -42,8 +43,16 @@ pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::NoFee;
 /// Default allow reservations.
 pub const DEFAULT_ALLOW_RESERVATIONS: bool = false;
 
-/// Default balance hold interval.
-pub const DEFAULT_BALANCE_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
+/// Default processing hold balance handling.
+#[allow(unused)]
+pub const DEFAULT_PROCESSING_HOLD_BALANCE_HANDLING: HoldBalanceHandling =
+    HoldBalanceHandling::Accrued;
+
+/// Default gas hold balance handling.
+pub const DEFAULT_GAS_HOLD_BALANCE_HANDLING: HoldBalanceHandling = HoldBalanceHandling::Amortized;
+
+/// Default gas hold interval.
+pub const DEFAULT_GAS_HOLD_INTERVAL: TimeDiff = TimeDiff::from_seconds(24 * 60 * 60);
 
 /// Configuration values associated with the core protocol.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -146,8 +155,10 @@ pub struct CoreConfig {
     pub pricing_handling: PricingHandling,
     /// Allow reservations.
     pub allow_reservations: bool,
-    /// How long does it take for a balance hold to fade away?
-    pub balance_hold_interval: TimeDiff,
+    /// How do gas holds affect available balance calculations?
+    pub gas_hold_balance_handling: HoldBalanceHandling,
+    /// How long does it take for a gas hold to expire?
+    pub gas_hold_interval: TimeDiff,
     /// Administrative accounts are a valid option for a private chain only.
     //#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
@@ -233,7 +244,13 @@ impl CoreConfig {
             FeeHandling::NoFee
         };
 
-        let balance_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
+        let gas_hold_balance_handling = if rng.gen() {
+            HoldBalanceHandling::Accrued
+        } else {
+            HoldBalanceHandling::Amortized
+        };
+
+        let gas_hold_interval = TimeDiff::from_seconds(rng.gen_range(600..604_800));
 
         CoreConfig {
             era_duration,
@@ -267,7 +284,8 @@ impl CoreConfig {
             pricing_handling,
             allow_reservations,
             fee_handling,
-            balance_hold_interval,
+            gas_hold_balance_handling,
+            gas_hold_interval,
         }
     }
 }
@@ -307,7 +325,8 @@ impl Default for CoreConfig {
             pricing_handling: DEFAULT_PRICING_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
             allow_reservations: DEFAULT_ALLOW_RESERVATIONS,
-            balance_hold_interval: DEFAULT_BALANCE_HOLD_INTERVAL,
+            gas_hold_balance_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
+            gas_hold_interval: DEFAULT_GAS_HOLD_INTERVAL,
         }
     }
 }
@@ -349,7 +368,8 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.pricing_handling.to_bytes()?);
         buffer.extend(self.fee_handling.to_bytes()?);
         buffer.extend(self.allow_reservations.to_bytes()?);
-        buffer.extend(self.balance_hold_interval.to_bytes()?);
+        buffer.extend(self.gas_hold_balance_handling.to_bytes()?);
+        buffer.extend(self.gas_hold_interval.to_bytes()?);
         Ok(buffer)
     }
 
@@ -387,7 +407,8 @@ impl ToBytes for CoreConfig {
             + self.pricing_handling.serialized_length()
             + self.fee_handling.serialized_length()
             + self.allow_reservations.serialized_length()
-            + self.balance_hold_interval.serialized_length()
+            + self.gas_hold_balance_handling.serialized_length()
+            + self.gas_hold_interval.serialized_length()
     }
 }
 
@@ -425,7 +446,8 @@ impl FromBytes for CoreConfig {
         let (pricing_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_reservations, remainder) = FromBytes::from_bytes(remainder)?;
-        let (balance_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (gas_hold_balance_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (gas_hold_interval, remainder) = TimeDiff::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -458,7 +480,8 @@ impl FromBytes for CoreConfig {
             pricing_handling,
             fee_handling,
             allow_reservations,
-            balance_hold_interval,
+            gas_hold_balance_handling,
+            gas_hold_interval,
         };
         Ok((config, remainder))
     }

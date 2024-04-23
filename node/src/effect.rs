@@ -1530,6 +1530,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    #[allow(unused)]
     pub(crate) async fn get_balance_holds_interval(self) -> TimeDiff
     where
         REv: From<ReactorInfoRequest>,

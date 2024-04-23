@@ -784,7 +784,7 @@ where
         let compute_rewards = config.core_config.compute_rewards;
         let max_delegators_per_validator = config.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = config.core_config.minimum_delegation_amount;
-        let balance_hold_interval = config.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = config.core_config.gas_hold_interval.millis();
 
         let native_runtime_config = casper_storage::system::runtime_native::Config::new(
             TransferConfig::Unadministered,
@@ -951,7 +951,7 @@ where
             self.chainspec.core_config.compute_rewards,
             self.chainspec.core_config.max_delegators_per_validator,
             self.chainspec.core_config.minimum_delegation_amount,
-            self.chainspec.core_config.balance_hold_interval.millis(),
+            self.chainspec.core_config.gas_hold_interval.millis(),
         )
     }
 
@@ -965,7 +965,7 @@ where
         let native_runtime_config = self.native_runtime_config();
         let holds_epoch = HoldsEpoch::from_millis(
             block_time,
-            self.chainspec.core_config.balance_hold_interval.millis(),
+            self.chainspec.core_config.gas_hold_interval.millis(),
         );
 
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
@@ -1226,14 +1226,14 @@ where
         balance_identifier: BalanceIdentifier,
         block_time: u64,
     ) -> BalanceResult {
-        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let hold_interval = self.chainspec.core_config.gas_hold_interval;
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
-
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         let request = BalanceRequest::new(
             state_root_hash,
+            block_time.into(),
             protocol_version,
             balance_identifier,
             balance_handling,
@@ -1250,12 +1250,13 @@ where
         block_time: u64,
     ) -> BalanceResult {
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
-        let hold_interval = self.chainspec.core_config.balance_hold_interval.millis();
-        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval);
+        let hold_interval = self.chainspec.core_config.gas_hold_interval;
+        let holds_epoch = HoldsEpoch::from_millis(block_time, hold_interval.millis());
         let balance_handling = BalanceHandling::Available { holds_epoch };
         let proof_handling = ProofHandling::Proofs;
         let request = BalanceRequest::from_public_key(
             state_root_hash,
+            block_time.into(),
             protocol_version,
             public_key,
             balance_handling,

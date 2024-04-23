@@ -28,8 +28,8 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::NamedKeyAddr,
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHeader, BlockIdentifier, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch, Key,
-    Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
+    BlockHeader, BlockIdentifier, Chainspec, Digest, EntityAddr, GlobalStateIdentifier, HoldsEpoch,
+    Key, Peers, ProtocolVersion, SignedBlock, StoredValue, TimeDiff, Timestamp, Transaction,
 };
 
 use datasize::DataSize;
@@ -78,6 +78,8 @@ const COMPONENT_NAME: &str = "binary_port";
 pub(crate) struct BinaryPort {
     state: ComponentState,
     config: Arc<Config>,
+    /// The chainspec.
+    chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,
     #[data_size(skip)]
@@ -91,11 +93,16 @@ pub(crate) struct BinaryPort {
 }
 
 impl BinaryPort {
-    pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(crate) fn new(
+        config: Config,
+        chainspec: Arc<Chainspec>,
+        registry: &Registry,
+    ) -> Result<Self, prometheus::Error> {
         Ok(Self {
             state: ComponentState::Uninitialized,
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
+            chainspec,
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
             shutdown_trigger: Arc::new(Notify::new()),
@@ -116,6 +123,7 @@ async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
 ) -> BinaryResponse
 where
@@ -151,7 +159,15 @@ where
             try_speculative_execution(effect_builder, transaction, protocol_version).await
         }
         BinaryRequest::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics, protocol_version).await
+            handle_get_request(
+                get_req,
+                effect_builder,
+                config,
+                chainspec,
+                metrics,
+                protocol_version,
+            )
+            .await
         }
     }
 }
@@ -160,6 +176,7 @@ async fn handle_get_request<REv>(
     get_req: GetRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    chainspec: &Chainspec,
     metrics: &Metrics,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
@@ -229,7 +246,7 @@ where
         }
         GetRequest::State(req) => {
             metrics.binary_port_get_state_count.inc();
-            handle_state_request(effect_builder, *req, protocol_version, config).await
+            handle_state_request(effect_builder, *req, protocol_version, config, chainspec).await
         }
     }
 }
@@ -265,6 +282,7 @@ async fn handle_state_request<REv>(
     request: GlobalStateRequest,
     protocol_version: ProtocolVersion,
     config: &Config,
+    chainspec: &Chainspec,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -400,6 +418,7 @@ where
                 header.timestamp(),
                 purse_identifier,
                 protocol_version,
+                chainspec.core_config.gas_hold_interval,
             )
             .await
         }
@@ -417,6 +436,7 @@ where
                 timestamp,
                 purse_identifier,
                 protocol_version,
+                chainspec.core_config.gas_hold_interval,
             )
             .await
         }
@@ -505,6 +525,7 @@ async fn get_balance<REv>(
     timestamp: Timestamp,
     purse_identifier: PurseIdentifier,
     protocol_version: ProtocolVersion,
+    gas_hold_interval: TimeDiff,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -520,12 +541,13 @@ where
         PurseIdentifier::Account(account) => BalanceIdentifier::Account(account),
         PurseIdentifier::Entity(entity) => BalanceIdentifier::Entity(entity),
     };
-    let holds_interval = effect_builder.get_balance_holds_interval().await;
     let balance_handling = BalanceHandling::Available {
-        holds_epoch: HoldsEpoch::from_timestamp(timestamp, holds_interval),
+        holds_epoch: HoldsEpoch::from_timestamp(timestamp, gas_hold_interval),
     };
+
     let balance_req = BalanceRequest::new(
         state_root_hash,
+        timestamp.into(),
         protocol_version,
         balance_id,
         balance_handling,
@@ -1135,10 +1157,12 @@ where
                 }
                 Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
+                    let chainspec = Arc::clone(&self.chainspec);
                     let metrics = Arc::clone(&self.metrics);
                     async move {
                         let response =
-                            handle_request(request, effect_builder, &config, &metrics).await;
+                            handle_request(request, effect_builder, &config, &chainspec, &metrics)
+                                .await;
                         responder.respond(response).await
                     }
                     .ignore()

@@ -91,7 +91,7 @@ impl TransactionAcceptor {
             .iter()
             .map(|public_key| public_key.to_account_hash())
             .collect();
-        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
         Ok(TransactionAcceptor {
             acceptor_config,
             chainspec,
@@ -224,6 +224,7 @@ impl TransactionAcceptor {
                 let proof_handling = ProofHandling::NoProofs;
                 let balance_request = BalanceRequest::from_purse(
                     *block_header.state_root_hash(),
+                    block_header.timestamp().into(),
                     protocol_version,
                     entity.main_purse(),
                     balance_handling,
