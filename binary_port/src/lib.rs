@@ -6,10 +6,10 @@ mod binary_response;
 mod binary_response_and_request;
 mod binary_response_header;
 mod dictionary_item_identifier;
+mod error;
 mod error_code;
 mod get_request;
 mod global_state_query_result;
-mod error;
 mod information_request;
 mod minimal_block_info;
 mod node_status;
@@ -21,7 +21,9 @@ mod state_request;
 mod type_wrappers;
 
 pub use balance_response::BalanceResponse;
-pub use binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag};
+pub use binary_request::{
+    BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader, BinaryRequestTag,
+};
 pub use binary_response::BinaryResponse;
 pub use binary_response_and_request::BinaryResponseAndRequest;
 pub use binary_response_header::BinaryResponseHeader;

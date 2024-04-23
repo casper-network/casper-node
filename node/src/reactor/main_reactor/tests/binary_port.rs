@@ -25,12 +25,6 @@ use casper_types::{
     EntityAddr, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers, ProtocolVersion, SecretKey,
     SignedBlock, StoredValue, Timestamp, Transaction, TransactionV1Builder, Transfer, URef, U512,
 };
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{JulietRpcClient, RpcBuilder},
-    ChannelConfiguration, ChannelId,
-};
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tracing::error;

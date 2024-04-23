@@ -40,8 +40,9 @@ pub struct Config {
     pub client_request_buffer_size: usize,
     /// Maximum number of connections to the server.
     pub max_connections: usize,
-    /// Gas hold handling
-    pub gas_hold_handling: HoldBalanceHandling,
+    // Gas hold handling
+    // TODO[RC]: Temporarily removed
+    // pub gas_hold_handling: HoldBalanceHandling,
 }
 
 impl Config {
@@ -58,7 +59,8 @@ impl Config {
             max_response_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             client_request_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
-            gas_hold_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
+            // TODO[RC]: Temporarily removed
+            //gas_hold_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
         }
     }
 }

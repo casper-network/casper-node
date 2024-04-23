@@ -250,7 +250,8 @@ const LENGTH_ENCODING_SIZE_BYTES: usize = std::mem::size_of::<LengthEncoding>();
 // TODO: To config
 const MAX_REQUEST_SIZE_BYTES: usize = 1024 * 1024; // 1MB
 
-pub struct BinaryPortMessage(Vec<u8>);
+// TODO[RC]: Not pub
+pub struct BinaryPortMessage(pub Vec<u8>);
 
 pub struct BinaryPortCodec {}
 
@@ -268,6 +269,7 @@ impl codec::Encoder<BinaryPortMessage> for BinaryPortCodec {
         Ok(())
     }
 }
+
 impl codec::Decoder for BinaryPortCodec {
     type Item = BinaryPortMessage;
 

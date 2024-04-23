@@ -8,13 +8,18 @@ mod tests;
 
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
+// TODO[RC]: Merge these three
+use futures::TryStreamExt;
+use futures::{stream::StreamExt, SinkExt};
+use tokio::{net::TcpListener, sync::Semaphore};
+
 use bytes::Bytes;
 use casper_binary_port::{
-    BalanceResponse, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-    BinaryResponseAndRequest, DictionaryItemIdentifier, DictionaryQueryResult, ErrorCode,
-    GetRequest, GetTrieFullResult, GlobalStateQueryResult, GlobalStateRequest, InformationRequest,
-    InformationRequestTag, NodeStatus, PayloadType, PurseIdentifier, ReactorStateName, RecordId,
-    TransactionWithExecutionInfo,
+    BalanceResponse, BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader,
+    BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
+    DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
+    GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
+    PurseIdentifier, ReactorStateName, RecordId, TransactionWithExecutionInfo,
 };
 use casper_storage::{
     data_access_layer::{
@@ -34,20 +39,15 @@ use casper_types::{
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
-use juliet::{
-    io::IoCoreBuilder,
-    protocol::ProtocolBuilder,
-    rpc::{JulietRpcServer, RpcBuilder},
-    ChannelConfiguration, ChannelId,
-};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     join,
-    net::{TcpListener, TcpStream},
-    sync::{Notify, OwnedSemaphorePermit, Semaphore},
+    net::TcpStream,
+    sync::{Notify, OwnedSemaphorePermit},
 };
+use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -821,13 +821,11 @@ where
     }
 }
 
-async fn client_loop<REv, const N: usize, R, W>(
-    mut server: JulietRpcServer<N, R, W>,
+async fn client_loop<REv>(
+    stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<(), Error>
 where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
     REv: From<Event>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -840,20 +838,30 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    loop {
-        let Some(incoming_request) = server.next_request().await? else {
-            debug!("remote party closed the connection");
-            return Ok(());
-        };
+    let mut framed = Framed::new(stream, BinaryPortCodec {});
 
-        let Some(payload) = incoming_request.payload() else {
+    loop {
+        // TODO[RC]: Fix unwrap
+        let next_message = framed.next().await.unwrap().unwrap();
+        let payload = next_message.0;
+        // let Some(incoming_request) = .unwrap().unwrap() else {
+        //     debug!("remote party closed the connection");
+        //     return Ok(());
+        // };
+
+        if payload.is_empty() {
             return Err(Error::NoPayload);
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let resp = handle_payload(effect_builder, payload, version).await;
-        let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
-        incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))
+        let resp = handle_payload(effect_builder, &payload, version).await;
+        let resp_and_payload = BinaryResponseAndRequest::new(resp, &payload);
+        let response_payload = BinaryPortMessage(resp_and_payload.to_bytes().unwrap());
+        framed
+            .send(response_payload)
+            .await
+            // TODO[RC]: Fix unwrap()
+            .unwrap();
     }
 }
 
@@ -895,7 +903,7 @@ where
 
 async fn handle_client<REv>(
     addr: SocketAddr,
-    mut client: TcpStream,
+    stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
     _permit: OwnedSemaphorePermit,
@@ -912,12 +920,7 @@ async fn handle_client<REv>(
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let (reader, writer) = client.split();
-    // We are a server, we won't make any requests of our own, but we need to keep the client
-    // around, since dropping the client will trigger a server shutdown.
-    let (_client, server) = new_rpc_builder(&config).build(reader, writer);
-
-    if let Err(err) = client_loop(server, effect_builder).await {
+    if let Err(err) = client_loop(stream, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, err=display_error(&err), "binary port client handler error");
     }
@@ -995,18 +998,6 @@ impl Finalize for BinaryPort {
         }
         .boxed()
     }
-}
-
-fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
-    let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-        ChannelConfiguration::default()
-            .with_request_limit(config.client_request_limit)
-            .with_max_request_payload_size(config.max_request_size_bytes)
-            .with_max_response_payload_size(config.max_response_size_bytes),
-    );
-    let io_builder = IoCoreBuilder::new(protocol_builder)
-        .buffer_size(ChannelId::new(0), config.client_request_buffer_size);
-    RpcBuilder::new(io_builder)
 }
 
 async fn resolve_block_header<REv>(
