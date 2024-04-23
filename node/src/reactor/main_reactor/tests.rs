@@ -378,7 +378,7 @@ impl TestFixture {
             chainspec.core_config.allow_reservations = allow_reservations;
         }
         if let Some(balance_hold_interval) = balance_hold_interval_override {
-            chainspec.core_config.balance_hold_interval = balance_hold_interval;
+            chainspec.core_config.gas_hold_interval = balance_hold_interval;
         }
 
         let limit = chainspec.transaction_config.block_gas_limit;
@@ -853,13 +853,12 @@ impl TestFixture {
 
         let block_time = highest_block.clone_header().timestamp();
 
-        let holds_epoch = HoldsEpoch::from_timestamp(
-            block_time,
-            self.chainspec.core_config.balance_hold_interval,
-        );
+        let holds_epoch =
+            HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.gas_hold_interval);
 
         let balance_request = BalanceRequest::from_public_key(
             *highest_block.state_root_hash(),
+            block_time.into(),
             highest_block.protocol_version(),
             account_public_key,
             BalanceHandling::Available { holds_epoch },

@@ -1,3 +1,4 @@
+use casper_types::{HoldBalanceHandling, DEFAULT_GAS_HOLD_BALANCE_HANDLING};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -39,10 +40,12 @@ pub struct Config {
     pub client_request_buffer_size: usize,
     /// Maximum number of connections to the server.
     pub max_connections: usize,
+    /// Gas hold handling
+    pub gas_hold_handling: HoldBalanceHandling,
 }
 
 impl Config {
-    /// Creates a default instance for `RpcServer`.
+    /// Creates a default instance for `BinaryPort`.
     pub fn new() -> Self {
         Config {
             enable_server: true,
@@ -55,6 +58,7 @@ impl Config {
             max_response_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             client_request_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            gas_hold_handling: DEFAULT_GAS_HOLD_BALANCE_HANDLING,
         }
     }
 }

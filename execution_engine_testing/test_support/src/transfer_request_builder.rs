@@ -19,7 +19,7 @@ use casper_types::{
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_SOURCE, ARG_TARGET},
     BlockTime, CLValue, Digest, FeeHandling, Gas, HoldsEpoch, InitiatorAddr, ProtocolVersion,
     RefundHandling, RuntimeArgs, TransactionHash, TransactionV1Hash, TransferTarget, URef,
-    DEFAULT_BALANCE_HOLD_INTERVAL, U512,
+    DEFAULT_GAS_HOLD_INTERVAL, U512,
 };
 
 use crate::{
@@ -53,7 +53,7 @@ impl TransferRequestBuilder {
         true,
         0,
         500_000_000_000,
-        DEFAULT_BALANCE_HOLD_INTERVAL.millis(),
+        DEFAULT_GAS_HOLD_INTERVAL.millis(),
     );
     /// The default value used for `TransferRequest::state_hash`.
     pub const DEFAULT_STATE_HASH: Digest = Digest::from_raw([1; 32]);
