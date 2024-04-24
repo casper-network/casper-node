@@ -104,7 +104,7 @@ mod tests {
         BinaryMessage, BinaryMessageCodec,
     };
 
-    const MAX_MESSAGE_SIZE_BYTES: u32 = 1024 * 104 * 10;
+    const MAX_MESSAGE_SIZE_BYTES: u32 = 1024 * 1024;
 
     #[test]
     fn binary_message_codec() {
