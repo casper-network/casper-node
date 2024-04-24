@@ -7,4 +7,6 @@ pub(crate) enum Error {
     BytesRepr(#[from] bytesrepr::Error),
     #[error("received request without payload")]
     NoPayload,
+    #[error(transparent)]
+    BinaryPortError(#[from] casper_binary_port::Error),
 }

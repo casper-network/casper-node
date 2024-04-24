@@ -835,27 +835,23 @@ where
     let mut framed = Framed::new(stream, BinaryMessageCodec::new(max_message_size_bytes));
 
     loop {
-        // TODO[RC]: Fix unwrap
-        let next_message = framed.next().await.unwrap().unwrap();
-        let payload = next_message.payload();
-        // let Some(incoming_request) = .unwrap().unwrap() else {
-        //     debug!("remote party closed the connection");
-        //     return Ok(());
-        // };
-
+        let Some(result) = framed.next().await else {
+            debug!("remote party closed the connection");
+            return Ok(());
+        };
+        let result = result?;
+        let payload = result.payload();
         if payload.is_empty() {
             return Err(Error::NoPayload);
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let resp = handle_payload(effect_builder, &payload, version).await;
-        let resp_and_payload = BinaryResponseAndRequest::new(resp, &payload);
-        let response_payload = BinaryMessage::new(resp_and_payload.to_bytes().unwrap());
+        let response = handle_payload(effect_builder, &payload, version).await;
         framed
-            .send(response_payload)
-            .await
-            // TODO[RC]: Fix unwrap()
-            .unwrap();
+            .send(BinaryMessage::new(
+                BinaryResponseAndRequest::new(response, &payload).to_bytes()?,
+            ))
+            .await?
     }
 }
 

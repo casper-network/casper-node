@@ -28,6 +28,7 @@ pub use binary_response::BinaryResponse;
 pub use binary_response_and_request::BinaryResponseAndRequest;
 pub use binary_response_header::BinaryResponseHeader;
 pub use dictionary_item_identifier::DictionaryItemIdentifier;
+pub use error::Error;
 pub use error_code::ErrorCode;
 pub use get_request::GetRequest;
 pub use global_state_query_result::GlobalStateQueryResult;
