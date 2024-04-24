@@ -37,9 +37,9 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key,
-    Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling,
-    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
+    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
+    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
     TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
 };
 
