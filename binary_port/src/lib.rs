@@ -1,6 +1,7 @@
 //! A Rust library for types used by the binary port of a casper node.
 
 mod balance_response;
+mod binary_message;
 mod binary_request;
 mod binary_response;
 mod binary_response_and_request;
@@ -21,9 +22,8 @@ mod state_request;
 mod type_wrappers;
 
 pub use balance_response::BalanceResponse;
-pub use binary_request::{
-    BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader, BinaryRequestTag,
-};
+pub use binary_message::{BinaryMessage, BinaryMessageCodec};
+pub use binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag};
 pub use binary_response::BinaryResponse;
 pub use binary_response_and_request::BinaryResponseAndRequest;
 pub use binary_response_header::BinaryResponseHeader;

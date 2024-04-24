@@ -1,13 +1,11 @@
 use core::convert::TryFrom;
 
-use bytes::Buf;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion, Transaction,
 };
-use tokio_util::codec;
 
-use crate::{error::Error, get_request::GetRequest};
+use crate::get_request::GetRequest;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
@@ -240,63 +238,5 @@ mod tests {
         let val = BinaryRequest::random(rng);
         let bytes = val.to_bytes().expect("should serialize");
         assert_eq!(BinaryRequest::try_from((val.tag(), &bytes[..])), Ok(val));
-    }
-}
-
-// TODO[RC]: To dedicated file
-
-type LengthEncoding = u32;
-const LENGTH_ENCODING_SIZE_BYTES: usize = std::mem::size_of::<LengthEncoding>();
-// TODO: To config
-const MAX_REQUEST_SIZE_BYTES: usize = 1024 * 1024; // 1MB
-
-// TODO[RC]: Not pub
-pub struct BinaryPortMessage(pub Vec<u8>);
-
-pub struct BinaryPortCodec {}
-
-impl codec::Encoder<BinaryPortMessage> for BinaryPortCodec {
-    type Error = Error;
-
-    fn encode(
-        &mut self,
-        item: BinaryPortMessage,
-        dst: &mut bytes::BytesMut,
-    ) -> Result<(), Self::Error> {
-        let length = item.0.len() as LengthEncoding;
-        let length_bytes = length.to_le_bytes();
-        dst.extend(length_bytes.iter().chain(item.0.iter()));
-        Ok(())
-    }
-}
-
-impl codec::Decoder for BinaryPortCodec {
-    type Item = BinaryPortMessage;
-
-    type Error = Error;
-
-    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.len() < LENGTH_ENCODING_SIZE_BYTES {
-            // Not enough bytes to read the length.
-            return Ok(None);
-        }
-        let length = LengthEncoding::from_le_bytes([src[0], src[1], src[2], src[3]]) as usize;
-        if length > MAX_REQUEST_SIZE_BYTES {
-            return Err(Error::RequestTooLarge {
-                allowed: MAX_REQUEST_SIZE_BYTES,
-                got: length,
-            });
-        }
-        if length == 0 {
-            return Err(Error::EmptyRequest);
-        }
-        if src.len() < length + LENGTH_ENCODING_SIZE_BYTES {
-            // Not enough bytes to read the whole message.
-            return Ok(None);
-        }
-
-        let payload = src[LENGTH_ENCODING_SIZE_BYTES..LENGTH_ENCODING_SIZE_BYTES + length].to_vec();
-        src.advance(LENGTH_ENCODING_SIZE_BYTES + length);
-        Ok(Some(BinaryPortMessage(payload)))
     }
 }

@@ -15,7 +15,7 @@ use tokio::{net::TcpListener, sync::Semaphore};
 
 use bytes::Bytes;
 use casper_binary_port::{
-    BalanceResponse, BinaryPortCodec, BinaryPortMessage, BinaryRequest, BinaryRequestHeader,
+    BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
     DictionaryQueryResult, ErrorCode, GetRequest, GetTrieFullResult, GlobalStateQueryResult,
     GlobalStateRequest, InformationRequest, InformationRequestTag, NodeStatus, PayloadType,
@@ -838,12 +838,12 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let mut framed = Framed::new(stream, BinaryPortCodec {});
+    let mut framed = Framed::new(stream, BinaryMessageCodec {});
 
     loop {
         // TODO[RC]: Fix unwrap
         let next_message = framed.next().await.unwrap().unwrap();
-        let payload = next_message.0;
+        let payload = next_message.payload();
         // let Some(incoming_request) = .unwrap().unwrap() else {
         //     debug!("remote party closed the connection");
         //     return Ok(());
@@ -856,7 +856,7 @@ where
         let version = effect_builder.get_protocol_version().await;
         let resp = handle_payload(effect_builder, &payload, version).await;
         let resp_and_payload = BinaryResponseAndRequest::new(resp, &payload);
-        let response_payload = BinaryPortMessage(resp_and_payload.to_bytes().unwrap());
+        let response_payload = BinaryMessage::new(resp_and_payload.to_bytes().unwrap());
         framed
             .send(response_payload)
             .await
