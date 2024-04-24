@@ -1,17 +1,17 @@
 use humantime::format_rfc3339;
 use std::{
-    fs,
+    env, fs,
     path::Path,
     time::{Duration, SystemTime},
 };
 use toml_edit::{value, Document};
 
 fn main() {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let input_chainspec = Path::new(manifest_dir)
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let input_chainspec = Path::new(&manifest_dir)
         .join("resources")
         .join("chainspec.toml.in");
-    let output_chainspec = Path::new(manifest_dir)
+    let output_chainspec = Path::new(&manifest_dir)
         .join("resources")
         .join("chainspec.toml");
 
