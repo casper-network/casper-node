@@ -49,7 +49,7 @@ pub fn mint_entry_points() -> EntryPoints {
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,
-        EntryPointType::AddressableEntity,
+        EntryPointType::Called,
     );
     entry_points.add_entry_point(entry_point);
 
