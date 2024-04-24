@@ -970,16 +970,10 @@ impl SingleTransactionTestCase {
             .expect("failure to read block header")
             .unwrap();
         let state_hash = *block_header.state_root_hash();
-        let block_time = block_header.timestamp().into();
         let balance_handling = if get_total {
             BalanceHandling::Total
         } else {
-            BalanceHandling::Available {
-                holds_epoch: HoldsEpoch::from_block_time(
-                    block_time,
-                    self.fixture.chainspec.core_config.gas_hold_interval,
-                ),
-            }
+            BalanceHandling::Available
         };
         runner
             .main_reactor()
@@ -987,7 +981,6 @@ impl SingleTransactionTestCase {
             .data_access_layer()
             .balance(BalanceRequest::new(
                 state_hash,
-                block_time,
                 protocol_version,
                 casper_storage::data_access_layer::BalanceIdentifier::Accumulate,
                 balance_handling,

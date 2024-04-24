@@ -355,7 +355,6 @@ impl From<&Chainspec> for GenesisConfig {
             .activation_point
             .genesis_timestamp()
             .map_or(0, |timestamp| timestamp.millis());
-        let gas_hold_balance_handling = chainspec.core_config.gas_hold_balance_handling;
         let gas_hold_interval_millis = chainspec.core_config.gas_hold_interval.millis();
         let gas_hold_balance_handling = chainspec.core_config.gas_hold_balance_handling;
 
