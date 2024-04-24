@@ -1,4 +1,6 @@
-use casper_types::{addressable_entity::AddKeyFailure, AddressableEntity, Key, StoredValue};
+use casper_types::{
+    addressable_entity::AddKeyFailure, system::auction::Error, AddressableEntity, Key, StoredValue,
+};
 use tracing::error;
 
 use super::{runtime_provider::RuntimeProvider, storage_provider::StorageProvider};
@@ -28,7 +30,7 @@ impl<S> StorageProvider for RuntimeNative<S>
 where
     S: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn read_key(&mut self, key: &Key) -> Result<Option<AddressableEntity>, AddKeyFailure> {
+    fn read_key(&mut self, key: &Key) -> Result<Option<AddressableEntity>, Error> {
         match self.tracking_copy().borrow_mut().read(key) {
             Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
                 Ok(Some(addressable_entity))

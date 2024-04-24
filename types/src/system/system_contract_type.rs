@@ -25,14 +25,10 @@ use crate::{
     ApiError, EntryPoints,
 };
 
-const MINT_TAG: u8 = 0;
-const HANDLE_PAYMENT_TAG: u8 = 1;
-const STANDARD_PAYMENT_TAG: u8 = 2;
-const AUCTION_TAG: u8 = 3;
-
 use super::{
-    auction::auction_entry_points, handle_payment::handle_payment_entry_points,
-    mint::mint_entry_points, standard_payment::standard_payment_entry_points,
+    auction::auction_entry_points, entity::entity_entry_points,
+    handle_payment::handle_payment_entry_points, mint::mint_entry_points,
+    standard_payment::standard_payment_entry_points,
 };
 
 /// System contract types.
@@ -44,6 +40,7 @@ use super::{
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[repr(u8)]
 pub enum SystemEntityType {
     /// Mint contract.
     #[default]
@@ -54,6 +51,8 @@ pub enum SystemEntityType {
     StandardPayment,
     /// Auction contract.
     Auction,
+    /// Entity contract.
+    Entity,
 }
 
 impl ToBytes for SystemEntityType {
@@ -68,18 +67,7 @@ impl ToBytes for SystemEntityType {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        match self {
-            SystemEntityType::Mint => {
-                writer.push(MINT_TAG);
-            }
-            SystemEntityType::HandlePayment => {
-                writer.push(HANDLE_PAYMENT_TAG);
-            }
-            SystemEntityType::StandardPayment => {
-                writer.push(STANDARD_PAYMENT_TAG);
-            }
-            SystemEntityType::Auction => writer.push(AUCTION_TAG),
-        }
+        writer.push(*self as u8);
         Ok(())
     }
 }
@@ -88,10 +76,11 @@ impl FromBytes for SystemEntityType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            MINT_TAG => Ok((SystemEntityType::Mint, remainder)),
-            HANDLE_PAYMENT_TAG => Ok((SystemEntityType::HandlePayment, remainder)),
-            STANDARD_PAYMENT_TAG => Ok((SystemEntityType::StandardPayment, remainder)),
-            AUCTION_TAG => Ok((SystemEntityType::Auction, remainder)),
+            s if s == Self::Mint as u8 => Ok((Self::Mint, remainder)),
+            s if s == Self::HandlePayment as u8 => Ok((Self::HandlePayment, remainder)),
+            s if s == Self::StandardPayment as u8 => Ok((Self::StandardPayment, remainder)),
+            s if s == Self::Auction as u8 => Ok((Self::Auction, remainder)),
+            s if s == Self::Entity as u8 => Ok((Self::Entity, remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -105,6 +94,7 @@ impl Distribution<SystemEntityType> for Standard {
             1 => SystemEntityType::Auction,
             2 => SystemEntityType::StandardPayment,
             3 => SystemEntityType::HandlePayment,
+            4 => SystemEntityType::Entity,
             _ => unreachable!(),
         }
     }
@@ -118,37 +108,37 @@ pub const HANDLE_PAYMENT: &str = "handle payment";
 pub const STANDARD_PAYMENT: &str = "standard payment";
 /// Name of auction system contract
 pub const AUCTION: &str = "auction";
+/// Name of entity system contract
+pub const ENTITY: &str = "entity";
 
 impl SystemEntityType {
     /// Returns the name of the system contract.
     pub fn entity_name(&self) -> String {
         match self {
-            SystemEntityType::Mint => MINT.to_string(),
-            SystemEntityType::HandlePayment => HANDLE_PAYMENT.to_string(),
-            SystemEntityType::StandardPayment => STANDARD_PAYMENT.to_string(),
-            SystemEntityType::Auction => AUCTION.to_string(),
+            Self::Mint => MINT,
+            Self::HandlePayment => HANDLE_PAYMENT,
+            Self::StandardPayment => STANDARD_PAYMENT,
+            Self::Auction => AUCTION,
+            Self::Entity => ENTITY,
         }
+        .to_string()
     }
 
     /// Returns the entrypoint of the system contract.
     pub fn entry_points(&self) -> EntryPoints {
         match self {
-            SystemEntityType::Mint => mint_entry_points(),
-            SystemEntityType::HandlePayment => handle_payment_entry_points(),
-            SystemEntityType::StandardPayment => standard_payment_entry_points(),
-            SystemEntityType::Auction => auction_entry_points(),
+            Self::Mint => mint_entry_points(),
+            Self::HandlePayment => handle_payment_entry_points(),
+            Self::StandardPayment => standard_payment_entry_points(),
+            Self::Auction => auction_entry_points(),
+            Self::Entity => entity_entry_points(),
         }
     }
 }
 
 impl From<SystemEntityType> for u32 {
     fn from(system_contract_type: SystemEntityType) -> u32 {
-        match system_contract_type {
-            SystemEntityType::Mint => 0,
-            SystemEntityType::HandlePayment => 1,
-            SystemEntityType::StandardPayment => 2,
-            SystemEntityType::Auction => 3,
-        }
+        system_contract_type as u32
     }
 }
 
@@ -162,6 +152,7 @@ impl TryFrom<u32> for SystemEntityType {
             1 => Ok(SystemEntityType::HandlePayment),
             2 => Ok(SystemEntityType::StandardPayment),
             3 => Ok(SystemEntityType::Auction),
+            4 => Ok(SystemEntityType::Entity),
             _ => Err(ApiError::InvalidSystemContract),
         }
     }
@@ -169,12 +160,17 @@ impl TryFrom<u32> for SystemEntityType {
 
 impl Display for SystemEntityType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match *self {
-            SystemEntityType::Mint => write!(f, "{}", MINT),
-            SystemEntityType::HandlePayment => write!(f, "{}", HANDLE_PAYMENT),
-            SystemEntityType::StandardPayment => write!(f, "{}", STANDARD_PAYMENT),
-            SystemEntityType::Auction => write!(f, "{}", AUCTION),
-        }
+        write!(
+            f,
+            "{}",
+            match *self {
+                Self::Mint => MINT,
+                Self::HandlePayment => HANDLE_PAYMENT,
+                Self::StandardPayment => STANDARD_PAYMENT,
+                Self::Auction => AUCTION,
+                Self::Entity => ENTITY,
+            }
+        )
     }
 }
 

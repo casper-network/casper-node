@@ -1,5 +1,5 @@
 pub mod auction;
-// pub mod entity;
+pub mod entity;
 pub mod error;
 pub mod genesis;
 pub mod handle_payment;

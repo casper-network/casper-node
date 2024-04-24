@@ -45,7 +45,7 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, Caller, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        handle_payment, mint, Caller, SystemEntityType, AUCTION, ENTITY, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped,
@@ -1417,6 +1417,7 @@ where
                 }
                 // Not callable
                 SystemEntityType::StandardPayment => {}
+                SystemEntityType::Entity => todo!(),
             }
         }
 
@@ -2300,6 +2301,13 @@ where
         self.context.get_system_contract(AUCTION)
     }
 
+    /// Looks up the public auction contract key in the context's protocol data.
+    ///
+    /// Returned URef is already attenuated depending on the calling account.
+    fn get_entity_contract(&self) -> Result<AddressableEntityHash, ExecError> {
+        self.context.get_system_contract(ENTITY)
+    }
+
     /// Calls the `read_base_round_reward` method on the mint contract at the given mint
     /// contract key
     fn mint_read_base_round_reward(
@@ -2766,6 +2774,7 @@ where
                 Ok(SystemEntityType::HandlePayment) => self.get_handle_payment_contract()?,
                 Ok(SystemEntityType::StandardPayment) => self.get_standard_payment_contract()?,
                 Ok(SystemEntityType::Auction) => self.get_auction_contract()?,
+                Ok(SystemEntityType::Entity) => self.get_entity_contract()?,
                 Err(error) => return Ok(Err(error)),
             };
 
@@ -3427,7 +3436,8 @@ where
 
         // Check if the topic exists and get the summary.
         let Some(StoredValue::MessageTopic(prev_topic_summary)) =
-            self.context.read_gs(&topic_key)? else {
+            self.context.read_gs(&topic_key)?
+        else {
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 

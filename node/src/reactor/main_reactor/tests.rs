@@ -2728,3 +2728,38 @@ async fn should_raise_gas_price_to_ceiling_and_reduce_to_floor() {
     let actual_gas_price = fixture.get_current_era_price();
     assert_eq!(actual_gas_price, expected_gas_price);
 }
+
+#[tokio::test]
+async fn check_multisig() {
+    let alice_stake = 200_000_000_000_u64;
+    let initial_stakes = InitialStakes::FromVec(vec![alice_stake.into(), 10_000_000_000]);
+
+    let mut fixture = TestFixture::new(initial_stakes, None).await;
+    let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+
+    // Wait for all nodes to complete block 0.
+    fixture.run_until_block_height(0, ONE_MIN).await;
+
+    // Ensure our post genesis assumption that Alice has a bid is correct.
+    fixture.check_bid_existence_at_tip(&alice_public_key, None, true);
+
+    // Create & sign deploy to withdraw Alice's full stake.
+    let mut deploy = Deploy::withdraw_bid(
+        fixture.chainspec.network_config.name.clone(),
+        fixture.system_contract_hash(AUCTION),
+        alice_public_key.clone(),
+        alice_stake.into(),
+        Timestamp::now(),
+        TimeDiff::from_seconds(60),
+    );
+    deploy.sign(&alice_secret_key);
+    let txn = Transaction::Deploy(deploy);
+    let txn_hash = txn.hash();
+
+    // Inject the transaction and run the network until executed.
+    fixture.inject_transaction(txn).await;
+    fixture
+        .run_until_executed_transaction(&txn_hash, TEN_SECS)
+        .await;
+}
