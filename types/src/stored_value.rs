@@ -23,7 +23,10 @@ use crate::{
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage},
     package::Package,
-    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::{
+        auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+        reservations::ReservationKind,
+    },
     AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
@@ -50,6 +53,7 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKey = 17,
+    Reservation = 18,
 }
 
 /// A value stored in Global State.
@@ -98,6 +102,8 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
+    /// A reservation record.
+    Reservation(ReservationKind),
 }
 
 impl StoredValue {
@@ -360,6 +366,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
+            StoredValue::Reservation(_) => "Reservation".to_string(),
         }
     }
 
@@ -383,6 +390,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
+            StoredValue::Reservation(_) => Tag::Reservation,
         }
     }
 }
@@ -664,6 +672,7 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+                StoredValue::Reservation(reservation_kind) => reservation_kind.serialized_length(),
             }
     }
 
@@ -690,6 +699,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
+            StoredValue::Reservation(reservation_kind) => reservation_kind.write_bytes(writer),
         }
     }
 }
@@ -782,6 +792,7 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
+        Reservation(&'a ReservationKind),
     }
 
     #[derive(Deserialize)]
@@ -837,6 +848,7 @@ mod serde_helpers {
                     HumanReadableSerHelper::Message(message_digest)
                 }
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
+                StoredValue::Reservation(payload) => HumanReadableSerHelper::Reservation(payload),
             }
         }
     }

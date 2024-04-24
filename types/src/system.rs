@@ -5,6 +5,7 @@ pub mod entity;
 mod error;
 pub mod handle_payment;
 pub mod mint;
+pub mod reservations;
 pub mod standard_payment;
 mod system_contract_type;
 
