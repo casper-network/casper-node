@@ -8,5 +8,5 @@ pub(crate) enum Error {
     #[error("received request without payload")]
     NoPayload,
     #[error(transparent)]
-    BinaryPortError(#[from] casper_binary_port::Error),
+    BinaryPort(#[from] casper_binary_port::Error),
 }

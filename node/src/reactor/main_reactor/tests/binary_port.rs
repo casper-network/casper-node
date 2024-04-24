@@ -30,7 +30,6 @@ use futures::{SinkExt, StreamExt};
 use rand::Rng;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_util::codec::Framed;
-use tracing::error;
 
 use crate::{
     reactor::{main_reactor::MainReactor, Runner},

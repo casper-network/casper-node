@@ -846,10 +846,10 @@ where
         };
 
         let version = effect_builder.get_protocol_version().await;
-        let response = handle_payload(effect_builder, &payload, version).await;
+        let response = handle_payload(effect_builder, payload, version).await;
         framed
             .send(BinaryMessage::new(
-                BinaryResponseAndRequest::new(response, &payload).to_bytes()?,
+                BinaryResponseAndRequest::new(response, payload).to_bytes()?,
             ))
             .await?
     }
