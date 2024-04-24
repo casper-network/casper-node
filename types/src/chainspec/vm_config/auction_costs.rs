@@ -221,6 +221,10 @@ impl FromBytes for AuctionCosts {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<AuctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AuctionCosts {
+        // there's a bug in toml...under the hood it uses an i64 when it should use a u64
+        // this causes flaky test failures if the random result exceeds i64::MAX
+        let change_bid_public_key = rng.gen::<u32>() as u64;
+
         AuctionCosts {
             get_era_validators: rng.gen(),
             read_seigniorage_recipients: rng.gen(),
@@ -236,7 +240,7 @@ impl Distribution<AuctionCosts> for Standard {
             read_era_id: rng.gen(),
             activate_bid: rng.gen(),
             redelegate: rng.gen(),
-            change_bid_public_key: rng.gen(),
+            change_bid_public_key,
         }
     }
 }
