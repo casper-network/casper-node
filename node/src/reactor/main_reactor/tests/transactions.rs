@@ -200,7 +200,6 @@ async fn transfer_cost_fixed_price_no_fee_no_refund() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
@@ -310,7 +309,6 @@ async fn should_accept_transfer_without_id() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let (_, _, result) = transfer_to_account(
@@ -344,7 +342,6 @@ async fn failed_transfer_cost_fixed_price_no_fee_no_refund() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let transfer_amount = fixture
@@ -426,7 +423,6 @@ async fn transfer_cost_classic_price_no_fee_no_refund() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let alice_initial_balance = *get_balance(&mut fixture, &alice_public_key, None, true)
@@ -539,7 +535,6 @@ async fn transaction_with_low_threshold_should_not_get_included() {
     let alice_secret_key = Arc::clone(&fixture.node_contexts[0].secret_key);
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     // This transaction should NOT be included since the tolerance is below the min gas price.
@@ -580,7 +575,6 @@ async fn native_operations_fees_are_not_refunded() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut fixture.rng));
     let charlie_public_key = PublicKey::from(&*charlie_secret_key);
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
@@ -688,7 +682,6 @@ async fn wasm_transaction_fees_are_refunded() {
     let bob_secret_key = Arc::clone(&fixture.node_contexts[1].secret_key);
     let bob_public_key = PublicKey::from(&*bob_secret_key);
 
-    // Wait for all nodes to complete era 0.
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     let bob_initial_balance = *get_balance(&mut fixture, &bob_public_key, None, true)
@@ -1022,12 +1015,10 @@ async fn wasm_transaction_refunds_are_burnt(txn_pricing_mode: PricingMode) {
 
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
@@ -1126,12 +1117,10 @@ async fn only_refunds_are_burnt_no_fee(txn_pricing_mode: PricingMode) {
     .await;
     let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
@@ -1238,12 +1227,10 @@ async fn fees_and_refunds_are_burnt_separately(txn_pricing_mode: PricingMode) {
     );
     let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
@@ -1340,7 +1327,6 @@ async fn refunds_are_payed_and_fees_are_burnt(txn_pricing_mode: PricingMode) {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
@@ -1439,7 +1425,6 @@ async fn refunds_are_payed_and_fees_are_on_hold(txn_pricing_mode: PricingMode) {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
@@ -1561,7 +1546,6 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
@@ -1644,12 +1628,10 @@ async fn transfer_fee_is_burnt_no_refund(txn_pricing_mode: PricingMode) {
         transfer_amount,
     );
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, _, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
@@ -1750,12 +1732,10 @@ async fn fee_is_payed_to_proposer_no_refund(txn_pricing_mode: PricingMode) {
         transfer_amount,
     );
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
@@ -1856,7 +1836,6 @@ async fn wasm_transaction_fees_are_refunded_to_proposer(txn_pricing_mode: Pricin
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _charlie_initial_balance) =
         test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
@@ -2185,12 +2164,10 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
     );
     let expected_transfer_cost = expected_transfer_gas * min_gas_price as u64;
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (_, bob_initial_balance, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
@@ -2242,12 +2219,11 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
     );
 }
 
-async fn fee_holds_are_amortized(txn_pricing_mode: PricingMode) {
-    let (price_handling, min_gas_price, gas_limit) = match_pricing_mode(&txn_pricing_mode);
-
+#[tokio::test]
+async fn fee_holds_are_amortized() {
     let refund_ratio = Ratio::new(1, 2);
     let config = SingleTransactionTestCase::default_test_config()
-        .with_pricing_handling(price_handling)
+        .with_pricing_handling(PricingHandling::Fixed)
         .with_refund_handling(RefundHandling::Burn { refund_ratio })
         .with_fee_handling(FeeHandling::NoFee)
         .with_gas_hold_balance_handling(HoldBalanceHandling::Amortized)
@@ -2260,26 +2236,29 @@ async fn fee_holds_are_amortized(txn_pricing_mode: PricingMode) {
         Some(config),
     )
     .await;
-    let txn = invalid_wasm_txn(BOB_SECRET_KEY.clone(), txn_pricing_mode);
+    let txn = invalid_wasm_txn(
+        BOB_SECRET_KEY.clone(),
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+    );
 
-    // Wait for all nodes to complete era 0.
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
         .await;
 
-    // Initial balances before running the transaction.
     let (alice_initial_balance, bob_initial_balance, _) = test.get_balances(None);
     let initial_total_supply = test.get_total_supply(None);
 
     let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
 
     // Fixed transaction pricing.
-    let expected_transaction_gas: u64 = gas_limit.unwrap_or(
-        test.chainspec()
-            .system_costs_config
-            .standard_transaction_limit(),
-    );
-    let expected_transaction_cost = expected_transaction_gas * min_gas_price as u64;
+    let expected_transaction_gas: u64 = test
+        .chainspec()
+        .system_costs_config
+        .standard_transaction_limit();
+
+    let expected_transaction_cost = expected_transaction_gas * MIN_GAS_PRICE as u64;
 
     assert!(!exec_result_is_success(&exec_result)); // transaction should not succeed because the wasm bytes are invalid.
     assert_exec_result_cost(
@@ -2362,9 +2341,116 @@ async fn fee_holds_are_amortized(txn_pricing_mode: PricingMode) {
 }
 
 #[tokio::test]
-async fn fee_holds_are_amortized_fixed_pricing() {
-    fee_holds_are_amortized(PricingMode::Fixed {
-        gas_price_tolerance: MIN_GAS_PRICE,
-    })
+async fn sufficient_balance_is_available_after_amortization() {
+    let config = SingleTransactionTestCase::default_test_config()
+        .with_pricing_handling(PricingHandling::Fixed)
+        .with_refund_handling(RefundHandling::NoRefund)
+        .with_fee_handling(FeeHandling::NoFee)
+        .with_gas_hold_balance_handling(HoldBalanceHandling::Amortized)
+        .with_balance_hold_interval(TimeDiff::from_seconds(10));
+
+    let mut test = SingleTransactionTestCase::new(
+        ALICE_SECRET_KEY.clone(),
+        BOB_SECRET_KEY.clone(),
+        CHARLIE_SECRET_KEY.clone(),
+        Some(config),
+    )
     .await;
+
+    let transfer_cost: U512 =
+        U512::from(test.chainspec().system_costs_config.mint_costs().transfer) * MIN_GAS_PRICE;
+    let min_transfer_amount = U512::from(
+        test.chainspec()
+            .transaction_config
+            .native_transfer_minimum_motes,
+    );
+    let half_transfer_cost =
+        (Ratio::new(U512::from(1), U512::from(2)) * transfer_cost).to_integer();
+
+    // Fund Charlie with some token.
+    let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
+    let txn = transfer_txn(
+        BOB_SECRET_KEY.clone(),
+        &*CHARLIE_PUBLIC_KEY,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        transfer_amount,
+    );
+
+    test.fixture
+        .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
+        .await;
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+
+    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    assert_eq!(
+        charlie_balance.available.clone(),
+        charlie_balance.total.clone()
+    );
+    assert_eq!(charlie_balance.available.clone(), transfer_amount);
+
+    // Now Charlie has balance to do 2 transfers of the minimum amount but can't pay for both as the
+    // same time. Let's say the min transfer amount is 2_500_000_000 and the cost of a transfer
+    // is 50_000. Charlie now has 5_000_075_000 as set up above. He can transfer 2_500_000_000
+    // which will put a hold of 50_000. His available balance would be 2_500_025_000.
+    // He can't issue a new transfer of 2_500_000_000 right away because he doesn't have enough
+    // balance to pay for the transfer. He'll need to wait until at least half of the holds
+    // amortize. In this case he needs to wait half of the amortization time for 25_000 to
+    // become available to him. After this period, he will have 2_500_050_000 available which
+    // will allow him to do another transfer.
+    let txn = transfer_txn(
+        CHARLIE_SECRET_KEY.clone(),
+        &*BOB_PUBLIC_KEY,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        min_transfer_amount,
+    );
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result));
+
+    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    assert_eq!(
+        charlie_balance.total.clone(),
+        min_transfer_amount + transfer_cost + half_transfer_cost, /* one `min_transfer_amount`
+                                                                   * should have gone to Bob. */
+    );
+    assert_eq!(
+        charlie_balance.available.clone(),
+        min_transfer_amount + half_transfer_cost, // transfer cost should be held.
+    );
+
+    // Let's wait for about 5 sec (5 blocks in this case) which should provide enough time for at
+    // half of the holds to get amortized.
+    test.fixture
+        .run_until_block_height(block_height + 5, ONE_MIN)
+        .await;
+    let charlie_balance = test.get_balances(Some(block_height + 5)).2.unwrap();
+    assert!(
+        charlie_balance.available.clone() >= min_transfer_amount + transfer_cost, /* right now he should have enough to make a transfer. */
+    );
+    assert!(
+        charlie_balance.available.clone() < charlie_balance.total.clone(), /* some of the holds
+                                                                            * should still be in
+                                                                            * place. */
+    );
+
+    // Send another transfer to Bob for `min_transfer_amount`.
+    let txn = transfer_txn(
+        CHARLIE_SECRET_KEY.clone(),
+        &*BOB_PUBLIC_KEY,
+        PricingMode::Fixed {
+            gas_price_tolerance: MIN_GAS_PRICE,
+        },
+        min_transfer_amount,
+    );
+    let (_txn_hash, block_height, exec_result) = test.send_transaction(txn).await;
+    assert!(exec_result_is_success(&exec_result)); // We expect this transfer to succeed since Charlie has enough balance.
+    let charlie_balance = test.get_balances(Some(block_height)).2.unwrap();
+    assert_eq!(
+        charlie_balance.total.clone(),
+        transfer_cost + half_transfer_cost, // two `min_transfer_amount` should have gone to Bob.
+    );
 }

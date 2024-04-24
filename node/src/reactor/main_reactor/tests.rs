@@ -22,7 +22,9 @@ use tracing::{error, info};
 
 use casper_storage::{
     data_access_layer::{
-        balance::{BalanceHandling, BalanceResult}, BalanceRequest, BidsRequest, BidsResult, ProofHandling, TotalSupplyRequest, TotalSupplyResult
+        balance::{BalanceHandling, BalanceResult},
+        BalanceRequest, BidsRequest, BidsResult, ProofHandling, TotalSupplyRequest,
+        TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
@@ -34,11 +36,11 @@ use casper_types::{
     },
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
-    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, HoldBalanceHandling,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, Key, Motes, NextUpgrade,
-    PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
-    StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionV1Builder, ValidatorConfig, U512,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key,
+    Motes, NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling,
+    Rewards, SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -170,7 +172,10 @@ impl ConfigsOverride {
         self
     }
 
-    fn with_gas_hold_balance_handling(mut self, gas_hold_balance_handling: HoldBalanceHandling) -> Self {
+    fn with_gas_hold_balance_handling(
+        mut self,
+        gas_hold_balance_handling: HoldBalanceHandling,
+    ) -> Self {
         self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
         self
     }
