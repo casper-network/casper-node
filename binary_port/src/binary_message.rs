@@ -56,6 +56,12 @@ impl codec::Encoder<BinaryMessage> for BinaryMessageCodec {
         dst: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
         let length = item.0.len() as LengthEncoding;
+        if length > self.max_message_size_bytes {
+            return Err(Error::RequestTooLarge {
+                allowed: self.max_message_size_bytes,
+                got: length,
+            });
+        }
         let length_bytes = length.to_le_bytes();
         dst.extend(length_bytes.iter().chain(item.0.iter()));
         Ok(())
@@ -95,6 +101,8 @@ impl codec::Decoder for BinaryMessageCodec {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use casper_types::testing::TestRng;
     use tokio_util::codec::{Decoder, Encoder};
 
@@ -173,7 +181,19 @@ mod tests {
     }
 
     #[test]
-    fn should_bail_on_too_large_request() {
+    fn encode_should_bail_on_too_large_request() {
+        let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
+        let too_large = MAX_MESSAGE_SIZE_BYTES as usize + 1;
+        let val = BinaryMessage::new(vec![0; too_large]);
+        let mut bytes = bytes::BytesMut::new();
+        let result = codec.encode(val, &mut bytes).unwrap_err();
+
+        assert!(matches!(result, Error::RequestTooLarge { allowed, got }
+                 if allowed == codec.max_message_size_bytes && got == too_large as u32));
+    }
+
+    #[test]
+    fn decode_should_bail_on_too_large_request() {
         let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
         let mut bytes = bytes::BytesMut::new();
         let too_large = (codec.max_message_size_bytes + 1) as LengthEncoding;
