@@ -8,12 +8,6 @@ mod tests;
 
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
-// TODO[RC]: Merge these three
-use futures::TryStreamExt;
-use futures::{stream::StreamExt, SinkExt};
-use tokio::{net::TcpListener, sync::Semaphore};
-
-use bytes::Bytes;
 use casper_binary_port::{
     BalanceResponse, BinaryMessage, BinaryMessageCodec, BinaryRequest, BinaryRequestHeader,
     BinaryRequestTag, BinaryResponse, BinaryResponseAndRequest, DictionaryItemIdentifier,
@@ -38,14 +32,13 @@ use casper_types::{
 };
 
 use datasize::DataSize;
-use futures::{future::BoxFuture, FutureExt};
+use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
     join,
-    net::TcpStream,
-    sync::{Notify, OwnedSemaphorePermit},
+    net::{TcpListener, TcpStream},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore},
 };
 use tokio_util::codec::Framed;
 use tracing::{debug, error, info, warn};
