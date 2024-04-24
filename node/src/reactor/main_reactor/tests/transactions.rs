@@ -775,13 +775,12 @@ struct BalanceAmount {
 
 impl SingleTransactionTestCase {
     fn default_test_config() -> ConfigsOverride {
-        let config = ConfigsOverride::default()
+        ConfigsOverride::default()
             .with_minimum_era_height(5) // make the era longer so that the transaction doesn't land in the switch block.
             .with_balance_hold_interval(TimeDiff::from_seconds(5))
             .with_min_gas_price(MIN_GAS_PRICE)
             .with_max_gas_price(MIN_GAS_PRICE)
-            .with_chain_name("single-transaction-test-net".to_string());
-        config
+            .with_chain_name("single-transaction-test-net".to_string())
     }
 
     async fn new(
@@ -1533,7 +1532,7 @@ async fn only_refunds_are_burnt_no_fee_custom_payment() {
             .build()
             .unwrap(),
     );
-    txn.sign(&*BOB_SECRET_KEY);
+    txn.sign(&BOB_SECRET_KEY);
 
     test.fixture
         .run_until_consensus_in_era(ERA_ONE, ONE_MIN)
@@ -1616,7 +1615,7 @@ async fn transfer_fee_is_burnt_no_refund(txn_pricing_mode: PricingMode) {
 
     let txn = transfer_txn(
         ALICE_SECRET_KEY.clone(),
-        &*CHARLIE_PUBLIC_KEY,
+        &CHARLIE_PUBLIC_KEY,
         txn_pricing_mode,
         transfer_amount,
     );
@@ -1720,7 +1719,7 @@ async fn fee_is_payed_to_proposer_no_refund(txn_pricing_mode: PricingMode) {
 
     let txn = transfer_txn(
         BOB_SECRET_KEY.clone(),
-        &*CHARLIE_PUBLIC_KEY,
+        &CHARLIE_PUBLIC_KEY,
         txn_pricing_mode,
         transfer_amount,
     );
@@ -1937,7 +1936,7 @@ async fn fee_is_accumulated_and_distributed_no_refund(txn_pricing_mode: PricingM
 
     let txn = transfer_txn(
         BOB_SECRET_KEY.clone(),
-        &*CHARLIE_PUBLIC_KEY,
+        &CHARLIE_PUBLIC_KEY,
         txn_pricing_mode,
         transfer_amount,
     );
@@ -2061,7 +2060,7 @@ fn transfer_txn<A: Into<U512>>(
             .build()
             .unwrap(),
     );
-    txn.sign(&*from);
+    txn.sign(&from);
     txn
 }
 
@@ -2078,7 +2077,7 @@ fn invalid_wasm_txn(initiator: Arc<SecretKey>, pricing_mode: PricingMode) -> Tra
         .build()
         .unwrap(),
     );
-    txn.sign(&*initiator);
+    txn.sign(&initiator);
     txn
 }
 
@@ -2143,7 +2142,7 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
     // transfer from bob to charlie
     let txn = transfer_txn(
         BOB_SECRET_KEY.clone(),
-        &*CHARLIE_PUBLIC_KEY,
+        &CHARLIE_PUBLIC_KEY,
         txn_pricing_mode,
         transfer_amount,
     );
@@ -2184,7 +2183,7 @@ async fn holds_should_be_added_and_cleared(txn_pricing_mode: PricingMode) {
         charlie_balance
             .expect("Expected Charlie to have a balance")
             .total,
-        transfer_amount.into(),
+        transfer_amount,
         "charlie's balance should equal transfer amount"
     );
     assert_ne!(
@@ -2364,7 +2363,7 @@ async fn sufficient_balance_is_available_after_amortization() {
     let transfer_amount = min_transfer_amount * 2 + transfer_cost + half_transfer_cost;
     let txn = transfer_txn(
         BOB_SECRET_KEY.clone(),
-        &*CHARLIE_PUBLIC_KEY,
+        &CHARLIE_PUBLIC_KEY,
         PricingMode::Fixed {
             gas_price_tolerance: MIN_GAS_PRICE,
         },
@@ -2395,7 +2394,7 @@ async fn sufficient_balance_is_available_after_amortization() {
     // will allow him to do another transfer.
     let txn = transfer_txn(
         CHARLIE_SECRET_KEY.clone(),
-        &*BOB_PUBLIC_KEY,
+        &BOB_PUBLIC_KEY,
         PricingMode::Fixed {
             gas_price_tolerance: MIN_GAS_PRICE,
         },
@@ -2422,18 +2421,20 @@ async fn sufficient_balance_is_available_after_amortization() {
         .await;
     let charlie_balance = test.get_balances(Some(block_height + 5)).2.unwrap();
     assert!(
-        charlie_balance.available.clone() >= min_transfer_amount + transfer_cost, /* right now he should have enough to make a transfer. */
+        charlie_balance.available >= min_transfer_amount + transfer_cost, /* right now he should
+                                                                           * have enough to make
+                                                                           * a transfer. */
     );
     assert!(
-        charlie_balance.available.clone() < charlie_balance.total.clone(), /* some of the holds
-                                                                            * should still be in
-                                                                            * place. */
+        charlie_balance.available < charlie_balance.total, /* some of the holds
+                                                            * should still be in
+                                                            * place. */
     );
 
     // Send another transfer to Bob for `min_transfer_amount`.
     let txn = transfer_txn(
         CHARLIE_SECRET_KEY.clone(),
-        &*BOB_PUBLIC_KEY,
+        &BOB_PUBLIC_KEY,
         PricingMode::Fixed {
             gas_price_tolerance: MIN_GAS_PRICE,
         },
