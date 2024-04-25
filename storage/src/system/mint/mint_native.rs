@@ -191,7 +191,6 @@ where
         {
             Ok(motes) => Ok(Some(motes.value())),
             Err(err) => {
-                println!("{:?}", err);
                 error!(?err, "mint native available_balance");
                 Err(Error::Storage)
             }

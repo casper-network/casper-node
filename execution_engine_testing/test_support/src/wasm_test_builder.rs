@@ -41,7 +41,8 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
     system::runtime_native::{Config as NativeRuntimeConfig, TransferConfig},
-    tracking_copy::TrackingCopyExt,
+    tracking_copy::{TrackingCopyEntityExt, TrackingCopyExt},
+    AddressGenerator,
 };
 
 use casper_types::{
@@ -58,13 +59,15 @@ use casper_types::{
             ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
             METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
+        mint::{MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr, BlockTime, ByteCode,
-    ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas,
-    HandlePaymentCosts, InitiatorAddr, Key, KeyTag, MintCosts, Motes, Package, PackageHash,
-    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemEntityRegistry, TransactionHash, TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, BlockGlobalAddr,
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, CLTyped, CLValue, Contract, Digest,
+    EntityAddr, EraId, Gas, HandlePaymentCosts, HoldBalanceHandling, InitiatorAddr, Key, KeyTag,
+    MintCosts, Motes, Package, PackageHash, Phase, ProtocolUpgradeConfig, ProtocolVersion,
+    PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash,
+    TransactionV1Hash, URef, OS_PAGE_SIZE, U512,
 };
 
 use crate::{
@@ -1163,27 +1166,70 @@ where
                 StoredValue::CLValue(cl_value),
             );
             self.commit_transforms(state_root_hash, tracking_copy.effects());
-            //
-            // // reacquire root hash
-            // if let Some(new_state_root_hash) = self.post_state_hash {
-            //     assert_ne!(
-            //         state_root_hash, new_state_root_hash,
-            //         "root hash should have changed"
-            //     );
-            //     let mut tracking_copy = self
-            //         .data_access_layer
-            //         .tracking_copy(new_state_root_hash)
-            //         .expect("should not error on checkout")
-            //         .expect("should checkout tracking copy");
-            //     let value = tracking_copy
-            //         .read(&Key::BlockGlobal(BlockGlobalAddr::BlockTime))
-            //         .expect("should not error")
-            //         .expect("block time record should exist");
-            //
-            //     println!("{:?}", value);
-            // }
         }
 
+        self
+    }
+
+    /// Sets gas hold config into global state.
+    pub fn with_gas_hold_config(
+        &mut self,
+        handling: HoldBalanceHandling,
+        interval: u64,
+    ) -> &mut Self {
+        if let Some(state_root_hash) = self.post_state_hash {
+            let mut tracking_copy = self
+                .data_access_layer
+                .tracking_copy(state_root_hash)
+                .expect("should not error on checkout")
+                .expect("should checkout tracking copy");
+
+            let registry = tracking_copy
+                .get_system_entity_registry()
+                .expect("should have registry");
+            let mint = *registry.get("mint").expect("should have mint");
+            let mint_addr = EntityAddr::new_system(mint.value());
+            let named_keys = tracking_copy
+                .get_named_keys(mint_addr)
+                .expect("should have named keys");
+
+            let mut address_generator =
+                AddressGenerator::new(state_root_hash.as_ref(), Phase::System);
+
+            // gas handling
+            let uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let stored_value = StoredValue::CLValue(
+                CLValue::from_t(handling.tag()).expect("should turn handling tag into CLValue"),
+            );
+
+            tracking_copy
+                .upsert_uref_to_named_keys(
+                    mint_addr,
+                    MINT_GAS_HOLD_HANDLING_KEY,
+                    &named_keys,
+                    uref,
+                    stored_value,
+                )
+                .expect("should upsert gas handling");
+
+            // gas interval
+            let uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let stored_value = StoredValue::CLValue(
+                CLValue::from_t(interval).expect("should turn gas interval into CLValue"),
+            );
+
+            tracking_copy
+                .upsert_uref_to_named_keys(
+                    mint_addr,
+                    MINT_GAS_HOLD_INTERVAL_KEY,
+                    &named_keys,
+                    uref,
+                    stored_value,
+                )
+                .expect("should upsert gas interval");
+
+            self.commit_transforms(state_root_hash, tracking_copy.effects());
+        }
         self
     }
 

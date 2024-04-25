@@ -4,9 +4,10 @@ use std::{
 };
 use tracing::{error, warn};
 
-use crate::data_access_layer::balance::{AvailableBalanceChecker, ProcessingHoldBalanceHandling};
 use crate::{
-    data_access_layer::balance::{BalanceHolds, BalanceHoldsWithProof},
+    data_access_layer::balance::{
+        AvailableBalanceChecker, BalanceHolds, BalanceHoldsWithProof, ProcessingHoldBalanceHandling,
+    },
     global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyError},
 };
