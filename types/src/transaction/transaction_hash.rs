@@ -160,7 +160,6 @@ impl FromBytes for TransactionHash {
 mod tests {
     use super::*;
     use crate::testing::TestRng;
-
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
