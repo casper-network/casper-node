@@ -26,6 +26,7 @@ const BALANCES_PREFIX: &str = "b";
 pub enum TokenOwnerError {
     CallError(CallError),
     DepositError(CustomError),
+    WithdrawError(CustomError),
 }
 
 impl From<CallError> for TokenOwnerError {
@@ -64,6 +65,26 @@ impl TokenOwnerContract {
             Err(e) => log!("Token owner failed to deposit {amount} to {contract_address:?}: {e:?}"),
         }
         res.map_err(|error| TokenOwnerError::DepositError(error))?;
+        Ok(())
+    }
+
+    pub fn do_withdraw(
+        &self,
+        self_address: Address,
+        contract_address: Address,
+        amount: u64,
+    ) -> Result<(), TokenOwnerError> {
+        let self_balance = host::get_balance_of(&Entity::Contract(self_address));
+        let res = ContractHandle::<HarnessRef>::from_address(contract_address)
+            .build_call()
+            .call(|harness| harness.withdraw(self_balance, amount))?;
+        match &res {
+            Ok(()) => log!("Token owner withdrew {amount} from {contract_address:?}"),
+            Err(e) => {
+                log!("Token owner failed to withdraw {amount} from {contract_address:?}: {e:?}")
+            }
+        }
+        res.map_err(|error| TokenOwnerError::WithdrawError(error))?;
         Ok(())
     }
 }
@@ -299,7 +320,7 @@ impl Harness {
     }
 
     #[casper(payable, revert_on_error)]
-    pub fn withdraw(&mut self, amount: u64) -> Result<(), CustomError> {
+    pub fn withdraw(&mut self, balance_before: u64, amount: u64) -> Result<(), CustomError> {
         let caller = host::get_caller();
         log!("Withdrawing {amount} from {caller:?}");
         let current_balance = self.balances.get(&caller).unwrap_or(0);
@@ -562,7 +583,7 @@ pub fn call() {
             let account_balance_before = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
-                .call(|harness| harness.withdraw(50))
+                .call(|harness| harness.withdraw(account_balance_before, 50))
                 .expect("Should call")
                 .expect("Should succeed");
             let account_balance_after = host::get_balance_of(&caller);
@@ -579,7 +600,10 @@ pub fn call() {
         }
     }
 
+    //
     // Perform tests with a contract acting as an owner of funds deposited into other contract
+    //
+
     {
         let caller = host::get_caller();
 
@@ -594,35 +618,71 @@ pub fn call() {
             .expect("Should create");
         assert_eq!(token_owner.balance(), 100);
 
+        // token owner contract performs a deposit into a harness contract through `deposit` payable entrypoint
         // caller: no change
         // token owner: -50
         // harness: +50
-        let caller_balance_before = host::get_balance_of(&caller);
-        let token_owner_balance_before = token_owner.balance();
-        let harness_balance_before = harness.balance();
+        {
+            let caller_balance_before = host::get_balance_of(&caller);
+            let token_owner_balance_before = token_owner.balance();
+            let harness_balance_before = harness.balance();
 
-        token_owner
-            .call(|contract| {
-                contract.do_deposit(
-                    token_owner.contract_address(),
-                    harness.contract_address(),
-                    50,
-                )
-            })
-            .expect("Should call")
-            .expect("Should succeed");
+            token_owner
+                .call(|contract| {
+                    contract.do_deposit(
+                        token_owner.contract_address(),
+                        harness.contract_address(),
+                        50,
+                    )
+                })
+                .expect("Should call")
+                .expect("Should succeed");
 
-        assert_eq!(
-            host::get_balance_of(&caller),
-            caller_balance_before,
-            "Caller funds should not change"
-        );
-        assert_eq!(
-            token_owner.balance(),
-            token_owner_balance_before - 50,
-            "Token owner balance should decrease"
-        );
-        assert_eq!(harness.balance(), harness_balance_before + 50);
+            assert_eq!(
+                host::get_balance_of(&caller),
+                caller_balance_before,
+                "Caller funds should not change"
+            );
+            assert_eq!(
+                token_owner.balance(),
+                token_owner_balance_before - 50,
+                "Token owner balance should decrease"
+            );
+            assert_eq!(harness.balance(), harness_balance_before + 50);
+        }
+
+        // token owner contract performs a withdrawal from a harness contract through `withdraw` entrypoint
+        // caller: no change
+        // token owner: +50
+        // harness: -50
+        {
+            let caller_balance_before = host::get_balance_of(&caller);
+            let token_owner_balance_before = token_owner.balance();
+            let harness_balance_before = harness.balance();
+
+            token_owner
+                .call(|contract| {
+                    contract.do_withdraw(
+                        token_owner.contract_address(),
+                        harness.contract_address(),
+                        50,
+                    )
+                })
+                .expect("Should call")
+                .expect("Should succeed");
+
+            assert_eq!(
+                host::get_balance_of(&caller),
+                caller_balance_before,
+                "Caller funds should not change"
+            );
+            assert_eq!(
+                token_owner.balance(),
+                token_owner_balance_before + 50,
+                "Token owner balance should increase"
+            );
+            assert_eq!(harness.balance(), harness_balance_before - 50);
+        }
     }
 
     log!("👋 Goodbye");

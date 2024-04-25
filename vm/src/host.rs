@@ -848,9 +848,7 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
         Ok(Some(StoredValue::Account(account))) => {
             panic!("Expected AddressableEntity but got {:?}", account)
         }
-        Ok(Some(StoredValue::ContractV2(contract_v2))) => {
-            panic!("Expected AddressableEntity but got {:?}", contract_v2);
-        }
+        Ok(Some(StoredValue::ContractV2(ContractV2::V2(contract)))) => contract.purse_uref,
         Ok(Some(StoredValue::AddressableEntity(addressable_entity))) => {
             addressable_entity.main_purse()
         }
