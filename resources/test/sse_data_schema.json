@@ -1699,9 +1699,7 @@
             "Reserved": {
               "type": "object",
               "required": [
-                "paid_amount",
-                "receipt",
-                "strike_price"
+                "receipt"
               ],
               "properties": {
                 "receipt": {
@@ -1711,18 +1709,6 @@
                       "$ref": "#/definitions/Digest"
                     }
                   ]
-                },
-                "paid_amount": {
-                  "description": "Price paid in the past to reserve space in a future block.",
-                  "type": "integer",
-                  "format": "uint64",
-                  "minimum": 0.0
-                },
-                "strike_price": {
-                  "description": "The gas price at the time of reservation.",
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
                 }
               },
               "additionalProperties": false
@@ -3316,6 +3302,7 @@
         "initiator",
         "limit",
         "payment",
+        "size_estimate",
         "transfers"
       ],
       "properties": {
@@ -3371,6 +3358,12 @@
           "items": {
             "$ref": "#/definitions/Transfer"
           }
+        },
+        "size_estimate": {
+          "description": "The size estimate of the transaction",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
         },
         "effects": {
           "description": "The effects of executing this transaction.",
@@ -3920,6 +3913,19 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "A reservation record.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/ReservationKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -4237,11 +4243,10 @@
         },
         "versions": {
           "description": "All versions (enabled & disabled)",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Array_of_ContractVersionAndHash"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContractVersion"
+          }
         },
         "disabled_versions": {
           "description": "Disabled versions",
@@ -4269,34 +4274,32 @@
         }
       }
     },
-    "Array_of_ContractVersionAndHash": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/ContractVersionAndHash"
-      }
-    },
-    "ContractVersionAndHash": {
+    "ContractVersion": {
       "type": "object",
       "required": [
-        "contract_entity_hash",
-        "contract_version_key"
+        "contract_hash",
+        "contract_version",
+        "protocol_version_major"
       ],
       "properties": {
-        "contract_version_key": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ContractVersionKey"
-            }
-          ]
+        "protocol_version_major": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         },
-        "contract_entity_hash": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/ContractHash"
-            }
-          ]
+        "contract_version": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "contract_hash": {
+          "$ref": "#/definitions/ContractHash"
         }
       }
+    },
+    "ContractHash": {
+      "description": "The hash address of the contract",
+      "type": "string"
     },
     "ContractVersionKey": {
       "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
@@ -4315,10 +4318,6 @@
       ],
       "maxItems": 2,
       "minItems": 2
-    },
-    "ContractHash": {
-      "description": "The hash address of the contract",
-      "type": "string"
     },
     "Array_of_NamedUserGroup": {
       "type": "array",
@@ -4780,6 +4779,28 @@
               "$ref": "#/definitions/CLValue"
             }
           ]
+        }
+      }
+    },
+    "ReservationKind": {
+      "description": "Container for bytes recording location, type and data for a gas reservation",
+      "type": "object",
+      "required": [
+        "receipt",
+        "reservation_data",
+        "reservation_kind"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/definitions/Digest"
+        },
+        "reservation_kind": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "reservation_data": {
+          "$ref": "#/definitions/Bytes"
         }
       }
     },

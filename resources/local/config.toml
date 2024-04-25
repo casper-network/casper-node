@@ -320,6 +320,8 @@ client_request_limit = 10
 # Number of requests that can be buffered.
 client_request_buffer_size = 20
 
+gas_hold_handling = { type = 'accrued' }
+
 # Maximum number of connections to the server.
 max_connections = 16
 

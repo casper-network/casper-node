@@ -701,6 +701,10 @@ where
                 StoredValue::Message(_) => {
                     return Ok(query.into_not_found_result("Message value found."));
                 }
+                // TODO: We may be interested in this value, check the logic
+                StoredValue::Reservation(_) => {
+                    return Ok(query.into_not_found_result("Reservation value found."))
+                }
             }
         }
     }
