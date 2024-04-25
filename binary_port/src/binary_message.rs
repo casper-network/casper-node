@@ -74,11 +74,19 @@ impl codec::Decoder for BinaryMessageCodec {
     type Error = Error;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.len() < LENGTH_ENCODING_SIZE_BYTES {
+        let (length, maybe_payload) = if let [b1, b2, b3, b4, remainder @ ..] = &src[..] {
+            let length = LengthEncoding::from_le_bytes([*b1, *b2, *b3, *b4]) as usize;
+            (length, remainder.get(..length))
+        } else {
             // Not enough bytes to read the length.
             return Ok(None);
-        }
-        let length = LengthEncoding::from_le_bytes([src[0], src[1], src[2], src[3]]) as usize;
+        };
+
+        let Some(payload) = maybe_payload else {
+            // Not enough bytes to read the whole message.
+            return Ok(None);
+        };
+
         if length > self.max_message_size_bytes as usize {
             return Err(Error::RequestTooLarge {
                 allowed: self.max_message_size_bytes,
@@ -88,12 +96,8 @@ impl codec::Decoder for BinaryMessageCodec {
         if length == 0 {
             return Err(Error::EmptyRequest);
         }
-        if src.len() < length + LENGTH_ENCODING_SIZE_BYTES {
-            // Not enough bytes to read the whole message.
-            return Ok(None);
-        }
 
-        let payload = src[LENGTH_ENCODING_SIZE_BYTES..LENGTH_ENCODING_SIZE_BYTES + length].to_vec();
+        let payload = payload.to_vec();
         src.advance(LENGTH_ENCODING_SIZE_BYTES + length);
         Ok(Some(BinaryMessage(payload)))
     }
@@ -104,6 +108,7 @@ mod tests {
     use std::vec;
 
     use casper_types::testing::TestRng;
+    use rand::Rng;
     use tokio_util::codec::{Decoder, Encoder};
 
     use crate::{
