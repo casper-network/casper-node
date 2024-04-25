@@ -39,12 +39,12 @@ use casper_types::{
         },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash, PackageStatus, Phase,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry,
-    Tagged, TimeDiff, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, BlockGlobalAddr,
+    BlockTime, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec,
+    ChainspecRegistry, Digest, EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling,
+    GenesisAccount, GenesisConfig, GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash,
+    PackageStatus, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig,
+    SystemEntityRegistry, Tagged, TimeDiff, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -886,13 +886,24 @@ where
         Ok(())
     }
 
+    /// Writes a tracking record to global state for block time / genesis timestamp.
+    fn store_block_time(&self) -> Result<(), Box<GenesisError>> {
+        let cl_value = CLValue::from_t(self.config.genesis_timestamp_millis())
+            .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::BlockGlobal(BlockGlobalAddr::BlockTime),
+            StoredValue::CLValue(cl_value),
+        );
+        Ok(())
+    }
+
     /// Performs a complete system installation.
     pub fn install(
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
         // Setup system account
-
         self.setup_system_account()?;
 
         // Create mint
@@ -907,7 +918,11 @@ where
         // Create handle payment
         self.create_handle_payment()?;
 
+        // Write chainspec registry.
         self.store_chainspec_registry(chainspec_registry)?;
+
+        // Write block time to global state
+        self.store_block_time()?;
 
         Ok(())
     }

@@ -23,14 +23,12 @@ use tracing::{error, info};
 use casper_storage::{
     data_access_layer::{
         balance::{BalanceHandling, BalanceResult},
-        AddressableEntityRequest, AddressableEntityResult, BalanceRequest, BidsRequest, BidsResult,
-        ProofHandling, TotalSupplyRequest, TotalSupplyResult,
+        BalanceRequest, BidsRequest, BidsResult, ProofHandling, TotalSupplyRequest,
+        TotalSupplyResult,
     },
     global_state::state::{StateProvider, StateReader},
 };
 use casper_types::{
-    account::AccountHash,
-    crypto,
     execution::{ExecutionResult, ExecutionResultV2, TransformKindV2, TransformV2},
     system::{
         auction::{BidAddr, BidKind, BidsExt, DelegationRate},
@@ -39,10 +37,10 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
     Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes,
-    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldsEpoch, Key, Motes, NextUpgrade,
-    PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards, SecretKey,
-    StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionV1Builder, ValidatorConfig, U512,
+    ConsensusProtocolName, Deploy, EraId, FeeHandling, Gas, HoldBalanceHandling, Key, Motes,
+    NextUpgrade, PricingHandling, PricingMode, ProtocolVersion, PublicKey, RefundHandling, Rewards,
+    SecretKey, StoredValue, SystemEntityRegistry, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionV1Builder, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -119,6 +117,9 @@ struct ConfigsOverride {
     pricing_handling_override: Option<PricingHandling>,
     allow_reservations_override: Option<bool>,
     balance_hold_interval_override: Option<TimeDiff>,
+    administrators: Option<BTreeSet<PublicKey>>,
+    chain_name: Option<String>,
+    gas_hold_balance_handling: Option<HoldBalanceHandling>,
 }
 
 impl ConfigsOverride {
@@ -187,6 +188,24 @@ impl ConfigsOverride {
         self.max_transfer_count = max_transfer_count;
         self
     }
+
+    fn with_administrators(mut self, administrators: BTreeSet<PublicKey>) -> Self {
+        self.administrators = Some(administrators);
+        self
+    }
+
+    fn with_chain_name(mut self, chain_name: String) -> Self {
+        self.chain_name = Some(chain_name);
+        self
+    }
+
+    fn with_gas_hold_balance_handling(
+        mut self,
+        gas_hold_balance_handling: HoldBalanceHandling,
+    ) -> Self {
+        self.gas_hold_balance_handling = Some(gas_hold_balance_handling);
+        self
+    }
 }
 
 impl Default for ConfigsOverride {
@@ -217,6 +236,9 @@ impl Default for ConfigsOverride {
             pricing_handling_override: None,
             allow_reservations_override: None,
             balance_hold_interval_override: None,
+            administrators: None,
+            chain_name: None,
+            gas_hold_balance_handling: None,
         }
     }
 }
@@ -337,6 +359,9 @@ impl TestFixture {
             pricing_handling_override,
             allow_reservations_override,
             balance_hold_interval_override,
+            administrators,
+            chain_name,
+            gas_hold_balance_handling,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -379,6 +404,15 @@ impl TestFixture {
         }
         if let Some(balance_hold_interval) = balance_hold_interval_override {
             chainspec.core_config.gas_hold_interval = balance_hold_interval;
+        }
+        if let Some(administrators) = administrators {
+            chainspec.core_config.administrators = administrators;
+        }
+        if let Some(chain_name) = chain_name {
+            chainspec.network_config.name = chain_name;
+        }
+        if let Some(gas_hold_balance_handling) = gas_hold_balance_handling {
+            chainspec.core_config.gas_hold_balance_handling = gas_hold_balance_handling;
         }
 
         let limit = chainspec.transaction_config.block_gas_limit;
@@ -851,17 +885,11 @@ impl TestFixture {
             .read_highest_block()
             .expect("should have block");
 
-        let block_time = highest_block.clone_header().timestamp();
-
-        let holds_epoch =
-            HoldsEpoch::from_timestamp(block_time, self.chainspec.core_config.gas_hold_interval);
-
         let balance_request = BalanceRequest::from_public_key(
             *highest_block.state_root_hash(),
-            block_time.into(),
             highest_block.protocol_version(),
             account_public_key,
-            BalanceHandling::Available { holds_epoch },
+            BalanceHandling::Available,
             ProofHandling::NoProofs,
         );
 

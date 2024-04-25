@@ -17,11 +17,11 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::TransformKindV2,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
-    ContextAccessRights, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, HoldsEpoch, Key,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    SystemEntityRegistry, Tagged, TransactionHash, TransactionV1Hash, URef, KEY_HASH_LENGTH, U256,
-    U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockGlobalAddr, BlockTime,
+    ByteCodeHash, CLValue, ContextAccessRights, EntityAddr, EntityKind, EntryPointType,
+    EntryPoints, Gas, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    StoredValue, SystemEntityRegistry, Tagged, Timestamp, TransactionHash, TransactionV1Hash, URef,
+    KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -128,9 +128,11 @@ fn new_runtime_context<'a>(
     let (mut tracking_copy, tempdir) =
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
 
+    let mint_hash = AddressableEntityHash::default();
+
     let default_system_registry = {
         let mut registry = SystemEntityRegistry::new();
-        registry.insert(MINT.to_string(), AddressableEntityHash::default());
+        registry.insert(MINT.to_string(), mint_hash);
         registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
         registry.insert(
             STANDARD_PAYMENT.to_string(),
@@ -141,6 +143,12 @@ fn new_runtime_context<'a>(
     };
 
     tracking_copy.write(Key::SystemEntityRegistry, default_system_registry);
+
+    // write block time to gs
+    let now = Timestamp::now();
+    let cl_value = CLValue::from_t(now.millis()).expect("should get cl_value");
+    let stored_value = StoredValue::CLValue(cl_value);
+    tracking_copy.write(Key::BlockGlobal(BlockGlobalAddr::BlockTime), stored_value);
 
     let runtime_context = RuntimeContext::new(
         named_keys,
@@ -827,33 +835,6 @@ fn should_verify_ownership_before_setting_action_threshold() {
         Ok(())
     };
     let _ = build_runtime_context_and_execute(named_keys, functor);
-}
-
-#[test]
-fn can_roundtrip_key_value_pairs() {
-    let named_keys = NamedKeys::new();
-    let functor = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
-        let deploy_hash = [1u8; 32];
-        let mut uref_address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-        let test_uref = create_uref_as_key(&mut uref_address_generator, AccessRights::default())
-            .as_uref()
-            .cloned()
-            .expect("must have created URef from the key");
-        let expected = CLValue::from_t(U512::zero()).unwrap();
-
-        runtime_context
-            .write_balance(test_uref.to_owned(), expected.clone())
-            .expect("should write_ls");
-
-        let result = runtime_context
-            .available_balance(&test_uref, HoldsEpoch::NOT_APPLICABLE)
-            .expect("should read_ls");
-
-        let actual = CLValue::from_t(result.value()).unwrap();
-        Ok(actual == expected)
-    };
-    let result = build_runtime_context_and_execute(named_keys, functor).expect("should be ok");
-    assert!(result)
 }
 
 #[test]

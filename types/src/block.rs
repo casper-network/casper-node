@@ -1,5 +1,6 @@
 mod available_block_range;
 mod block_body;
+mod block_global;
 mod block_hash;
 mod block_hash_and_height;
 mod block_header;
@@ -45,6 +46,7 @@ use crate::{
 };
 pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
+pub use block_global::{BlockGlobalAddr, BlockGlobalAddrTag};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};

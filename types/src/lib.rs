@@ -22,7 +22,6 @@
 extern crate alloc;
 
 extern crate core;
-
 mod access_rights;
 pub mod account;
 pub mod addressable_entity;
@@ -96,13 +95,14 @@ pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockIdentifier, BlockSignatures,
-    BlockSignaturesMergeError, BlockSignaturesV1, BlockSignaturesV2, BlockSyncStatus,
-    BlockSynchronizerStatus, BlockV1, BlockV2, BlockValidationError, ChainNameDigest, EraEnd,
-    EraEndV1, EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, FinalitySignatureV1,
-    FinalitySignatureV2, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
-    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
+    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockGlobalAddr,
+    BlockGlobalAddrTag, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockHeaderV2,
+    BlockIdentifier, BlockSignatures, BlockSignaturesMergeError, BlockSignaturesV1,
+    BlockSignaturesV2, BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2,
+    BlockValidationError, ChainNameDigest, EraEnd, EraEndV1, EraEndV2, EraReport,
+    FinalitySignature, FinalitySignatureId, FinalitySignatureV1, FinalitySignatureV2,
+    RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
+    SingleBlockRewardedSignatures,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
