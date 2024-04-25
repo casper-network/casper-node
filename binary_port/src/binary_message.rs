@@ -193,15 +193,41 @@ mod tests {
     }
 
     #[test]
+    fn should_encode_request_of_maximum_size() {
+        let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
+        let just_right_size = MAX_MESSAGE_SIZE_BYTES as usize;
+        let val = BinaryMessage::new(vec![0; just_right_size]);
+        let mut bytes = bytes::BytesMut::new();
+
+        let result = codec.encode(val, &mut bytes);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn decode_should_bail_on_too_large_request() {
+        let rng = &mut TestRng::new();
         let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
         let mut bytes = bytes::BytesMut::new();
         let too_large = (codec.max_message_size_bytes + 1) as LengthEncoding;
-        bytes.extend(&too_large.to_le_bytes());
+        bytes.extend(too_large.to_le_bytes());
+        bytes.extend(std::iter::repeat_with(|| rng.gen::<u8>()).take(too_large as usize));
 
         let result = codec.decode(&mut bytes).unwrap_err();
         assert!(matches!(result, Error::RequestTooLarge { allowed, got }
                  if allowed == codec.max_message_size_bytes && got == too_large));
+    }
+
+    #[test]
+    fn should_decode_request_of_maximum_size() {
+        let rng = &mut TestRng::new();
+        let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
+        let mut bytes = bytes::BytesMut::new();
+        let just_right_size = (codec.max_message_size_bytes) as LengthEncoding;
+        bytes.extend(just_right_size.to_le_bytes());
+        bytes.extend(std::iter::repeat_with(|| rng.gen::<u8>()).take(just_right_size as usize));
+
+        let result = codec.decode(&mut bytes);
+        assert!(result.is_ok());
     }
 
     #[test]
