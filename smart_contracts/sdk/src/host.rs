@@ -274,6 +274,7 @@ use casper_sdk_sys::casper_env_caller;
 use vm_common::{flags::ReturnFlags, keyspace::Keyspace};
 
 use crate::{
+    abi::{CasperABI, EnumVariant},
     reserve_vec_space,
     types::{Address, CallError, Entry, ResultCode},
     Contract, Selector, ToCallData,
@@ -379,27 +380,93 @@ pub fn call<T: ToCallData>(
     }
 }
 
-pub fn get_caller() -> Address {
+pub fn get_caller() -> Entity {
     let mut addr = MaybeUninit::<Address>::uninit();
     let _dest = unsafe { NonNull::new_unchecked(addr.as_mut_ptr() as *mut u8) };
 
-    // Pointer to the end of written bytes
-    let _out_ptr = unsafe { casper_env_caller(addr.as_mut_ptr() as *mut _, 32) };
+    let mut entity_kind = MaybeUninit::<u32>::uninit();
 
-    unsafe { addr.assume_init() }
+    // Pointer to the end of written bytes
+    let _out_ptr =
+        unsafe { casper_env_caller(addr.as_mut_ptr() as *mut _, 32, entity_kind.as_mut_ptr()) };
+
+    // let address = unsafe { addr.assume_init() };
+    let entity_kind = unsafe { entity_kind.assume_init() };
+
+    match entity_kind {
+        0 => Entity::Account(unsafe { addr.assume_init() }),
+        1 => Entity::Contract(unsafe { addr.assume_init() }),
+        _ => panic!("Unknown entity kind"),
+    }
 }
 
 /// Enum representing either an account or a contract.
-pub enum EntityKind<'a> {
-    Account(&'a [u8; 32]),
-    Contract(&'a [u8; 32]),
+#[derive(
+    BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub enum Entity {
+    Account([u8; 32]),
+    Contract([u8; 32]),
+}
+
+impl Entity {
+    /// Get the tag of the entity.
+    pub(crate) fn tag(&self) -> u32 {
+        match self {
+            Entity::Account(_) => 0,
+            Entity::Contract(_) => 1,
+        }
+    }
+
+    /// Get the address of the entity.
+    pub(crate) fn as_ptr(&self) -> *const u8 {
+        match self {
+            Entity::Account(addr) => addr.as_ptr(),
+            Entity::Contract(addr) => addr.as_ptr(),
+        }
+    }
+
+    /// Get the length of the address of the entity.
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Entity::Account(addr) => addr.len(),
+            Entity::Contract(addr) => addr.len(),
+        }
+    }
+}
+
+impl CasperABI for Entity {
+    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
+        definitions.populate_one::<[u8; 32]>();
+    }
+
+    fn declaration() -> crate::abi::Declaration {
+        "Entity".to_string()
+    }
+
+    fn definition() -> crate::abi::Definition {
+        crate::abi::Definition::Enum {
+            items: vec![
+                EnumVariant {
+                    name: "Account".to_string(),
+                    discriminant: 0,
+                    decl: <[u8; 32] as CasperABI>::declaration(),
+                },
+                EnumVariant {
+                    name: "Contract".to_string(),
+                    discriminant: 1,
+                    decl: <[u8; 32] as CasperABI>::declaration(),
+                },
+            ],
+        }
+    }
 }
 
 /// Get the balance of an account or contract.
-pub fn get_balance_of(entity_kind: EntityKind) -> u64 {
+pub fn get_balance_of(entity_kind: &Entity) -> u64 {
     let (kind, addr) = match entity_kind {
-        EntityKind::Account(addr) => (0, addr),
-        EntityKind::Contract(addr) => (1, addr),
+        Entity::Account(addr) => (0, addr),
+        Entity::Contract(addr) => (1, addr),
     };
     unsafe { casper_sdk_sys::casper_env_balance(kind, addr.as_ptr(), addr.len()) }
 }
@@ -410,8 +477,10 @@ pub fn get_value() -> u64 {
 }
 
 /// Transfer tokens from the current contract to another account or contract.
-pub fn casper_transfer(target: &Address, amount: u64) -> bool {
-    let ret = unsafe { casper_sdk_sys::casper_transfer(target.as_ptr(), target.len(), amount) };
+pub fn casper_transfer(target: &Entity, amount: u64) -> bool {
+    let ret = unsafe {
+        casper_sdk_sys::casper_transfer(target.tag(), target.as_ptr(), target.len(), amount)
+    };
     ret == 1
 }
 

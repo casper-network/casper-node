@@ -10,7 +10,7 @@ use executor::Executor;
 use storage::GlobalStateReader;
 use thiserror::Error;
 use vm_common::flags::ReturnFlags;
-use wasm_backend::{wasmer::WasmerInstance, Context, PreparationError, WasmInstance};
+use wasm_backend::{wasmer::WasmerInstance, Context, WasmInstance, WasmPreparationError};
 
 const CALLEE_SUCCEED: u32 = 0;
 const CALLEE_REVERTED: u32 = 1;
@@ -236,7 +236,7 @@ impl WasmEngine {
         wasm_bytes: C,
         context: Context<S, E>,
         config: Config,
-    ) -> Result<impl WasmInstance<S, E>, PreparationError> {
+    ) -> Result<impl WasmInstance<S, E>, WasmPreparationError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
         // NOTE: We can add more engines here in the future, e.g. Lucet, Wasmtime, wasmi all configurable at runtime. For now, it's ok to return `impl WasmInstance`.
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;

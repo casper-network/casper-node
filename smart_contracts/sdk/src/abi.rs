@@ -191,6 +191,23 @@ pub trait CasperABI {
     fn definition() -> Definition; // Sequence { Char }
 }
 
+impl<T> CasperABI for &T
+where
+    T: CasperABI,
+{
+    fn populate_definitions(definitions: &mut Definitions) {
+        T::populate_definitions(definitions)
+    }
+
+    fn declaration() -> Declaration {
+        T::declaration()
+    }
+
+    fn definition() -> Definition {
+        T::definition()
+    }
+}
+
 macro_rules! impl_abi_for_types {
     // Accepts following syntax: impl_abi_for_types(u8, u16, u32, u64, String => "string", f32, f64)
     ($($ty:ty $(=> $name:expr)?,)* ) => {

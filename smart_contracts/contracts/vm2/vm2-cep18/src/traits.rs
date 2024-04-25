@@ -2,7 +2,11 @@ use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI};
-use casper_sdk::{collections::Map, host, types::Address};
+use casper_sdk::{
+    collections::Map,
+    host::{self, Entity},
+    types::Address,
+};
 
 use crate::{error::Cep18Error, security_badge::SecurityBadge};
 
@@ -12,9 +16,9 @@ pub struct CEP18State {
     pub symbol: String,
     pub decimals: u8,
     pub total_supply: u64, // TODO: U256
-    pub balances: Map<Address, u64>,
-    pub allowances: Map<(Address, Address), u64>,
-    pub security_badges: Map<Address, SecurityBadge>,
+    pub balances: Map<Entity, u64>,
+    pub allowances: Map<(Entity, Entity), u64>,
+    pub security_badges: Map<Entity, SecurityBadge>,
     pub enable_mint_burn: bool,
 }
 
@@ -33,8 +37,8 @@ impl CEP18State {
 
     fn transfer_balance(
         &mut self,
-        sender: &Address,
-        recipient: &Address,
+        sender: &Entity,
+        recipient: &Entity,
         amount: u64,
     ) -> Result<(), Cep18Error> {
         if amount == 0 {
@@ -98,11 +102,11 @@ pub trait CEP18 {
         self.state().total_supply
     }
 
-    fn balance_of(&self, address: Address) -> u64 {
+    fn balance_of(&self, address: Entity) -> u64 {
         self.state().balances.get(&address).unwrap_or_default()
     }
 
-    fn allowance(&self, spender: Address, owner: Address) {
+    fn allowance(&self, spender: Entity, owner: Entity) {
         self.state()
             .allowances
             .get(&(spender, owner))
@@ -110,7 +114,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn approve(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn approve(&mut self, spender: Entity, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -121,7 +125,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn decrease_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn decrease_allowance(&mut self, spender: Entity, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -134,7 +138,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn increase_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn increase_allowance(&mut self, spender: Entity, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -147,7 +151,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn transfer(&mut self, recipient: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn transfer(&mut self, recipient: Entity, amount: u64) -> Result<(), Cep18Error> {
         let sender = host::get_caller();
         if sender == recipient {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -160,8 +164,8 @@ pub trait CEP18 {
     #[casper(revert_on_error)]
     fn transfer_from(
         &mut self,
-        owner: Address,
-        recipient: Address,
+        owner: Entity,
+        recipient: Entity,
         amount: u64,
     ) -> Result<(), Cep18Error> {
         let spender = host::get_caller();
@@ -193,7 +197,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn mint(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn mint(&mut self, owner: Entity, amount: u64) -> Result<(), Cep18Error> {
         if !self.state().enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
         }
@@ -213,7 +217,7 @@ pub trait CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn burn(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
+    fn burn(&mut self, owner: Entity, amount: u64) -> Result<(), Cep18Error> {
         if !self.state().enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
         }

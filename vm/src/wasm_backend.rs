@@ -92,7 +92,7 @@ pub(crate) trait Caller<S: GlobalStateReader, E: Executor> {
 }
 
 #[derive(Debug, Error)]
-pub enum PreparationError {
+pub enum WasmPreparationError {
     #[error("Missing export {0}")]
     MissingExport(String),
     #[error("Compile error: {0}")]

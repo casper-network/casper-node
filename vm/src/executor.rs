@@ -12,7 +12,7 @@ use vm_common::selector::Selector;
 
 use crate::{
     storage::{Address, GlobalStateReader, TrackingCopy},
-    wasm_backend::{GasUsage, PreparationError},
+    wasm_backend::{GasUsage, WasmPreparationError},
     HostError,
 };
 
@@ -205,7 +205,7 @@ pub enum ExecuteError {
     ///
     /// No wasm was executed at this point.
     #[error("Wasm error error: {0}")]
-    Preparation(#[from] PreparationError),
+    WasmPreparation(#[from] WasmPreparationError),
 }
 
 /// Executor trait.

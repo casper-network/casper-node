@@ -21,7 +21,7 @@ use crate::{
 
 use self::metering_middleware::make_wasmer_metering_middleware;
 
-use super::{Caller, Context, GasUsage, MeteringPoints, PreparationError, WasmInstance};
+use super::{Caller, Context, GasUsage, MeteringPoints, WasmInstance, WasmPreparationError};
 use crate::VMError;
 
 impl From<wasmer::MemoryAccessError> for TrapCode {
@@ -296,7 +296,7 @@ where
         wasm_bytes: C,
         context: Context<S, E>,
         config: Config,
-    ) -> Result<Self, PreparationError> {
+    ) -> Result<Self, WasmPreparationError> {
         // let mut store = Engine
         let engine = {
             let mut singlepass_compiler = Singlepass::new();
@@ -311,7 +311,7 @@ where
         let wasm_bytes: Bytes = wasm_bytes.into();
 
         let module = Module::new(&engine, &wasm_bytes)
-            .map_err(|error| PreparationError::Compile(error.to_string()))?;
+            .map_err(|error| WasmPreparationError::Compile(error.to_string()))?;
 
         let mut store = Store::new(engine);
 
@@ -326,7 +326,7 @@ where
                 shared: false,
             },
         )
-        .map_err(|error| PreparationError::Memory(error.to_string()))?;
+        .map_err(|error| WasmPreparationError::Memory(error.to_string()))?;
 
         let imports = {
             let mut imports = Imports::new();
@@ -539,9 +539,9 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S, E>>, dest_ptr, dest_len| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>, dest_ptr, dest_len, entity_kind_ptr| {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_env_caller(wasmer_caller, dest_ptr, dest_len)
+                        host::casper_env_caller(wasmer_caller, dest_ptr, dest_len, entity_kind_ptr)
                     },
                 ),
             );
@@ -586,9 +586,19 @@ where
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
-                    |env: FunctionEnvMut<WasmerEnv<S, E>>, address_ptr, address_len, amount| {
+                    |env: FunctionEnvMut<WasmerEnv<S, E>>,
+                     entity_kind,
+                     address_ptr,
+                     address_len,
+                     amount| {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_transfer(wasmer_caller, address_ptr, address_len, amount)
+                        host::casper_transfer(
+                            wasmer_caller,
+                            entity_kind,
+                            address_ptr,
+                            address_len,
+                            amount,
+                        )
                     },
                 ),
             );
@@ -601,7 +611,7 @@ where
 
         let instance = {
             let instance = Instance::new(&mut store, &module, &imports)
-                .map_err(|error| PreparationError::Instantiation(error.to_string()))?;
+                .map_err(|error| WasmPreparationError::Instantiation(error.to_string()))?;
 
             // We don't necessarily need atomic counter. Arc's purpose is to be able to retrieve a
             // Weak reference to the instance to be able to invoke recursive calls to the wasm
@@ -617,7 +627,7 @@ where
         let table = match instance.exports.get_table("__indirect_function_table") {
             Ok(table) => Some(table.clone()),
             Err(error @ wasmer::ExportError::IncompatibleType) => {
-                return Err(PreparationError::MissingExport(error.to_string()))
+                return Err(WasmPreparationError::MissingExport(error.to_string()))
             }
             Err(wasmer::ExportError::Missing(_)) => None,
         };

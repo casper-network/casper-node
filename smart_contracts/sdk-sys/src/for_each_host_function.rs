@@ -64,11 +64,11 @@ Example paths:
                 alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>, // For capturing output data
                 alloc_ctx: *const core::ffi::c_void,
             ) -> *mut u8;
-            pub fn casper_env_caller(dest: *mut u8, dest_len: usize,) -> *const u8;
+            pub fn casper_env_caller(dest: *mut u8, dest_len: usize, entity_kind: *mut u32,) -> *const u8;
             pub fn casper_env_value() -> u64;
             #[doc = r"Get balance of an entity by its address."]
-            pub fn casper_env_balance(entity_kind: u32, entity_addr: *const u8, entity_addr_len: usize,) -> u64;
-            pub fn casper_transfer(address: *const u8, address_len: usize, amount: u64,) -> u32;
+            pub fn casper_env_balance(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize,) -> u64;
+            pub fn casper_transfer(entity_kind: u32, entity_addr_ptr: *const u8, entity_addr_len: usize, amount: u64,) -> u32;
         }
     };
 }

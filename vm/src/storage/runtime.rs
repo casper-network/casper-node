@@ -23,7 +23,7 @@ use rand::Rng;
 
 use crate::{
     executor::{ExecuteError, ExecuteRequest, ExecuteResult, ExecutionKind, Executor},
-    wasm_backend::{Caller, PreparationError},
+    wasm_backend::{Caller, WasmPreparationError},
 };
 
 use super::{Address, GlobalStateReader, TrackingCopy};
@@ -99,81 +99,6 @@ fn dispatch_system_contract<R: GlobalStateReader, Ret>(
     tracking_copy.merge_raw_parts(modified_tracking_copy.into_raw_parts());
 
     ret
-}
-
-/// A trait that provides a simplified interface to the runtime native to execute system contracts.
-#[derive(Clone, Debug)]
-struct NativeExecutor;
-
-const TEST_MINT_ADDRESS: Address = [111u8; 32];
-
-impl Executor for NativeExecutor {
-    fn execute<R: GlobalStateReader + 'static>(
-        &self,
-        mut tracking_copy: TrackingCopy<R>,
-        execute_request: ExecuteRequest,
-    ) -> Result<ExecuteResult, ExecuteError> {
-        let system_entity_registry = {
-            let stored_value = tracking_copy
-                .read(&Key::SystemEntityRegistry)
-                .expect("Should read system entity registry")
-                .expect("should get system entity registry");
-            stored_value
-                .into_cl_value()
-                .expect("should convert stored value into CLValue")
-                .into_t::<SystemEntityRegistry>()
-                .expect("should get system entity registry")
-        };
-
-        match execute_request.execution_kind {
-            ExecutionKind::WasmBytes(_) => {
-                // Code paths should not lead here, this is intended to be reachable from the Wasm only through `casper_call` host function.
-                panic!("WasmBytes execution kind is not supported");
-            }
-            ExecutionKind::Contract { address, selector } => {
-                // This is just a placeholder to show how the system contract can be dispatched.
-                // In reality, we can't check the address like this, but rather compare the entry points, no wasm bytes, etc.
-                if address == TEST_MINT_ADDRESS {
-                    todo!()
-                } else {
-                    return Err(ExecuteError::Preparation(PreparationError::Instantiation(
-                        "Unable to instantiate native runtime".to_string(),
-                    )));
-                }
-            }
-        }
-
-        // let runtime_native = {
-        //     let entity_addr = self.entity_addr;
-        //     let config = Config::default();
-        //     let protocol_version = ProtocolVersion::V1_0_0;
-        //     let id = Id::Seed(vec![1, 2, 3]);
-        //     let tracking_copy = tracking_copy;
-        //     let addressable_entity = self.addressable_entity.clone();
-        //     let access_rights = ContextAccessRights::new(self.addressable_entity_hash, []);
-        //     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
-        //     let remaining_spending_limit = U512::MAX; // NOTE: Since there's no custom payment, there's no need to track the remaining spending limit.
-        //     let phase = casper_types::Phase::System;
-        //     let named_keys = NamedKeys::new();
-        //     let address = PublicKey::System.to_account_hash();
-        //     let runtime_native = casper_storage::system::runtime_native::RuntimeNative::new(
-        //         config,
-        //         protocol_version,
-        //         id,
-        //         tracking_copy,
-        //         address,
-        //         addressable_entity,
-        //         named_keys,
-        //         access_rights,
-        //         remaining_spending_limit,
-        //         phase,
-        //     );
-        //     RuntimeNative {
-        //         entity_addr,
-        //         runtime_native,
-        //     }
-        // };
-    }
 }
 
 pub(crate) struct MintArgs {

@@ -11,6 +11,7 @@ use casper_types::{
     ByteCode, ByteCodeAddr, ByteCodeKind, Digest, EntityAddr, EntityVersions, Groups, HoldsEpoch,
     Key, Package, PackageStatus, StoredValue, URef, U512,
 };
+use num_traits::ToBytes;
 use rand::Rng;
 use safe_transmute::SingleManyGuard;
 use std::{cmp, collections::BTreeSet, mem, num::NonZeroU32, sync::Arc};
@@ -440,7 +441,7 @@ pub(crate) fn casper_create<S: GlobalStateReader + 'static, E: Executor + 'stati
 
                             output
                         }
-                        Err(ExecuteError::Preparation(preparation_error)) => {
+                        Err(ExecuteError::WasmPreparation(preparation_error)) => {
                             // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
                             todo!()
                         }
@@ -515,6 +516,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
     // vm.
     let address = caller.memory_read(address_ptr, address_len as _)?;
     let address: Address = address.try_into().unwrap(); // TODO: Error handling
+
     let input_data: Bytes = caller.memory_read(input_ptr, input_len as _)?.into();
 
     let tracking_copy = caller.context().tracking_copy.fork2();
@@ -581,7 +583,7 @@ pub(crate) fn casper_call<S: GlobalStateReader + 'static, E: Executor + 'static>
 
             (gas_usage, host_result)
         }
-        Err(ExecuteError::Preparation(preparation_error)) => {
+        Err(ExecuteError::WasmPreparation(preparation_error)) => {
             // This is a bug in the EE, as it should have been caught during the preparation phase when the contract was stored in the global state.
             unreachable!("Preparation error: {:?}", preparation_error)
         }
@@ -657,11 +659,12 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<S, E>,
     dest_ptr: u32,
     dest_len: u32,
+    entity_kind_ptr: u32,
 ) -> VMResult<u32> {
     // TODO: Decide whether we want to return the full address and entity kind or just the 32 bytes "unified".
-    let data = match &caller.context().caller {
-        Key::Account(account_hash) => account_hash.value(),
-        Key::AddressableEntity(entity_addr) => entity_addr.value(),
+    let (entity_kind, data) = match &caller.context().caller {
+        Key::Account(account_hash) => (0u32, account_hash.value()),
+        Key::AddressableEntity(entity_addr) => (1u32, entity_addr.value()),
         other => panic!("Unexpected caller: {:?}", other),
     };
     let mut data = &data[..];
@@ -671,6 +674,8 @@ pub(crate) fn casper_env_caller<S: GlobalStateReader, E: Executor>(
         let dest_len = dest_len as usize;
         data = &data[0..cmp::min(32, dest_len as usize)];
         caller.memory_write(dest_ptr, &data)?;
+        let entity_kind_bytes = entity_kind.to_le_bytes();
+        caller.memory_write(entity_kind_ptr, entity_kind_bytes.as_slice())?;
         Ok(dest_ptr + (data.len() as u32))
     }
 }
@@ -681,8 +686,8 @@ pub(crate) fn casper_env_value<S: GlobalStateReader, E: Executor>(
     caller.context().value
 }
 
-const CASPER_ENV_BALANCE_ACCOUNT: u32 = 0;
-const CASPER_ENV_BALANCE_CONTRACT: u32 = 1;
+const CASPER_ENTITY_ACCOUNT: u32 = 0;
+const CASPER_ENTITY_CONTRACT: u32 = 1;
 
 pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<S, E>,
@@ -691,7 +696,7 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
     entity_addr_len: u32,
 ) -> VMResult<u64> {
     let entity_key = match entity_kind {
-        CASPER_ENV_BALANCE_ACCOUNT => {
+        CASPER_ENTITY_ACCOUNT => {
             if entity_addr_len != 32 {
                 return Ok(0);
             }
@@ -712,7 +717,7 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
                 _ => return Ok(0),
             }
         }
-        CASPER_ENV_BALANCE_CONTRACT => {
+        CASPER_ENTITY_CONTRACT => {
             if entity_addr_len != 32 {
                 return Ok(0);
             }
@@ -754,16 +759,44 @@ pub(crate) fn casper_env_balance<S: GlobalStateReader, E: Executor>(
 
 pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
     mut caller: impl Caller<S, E>,
-    target_address_ptr: u32,
-    target_address_len: u32,
+    entity_kind: u32,
+    entity_addr_ptr: u32,
+    entity_addr_len: u32,
     amount: u64,
 ) -> VMResult<u32> {
-    if target_address_len != 32 {
+    if entity_addr_len != 32 {
         assert!(false, "Invalid target address length");
         return Ok(0); // fail
     }
-    let target_address = caller.memory_read(target_address_ptr, target_address_len as usize)?;
-    let target_address: Address = target_address.try_into().unwrap();
+
+    let entity_key = match entity_kind {
+        CASPER_ENTITY_ACCOUNT => {
+            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            let account_hash: AccountHash = AccountHash::new(entity_addr.try_into().unwrap());
+
+            // Resolve indirection to get to the actual addressable entity
+            match caller
+                .context_mut()
+                .tracking_copy
+                .read(&Key::Account(account_hash))
+                .expect("should read account")
+            {
+                Some(StoredValue::CLValue(indirect)) => {
+                    // is it an account?
+                    let addressable_entity_key = indirect.into_t::<Key>().expect("should be key");
+                    addressable_entity_key
+                }
+                Some(other) => panic!("should be cl value but got {other:?}"),
+                None => panic!("Expected account to exist"),
+            }
+        }
+        CASPER_ENTITY_CONTRACT => {
+            let entity_addr = caller.memory_read(entity_addr_ptr, entity_addr_len as usize)?;
+            let entity_addr: Address = entity_addr.try_into().unwrap();
+            Key::AddressableEntity(EntityAddr::SmartContract(entity_addr))
+        }
+        _ => return Ok(0),
+    };
 
     let callee_purse = match caller.context().callee {
         account_key @ Key::Account(_account_hash) => {
@@ -809,22 +842,6 @@ pub(crate) fn casper_transfer<S: GlobalStateReader, E: Executor>(
             }
         }
         other => panic!("should be account or addressable entity but got {other:?}"),
-    };
-
-    let account_key = Key::Account(AccountHash::new(target_address));
-
-    let entity_key = match caller.context_mut().tracking_copy.read(&account_key) {
-        Ok(Some(StoredValue::CLValue(clvalue))) => {
-            let entity_key = clvalue.into_t::<Key>().expect("should be a key");
-            entity_key
-        }
-        Ok(Some(other_entity)) => {
-            panic!("Unexpected entity type: {:?}", other_entity)
-        }
-        Ok(None) => panic!("Assumes account exists"),
-        Err(error) => {
-            panic!("Error while reading from storage; aborting key={account_key:?} error={error:?}")
-        }
     };
 
     let target_purse = match caller.context_mut().tracking_copy.read(&entity_key) {

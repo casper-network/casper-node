@@ -11,7 +11,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     collections::Map,
-    host::{self, EntityKind},
+    host::{self, Entity},
     log, revert,
     types::{Address, CallError, ResultCode},
     Contract,
@@ -20,12 +20,18 @@ use casper_sdk::{
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 const BALANCES_PREFIX: &str = "b";
 
+// #[casper(trait_definition)]
+// pub trait TokenReceiver {
+//     #[casper(selector = _)]
+//     fn receive_tokens(&mut self, amount: u64);
+// }
+
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 pub struct Harness {
     counter: u64,
     greeting: String,
-    address_inside_constructor: Option<Address>,
-    balances: Map<Address, u64>,
+    address_inside_constructor: Option<Entity>,
+    balances: Map<Entity, u64>,
 }
 
 #[repr(u32)]
@@ -164,7 +170,7 @@ impl Harness {
         revert!()
     }
 
-    pub fn get_address_inside_constructor(&self) -> Address {
+    pub fn get_address_inside_constructor(&self) -> Entity {
         self.address_inside_constructor
             .expect("Constructor was expected to be caller")
     }
@@ -226,9 +232,24 @@ impl Harness {
     }
 
     #[casper(payable, revert_on_error)]
-    pub fn deposit(&mut self) -> Result<(), CustomError> {
+    pub fn deposit(&mut self, balance_before: u64) -> Result<(), CustomError> {
         let caller = host::get_caller();
         let value = host::get_value();
+
+        if value == 0 {
+            return Err(CustomError::WithBody(
+                "Value should be greater than 0".into(),
+            ));
+        }
+
+        assert_eq!(
+            balance_before
+                .checked_sub(value)
+                .expect("Balance before should be larger or equal to the value"),
+            host::get_balance_of(&caller),
+            "Balance mismatch; token transfer should happen before a contract call"
+        );
+
         log!("Depositing {value} from {caller:?}");
         let current_balance = self.balances.get(&caller).unwrap_or(0);
         self.balances.insert(&caller, &(current_balance + value));
@@ -266,7 +287,7 @@ pub fn call() {
     log!("calling create");
 
     let session_caller = host::get_caller();
-    assert_ne!(session_caller, [0; 32]);
+    assert_ne!(session_caller, Entity::Account([0; 32]));
 
     // Constructor without args
 
@@ -468,21 +489,25 @@ pub fn call() {
         let caller = host::get_caller();
 
         {
-            let account_balance_before = host::get_balance_of(EntityKind::Account(&caller));
+            let account_balance_1 = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
                 .with_value(100)
-                .call(|harness| harness.deposit())
+                .call(|harness| harness.deposit(account_balance_1))
                 .expect("Should call")
                 .expect("Should succeed");
+            let account_balance_2 = host::get_balance_of(&caller);
+            assert_eq!(account_balance_2, account_balance_1 - 100);
+
             contract_handle
                 .build_call()
                 .with_value(25)
-                .call(|harness| harness.deposit())
+                .call(|harness| harness.deposit(account_balance_2))
                 .expect("Should call")
                 .expect("Should succeed");
-            let account_balance_after = host::get_balance_of(EntityKind::Account(&caller));
-            assert_eq!(account_balance_after, account_balance_before - 125);
+
+            let account_balance_after = host::get_balance_of(&caller);
+            assert_eq!(account_balance_after, account_balance_1 - 125);
         }
 
         let current_contract_balance = contract_handle
@@ -492,13 +517,13 @@ pub fn call() {
         assert_eq!(current_contract_balance, 100 + 25);
 
         {
-            let account_balance_before = host::get_balance_of(EntityKind::Account(&caller));
+            let account_balance_before = host::get_balance_of(&caller);
             contract_handle
                 .build_call()
                 .call(|harness| harness.withdraw(50))
                 .expect("Should call")
                 .expect("Should succeed");
-            let account_balance_after = host::get_balance_of(EntityKind::Account(&caller));
+            let account_balance_after = host::get_balance_of(&caller);
             assert_ne!(account_balance_after, account_balance_before);
             assert_eq!(account_balance_after, account_balance_before + 50);
 

@@ -9,6 +9,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     collections::{sorted_vector::SortedVector, Map, Vector},
+    host::Entity,
     log,
     types::Address,
     Contract, ContractHandle,
@@ -62,7 +63,7 @@ trait Counter {
 
 #[derive(BorshSerialize, BorshDeserialize, CasperABI, Debug, Clone)]
 pub struct OwnableState {
-    owner: Option<Address>,
+    owner: Option<Entity>,
 }
 
 impl Default for OwnableState {
@@ -100,13 +101,13 @@ pub trait Ownable {
         Ok(())
     }
 
-    fn transfer_ownership(&mut self, new_owner: Address) -> Result<(), OwnableError> {
+    fn transfer_ownership(&mut self, new_owner: Entity) -> Result<(), OwnableError> {
         self.only_owner()?;
         self.state_mut().owner = Some(new_owner);
         Ok(())
     }
 
-    fn owner(&self) -> Option<Address> {
+    fn owner(&self) -> Option<Entity> {
         self.state().owner
     }
 

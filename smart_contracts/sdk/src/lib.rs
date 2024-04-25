@@ -14,7 +14,7 @@ use std::{io, marker::PhantomData, ptr::NonNull};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
-use host::{CallResult, EntityKind};
+use host::{CallResult, Entity};
 use types::{Address, CallError};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -194,7 +194,7 @@ impl<T: ContractRef> ContractHandle<T> {
 
     /// Returns the balance of the contract.
     pub fn balance(&self) -> u64 {
-        host::get_balance_of(EntityKind::Contract(&self.contract_address))
+        host::get_balance_of(&Entity::Contract(self.contract_address))
     }
 }
 
