@@ -1,3 +1,7 @@
+use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::abi::{CasperABI, Definition, EnumVariant};
+
 pub type Address = [u8; 32];
 
 #[derive(Debug)]
@@ -14,7 +18,6 @@ pub enum ResultCode {
     CalleeTrapped = 2,
     /// Called contract reached gas limit.
     CalleeGasDepleted = 3,
-    Unknown,
 }
 
 impl From<u32> for ResultCode {
@@ -24,15 +27,44 @@ impl From<u32> for ResultCode {
             1 => ResultCode::CalleeReverted,
             2 => ResultCode::CalleeTrapped,
             3 => ResultCode::CalleeGasDepleted,
-            _ => ResultCode::Unknown,
+            _ => unreachable!(),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub enum CallError {
     CalleeReverted,
     CalleeTrapped,
     CalleeGasDepleted,
-    Unknown,
+}
+
+impl CasperABI for CallError {
+    fn populate_definitions(definitions: &mut crate::abi::Definitions) {}
+
+    fn declaration() -> crate::abi::Declaration {
+        "CallError".into()
+    }
+
+    fn definition() -> Definition {
+        Definition::Enum {
+            items: vec![
+                EnumVariant {
+                    name: "CalleeReverted".into(),
+                    discriminant: 0,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "CalleeTrapped".into(),
+                    discriminant: 1,
+                    decl: <()>::declaration(),
+                },
+                EnumVariant {
+                    name: "CalleeGasDepleted".into(),
+                    discriminant: 2,
+                    decl: <()>::declaration(),
+                },
+            ],
+        }
+    }
 }

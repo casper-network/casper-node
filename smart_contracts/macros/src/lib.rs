@@ -99,7 +99,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
 
-            fn default_create(value: u64) -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
+            fn default_create() -> Result<casper_sdk::ContractHandle<Self::Ref>, casper_sdk::types::CallError> {
                 let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
                     #(#dynamic_manifest,)*
                     #name::MANIFEST.as_slice(),
@@ -112,7 +112,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                     entry_points: entry_points_allocated.as_ptr(),
                     entry_points_size: entry_points_allocated.len(),
                 };
-                let create_result = casper_sdk::host::casper_create(None, &manifest, value, None, None)?;
+                let create_result = casper_sdk::host::casper_create(None, &manifest, 0, None, None)?;
                 Ok(casper_sdk::ContractHandle::<Self::Ref>::from_address(create_result.contract_address))
             }
         }

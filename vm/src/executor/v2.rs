@@ -137,7 +137,7 @@ impl Executor for ExecutorV2 {
 
         // TODO: Purse uref does not need to be optional once value transfers to WasmBytes are supported.
         // let caller_entity_addr = EntityAddr::new_account(caller);
-        let caller_addressable_entity = {
+        let source_purse = {
             let stored_value = tracking_copy
                 .read(&caller_key)
                 .expect("should read account")
@@ -151,16 +151,22 @@ impl Executor for ExecutorV2 {
                         .read(&key)
                         .expect("should read account")
                         .expect("should have account");
-                    stored_value
+
+                    let addressable_entity = stored_value
                         .into_addressable_entity()
-                        .expect("should be addressable entity")
+                        .expect("should be addressable entity");
+
+                    addressable_entity.main_purse()
                 }
-                StoredValue::AddressableEntity(addressable_entity) => addressable_entity,
+                StoredValue::AddressableEntity(addressable_entity) => {
+                    addressable_entity.main_purse()
+                }
+                StoredValue::ContractV2(ContractV2::V2(contract_manifest)) => {
+                    contract_manifest.purse_uref
+                }
                 other => panic!("should be account or contract received {other:?}"),
             }
         };
-
-        let source_purse = caller_addressable_entity.main_purse();
 
         let (wasm_bytes, export_or_selector) = match &execution_kind {
             ExecutionKind::WasmBytes(wasm_bytes) => {

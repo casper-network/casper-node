@@ -14,17 +14,59 @@ use casper_sdk::{
     host::{self, Entity},
     log, revert,
     types::{Address, CallError, ResultCode},
-    Contract,
+    Contract, ContractHandle,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 const BALANCES_PREFIX: &str = "b";
 
-// #[casper(trait_definition)]
-// pub trait TokenReceiver {
-//     #[casper(selector = _)]
-//     fn receive_tokens(&mut self, amount: u64);
-// }
+#[repr(u32)]
+#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI, Clone)]
+#[borsh(use_discriminant = true)]
+pub enum TokenOwnerError {
+    CallError(CallError),
+    DepositError(CustomError),
+}
+
+impl From<CallError> for TokenOwnerError {
+    fn from(v: CallError) -> Self {
+        Self::CallError(v)
+    }
+}
+
+#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
+pub struct TokenOwnerContract {
+    initial_balance: u64,
+}
+
+#[casper(contract)]
+impl TokenOwnerContract {
+    #[casper(constructor)]
+    pub fn initialize() -> Self {
+        Self {
+            initial_balance: host::get_value(),
+        }
+    }
+
+    pub fn do_deposit(
+        &self,
+        self_address: Address,
+        contract_address: Address,
+        amount: u64,
+    ) -> Result<(), TokenOwnerError> {
+        let self_balance = host::get_balance_of(&Entity::Contract(self_address));
+        let res = ContractHandle::<HarnessRef>::from_address(contract_address)
+            .build_call()
+            .with_value(amount)
+            .call(|harness| harness.deposit(self_balance))?;
+        match &res {
+            Ok(()) => log!("Token owner deposited {amount} to {contract_address:?}"),
+            Err(e) => log!("Token owner failed to deposit {amount} to {contract_address:?}: {e:?}"),
+        }
+        res.map_err(|error| TokenOwnerError::DepositError(error))?;
+        Ok(())
+    }
+}
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 pub struct Harness {
@@ -245,7 +287,7 @@ impl Harness {
         assert_eq!(
             balance_before
                 .checked_sub(value)
-                .expect("Balance before should be larger or equal to the value"),
+                .unwrap_or_else(|| panic!("Balance before should be larger or equal to the value (caller={caller:?}, value={value})")),
             host::get_balance_of(&caller),
             "Balance mismatch; token transfer should happen before a contract call"
         );
@@ -535,6 +577,52 @@ pub fn call() {
 
             assert_eq!(contract_handle.balance(), 100 + 25 - 50);
         }
+    }
+
+    // Perform tests with a contract acting as an owner of funds deposited into other contract
+    {
+        let caller = host::get_caller();
+
+        let harness = ContractBuilder::<Harness>::new()
+            .with_value(0)
+            .create(|| HarnessRef::constructor_with_args("Contract".into()))
+            .expect("Should create");
+
+        let token_owner = ContractBuilder::<TokenOwnerContract>::new()
+            .with_value(100)
+            .create(|| TokenOwnerContractRef::initialize())
+            .expect("Should create");
+        assert_eq!(token_owner.balance(), 100);
+
+        // caller: no change
+        // token owner: -50
+        // harness: +50
+        let caller_balance_before = host::get_balance_of(&caller);
+        let token_owner_balance_before = token_owner.balance();
+        let harness_balance_before = harness.balance();
+
+        token_owner
+            .call(|contract| {
+                contract.do_deposit(
+                    token_owner.contract_address(),
+                    harness.contract_address(),
+                    50,
+                )
+            })
+            .expect("Should call")
+            .expect("Should succeed");
+
+        assert_eq!(
+            host::get_balance_of(&caller),
+            caller_balance_before,
+            "Caller funds should not change"
+        );
+        assert_eq!(
+            token_owner.balance(),
+            token_owner_balance_before - 50,
+            "Token owner balance should decrease"
+        );
+        assert_eq!(harness.balance(), harness_balance_before + 50);
     }
 
     log!("👋 Goodbye");

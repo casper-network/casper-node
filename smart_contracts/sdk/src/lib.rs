@@ -71,7 +71,7 @@ pub trait Contract {
         value: u64,
         call_data: T,
     ) -> Result<ContractHandle<Self::Ref>, CallError>;
-    fn default_create(value: u64) -> Result<ContractHandle<Self::Ref>, CallError>;
+    fn default_create() -> Result<ContractHandle<Self::Ref>, CallError>;
 }
 
 #[derive(Debug)]
@@ -280,14 +280,12 @@ impl<T: Contract> ContractBuilder<T> {
         T::create(value, call_data)
     }
 
-    pub fn default_create<'a, CallData: ToCallData>(
-        &self,
-    ) -> Result<ContractHandle<T::Ref>, CallError>
-    where
-        CallData::Return<'a>: BorshDeserialize + Clone,
-    {
-        let value = self.value.unwrap_or(0);
-        T::default_create(value)
+    pub fn default_create<'a>(&self) -> Result<ContractHandle<T::Ref>, CallError> {
+        if self.value.is_some() {
+            panic!("Value should not be set for default create");
+        }
+
+        T::default_create()
     }
 }
 

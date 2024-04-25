@@ -237,7 +237,7 @@ impl HasTraits {
 }
 
 pub fn perform_test() {
-    let contract_handle = HasTraits::default_create(0).expect("Create");
+    let contract_handle = HasTraits::default_create().expect("Create");
     let trait1_handle =
         ContractHandle::<Trait1Ref>::from_address(contract_handle.contract_address());
     let counter_handle =

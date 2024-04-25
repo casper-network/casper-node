@@ -218,7 +218,6 @@ pub fn casper_create(
         ResultCode::CalleeReverted => Err(CallError::CalleeReverted),
         ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
         ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
-        ResultCode::Unknown => Err(CallError::Unknown),
     }
 }
 
@@ -352,7 +351,6 @@ impl<T: ToCallData> CallResult<T> {
             }
             ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
             ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
-            ResultCode::Unknown => panic!("Unknown"),
         }
     }
     pub fn did_revert(&self) -> bool {
@@ -376,7 +374,6 @@ pub fn call<T: ToCallData>(
         }),
         ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
         ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
-        ResultCode::Unknown => Err(CallError::Unknown),
     }
 }
 
