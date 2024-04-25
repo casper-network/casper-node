@@ -1184,69 +1184,27 @@ mod tests {
         assert_eq!(package_hash, decoded);
 
         let invalid_prefix =
-            "contract-package0000000000000000000000000000000000000000000000000000000000000000";
+            "package0000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
             FromStrError::InvalidPrefix
         ));
 
-        let short_addr =
-            "contract-package-00000000000000000000000000000000000000000000000000000000000000";
+        let short_addr = "package-00000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(short_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let long_addr =
-            "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
+            "package-000000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
             PackageHash::from_formatted_str(long_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let invalid_hex =
-            "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(matches!(
-            PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
-            FromStrError::Hex(_)
-        ));
-    }
-
-    #[test]
-    fn package_hash_from_legacy_str() {
-        let package_hash = PackageHash([3; 32]);
-        let hex_addr = package_hash.to_string();
-        let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
-        let decoded_from_legacy = PackageHash::from_formatted_str(&legacy_encoded)
-            .expect("should accept legacy prefixed string");
-        assert_eq!(
-            package_hash, decoded_from_legacy,
-            "decoded_from_legacy should equal decoded"
-        );
-
-        let invalid_prefix =
-            "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
-            FromStrError::InvalidPrefix
-        ));
-
-        let short_addr =
-            "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(short_addr).unwrap_err(),
-            FromStrError::Hash(_)
-        ));
-
-        let long_addr =
-            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(matches!(
-            PackageHash::from_formatted_str(long_addr).unwrap_err(),
-            FromStrError::Hash(_)
-        ));
-
-        let invalid_hex =
-            "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
+            "package-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(matches!(
             PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
             FromStrError::Hex(_)
