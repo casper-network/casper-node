@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
@@ -11,10 +13,12 @@ use casper_engine_test_support::{
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
+    addressable_entity::NamedKeyValue,
     bytesrepr::{Bytes, ToBytes},
-    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts,
-    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
-    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EntityVersionKey, EraId, Group,
+    Groups, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, Package, ProtocolVersion,
+    RuntimeArgs, StorageCosts, StoredValue, URef, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -676,10 +680,8 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     );
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
-fn should_verify_new_uref_is_charging_for_storage() {
+#[test]
+fn should_verify_new_uref_storage_cost() {
     let mut builder = initialize_isolated_storage_costs();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
@@ -694,8 +696,6 @@ fn should_verify_new_uref_is_charging_for_storage() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-
-    let balance_before = builder.get_purse_balance(account.main_purse());
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
@@ -714,14 +714,23 @@ fn should_verify_new_uref_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
 
-    assert!(balance_after < balance_before);
+    assert_eq!(
+        // should charge for storage of a u64 behind a URef
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+            StoredValue::CLValue(CLValue::from_t(0u64).expect("should create CLValue"))
+                .serialized_length()
+        ),
+        "{:?}",
+        result
+    )
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_verify_put_key_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -737,8 +746,6 @@ fn should_verify_put_key_is_charging_for_storage() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-
-    let balance_before = builder.get_purse_balance(account.main_purse());
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
@@ -757,15 +764,26 @@ fn should_verify_put_key_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
+    assert_eq!(
+        // should charge for storage of a named key
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+            StoredValue::NamedKey(
+                NamedKeyValue::from_concrete_values(Key::Hash([0u8; 32]), "new_key".to_owned())
+                    .expect("should create NamedKey")
+            )
+            .serialized_length()
+        ),
+        "{:?}",
+        result
+    )
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
-fn should_verify_remove_key_is_charging_for_storage() {
+#[test]
+fn should_verify_remove_key_is_not_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
     let install_exec_request = ExecuteRequestBuilder::standard(
@@ -780,8 +798,6 @@ fn should_verify_remove_key_is_charging_for_storage() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-
-    let balance_before = builder.get_purse_balance(account.main_purse());
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
@@ -800,14 +816,19 @@ fn should_verify_remove_key_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
+    assert_eq!(
+        // should charge zero, because we do not charge for storage when removing a key
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(0),
+        "{:?}",
+        result
+    )
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -823,8 +844,6 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-
-    let balance_before = builder.get_purse_balance(account.main_purse());
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
@@ -843,14 +862,22 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
+    assert_eq!(
+        // should charge at least enough for storage of a package and unit CLValue (for a URef)
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+            StoredValue::Package(Package::default()).serialized_length()
+                + StoredValue::CLValue(CLValue::unit()).serialized_length()
+        ),
+        "{:?}",
+        result
+    )
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_verify_create_contract_user_group_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -867,8 +894,6 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let balance_before = builder.get_purse_balance(account.main_purse());
-
     let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
@@ -886,11 +911,37 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
 
-    assert!(balance_after < balance_before);
+    let mut groups = Groups::new();
+    groups.insert(Group::new("Label"), BTreeSet::new());
 
-    let balance_before = balance_after;
+    let mut package = Package::new(
+        Default::default(),
+        [(
+            EntityVersionKey::new(2, 1),
+            AddressableEntityHash::new([0u8; 32]),
+        )]
+        .iter()
+        .cloned()
+        .collect::<BTreeMap<_, _>>()
+        .into(),
+        Default::default(),
+        groups,
+        Default::default(),
+    );
+
+    assert_eq!(
+        // should charge for storage of the new package
+        result.consumed(),
+        STORAGE_COSTS_ONLY
+            .storage_costs()
+            .calculate_gas_cost(StoredValue::Package(package.clone()).serialized_length()),
+        "{:?}",
+        result
+    );
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -901,12 +952,26 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     .build();
 
     builder.exec(exec_request).expect_success().commit();
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    package
+        .groups_mut()
+        .get_mut(&Group::new("Label"))
+        .unwrap()
+        .insert(URef::new([0u8; 32], Default::default()));
 
-    assert!(balance_after < balance_before);
-
-    let balance_before = balance_after;
+    assert_eq!(
+        // should charge for storage of the new package and a unit CLValue (for a URef)
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+            StoredValue::Package(package.clone()).serialized_length()
+                + StoredValue::CLValue(CLValue::unit()).serialized_length()
+        ),
+        "{:?}",
+        result
+    );
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -918,14 +983,24 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
 
-    assert!(balance_after < balance_before);
+    package.remove_group(&Group::new("Label"));
+
+    assert_eq!(
+        // should charge for storage of the new package
+        result.consumed(),
+        STORAGE_COSTS_ONLY
+            .storage_costs()
+            .calculate_gas_cost(StoredValue::Package(package).serialized_length()),
+        "{:?}",
+        result
+    )
 }
 
-#[ignore]
-#[allow(unused)]
-// #[test]
+#[test]
 fn should_verify_subcall_new_uref_is_charging_for_storage() {
     let mut builder = initialize_isolated_storage_costs();
 
@@ -942,8 +1017,6 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let balance_before = builder.get_purse_balance(account.main_purse());
-
     let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
@@ -961,12 +1034,6 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
-
-    let balance_before = balance_after;
-
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
@@ -976,12 +1043,6 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     .build();
 
     builder.exec(exec_request).expect_success().commit();
-
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
-
-    let balance_before = balance_after;
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -993,7 +1054,17 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
-
-    assert!(balance_after < balance_before);
+    let result = builder
+        .get_last_exec_result()
+        .expect("should have exec result");
+    assert_eq!(
+        // should charge for storage of a u64 behind a URef
+        result.consumed(),
+        STORAGE_COSTS_ONLY.storage_costs().calculate_gas_cost(
+            StoredValue::CLValue(CLValue::from_t(0u64).expect("should create CLValue"))
+                .serialized_length()
+        ),
+        "{:?}",
+        result
+    )
 }
