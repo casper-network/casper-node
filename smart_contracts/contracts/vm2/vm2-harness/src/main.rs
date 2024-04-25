@@ -35,9 +35,17 @@ impl From<CallError> for TokenOwnerError {
     }
 }
 
+#[casper(trait_definition)]
+pub trait ReceiveTokens {
+    #[casper(payable)]
+    fn receive(&mut self);
+}
+
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug, Default)]
+#[casper(impl_traits(ReceiveTokens))]
 pub struct TokenOwnerContract {
     initial_balance: u64,
+    received_tokens: u64,
 }
 
 #[casper(contract)]
@@ -46,6 +54,7 @@ impl TokenOwnerContract {
     pub fn initialize() -> Self {
         Self {
             initial_balance: host::get_value(),
+            received_tokens: 0,
         }
     }
 
@@ -74,18 +83,47 @@ impl TokenOwnerContract {
         contract_address: Address,
         amount: u64,
     ) -> Result<(), TokenOwnerError> {
-        let self_balance = host::get_balance_of(&Entity::Contract(self_address));
+        let self_entity = Entity::Contract(self_address);
+        let self_balance = host::get_balance_of(&self_entity);
+
         let res = ContractHandle::<HarnessRef>::from_address(contract_address)
             .build_call()
-            .call(|harness| harness.withdraw(self_balance, amount))?;
+            .call(|harness| {
+                // Be careful about re-entrancy here: we are calling a contract that can call back while we're still not done with this entry point.
+                // If &mut self is used, then the proc macro will save the state while the state was already saved at the end of `receive()` call.
+                // To protect against re-entrancy attacks, please use `&self` or `self`.
+                harness.withdraw(self_balance, amount)
+            });
+
+        assert_eq!(
+            host::get_balance_of(&self_entity),
+            self_balance + amount,
+            "Balance should change"
+        );
+
+        let res = res?;
+
         match &res {
             Ok(()) => log!("Token owner withdrew {amount} from {contract_address:?}"),
             Err(e) => {
                 log!("Token owner failed to withdraw {amount} from {contract_address:?}: {e:?}")
             }
         }
+
         res.map_err(|error| TokenOwnerError::WithdrawError(error))?;
         Ok(())
+    }
+
+    pub fn total_received_tokens(&self) -> u64 {
+        self.received_tokens
+    }
+}
+
+impl ReceiveTokens for TokenOwnerContract {
+    fn receive(&mut self) {
+        let value = host::get_value();
+        log!("Token owner received {value} tokens");
+        self.received_tokens += value;
     }
 }
 
@@ -327,9 +365,28 @@ impl Harness {
         if current_balance < amount {
             return Err(CustomError::WithBody("Insufficient balance".into()));
         }
-        if !host::casper_transfer(&caller, amount) {
-            return Err(CustomError::WithBody("Transfer failed".into()));
+        match caller {
+            Entity::Account(_) => {
+                if !host::casper_transfer(&caller, amount) {
+                    return Err(CustomError::WithBody("Transfer failed".into()));
+                }
+
+                let balance_after = balance_before + amount;
+                assert_eq!(
+                    host::get_balance_of(&caller),
+                    balance_after,
+                    "Balance should be updated after withdrawal"
+                );
+            }
+            Entity::Contract(contract_address) => {
+                ContractHandle::<ReceiveTokensRef>::from_address(contract_address)
+                    .build_call()
+                    .with_value(amount)
+                    .call(|contract| contract.receive())
+                    .map_err(|e| CustomError::WithBody(format!("Receive contract failed{e:?}")))?;
+            }
         }
+
         self.balances.insert(&caller, &(current_balance - amount));
         Ok(())
     }
@@ -682,6 +739,10 @@ pub fn call() {
                 "Token owner balance should increase"
             );
             assert_eq!(harness.balance(), harness_balance_before - 50);
+            let total_received_tokens = token_owner
+                .call(|contract| contract.total_received_tokens())
+                .expect("Should call");
+            assert_eq!(total_received_tokens, 50);
         }
     }
 
