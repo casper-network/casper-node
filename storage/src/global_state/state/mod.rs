@@ -655,15 +655,32 @@ pub trait StateProvider {
             }
         };
 
-        let (block_time, gas_hold_handling) =
-            match tc.get_balance_hold_config(BalanceHoldAddrTag::Gas) {
-                Ok((block_time, handling, interval)) => (block_time, (handling, interval).into()),
-                Err(tce) => return tce.into(),
-            };
+        let (block_time, gas_hold_handling) = match tc
+            .get_balance_hold_config(BalanceHoldAddrTag::Gas)
+        {
+            Ok(Some((block_time, handling, interval))) => (block_time, (handling, interval).into()),
+            Ok(None) => {
+                return BalanceResult::Success {
+                    purse_addr,
+                    total_balance,
+                    available_balance: total_balance,
+                    proofs_result,
+                }
+            }
+            Err(tce) => return tce.into(),
+        };
 
         let processing_hold_handling =
             match tc.get_balance_hold_config(BalanceHoldAddrTag::Processing) {
-                Ok((_, handling, interval)) => (handling, interval).into(),
+                Ok(Some((_, handling, interval))) => (handling, interval).into(),
+                Ok(None) => {
+                    return BalanceResult::Success {
+                        purse_addr,
+                        total_balance,
+                        available_balance: total_balance,
+                        proofs_result,
+                    }
+                }
                 Err(tce) => return tce.into(),
             };
 
@@ -704,7 +721,8 @@ pub trait StateProvider {
                 insufficient_handling,
             } => {
                 let block_time = match tc.get_block_time() {
-                    Ok(block_time) => block_time,
+                    Ok(Some(block_time)) => block_time,
+                    Ok(None) => return BalanceHoldResult::BlockTimeNotFound,
                     Err(tce) => return tce.into(),
                 };
                 let tag = match request.balance_hold_kind() {
@@ -807,7 +825,10 @@ pub trait StateProvider {
                     let tag = BalanceHoldAddrTag::Processing;
                     if hold_kind.matches(tag) {
                         let (block_time, interval) = match tc.get_balance_hold_config(tag) {
-                            Ok((block_time, _, interval)) => (block_time, interval),
+                            Ok(Some((block_time, _, interval))) => (block_time, interval),
+                            Ok(None) => {
+                                return BalanceHoldResult::BlockTimeNotFound;
+                            }
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,
@@ -819,7 +840,10 @@ pub trait StateProvider {
                     let tag = BalanceHoldAddrTag::Gas;
                     if hold_kind.matches(tag) {
                         let (block_time, interval) = match tc.get_balance_hold_config(tag) {
-                            Ok((block_time, _, interval)) => (block_time, interval),
+                            Ok(Some((block_time, _, interval))) => (block_time, interval),
+                            Ok(None) => {
+                                return BalanceHoldResult::BlockTimeNotFound;
+                            }
                             Err(tce) => {
                                 return BalanceHoldResult::Failure(BalanceHoldError::TrackingCopy(
                                     tce,

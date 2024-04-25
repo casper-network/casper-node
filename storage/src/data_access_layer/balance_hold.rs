@@ -199,6 +199,8 @@ impl Display for BalanceHoldError {
 pub enum BalanceHoldResult {
     /// Returned if a passed state root hash is not found.
     RootNotFound,
+    /// Returned if global state does not have an entry for block time.
+    BlockTimeNotFound,
     /// Balance hold successfully placed.
     Success {
         /// Hold addresses, if any.
@@ -266,7 +268,9 @@ impl BalanceHoldResult {
     /// Hold address, if any.
     pub fn holds(&self) -> Option<Vec<BalanceHoldAddr>> {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => None,
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => None,
             BalanceHoldResult::Success { holds, .. } => holds.clone(),
         }
     }
@@ -282,7 +286,9 @@ impl BalanceHoldResult {
     /// Was the hold fully covered?
     pub fn is_fully_covered(&self) -> bool {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => false,
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => false,
             BalanceHoldResult::Success { hold, held, .. } => hold == held,
         }
     }
@@ -300,7 +306,9 @@ impl BalanceHoldResult {
     /// The effects, if any.
     pub fn effects(&self) -> Effects {
         match self {
-            BalanceHoldResult::RootNotFound | BalanceHoldResult::Failure(_) => Effects::new(),
+            BalanceHoldResult::RootNotFound
+            | BalanceHoldResult::BlockTimeNotFound
+            | BalanceHoldResult::Failure(_) => Effects::new(),
             BalanceHoldResult::Success { effects, .. } => *effects.clone(),
         }
     }
@@ -318,6 +326,7 @@ impl BalanceHoldResult {
                 }
             }
             BalanceHoldResult::RootNotFound => "root not found".to_string(),
+            BalanceHoldResult::BlockTimeNotFound => "block time not found".to_string(),
             BalanceHoldResult::Failure(bhe) => {
                 format!("{:?}", bhe)
             }

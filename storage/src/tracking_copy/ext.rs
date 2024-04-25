@@ -36,13 +36,13 @@ pub trait TrackingCopyExt<R> {
     fn read_account_key(&mut self, account_hash: AccountHash) -> Result<Key, Self::Error>;
 
     /// Returns block time associated with checked out root hash.
-    fn get_block_time(&self) -> Result<BlockTime, Self::Error>;
+    fn get_block_time(&self) -> Result<Option<BlockTime>, Self::Error>;
 
     /// Returns balance hold configuration settings for imputed kind of balance hold.
     fn get_balance_hold_config(
         &self,
         hold_kind: BalanceHoldAddrTag,
-    ) -> Result<(BlockTime, HoldBalanceHandling, u64), Self::Error>;
+    ) -> Result<Option<(BlockTime, HoldBalanceHandling, u64)>, Self::Error>;
 
     /// Gets the purse balance key for a given purse.
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error>;
@@ -123,19 +123,16 @@ where
         }
     }
 
-    fn get_block_time(&self) -> Result<BlockTime, Self::Error> {
+    fn get_block_time(&self) -> Result<Option<BlockTime>, Self::Error> {
         match self.read(&Key::BlockGlobal(BlockGlobalAddr::BlockTime))? {
+            None => Ok(None),
             Some(StoredValue::CLValue(cl_value)) => {
                 let block_time = cl_value.into_t().map_err(Self::Error::CLValue)?;
-                Ok(BlockTime::new(block_time))
+                Ok(Some(BlockTime::new(block_time)))
             }
             Some(unexpected) => {
                 warn!(?unexpected, "block time stored as unexpected value type");
                 Err(Self::Error::UnexpectedStoredValueVariant)
-            }
-            None => {
-                error!("block time missing from global state");
-                Err(Self::Error::ValueNotFound("block time".to_string()))
             }
         }
     }
@@ -143,11 +140,14 @@ where
     fn get_balance_hold_config(
         &self,
         hold_kind: BalanceHoldAddrTag,
-    ) -> Result<(BlockTime, HoldBalanceHandling, u64), Self::Error> {
-        let block_time = self.get_block_time()?;
+    ) -> Result<Option<(BlockTime, HoldBalanceHandling, u64)>, Self::Error> {
+        let block_time = match self.get_block_time()? {
+            None => return Ok(None),
+            Some(block_time) => block_time,
+        };
         let (handling_key, interval_key) = match hold_kind {
             BalanceHoldAddrTag::Processing => {
-                return Ok((block_time, HoldBalanceHandling::Accrued, 0))
+                return Ok(Some((block_time, HoldBalanceHandling::Accrued, 0)))
             }
             BalanceHoldAddrTag::Gas => (MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY),
         };
@@ -231,7 +231,7 @@ where
             }
         };
 
-        Ok((block_time, handling, interval))
+        Ok(Some((block_time, handling, interval)))
     }
 
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error> {
@@ -303,7 +303,14 @@ where
 
         let total_balance = self.get_total_balance(Key::Balance(purse_addr))?.value();
         let (block_time, handling, interval) =
-            self.get_balance_hold_config(BalanceHoldAddrTag::Gas)?;
+            match self.get_balance_hold_config(BalanceHoldAddrTag::Gas)? {
+                None => {
+                    // if there is no hold config at this root hash, holds are not a thing
+                    // and available balance = total balance
+                    return Ok(Motes::new(total_balance));
+                }
+                Some((block_time, handling, interval)) => (block_time, handling, interval),
+            };
 
         let balance_holds = self.get_balance_holds(purse_addr)?;
         let gas_handling = (handling, interval).into();
@@ -411,13 +418,16 @@ where
         // in the future, this logic will need to be tweaked to take get the holds epoch
         // for each hold kind and process each kind discretely in order and collate the
         // non-expired hold total at the end.
-        let holds_epoch = {
-            let (block_time, _, interval) =
-                self.get_balance_hold_config(BalanceHoldAddrTag::Gas)?;
-            HoldsEpoch::from_millis(block_time.value(), interval)
-        };
-        let holds = self.get_balance_hold_addresses(purse_addr)?;
         let mut ret: BTreeMap<BlockTime, BalanceHolds> = BTreeMap::new();
+        let (block_time, interval) = match self.get_balance_hold_config(BalanceHoldAddrTag::Gas)? {
+            Some((block_time, _, interval)) => (block_time.value(), interval),
+            None => {
+                // if there is no holds config at this root hash, there can't be any holds
+                return Ok(ret);
+            }
+        };
+        let holds_epoch = { HoldsEpoch::from_millis(block_time, interval) };
+        let holds = self.get_balance_hold_addresses(purse_addr)?;
         for balance_hold_addr in holds {
             let block_time = balance_hold_addr.block_time();
             if let Some(timestamp) = holds_epoch.value() {
@@ -475,13 +485,16 @@ where
         // in the future, this logic will need to be tweaked to take get the holds epoch
         // for each hold kind and process each kind discretely in order and collate the
         // non-expired hold total at the end.
-        let holds_epoch = {
-            let (block_time, _, interval) =
-                self.get_balance_hold_config(BalanceHoldAddrTag::Gas)?;
-            HoldsEpoch::from_millis(block_time.value(), interval)
-        };
-        let holds = self.get_balance_hold_addresses(purse_addr)?;
         let mut ret: BTreeMap<BlockTime, BalanceHoldsWithProof> = BTreeMap::new();
+        let (block_time, interval) = match self.get_balance_hold_config(BalanceHoldAddrTag::Gas)? {
+            Some((block_time, _, interval)) => (block_time.value(), interval),
+            None => {
+                // if there is no holds config at this root hash, there can't be any holds
+                return Ok(ret);
+            }
+        };
+        let holds_epoch = { HoldsEpoch::from_millis(block_time, interval) };
+        let holds = self.get_balance_hold_addresses(purse_addr)?;
         for balance_hold_addr in holds {
             let block_time = balance_hold_addr.block_time();
             if let Some(timestamp) = holds_epoch.value() {
