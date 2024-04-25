@@ -3,7 +3,7 @@ use casper_types::testing::TestRng;
 #[cfg(test)]
 use rand::Rng;
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use tokio_util::codec::{self};
 
 use crate::error::Error;
@@ -12,11 +12,11 @@ type LengthEncoding = u32;
 const LENGTH_ENCODING_SIZE_BYTES: usize = std::mem::size_of::<LengthEncoding>();
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct BinaryMessage(Vec<u8>);
+pub struct BinaryMessage(Bytes);
 
 impl BinaryMessage {
     pub fn new(payload: Vec<u8>) -> Self {
-        Self(payload)
+        Self(payload.into())
     }
 
     pub fn payload(&self) -> &[u8] {
@@ -74,15 +74,15 @@ impl codec::Decoder for BinaryMessageCodec {
     type Error = Error;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let (length, maybe_payload) = if let [b1, b2, b3, b4, remainder @ ..] = &src[..] {
+        let (length, have_full_frame) = if let [b1, b2, b3, b4, remainder @ ..] = &src[..] {
             let length = LengthEncoding::from_le_bytes([*b1, *b2, *b3, *b4]) as usize;
-            (length, remainder.get(..length))
+            (length, remainder.len() >= length)
         } else {
             // Not enough bytes to read the length.
             return Ok(None);
         };
 
-        let Some(payload) = maybe_payload else {
+        if !have_full_frame {
             // Not enough bytes to read the whole message.
             return Ok(None);
         };
@@ -97,16 +97,13 @@ impl codec::Decoder for BinaryMessageCodec {
             return Err(Error::EmptyRequest);
         }
 
-        let payload = payload.to_vec();
-        src.advance(LENGTH_ENCODING_SIZE_BYTES + length);
-        Ok(Some(BinaryMessage(payload)))
+        src.advance(LENGTH_ENCODING_SIZE_BYTES);
+        Ok(Some(BinaryMessage(src.split_to(length).freeze())))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
-
     use casper_types::testing::TestRng;
     use rand::Rng;
     use tokio_util::codec::{Decoder, Encoder};
@@ -189,7 +186,7 @@ mod tests {
     fn encode_should_bail_on_too_large_request() {
         let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
         let too_large = MAX_MESSAGE_SIZE_BYTES as usize + 1;
-        let val = BinaryMessage::new(vec![0; too_large]);
+        let val = BinaryMessage::new(std::iter::repeat(0).take(too_large).collect());
         let mut bytes = bytes::BytesMut::new();
         let result = codec.encode(val, &mut bytes).unwrap_err();
 
@@ -201,7 +198,7 @@ mod tests {
     fn should_encode_request_of_maximum_size() {
         let mut codec = BinaryMessageCodec::new(MAX_MESSAGE_SIZE_BYTES);
         let just_right_size = MAX_MESSAGE_SIZE_BYTES as usize;
-        let val = BinaryMessage::new(vec![0; just_right_size]);
+        let val = BinaryMessage::new(std::iter::repeat(0).take(just_right_size).collect());
         let mut bytes = bytes::BytesMut::new();
 
         let result = codec.encode(val, &mut bytes);
