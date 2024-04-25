@@ -123,8 +123,8 @@ pub trait TrackingCopyEntityExt<R> {
 }
 
 impl<R> TrackingCopyEntityExt<R> for TrackingCopy<R>
-where
-    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+    where
+        R: StateReader<Key, StoredValue, Error=GlobalStateError>,
 {
     type Error = TrackingCopyError;
 
@@ -278,9 +278,9 @@ where
 
         if !administrative_accounts.is_empty()
             && administrative_accounts
-                .intersection(authorization_keys)
-                .next()
-                .is_some()
+            .intersection(authorization_keys)
+            .next()
+            .is_some()
         {
             // Exit early if there's at least a single signature coming from an admin.
             return Ok((entity_record, entity_hash));
@@ -446,7 +446,7 @@ where
                     Weight::new(1u8),
                     Weight::new(account_threshold.key_management.value()),
                 )
-                .map_err(Self::Error::SetThresholdFailure)?
+                    .map_err(Self::Error::SetThresholdFailure)?
             };
 
             let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
@@ -483,7 +483,6 @@ where
         contract_key: Key,
         protocol_version: ProtocolVersion,
     ) -> Result<(), Self::Error> {
-        println!("migrating");
         let maybe_legacy_contract = self.read(&contract_key)?;
 
         match maybe_legacy_contract {

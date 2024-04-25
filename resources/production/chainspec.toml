@@ -45,7 +45,6 @@ start_protocol_version_with_strict_finality_signatures_required = '1.5.0'
 # `start_protocol_version_with_strict_finality_signatures_required`.
 legacy_required_finality = 'Strict'
 
-# legacy_migration_handling = ENUM { Lazy, Account, AccountContract }
 # If true, the protocol upgrade will migrate ALL userland accounts to addressable entity.
 # If false, userland accounts will instead be left as is and will be lazily migrated
 #    on a per-account basis if / when that account is used during transaction execution.

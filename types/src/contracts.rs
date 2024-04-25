@@ -38,9 +38,9 @@ use crate::{
 };
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
+const CONTRACT_PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
+const CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -462,18 +462,18 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
+        format!("{}{}", CONTRACT_PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `ContractPackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(PACKAGE_STRING_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
 
         let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
+            .strip_prefix(CONTRACT_PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
             .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
@@ -664,10 +664,10 @@ pub struct ContractPackage {
     access_key: URef,
     /// All versions (enabled & disabled)
     #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
-        )
+    feature = "json-schema",
+    schemars(
+    with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
+    )
     )]
     versions: ContractVersions,
     /// Disabled versions
@@ -907,13 +907,13 @@ pub struct Contract {
 }
 
 impl From<Contract>
-    for (
-        ContractPackageHash,
-        ContractWasmHash,
-        NamedKeys,
-        EntryPoints,
-        ProtocolVersion,
-    )
+for (
+    ContractPackageHash,
+    ContractWasmHash,
+    NamedKeys,
+    EntryPoints,
+    ProtocolVersion,
+)
 {
     fn from(contract: Contract) -> Self {
         (

@@ -136,8 +136,8 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -145,8 +145,8 @@ where
 }
 
 impl<S> ProtocolUpgrader<S>
-where
-    S: StateProvider + ?Sized,
+    where
+        S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(
@@ -936,7 +936,7 @@ where
         if !self.config.migrate_legacy_contracts() {
             return Ok(());
         }
-        println!("handle contracts migration");
+        debug!("handling one time contracts migration");
         let mut tc = self.tracking_copy.borrow_mut();
         let existing_keys = match tc.get_keys(&KeyTag::Hash) {
             Ok(keys) => keys,
