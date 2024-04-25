@@ -17,7 +17,9 @@ use casper_types::{
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::ACCUMULATION_PURSE_KEY,
-        mint::ROUND_SEIGNIORAGE_RATE_KEY,
+        mint::{
+            MINT_GAS_HOLD_HANDLING_KEY, MINT_GAS_HOLD_INTERVAL_KEY, ROUND_SEIGNIORAGE_RATE_KEY,
+        },
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
@@ -60,6 +62,9 @@ pub enum ProtocolUpgradeError {
     /// Failed to create system entity registry.
     #[error("Failed to insert system entity registry")]
     FailedToCreateSystemRegistry,
+    /// Found unexpected variant of a key.
+    #[error("Unexpected key variant")]
+    UnexpectedKeyVariant,
     /// Found unexpected variant of a stored value.
     #[error("Unexpected stored value variant")]
     UnexpectedStoredValueVariant,
@@ -135,6 +140,7 @@ where
     S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
+    address_generator: Rc<RefCell<AddressGenerator>>,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -145,10 +151,19 @@ where
     /// Creates new system upgrader instance.
     pub fn new(
         config: ProtocolUpgradeConfig,
+        protocol_upgrade_config_hash: Digest,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
+        let phase = Phase::System;
+        let protocol_upgrade_config_hash_bytes = protocol_upgrade_config_hash.as_ref();
+
+        let address_generator = {
+            let generator = AddressGenerator::new(protocol_upgrade_config_hash_bytes, phase);
+            Rc::new(RefCell::new(generator))
+        };
         ProtocolUpgrader {
             config,
+            address_generator,
             tracking_copy,
         }
     }
@@ -162,6 +177,7 @@ where
             self.config.fee_handling(),
         )?;
         self.refresh_system_contracts(&system_entity_addresses)?;
+        self.handle_new_gas_hold_config(system_entity_addresses.mint())?;
         self.handle_new_validator_slots(system_entity_addresses.auction())?;
         self.handle_new_auction_delay(system_entity_addresses.auction())?;
         self.handle_new_locked_funds_period_millis(system_entity_addresses.auction())?;
@@ -646,6 +662,104 @@ where
             );
         }
 
+        Ok(())
+    }
+
+    /// Upsert gas hold interval to mint named keys.
+    pub fn handle_new_gas_hold_config(
+        &self,
+        mint: AddressableEntityHash,
+    ) -> Result<(), ProtocolUpgradeError> {
+        if self.config.new_gas_hold_handling().is_none()
+            && self.config.new_gas_hold_interval().is_none()
+        {
+            return Ok(());
+        }
+
+        let mint_addr = EntityAddr::new_system(mint.value());
+        let named_keys = self.tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
+
+        if let Some(new_gas_hold_handling) = self.config.new_gas_hold_handling() {
+            debug!(%new_gas_hold_handling, "handle new gas hold handling");
+            let stored_value =
+                StoredValue::CLValue(CLValue::from_t(new_gas_hold_handling.tag()).map_err(
+                    |_| ProtocolUpgradeError::Bytesrepr("new_gas_hold_handling".to_string()),
+                )?);
+
+            self.system_uref(
+                mint_addr,
+                MINT_GAS_HOLD_HANDLING_KEY,
+                &named_keys,
+                stored_value,
+            )?;
+        }
+
+        if let Some(new_gas_hold_interval) = self.config.new_gas_hold_interval() {
+            debug!(%new_gas_hold_interval, "handle new gas hold interval");
+            let stored_value =
+                StoredValue::CLValue(CLValue::from_t(new_gas_hold_interval).map_err(|_| {
+                    ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
+                })?);
+
+            self.system_uref(
+                mint_addr,
+                MINT_GAS_HOLD_INTERVAL_KEY,
+                &named_keys,
+                stored_value,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn system_uref(
+        &self,
+        entity_addr: EntityAddr,
+        name: &str,
+        named_keys: &NamedKeys,
+        stored_value: StoredValue,
+    ) -> Result<(), ProtocolUpgradeError> {
+        match named_keys.get(name) {
+            Some(key) => {
+                if let Key::URef(_) = key {
+                    // write current interval to URef
+                    self.tracking_copy.borrow_mut().write(*key, stored_value);
+                } else {
+                    return Err(ProtocolUpgradeError::UnexpectedKeyVariant);
+                }
+            }
+            None => {
+                // first put value into global state under a uref
+                let uref = self
+                    .address_generator
+                    .borrow_mut()
+                    .new_uref(AccessRights::READ_ADD_WRITE);
+
+                let uref_key = Key::URef(uref).normalize();
+                self.tracking_copy
+                    .borrow_mut()
+                    .write(uref_key, stored_value);
+                // next, add the Key::URef to the mint's named keys
+                let entry_key = {
+                    let named_key_entry =
+                        NamedKeyAddr::new_from_string(entity_addr, name.to_string()).map_err(
+                            |_| {
+                                ProtocolUpgradeError::Bytesrepr("new_gas_hold_interval".to_string())
+                            },
+                        )?;
+                    Key::NamedKey(named_key_entry)
+                };
+                let entry_value = {
+                    let named_key_value =
+                        NamedKeyValue::from_concrete_values(entry_key, name.to_string())
+                            .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
+                    StoredValue::NamedKey(named_key_value)
+                };
+
+                self.tracking_copy
+                    .borrow_mut()
+                    .write(entry_key, entry_value);
+            }
+        };
         Ok(())
     }
 

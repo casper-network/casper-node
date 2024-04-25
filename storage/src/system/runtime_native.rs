@@ -58,7 +58,7 @@ impl Config {
         let compute_rewards = chainspec.core_config.compute_rewards;
         let max_delegators_per_validator = chainspec.core_config.max_delegators_per_validator;
         let minimum_delegation_amount = chainspec.core_config.minimum_delegation_amount;
-        let balance_hold_interval = chainspec.core_config.balance_hold_interval.millis();
+        let balance_hold_interval = chainspec.core_config.gas_hold_interval.millis();
         Config::new(
             transfer_config,
             fee_handling,

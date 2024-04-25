@@ -23,7 +23,10 @@ use crate::{
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage},
     package::Package,
-    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::{
+        auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+        reservations::ReservationKind,
+    },
     AddressableEntity, ByteCode, CLValue, DeployInfo, TransferV1,
 };
 pub use global_state_identifier::GlobalStateIdentifier;
@@ -50,6 +53,7 @@ enum Tag {
     MessageTopic = 15,
     Message = 16,
     NamedKey = 17,
+    Reservation = 18,
 }
 
 /// A value stored in Global State.
@@ -59,7 +63,7 @@ enum Tag {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "serde_helpers::BinarySerHelper")
+    schemars(with = "serde_helpers::HumanReadableSerHelper")
 )]
 pub enum StoredValue {
     /// A CLValue.
@@ -98,6 +102,8 @@ pub enum StoredValue {
     Message(MessageChecksum),
     /// A NamedKey record.
     NamedKey(NamedKeyValue),
+    /// A reservation record.
+    Reservation(ReservationKind),
 }
 
 impl StoredValue {
@@ -360,6 +366,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
             StoredValue::NamedKey(_) => "NamedKey".to_string(),
+            StoredValue::Reservation(_) => "Reservation".to_string(),
         }
     }
 
@@ -383,6 +390,7 @@ impl StoredValue {
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
             StoredValue::NamedKey(_) => Tag::NamedKey,
+            StoredValue::Reservation(_) => Tag::Reservation,
         }
     }
 }
@@ -664,6 +672,7 @@ impl ToBytes for StoredValue {
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
                 StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
+                StoredValue::Reservation(reservation_kind) => reservation_kind.serialized_length(),
             }
     }
 
@@ -690,6 +699,7 @@ impl ToBytes for StoredValue {
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer),
             StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer),
+            StoredValue::Reservation(reservation_kind) => reservation_kind.write_bytes(writer),
         }
     }
 }
@@ -760,7 +770,21 @@ impl FromBytes for StoredValue {
 }
 
 mod serde_helpers {
+    use core::fmt;
+
     use super::*;
+
+    pub struct InvalidHumanReadableDeser(String);
+
+    impl fmt::Display for InvalidHumanReadableDeser {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "Couldn't deserialize StoredValue. Underlying error: {}",
+                self.0
+            )
+        }
+    }
 
     #[derive(Serialize)]
     pub(super) enum HumanReadableSerHelper<'a> {
@@ -782,6 +806,7 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         Message(&'a MessageChecksum),
         NamedKey(&'a NamedKeyValue),
+        Reservation(&'a ReservationKind),
     }
 
     #[derive(Deserialize)]
@@ -837,6 +862,7 @@ mod serde_helpers {
                     HumanReadableSerHelper::Message(message_digest)
                 }
                 StoredValue::NamedKey(payload) => HumanReadableSerHelper::NamedKey(payload),
+                StoredValue::Reservation(payload) => HumanReadableSerHelper::Reservation(payload),
             }
         }
     }
@@ -909,14 +935,74 @@ impl<'de> Deserialize<'de> for StoredValue {
 mod tests {
     use crate::{bytesrepr, gens, StoredValue};
     use proptest::proptest;
+    use serde_json::Value;
+    const STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }"#;
+    const INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW: &str = r#"
+    {
+        "ContractPackage": {
+          "access_key": "uref-024d69e50a458f337817d3d11ba95bdbdd6258ba8f2dc980644c9efdbd64945d-007",
+          "versions": [
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfd"
+            },
+            {
+              "protocol_version_major": 1,
+              "contract_version": 1,
+              "contract_hash": "contract-1b301b49505ec5eaec1787686c54818bd60836b9301cce3f5c0237560e5a4bfe"
+            }
+          ],
+          "disabled_versions": [],
+          "groups": [],
+          "lock_status": "Unlocked"
+        }
+    }
+    "#;
+
+    #[test]
+    fn contract_package_stored_value_serializes_versions_to_flat_array() {
+        let value_from_raw_json =
+            serde_json::from_str::<Value>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let deserialized =
+            serde_json::from_str::<StoredValue>(STORED_VALUE_CONTRACT_PACKAGE_RAW).unwrap();
+        let roundtrip_value = serde_json::to_value(&deserialized).unwrap();
+        assert_eq!(value_from_raw_json, roundtrip_value);
+    }
+
+    #[test]
+    fn contract_package_stored_value_should_fail_on_duplicate_keys() {
+        let deserialization_res =
+            serde_json::from_str::<StoredValue>(INCORRECT_STORED_VALUE_CONTRACT_PACKAGE_RAW);
+        assert!(deserialization_res.is_err());
+        assert!(deserialization_res
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate contract version: ContractVersionKey(1, 1)"));
+    }
 
     proptest! {
+
         #[test]
-        fn json_contract_package_serialization(v in gens::contract_package_arb()) {
-            let stored_value = StoredValue::ContractPackage(v);
-            let json_str = serde_json::to_string(&stored_value).unwrap();
+        fn json_serialization_roundtrip(v in gens::stored_value_arb()) {
+            let json_str = serde_json::to_string(&v).unwrap();
             let deserialized = serde_json::from_str::<StoredValue>(&json_str).unwrap();
-            assert_eq!(stored_value, deserialized);
+            assert_eq!(v, deserialized);
         }
 
         #[test]
