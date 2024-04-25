@@ -391,14 +391,13 @@ impl BalanceRequest {
 
 pub trait AvailableBalanceChecker {
     /// Calculate and return available balance.
-    #[allow(clippy::result_unit_err)]
     fn available_balance(
         &self,
         block_time: BlockTime,
         total_balance: U512,
         gas_hold_balance_handling: GasHoldBalanceHandling,
         processing_hold_balance_handling: ProcessingHoldBalanceHandling,
-    ) -> Result<U512, BalanceError> {
+    ) -> Result<U512, BalanceFailure> {
         if self.is_empty() {
             return Ok(total_balance);
         }
@@ -429,7 +428,7 @@ pub trait AvailableBalanceChecker {
             Some(available_balance) => Ok(available_balance),
             None => {
                 error!(%held, %total_balance, "held amount exceeds total balance, which should never occur.");
-                Err(BalanceError::HeldExceedsTotal)
+                Err(BalanceFailure::HeldExceedsTotal)
             }
         }
     }
@@ -439,7 +438,7 @@ pub trait AvailableBalanceChecker {
         hold_kind: BalanceHoldAddrTag,
         block_time: BlockTime,
         interval: TimeDiff,
-    ) -> Result<U512, BalanceError> {
+    ) -> Result<U512, BalanceFailure> {
         let mut held = U512::zero();
         let block_time = block_time.value();
         let interval = interval.millis();
@@ -474,7 +473,7 @@ pub trait AvailableBalanceChecker {
             */
             match held_ratio.checked_mul(&ratio) {
                 Some(amortized) => held += amortized.to_integer(),
-                None => return Err(BalanceError::AmortizationFailure),
+                None => return Err(BalanceFailure::AmortizationFailure),
             }
         }
         Ok(held)
@@ -628,7 +627,7 @@ impl ProofsResult {
         total_balance: U512,
         gas_hold_balance_handling: GasHoldBalanceHandling,
         processing_hold_balance_handling: ProcessingHoldBalanceHandling,
-    ) -> Result<U512, BalanceError> {
+    ) -> Result<U512, BalanceFailure> {
         match self {
             ProofsResult::NotRequested { balance_holds } => balance_holds.available_balance(
                 block_time,
@@ -647,40 +646,29 @@ impl ProofsResult {
 }
 
 #[derive(Debug, Clone)]
-pub enum BalanceError {
-    /// Tracking copy error.
-    TrackingCopy(TrackingCopyError),
+pub enum BalanceFailure {
     /// Failed to calculate amortization (checked multiplication).
     AmortizationFailure,
     /// Held amount exceeds total balance, which should never occur.
     HeldExceedsTotal,
 }
 
-impl Display for BalanceError {
+impl Display for BalanceFailure {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            BalanceError::TrackingCopy(err) => {
-                write!(f, "TrackingCopy: {:?}", err)
-            }
-            BalanceError::AmortizationFailure => {
+            BalanceFailure::AmortizationFailure => {
                 write!(
                     f,
                     "AmortizationFailure: failed to calculate amortization (checked multiplication)."
                 )
             }
-            BalanceError::HeldExceedsTotal => {
+            BalanceFailure::HeldExceedsTotal => {
                 write!(
                     f,
                     "HeldExceedsTotal: held amount exceeds total balance, which should never occur."
                 )
             }
         }
-    }
-}
-
-impl From<TrackingCopyError> for BalanceError {
-    fn from(tce: TrackingCopyError) -> Self {
-        BalanceError::TrackingCopy(tce)
     }
 }
 
@@ -700,7 +688,7 @@ pub enum BalanceResult {
         /// Proofs result.
         proofs_result: ProofsResult,
     },
-    Failure(BalanceError),
+    Failure(TrackingCopyError),
 }
 
 impl BalanceResult {
@@ -759,6 +747,6 @@ impl BalanceResult {
 
 impl From<TrackingCopyError> for BalanceResult {
     fn from(tce: TrackingCopyError) -> Self {
-        BalanceResult::Failure(tce.into())
+        BalanceResult::Failure(tce)
     }
 }

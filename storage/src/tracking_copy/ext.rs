@@ -4,6 +4,7 @@ use std::{
 };
 use tracing::{error, warn};
 
+use crate::data_access_layer::balance::{AvailableBalanceChecker, ProcessingHoldBalanceHandling};
 use crate::{
     data_access_layer::balance::{BalanceHolds, BalanceHoldsWithProof},
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -289,49 +290,31 @@ where
     }
 
     fn get_available_balance(&mut self, key: Key) -> Result<Motes, Self::Error> {
-        let key = {
+        let purse_addr = {
             if let Key::URef(uref) = key {
-                Key::Balance(uref.addr())
+                uref.addr()
+            } else if let Key::Balance(uref_addr) = key {
+                uref_addr
             } else {
-                key
+                return Err(Self::Error::UnexpectedKeyVariant(key));
             }
         };
 
-        let (block_time, _, interval) = self.get_balance_hold_config(BalanceHoldAddrTag::Gas)?;
+        let total_balance = self.get_total_balance(Key::Balance(purse_addr))?.value();
+        let (block_time, handling, interval) =
+            self.get_balance_hold_config(BalanceHoldAddrTag::Gas)?;
 
-        let holds_epoch = HoldsEpoch::from_millis(block_time.value(), interval);
-        if let Key::Balance(purse_addr) = key {
-            let total_balance = self.get_total_balance(key)?;
-            match holds_epoch.value() {
-                None => Ok(total_balance),
-                Some(epoch) => {
-                    let holds = self.get_balance_hold_addresses(purse_addr)?;
-                    let mut total_holds = U512::zero();
-                    for balance_hold_addr in holds {
-                        let block_time = balance_hold_addr.block_time();
-                        if block_time.value() < epoch {
-                            // skip holds older than imputed epoch
-                            //  don't skip holds with a timestamp >= epoch timestamp
-                            continue;
-                        }
-                        let stored_value: StoredValue = self
-                            .read(&balance_hold_addr.into())?
-                            .ok_or(TrackingCopyError::KeyNotFound(key))?;
-                        let cl_value: CLValue = stored_value
-                            .try_into()
-                            .map_err(TrackingCopyError::TypeMismatch)?;
-                        let hold_amount = cl_value.into_t()?;
-                        total_holds = total_holds.checked_add(hold_amount).unwrap_or(U512::zero());
-                    }
-                    let available = total_balance
-                        .value()
-                        .checked_sub(total_holds)
-                        .unwrap_or(U512::zero());
-                    Ok(Motes::new(available))
-                }
-            }
-        } else {
-            Err(Self::Error::UnexpectedKeyVariant(key))
+        let balance_holds = self.get_balance_holds(purse_addr)?;
+        let gas_handling = (handling, interval).into();
+        let processing_handling = ProcessingHoldBalanceHandling::new();
+        match balance_holds.available_balance(
+            block_time,
+            total_balance,
+            gas_handling,
+            processing_handling,
+        ) {
+            Ok(balance) => Ok(Motes::new(balance)),
+            Err(balance_error) => Err(Self::Error::Balance(balance_error)),
         }
     }
 

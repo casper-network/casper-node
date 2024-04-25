@@ -674,7 +674,7 @@ pub trait StateProvider {
             processing_hold_handling,
         ) {
             Ok(available_balance) => *available_balance,
-            Err(be) => return BalanceResult::Failure(be.clone()),
+            Err(be) => return BalanceResult::Failure(TrackingCopyError::Balance(be.clone())),
         };
 
         BalanceResult::Success {

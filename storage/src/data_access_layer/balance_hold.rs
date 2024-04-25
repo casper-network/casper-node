@@ -1,5 +1,5 @@
 use crate::{
-    data_access_layer::{balance::BalanceError, BalanceIdentifier},
+    data_access_layer::{balance::BalanceFailure, BalanceIdentifier},
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
@@ -157,13 +157,13 @@ impl BalanceHoldRequest {
 #[non_exhaustive]
 pub enum BalanceHoldError {
     TrackingCopy(TrackingCopyError),
-    Balance(BalanceError),
+    Balance(BalanceFailure),
     InsufficientBalance { remaining_balance: U512 },
     UnexpectedWildcardVariant, // programmer error
 }
 
-impl From<BalanceError> for BalanceHoldError {
-    fn from(be: BalanceError) -> Self {
+impl From<BalanceFailure> for BalanceHoldError {
+    fn from(be: BalanceFailure) -> Self {
         BalanceHoldError::Balance(be)
     }
 }
@@ -325,8 +325,8 @@ impl BalanceHoldResult {
     }
 }
 
-impl From<BalanceError> for BalanceHoldResult {
-    fn from(be: BalanceError) -> Self {
+impl From<BalanceFailure> for BalanceHoldResult {
+    fn from(be: BalanceFailure) -> Self {
         BalanceHoldResult::Failure(be.into())
     }
 }
