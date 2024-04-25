@@ -136,8 +136,8 @@ impl SystemEntityAddresses {
 
 /// The system upgrader deals with conducting an actual protocol upgrade.
 pub struct ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     config: ProtocolUpgradeConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -145,8 +145,8 @@ pub struct ProtocolUpgrader<S>
 }
 
 impl<S> ProtocolUpgrader<S>
-    where
-        S: StateProvider + ?Sized,
+where
+    S: StateProvider + ?Sized,
 {
     /// Creates new system upgrader instance.
     pub fn new(

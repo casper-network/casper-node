@@ -462,7 +462,11 @@ impl ContractPackageHash {
 
     /// Formats the `ContractPackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
-        format!("{}{}", CONTRACT_PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0), )
+        format!(
+            "{}{}",
+            CONTRACT_PACKAGE_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
@@ -664,10 +668,10 @@ pub struct ContractPackage {
     access_key: URef,
     /// All versions (enabled & disabled)
     #[cfg_attr(
-    feature = "json-schema",
-    schemars(
-    with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
-    )
+        feature = "json-schema",
+        schemars(
+            with = "Vec<crate::serde_helpers::contract_package::HumanReadableContractVersion>"
+        )
     )]
     versions: ContractVersions,
     /// Disabled versions
@@ -907,13 +911,13 @@ pub struct Contract {
 }
 
 impl From<Contract>
-for (
-    ContractPackageHash,
-    ContractWasmHash,
-    NamedKeys,
-    EntryPoints,
-    ProtocolVersion,
-)
+    for (
+        ContractPackageHash,
+        ContractWasmHash,
+        NamedKeys,
+        EntryPoints,
+        ProtocolVersion,
+    )
 {
     fn from(contract: Contract) -> Self {
         (

@@ -394,13 +394,9 @@ impl PackageHash {
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
     /// `PackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
+        let hex_addr = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-
-        let hex_addr = remainder
-            .strip_prefix(PACKAGE_STRING_LEGACY_EXTRA_PREFIX)
-            .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
         Ok(PackageHash(bytes))
