@@ -14,7 +14,7 @@ use std::{
     rc::Rc,
 };
 
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_types::{
     addressable_entity::{EntityKindTag, NamedKeys},
@@ -340,7 +340,7 @@ pub trait CommitProvider: StateProvider {
         let state_hash = request.state_hash();
         let rewards = request.rewards();
         if rewards.is_empty() {
-            warn!("rewards are empty");
+            info!("rewards are empty");
             // if there are no rewards to distribute, this is effectively a noop
             return BlockRewardsResult::Success {
                 post_state_hash: state_hash,
