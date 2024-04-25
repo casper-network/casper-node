@@ -9,7 +9,7 @@ pub mod scratch;
 use num_rational::Ratio;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
 };
@@ -1820,7 +1820,7 @@ pub fn put_stored_values<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    stored_values: HashMap<Key, StoredValue>,
+    stored_values: BTreeMap<Key, StoredValue>,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
