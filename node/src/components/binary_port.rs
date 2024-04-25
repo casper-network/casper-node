@@ -814,7 +814,7 @@ where
     }
 }
 
-async fn client_loop<REv>(
+async fn handle_client_loop<REv>(
     stream: TcpStream,
     effect_builder: EffectBuilder<REv>,
     max_message_size_bytes: u32,
@@ -910,7 +910,9 @@ async fn handle_client<REv>(
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    if let Err(err) = client_loop(stream, effect_builder, config.max_message_size_bytes).await {
+    if let Err(err) =
+        handle_client_loop(stream, effect_builder, config.max_message_size_bytes).await
+    {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, err=display_error(&err), "binary port client handler error");
     }
