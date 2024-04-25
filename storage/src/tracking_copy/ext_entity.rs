@@ -478,17 +478,6 @@ where
         Ok(())
     }
 
-    // fn migrate_contract(&mut self, ???) -> Result<(), Self::Error> {
-    //   migrate contract, contract package, and contract wasm into modern equivalents
-    //   for package, remove the access_uref field on the new struct
-    //       write the old access_uref URefAddr under the original Key::Hash of the ContractPackage
-    //       use the same HashAddr as the original Key::Hash for the Key::Package(<-- original addr
-    // -->)       IMPORTANT: do not attempt to associate accounts to access_uref at this
-    // stage...           we wrote the old access_uref under the original key so that we can
-    // check it later           in add_contract_version in the ee runtime only if and when a
-    // caller attempts to           add a new contract version.
-    // }
-
     fn migrate_contract(
         &mut self,
         contract_key: Key,
